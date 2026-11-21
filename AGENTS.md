@@ -95,10 +95,13 @@ files, so these are rules for you:
   collaboration host), in-memory fakes in `src/testing`, the access decision and
   authoriser in `src/authorize`, tests in `test/`.
 - Adapters (database, auth, storage, and so on) live in their own packages
-  under `packages/adapters/*`; `config-env` (reads the environment into the typed
-  config, the only place that reads `process.env`) and `logger-json` (JSON logs with a
-  secret scrubber that fails closed) exist, the others arrive later. Apps live in `apps/*`: `apps/web`
-  (the web client) and `packages/api-client` exist today as empty placeholders.
+  under `packages/adapters/*`. Today: `config-env` (reads the environment into the
+  typed config, the only place that reads `process.env`), `logger-json` (JSON logs
+  with a secret scrubber that fails closed) and `db-kysely` (PostgreSQL
+  migrations in `db/migrations`, the page store and the permission queries). The
+  others arrive later.
+- Apps live in `apps/*`: `apps/web` (the web client) and `packages/api-client`
+  exist today as empty placeholders.
 - `packages/test-support`: the shared test harness (database helpers, a test
   client, and `eventually`, the helper that waits for a condition instead of
   sleeping). Tests use it rather than their own timers.

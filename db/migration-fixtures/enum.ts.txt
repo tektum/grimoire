@@ -1,0 +1,3 @@
+// Negative fixture: Node's type stripping cannot run enums, so the migrations typecheck must reject this.
+export enum Kind { A, B }
+export async function up(): Promise<void> {}

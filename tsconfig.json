@@ -17,6 +17,12 @@
       "path": "./packages/adapters/logger-json"
     },
     {
+      "path": "./packages/adapters/db-kysely"
+    },
+    {
+      "path": "./db/migrations"
+    },
+    {
       "path": "./packages/core/tsconfig.test.json"
     },
     {
