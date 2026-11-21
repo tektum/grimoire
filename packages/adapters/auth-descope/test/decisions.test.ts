@@ -49,7 +49,7 @@ describe('why the key set could not be used is logged, and the caller sees unava
   ];
   it.each(cases)('%s', async (_n, behaviour, reason) => {
     server.behaviour = behaviour;
-    const { v, lines } = make({ fetchTimeoutMs: 50 });
+    const { v, lines } = make({ fetchTimeoutMs: behaviour === 'hang' ? 50 : 3000 });
     expect(await v.verify(await sign(pair, 'SK1', claims()))).toEqual({ kind: 'service-unavailable' });
     expect(reasons(lines)).toEqual([reason]);
   });
