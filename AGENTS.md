@@ -40,6 +40,9 @@ Run from the repository root. Each line works on `main` today.
 | Benchmarks | `bun run test:benchmark` |
 | Licence check (installed packages and the recorded rest) | `bun run licence` |
 | Licence check of the container base images | `bun run licence:check-images` |
+| Start PostgreSQL and the file store (Compose project `grimoire`) | `make db-up` |
+| Stop the stack, keep the data | `make down` |
+| Stop the stack and delete its data volumes | `make down-volumes` |
 | Sleep check alone | `node tools/ci/check-test-sleeps.mjs` |
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
@@ -48,14 +51,16 @@ Run from the repository root. Each line works on `main` today.
 `mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
 
 Today the integration, container and benchmark commands find no tests and exit
-with success. They start to matter when the first such tests arrive.
+with success. They start to matter when the first such tests arrive. The
+integration tests need the database and the file store: run `make db-up` first.
 
 The list grows. Each later slice adds its line here: the
-exit tests (`make` targets), the Compose stack. Do not document a command that
-is not on `main`.
+exit tests (`make` targets). Do not document a command that is not on `main`.
 
-CI runs lint, typecheck, build, unit tests, the tool tests and the secret scan.
-It does not run the integration, container or benchmark tests, and a pull
+CI runs lint, typecheck, build, unit tests, the tool tests, the licence check,
+the Compose file check, the integration tests (against the Compose database and
+file store) and the secret scan. It does not run the container or benchmark
+tests, and a pull
 request that changes only documentation skips the static and unit jobs. A green
 `CI Required` is therefore not proof that the other suites pass: run them
 yourself when your change can affect them. The required check is `CI Required`.
@@ -66,9 +71,11 @@ yourself when your change can affect them. The required check is `CI Required`.
 key is explained here. The keys are documented in the Claude Code settings
 reference.
 
-- `permissions.allow`: exactly the commands in the table above, bare or wrapped
-  in `mise exec --`, with no extra arguments. They run without asking. Nothing that writes outside
-  the repository or touches the network is listed.
+- `permissions.allow`: the commands in the table above, bare or wrapped in
+  `mise exec --`, with no extra arguments, except the `make` rows: those pull
+  images and create or delete Docker volumes, so each use is approved. Allowed
+  commands run without asking. Nothing that writes outside the repository or
+  touches the network is listed.
 - `permissions.deny`: no edits to `bun.lock` (change `package.json` and
   run `bun install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
 - Skills are discovered from `.claude/skills/`; no setting is needed.
@@ -102,7 +109,12 @@ stand in this document. There is no project OMP configuration.
   sample file (the samples are the `.ts.txt` files in `fixtures/`).
 - The core never reads `process.env`. Only a config adapter reads it.
 - Server-only libraries stay out of the browser client and shared libraries.
-- Add a fake for every new port, next to the others in `src/testing`.
+- Every port gets an in-memory fake next to the others in `src/testing`, no later
+  than the first code whose tests depend on that port. Today the clock, config,
+  logger, database, Markdown converter, user store and access store have one. The
+  auth verifier gets its fake with the auth adapters, and the collaboration host
+  and page store get theirs (an in-memory page store) with the collaboration
+  adapter.
 - A forbidden import is fixed by adding or using a port. Never loosen the rule.
 
 ## House rules
@@ -171,8 +183,6 @@ Do not trust a claim, including your own. Check on the real thing.
 5. When the Compose stack exists, verify against it, not only against fakes.
 
 ## Docker safety
-
-Applies once Compose files exist in the repository.
 
 - Use only this project's Compose stack, through the `make` targets. Never run
   raw `docker` commands that touch other containers, images or volumes.

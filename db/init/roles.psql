@@ -1,0 +1,15 @@
+-- Local development only. Run once by 01-roles.sh (psql -v pw=...), as the container superuser grimoire_admin, against database grimoire.
+-- The password is the GRIMOIRE_DEV_DB_PASSWORD value, passed as the psql variable :pw.
+CREATE ROLE grimoire_migrator LOGIN PASSWORD :'pw';
+CREATE ROLE grimoire_app LOGIN PASSWORD :'pw';
+
+REVOKE ALL ON DATABASE grimoire FROM PUBLIC;
+GRANT CONNECT ON DATABASE grimoire TO grimoire_migrator, grimoire_app;
+
+-- The migration role owns the schema and may change it.
+ALTER SCHEMA public OWNER TO grimoire_migrator;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO grimoire_app;
+
+-- Runtime role: no default grants. Each migration grants the runtime role exactly what it needs on the tables it creates;
+-- Kysely's own bookkeeping tables (kysely_migration, kysely_migration_lock) get no grant.
