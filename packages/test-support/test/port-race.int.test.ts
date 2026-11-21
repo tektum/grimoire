@@ -20,16 +20,17 @@ it('starts 200 sequential servers without a port collision', async () => {
   }
 }, 120_000);
 
+// Each server is registered for cleanup as soon as it has started, so one failed start cannot leave the others running.
+const startRegistered = (): Promise<ServerProcess> => startServer({ entry }).then((server) => { running.push(server); return server; });
+
 it('starts 40 concurrent servers with forty distinct ports', async () => {
-  const servers = await Promise.all(Array.from({ length: 40 }, () => startServer({ entry })));
-  running.push(...servers);
+  const servers = await Promise.all(Array.from({ length: 40 }, startRegistered));
   expect(new Set(servers.map((server) => server.port)).size).toBe(40);
-});
+}, 120_000);
 
 it('starts 20 concurrent servers without a port collision', async () => {
   for (let round = 0; round < 5; round++) {
-    const servers = await Promise.all(Array.from({ length: 20 }, () => startServer({ entry })));
-    running.push(...servers);
+    const servers = await Promise.all(Array.from({ length: 20 }, startRegistered));
     expect(new Set(servers.map((server) => server.port)).size).toBe(20);
     expect(servers.every((server) => server.alive)).toBe(true);
     await Promise.all(running.splice(0).map((server) => server.kill()));
@@ -44,4 +45,11 @@ it('retries on a fresh port after an EADDRINUSE start failure', async () => {
     running.push(server);
     expect(server.alive).toBe(true);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('events skips lines that are not JSON (plain text on stderr)', async () => {
+  const server = await startServer({ entry, env: { NOISY: '1' } });
+  running.push(server);
+  expect(server.output).toContain('ExperimentalWarning');
+  expect(server.events.map((event) => event.event)).toContain('http.listening');
 });

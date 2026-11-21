@@ -89,7 +89,12 @@ export class ServerProcess {
     });
   }
   get output(): string { return this.out; }
-  get events(): LogEvent[] { return this.out.split('\n').filter(Boolean).map((line) => JSON.parse(line) as LogEvent); }
+  get events(): LogEvent[] {
+    // `out` mixes stdout and stderr and may end in a half-written line: only complete JSON lines are events.
+    return this.out.split('\n').filter(Boolean).flatMap((line) => {
+      try { return [JSON.parse(line) as LogEvent]; } catch { return []; }
+    });
+  }
   get url(): string { return `http://127.0.0.1:${this.port}`; }
   signal(signal: NodeJS.Signals): void { this.child.kill(signal); }
   get alive(): boolean { return this.child.exitCode === null && this.child.signalCode === null; }
