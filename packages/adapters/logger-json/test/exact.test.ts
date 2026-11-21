@@ -127,7 +127,8 @@ describe('adversarial text keeps the work bounded', () => {
   it.each(shapes)('%s: the output is cut at the cap, with the cut length reported', (_n, input) => {
     const out = redactString(input);
     expect(out.length).toBeLessThanOrEqual(MAX_STRING_CHARS + 40);
-    expect(out).toMatch(/…\[truncated \d+ chars\]$|^[^…]*$/);
+    // Either the cut is reported with its count, or the whole text was dropped or redacted to something short: a silent cut at the cap would be as long as the cap.
+    if (!/…\[truncated \d+ chars\]$/.test(out)) expect(out.length).toBeLessThan(MAX_STRING_CHARS);
   });
   it('a long text without any whitespace is dropped whole, leaving only the count', () => {
     expect(redactString('y'.repeat(MAX_STRING_CHARS + 952))).toBe('…[truncated 952 chars]');

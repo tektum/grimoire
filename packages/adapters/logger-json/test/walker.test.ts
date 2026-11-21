@@ -86,6 +86,11 @@ describe('Map keys', () => {
   it('a Map key that looks like a placeholder cannot be forged by a string key of an object', () => {
     expect(scrubFields({ o: { '[non-string #1]': 'x' } })).toEqual({ o: { '[non-string #1]': 'x' } });
   });
+  it('a string key that equals the placeholder of a non-string Map key does not overwrite it: both entries survive', () => {
+    const out = scrubFields({ m: new Map<unknown, unknown>([[{ a: 1 }, 'first'], ['[non-string #1]', 'second']]) }) as { m: Record<string, unknown> };
+    expect(Object.keys(out.m)).toHaveLength(2);
+    expect(Object.values(out.m).sort()).toEqual(['first', 'second']);
+  });
 });
 
 describe('size and depth limits', () => {
