@@ -1,0 +1,3 @@
+import "@hocuspocus/server";
+
+export {};
