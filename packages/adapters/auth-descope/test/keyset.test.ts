@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isDescopeProjectId } from '@tektum/grimoire-core/ports/auth-verifier';
 import { createDescopeVerifier } from '../src/index.js';
-import { captureLogger, KeyServer, makeKey, PID, sign, type KeyPair } from './helpers.js';
+import { captureLogger, KeyServer, makeKey, PID, sign, type KeyPair, SyncedClock, syncDate } from './helpers.js';
+
+syncDate();
 
 const server = new KeyServer();
 let pair: KeyPair;
@@ -54,15 +55,15 @@ describe('a fetched key set counts only if it holds a key we can use (RS256, RSA
     expect(await kind(make().v, 'SK1')).toBe('ok');
   });
   it.each(unusable)('warm cache: a later set with only an unusable key (%s) leaves the old keys in place', async (_n, bad) => {
-    const { v } = make({ cooldownMs: 1 });
+    const { v } = make();
     expect(await kind(v, 'SK1')).toBe('ok');
     server.keys = [bad(jwk)];
-    await new Promise((r) => setTimeout(r, 10));
+    vi.setSystemTime(Date.now() + 31_000); // past the SDK's 30 s cooldown: the unknown kid triggers a refetch
     expect(await kind(v, 'GHOST')).toBe('service-unavailable'); // the refetch it triggers fails
     expect(await kind(v, 'SK1')).toBe('ok'); // the old keys are still used
   });
   it('a valid set that lacks the token key id is a normal rotation case: invalid-token, refetched at most once per cooldown', async () => {
-    const { v } = make({ cooldownMs: 60_000 });
+    const { v } = make();
     expect(await kind(v, 'GHOST')).toBe('invalid-token');
     expect(await kind(v, 'GHOST2')).toBe('invalid-token');
     expect(server.requests).toBe(1);
@@ -70,28 +71,28 @@ describe('a fetched key set counts only if it holds a key we can use (RS256, RSA
 });
 
 describe('one shared refresh', () => {
-  const stale = async (behaviour: 'ok' | { status: number }) => {
-    const clock = new FakeClock(Date.now());
-    const { v } = make({ clock, staleMaxAgeMs: 1000, failureBackoffMs: 50 });
+  const stale = async (behaviour: 'ok' | { status: number }, minutes: number) => {
+    const clock = new SyncedClock(Date.now());
+    const { v } = make({ clock, failureBackoffMs: 50 });
     expect(await kind(v, 'SK1')).toBe('ok');
     expect(server.requests).toBe(1);
-    clock.advance(2000);
+    clock.advance(minutes * 60_000); // 11: past the SDK's 10-minute key TTL; 61: past its one-hour limit
     server.behaviour = behaviour;
     return v;
   };
   it('twenty concurrent verifications with a stale cache cause exactly one fetch (successful refresh)', async () => {
-    const v = await stale('ok');
+    const v = await stale('ok', 11);
     const token = await sign(pair, 'SK1');
     const results = await Promise.all(Array.from({ length: 20 }, () => v.verify(token)));
     expect(server.requests).toBe(2);
     expect(results.every((r) => r.kind === 'ok')).toBe(true);
   });
-  it('twenty concurrent verifications with a stale cache and a failing refresh cause exactly one fetch, all service-unavailable, no unhandled rejection', async () => {
+  it('twenty concurrent verifications past the one-hour limit and a failing refresh cause exactly one fetch, all service-unavailable, no unhandled rejection', async () => {
     const rejections: unknown[] = [];
     const on = (e: unknown): number => rejections.push(e);
     process.on('unhandledRejection', on);
     try {
-      const v = await stale({ status: 500 });
+      const v = await stale({ status: 500 }, 61);
       const token = await sign(pair, 'SK1');
       const results = await Promise.all(Array.from({ length: 20 }, () => v.verify(token)));
       await new Promise((r) => setTimeout(r, 20));

@@ -13,7 +13,10 @@
     }
   },
   "dependencies": {
-    "@tektum/grimoire-core": "*",
+    "@descope/node-sdk": "2.22.0",
+    "@tektum/grimoire-core": "*"
+  },
+  "devDependencies": {
     "jose": "6.2.18"
   }
 }

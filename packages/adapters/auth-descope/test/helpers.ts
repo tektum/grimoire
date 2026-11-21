@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT, type JWK } from 'jose';
+import { afterEach, beforeEach, vi } from 'vitest';
 import type { Logger } from '@tektum/grimoire-core/ports/logger';
+import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 
 export const PID = 'P2testprojectidabcdefghijkl';
 export type KeyPair = Awaited<ReturnType<typeof generateKeyPair>>;
@@ -92,4 +94,17 @@ export function captureLogger(): { logger: Logger; lines: Captured[] } {
     return { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error'), child: () => make() };
   };
   return { logger: make(), lines };
+}
+
+/**
+ * The Descope SDK checks `exp` and its key-cache ages on the system clock (it takes no injected clock), so the tests that move the injected clock move
+ * the system `Date` with it: `syncDate()` fakes `Date` only (timers stay real: the network timeouts are real), `SyncedClock` keeps the two together.
+ */
+export function syncDate(): void {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); });
+  afterEach(() => { vi.useRealTimers(); });
+}
+export class SyncedClock extends FakeClock {
+  constructor(start = 0) { super(start); vi.setSystemTime(start); }
+  override advance(ms: number): number { const t = super.advance(ms); vi.setSystemTime(t); return t; }
 }
