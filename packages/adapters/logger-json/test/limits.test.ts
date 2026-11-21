@@ -30,11 +30,17 @@ const shapes: readonly (readonly [string, string])[] = [
 ];
 
 describe('scrubbing is linear and bounded (1 MB inputs)', () => {
-  it.each(shapes)('%s finishes in under 50 ms', (_n, value) => {
-    const t0 = performance.now();
-    redactString(value);
-    run({ v: value, nested: { v: [value] } });
-    expect(performance.now() - t0).toBeLessThan(50);
+  // A pattern that backtracks takes seconds on 1 MB, every time. A busy machine only slows some attempts, so the fastest of
+  // five is compared with the limit: the test cannot be failed by load alone, and cannot be passed by a slow scrubber.
+  it.each(shapes)('%s finishes in under 50 ms (fastest of five attempts)', (_n, value) => {
+    const took: number[] = [];
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const t0 = performance.now();
+      redactString(value);
+      run({ v: value, nested: { v: [value] } });
+      took.push(performance.now() - t0);
+    }
+    expect(Math.min(...took)).toBeLessThan(50);
   });
 
   it('truncates long strings with a suffix and never keeps a secret past the cap', () => {
