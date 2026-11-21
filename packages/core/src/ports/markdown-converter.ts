@@ -1,6 +1,6 @@
 /**
  * Port: turns a page's live editing state into canonical Markdown and plain search text, and Markdown into editing
- * state. Bytes and strings only: no Yjs, Milkdown or ProseMirror type crosses this boundary (M2 contracts, section 3).
+ * state. Bytes and strings only: no Yjs, Milkdown or ProseMirror type crosses this boundary.
  * Every method resolves; none rejects, whatever the input.
  */
 export type ConvertFailure =

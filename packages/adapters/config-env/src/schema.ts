@@ -131,7 +131,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_COLLAB_STORE_RETRY_MAX_MS: field(int(1, MAX_INT)).default(30000),
   GRIMOIRE_COLLAB_STORE_TIMEOUT_MS: field(int(1, MAX_INT)).default(2000),
   GRIMOIRE_COLLAB_RECHECK_SECONDS: field(int(1, 600)).default(60),
-  // S3 is parsed and validated but unused in M1 (R2.27). No default for the addressing style: a set
+  // S3 is parsed and validated but not yet used (R2.27). No default for the addressing style: a set
   // variable must stay distinguishable from an absent one for the all-or-nothing rule.
   GRIMOIRE_S3_ENDPOINT: field(httpUrl),
   GRIMOIRE_S3_PUBLIC_ENDPOINT: field(httpUrl),

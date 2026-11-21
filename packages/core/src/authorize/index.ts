@@ -19,7 +19,7 @@ export interface PageAccessChecker {
   checkAccessMany(rs: readonly AccessRequest[], opts?: AccessOptions): Promise<readonly ('allowed' | 'not-found')[]>;
   /** The same answer with the level and epoch, for callers that open a session at that level (the collaboration host). */
   pageAccess(r: AccessRequest, opts?: AccessOptions): Promise<PageAccess>;
-  /** One database round trip for all requests, same order (the re-check of M3-T07). */
+  /** One database round trip for all requests, same order (the session re-check). */
   pageAccessMany(rs: readonly AccessRequest[], opts?: AccessOptions): Promise<readonly PageAccess[]>;
 }
 

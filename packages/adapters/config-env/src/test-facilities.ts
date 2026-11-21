@@ -1,7 +1,7 @@
 import type { ConfigProblem } from './index.js';
 
 /**
- * TEST FACILITIES (M3-T01c): two switches that exist only so the `hostile-neighbour` scenario can prove it tests the circuit breaker.
+ * TEST FACILITIES: two switches that exist only so the `hostile-neighbour` scenario can prove it tests the circuit breaker.
  *  GRIMOIRE_TEST_SLOW_CONVERT_MS=<ms>  a page whose text contains TEST_SLOW_MARKER takes that long to convert (other pages are unaffected);
  *  GRIMOIRE_TEST_DISABLE_BREAKER=1     the per-page conversion breaker never opens.
  * Both are read once, here, at start-up (from the process environment when the caller passes none), and only the server's composition calls this. Outside local mode (so in the production image) setting

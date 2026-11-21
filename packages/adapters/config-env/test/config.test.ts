@@ -223,7 +223,7 @@ describe('loadConfigFromProcessEnv', () => {
   });
 });
 
-describe('local mode refuses unsafe combinations (F2)', () => {
+describe('local mode refuses unsafe combinations', () => {
   const noSecret = { GRIMOIRE_LOCAL: base.GRIMOIRE_LOCAL, GRIMOIRE_DATABASE_URL: base.GRIMOIRE_DATABASE_URL, GRIMOIRE_ALLOWED_ORIGINS: base.GRIMOIRE_ALLOWED_ORIGINS };
   it('local mode without GRIMOIRE_DEV_TOKEN_SECRET refuses to start with one fixed line', () => {
     expect(issuesOf(noSecret)).toEqual(['GRIMOIRE_LOCAL: needs GRIMOIRE_DEV_TOKEN_SECRET to be set, at 16 or more characters (`make up` generates one in .env)']);
