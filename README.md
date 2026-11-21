@@ -1,6 +1,6 @@
 # Grimoire
 
-Grimoire is a collaborative documentation tool. People write and read pages together in a WYSIWYG editor, and every page is stored as Markdown. It is being built by Tektum to replace the team's use of Notion. It is meant for the staff of a single company, from about 100 to 1,000 people, who sign in through the company login.
+Grimoire is a collaborative documentation tool. People write and read pages together in a WYSIWYG editor, and every page is stored as Markdown. It is being built by Tektum to replace the team's current documentation tool. It is meant for the staff of a single company, from about 100 to 1,000 people, who sign in through the company login.
 
 ## Status
 
@@ -15,7 +15,7 @@ Built and tested so far:
 - users and access rules, with read-only access enforced by the server;
 - access re-checks on connections that are already open.
 
-Planned next: the HTTP API, file uploads, the web client, search, a Notion importer, hardening and a first deployment.
+Planned next: the HTTP API, file uploads, the web client, search, an importer for Markdown and CSV exports from other tools, hardening and a first deployment.
 
 This repository is being opened step by step. The code arrives through small pull requests, so for now there is little to run.
 
@@ -49,7 +49,7 @@ This repository is being opened step by step. The code arrives through small pul
 4. Database schema, migrations and the HTTP API: planned.
 5. File storage and attachments: planned.
 6. The web client: planned.
-7. Search, background jobs and the Notion importer: planned.
+7. Search, background jobs and the importer for exports from other tools: planned.
 8. Hardening, operations and the first deployment: planned.
 
 ## Known limits
