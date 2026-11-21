@@ -11,6 +11,9 @@ Grimoire is developed in the open, through small pull requests into `main`.
 - Pull requests from outside the project are welcome, but reviews may take a
   while.
 - Never commit secrets or credentials.
+- Contributions are accepted under the same licence as the project, the
+  Apache License 2.0 (inbound equals outbound); there is no contributor
+  agreement.
 
 To report a security issue, do not open a public issue: follow
 [SECURITY.md](SECURITY.md).
