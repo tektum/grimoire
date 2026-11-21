@@ -5,6 +5,9 @@
       "path": "./packages/core"
     },
     {
+      "path": "./packages/editor-schema"
+    },
+    {
       "path": "./packages/api-client"
     },
     {
@@ -33,6 +36,9 @@
     },
     {
       "path": "./packages/core/tsconfig.test.json"
+    },
+    {
+      "path": "./packages/editor-schema/tsconfig.test.json"
     },
     {
       "path": "./packages/test-support"
