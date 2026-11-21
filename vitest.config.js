@@ -30,18 +30,18 @@ export default defineConfig({
       // except by a reviewed edit of this file. A `/* v8 ignore */` or an exclusion above needs a reason on the same line.
       thresholds: {
         autoUpdate: process.env.COVERAGE_RATCHET === "1",
-        statements: 73,
-        branches: 73,
-        functions: 68,
-        lines: 75,
+        statements: 78,
+        branches: 80,
+        functions: 69,
+        lines: 79,
         "packages/core/src/**": { statements: 98, branches: 96, functions: 100, lines: 100 },
-        "packages/adapters/auth-descope/src/**": { statements: 74, branches: 68, functions: 77, lines: 76 },
+        "packages/adapters/auth-descope/src/**": { statements: 99, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/config-env/src/**": { statements: 98, branches: 96, functions: 98, lines: 98 },
         "packages/adapters/logger-json/src/**": { statements: 99, branches: 97, functions: 96, lines: 98 },
         // db-kysely is exercised only by the integration project (needs Postgres): no unit floor until that is collected.
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
-        "packages/adapters/auth-descope/src/index.ts": { statements: 74, branches: 68, functions: 77, lines: 76 },
+        "packages/adapters/auth-descope/src/index.ts": { statements: 99, branches: 98, functions: 100, lines: 100 },
       },
     },
     projects: [
