@@ -5,8 +5,9 @@ import { redactString } from '../../src/scrub.js';
  * CPU time of the log scrubber on adversarial text (same method as the converter benchmark in markdown-milkdown: `process.cpuUsage`,
  * so a loaded machine does not fail it, and a growth ratio rather than a wall-clock limit). Input of 250 KB and of 1 MB is scrubbed;
  * linear work grows 4-fold, a quadratic pass 16-fold; the limit is 8. The scrubber caps its input, so the work is in fact flat:
- * this test fails the day a pass runs over the input before the cap, or the cap stops bounding a pass. It does not prove that the passes
- * behind the cap are linear: the capped input is at most 2,048 characters, so a quadratic pass over it would still be fast and unseen here.
+ * this test fails the day a SUPER-LINEAR (for example quadratic) pass runs over the input before the cap, or the cap stops bounding such a
+ * pass. A linear pass over the uncapped input (about 4-fold) stays under the limit of 8 and is not detected; the limit leaves room for noise.
+ * It does not prove that the passes behind the cap are linear: the capped input is at most 2,048 characters, so a quadratic pass over it would still be fast and unseen here.
  */
 const MAX_GROWTH = 8;
 const REPEAT = 20;
