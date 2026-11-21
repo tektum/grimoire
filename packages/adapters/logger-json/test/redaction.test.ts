@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createJsonLogger } from '../src/index.js';
+import { redactString } from '../src/scrub.js';
 
 const S = 'LEAKME';
 
@@ -187,5 +188,26 @@ describe('property: a random marker never survives', () => {
       const lines = run({ root: nested(m, rnd(4)) }, () => 0, `ev ${stringWith(m)}`);
       expectSafe(lines, m);
     }
+  });
+});
+
+describe('secrets inside strings, whatever the key quoting or the key word', () => {
+  it('redacts the values of quoted keys (embedded JSON and object reprs)', () => {
+    for (const text of ['upstream failed: {"password":"hunter2","token":"abc"}', "failed: {'password': 'hunter2'}", 'x {"api_key" : "hunter2"}']) {
+      const out = redactString(text);
+      expect(out, text).not.toContain('hunter2');
+      expect(out, text).not.toContain('abc');
+    }
+  });
+
+  it('uses the key rule of the structured path for key=value pairs (otp, pin, salt, nonce ...)', () => {
+    for (const word of ['otp', 'pin', 'salt', 'nonce', 'hmac', 'seed', 'pass', 'csrf']) {
+      expect(redactString(`${word}=LEAKME`), word).not.toContain('LEAKME');
+      expect(redactString(`${word}: LEAKME`), word).not.toContain('LEAKME');
+    }
+  });
+
+  it('keeps the text around a quoted secret readable', () => {
+    expect(redactString('failed: {"password":"hunter2","user":"ann"}')).toContain('"user":"ann"');
   });
 });

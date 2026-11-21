@@ -47,12 +47,15 @@ function keyText(key: string): string {
     : redactString(key);
 }
 
-const SECRET_WORD =
-  /password|passwd|pwd|secret|token|api[-_ ]?key|access[-_ ]?key|session|credential|authorization|cookie|private|passphrase|signature|auth|\bkey\b|\bsid\b/i;
-
 const isKeyChar = (c: string): boolean => /[\w-]/.test(c);
 
-/** key=value / key: value; the value of a secret-looking key runs to the next ; or newline. Linear. */
+const isQuote = (c: string | undefined): boolean => c === '"' || c === "'";
+
+/**
+ * key=value / key: value, also with a quoted key ("password": "x", 'token' = 'x'), judged by the same rule as a structured field
+ * (isSecretKey). The value of a secret-looking key runs to the closing quote when it is quoted, otherwise to the next ; or newline.
+ * Linear.
+ */
 function cutKeyValues(s: string): string {
   let out = '';
   let pos = 0; // everything before pos is already emitted
@@ -61,12 +64,22 @@ function cutKeyValues(s: string): string {
     if (c !== '=' && c !== ':') continue;
     let b = i;
     while (b > pos && s[b - 1] === ' ') b--;
+    const closing = b > pos && isQuote(s[b - 1]) ? s[b - 1] : '';
+    if (closing !== '') b--;
     let a = b;
     while (a > pos && isKeyChar(s[a - 1] ?? '')) a--;
-    if (a === b || !SECRET_WORD.test(s.slice(a, b))) continue;
-    let end = i + 1;
-    while (end < s.length && s[end] !== ';' && s[end] !== '\n') end++;
-    out += `${s.slice(pos, a)}${s.slice(a, b)}=${REDACTED}`;
+    if (a === b || !isSecretKey(s.slice(a, b))) continue;
+    let start = i + 1;
+    while (start < s.length && s[start] === ' ') start++;
+    const q = isQuote(s[start]) ? (s[start] ?? '') : '';
+    let end = start;
+    if (q !== '') {
+      end = s.indexOf(q, start + 1);
+      end = end === -1 ? s.length : end + 1;
+    } else {
+      while (end < s.length && s[end] !== ';' && s[end] !== '\n') end++;
+    }
+    out += `${s.slice(pos, a)}${s.slice(a, b)}${closing}=${REDACTED}`;
     pos = end;
     i = end - 1;
   }
