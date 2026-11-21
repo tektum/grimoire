@@ -9,9 +9,10 @@ growing, so some parts named below may not exist yet. This file lists only what
 exists, and each new part adds its own line here.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) holds the contribution rules. These
-instructions add what an agent needs on top of them. Claude Code reads this file
-when there is no `CLAUDE.md`, so there is none. Procedures
-(skills) live in `.claude/skills/`, which both Claude Code and OMP read:
+instructions add what an agent needs on top of them. This file follows the
+AGENTS.md convention, so there is no tool-specific instruction file. Procedures
+(skills) live in `.agents/skills/<name>/SKILL.md`, the cross-tool skills location
+that OMP reads:
 `small-pull-request`, `answer-review`, `verify-claim`, `add-allow-list-entry`
 and `pull-request-visuals`. Use the one that matches your task.
 
@@ -67,21 +68,25 @@ yourself when your change can affect them. The required check is `CI Required`.
 
 ## Agent configuration
 
-`.claude/settings.json` is read by Claude Code. JSON has no comments, so each
-key is explained here. The keys are documented in the Claude Code settings
-reference.
+`.omp/config.yml` is the project configuration that OMP reads. YAML allows
+comments, but each key is explained here as well.
 
-- `permissions.allow`: the commands in the table above, bare or wrapped in
-  `mise exec --`, with no extra arguments, except the `make` rows: those pull
-  images and create or delete Docker volumes, so each use is approved. Allowed
-  commands run without asking. Nothing that writes outside the repository or
-  touches the network is listed.
-- `permissions.deny`: no edits to `bun.lock` (change `package.json` and
-  run `bun install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
-- Skills are discovered from `.claude/skills/`; no setting is needed.
+- `bash.patterns`: one `allow` rule per command in the table above, bare or
+  wrapped in `mise exec --`, matched literally with no extra arguments, except
+  the `make` rows: those pull images and create or delete Docker volumes, so
+  each use is approved. Allowed commands run without asking. Nothing that
+  writes outside the repository or touches the network is listed. This is an
+  approval policy, not containment.
+- Skills need no setting: OMP finds `.agents/skills/<name>/SKILL.md` one level
+  deep, walking up from the working directory to the repository root. Do not
+  nest skills in sub-folders.
 
-OMP is not known to read this file for permissions, so the rules above also
-stand in this document. There is no project OMP configuration.
+OMP has no project setting that denies edits to named files or reads of named
+files, so these are rules for you:
+
+- Never edit `bun.lock` (change `package.json` and run `bun install`) or
+  anything under a `dist/` directory (generated).
+- Never read `.env` files at any depth; `.env.example` is the template.
 
 ## Where things live
 

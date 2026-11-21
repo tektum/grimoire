@@ -1,0 +1,55 @@
+# Project settings read by OMP. Keys: bash.patterns (see AGENTS.md).
+bash:
+   patterns:
+      - match: "bun run lint"
+        approval: allow
+      - match: "mise exec -- bun run lint"
+        approval: allow
+      - match: "bun run typecheck"
+        approval: allow
+      - match: "mise exec -- bun run typecheck"
+        approval: allow
+      - match: "bun run build"
+        approval: allow
+      - match: "mise exec -- bun run build"
+        approval: allow
+      - match: "bun run test"
+        approval: allow
+      - match: "mise exec -- bun run test"
+        approval: allow
+      - match: "bun run test:tools"
+        approval: allow
+      - match: "mise exec -- bun run test:tools"
+        approval: allow
+      - match: "bun run licence"
+        approval: allow
+      - match: "mise exec -- bun run licence"
+        approval: allow
+      - match: "bun run licence:check-images"
+        approval: allow
+      - match: "mise exec -- bun run licence:check-images"
+        approval: allow
+      - match: "bun run test:integration"
+        approval: allow
+      - match: "mise exec -- bun run test:integration"
+        approval: allow
+      - match: "bun run test:container"
+        approval: allow
+      - match: "mise exec -- bun run test:container"
+        approval: allow
+      - match: "bun run test:benchmark"
+        approval: allow
+      - match: "mise exec -- bun run test:benchmark"
+        approval: allow
+      - match: "node tools/ci/check-test-sleeps.mjs"
+        approval: allow
+      - match: "mise exec -- node tools/ci/check-test-sleeps.mjs"
+        approval: allow
+      - match: "gitleaks git --config .gitleaks.toml --redact ."
+        approval: allow
+      - match: "mise exec -- gitleaks git --config .gitleaks.toml --redact ."
+        approval: allow
+      - match: "gitleaks dir --config .gitleaks.toml --redact ."
+        approval: allow
+      - match: "mise exec -- gitleaks dir --config .gitleaks.toml --redact ."
+        approval: allow
