@@ -21,6 +21,21 @@
   },
   "packageRules": [
     {
+      "description": "Descope SDK packages are never auto-merged and get their own pull request: the adapter tells an outage from a bad token by the shape of the SDK's errors. Run `bun run test` and check packages/adapters/auth-descope/test/contract.test.ts (the SDK contract tests) before merging.",
+      "matchPackageNames": [
+        "@descope/{/,}**"
+      ],
+      "automerge": false,
+      "groupName": null,
+      "separateMajorMinor": true,
+      "prBodyNotes": [
+        "Run the contract tests in packages/adapters/auth-descope/test/contract.test.ts: they show any change in the SDK's error shapes."
+      ],
+      "addLabels": [
+        "descope-sdk"
+      ]
+    },
+    {
       "description": "0.x minor bumps can be breaking; keep manual",
       "matchCurrentVersion": "/^v?0\\./",
       "matchUpdateTypes": [

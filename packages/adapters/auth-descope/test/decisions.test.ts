@@ -1,9 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { createDescopeVerifier } from '../src/index.js';
-import { b64, captureLogger, goodClaims, KeyServer, makeKey, PID, sign, type Behaviour, type KeyPair } from './helpers.js';
+import { b64, captureLogger, goodClaims, KeyServer, makeKey, PID, sign, type Behaviour, type KeyPair, SyncedClock, syncDate } from './helpers.js';
+
+syncDate();
 
 // Time is injected; the only waits are the sockets of the local servers.
 const T0 = 1_700_000_000;
@@ -28,7 +29,7 @@ afterEach(async () => {
 
 const make = (o: Partial<Parameters<typeof createDescopeVerifier>[0]> = {}) => {
   const cap = captureLogger();
-  const clock = new FakeClock(T0 * 1000);
+  const clock = new SyncedClock(T0 * 1000);
   const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 300, ...o });
   closers.push(() => v.close());
   return { v, lines: cap.lines, clock };
@@ -77,23 +78,22 @@ describe('why the key set could not be used is logged, and the caller sees unava
   });
 });
 
-describe('stale key set', () => {
-  it('is logged once per cooldown while the verifier answers unavailable', async () => {
-    const { v, lines, clock } = make({ staleMaxAgeMs: 60_000, cooldownMs: 30_000, failureBackoffMs: 1 });
-    const t = await sign(pair, 'SK1', claims({ exp: T0 + 80_000 }));
+describe('keys unavailable', () => {
+  it('is logged once per 30 s while the verifier answers unavailable (no key younger than the SDK one-hour limit)', async () => {
+    const { v, lines, clock } = make({ failureBackoffMs: 1 });
+    const t = await sign(pair, 'SK1', claims({ exp: T0 + 7200 }));
     expect((await v.verify(t)).kind).toBe('ok');
     server.behaviour = { status: 500 };
-    clock.advance(60_001);
-    const stale = () => lines.filter((l) => l.event === 'auth.keys_stale').length;
+    clock.advance(3_600_001);
+    const logged = () => lines.filter((l) => l.event === 'auth.keys_unavailable').length;
     for (let i = 0; i < 3; i += 1) expect((await v.verify(t)).kind).toBe('service-unavailable');
-    expect(stale()).toBe(1);
-    clock.advance(29_999); // 1 ms short of the cooldown since the first log
+    expect(logged()).toBe(1);
+    clock.advance(29_999); // 1 ms short of the interval since the first log
     expect((await v.verify(t)).kind).toBe('service-unavailable');
-    expect(stale()).toBe(1);
+    expect(logged()).toBe(1);
     clock.advance(1);
     expect((await v.verify(t)).kind).toBe('service-unavailable');
-    expect(stale()).toBe(2);
-    expect(lines.find((l) => l.event === 'auth.keys_stale')?.fields).toEqual({ ageSeconds: 60 });
+    expect(logged()).toBe(2);
   });
 });
 
@@ -103,7 +103,7 @@ describe('construction options', () => {
     expect((await verify({ iss: 'someone-else' }, { issuers: [] })).kind).toBe('invalid-token');
   });
   it('a project id must be a non-empty alphanumeric string', () => {
-    const o = { logger: captureLogger().logger, clock: new FakeClock(0) };
+    const o = { logger: captureLogger().logger, clock: new SyncedClock(0) };
     expect(() => createDescopeVerifier({ projectId: '', ...o })).toThrow('required');
     expect(() => createDescopeVerifier({ projectId: undefined as unknown as string, ...o })).toThrow('required');
     expect(() => createDescopeVerifier({ projectId: 'a-b', ...o })).toThrow('alphanumeric');
@@ -118,7 +118,7 @@ describe('construction options', () => {
     ['a non-http scheme', 'ftp://127.0.0.1', /https/],
     ['text that is not a URL', 'nonsense', /not a valid URL/],
   ])('a baseUrl with %s is refused with a reason that names the rule', (_n, baseUrl, message) => {
-    expect(() => createDescopeVerifier({ projectId: PID, baseUrl, logger: captureLogger().logger, clock: new FakeClock(0) })).toThrow(message);
+    expect(() => createDescopeVerifier({ projectId: PID, baseUrl, logger: captureLogger().logger, clock: new SyncedClock(0) })).toThrow(message);
   });
 });
 
