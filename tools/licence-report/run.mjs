@@ -59,7 +59,8 @@ if (inputErrors.length) {
 
 // Images
 const imageMap = readJson(imagesFile, "images map");
-const refs = existsSync(composeFile) ? extractImages(readFileSync(composeFile, "utf8"), findDockerfiles(root)) : [];
+// Dockerfiles are always checked, with or without a compose file
+const refs = extractImages(existsSync(composeFile) ? readFileSync(composeFile, "utf8") : "", findDockerfiles(root));
 const imageResult = checkImages(refs, imageMap, exceptions);
 
 let packageResult = { packages: [], violations: [], pending: [], usedExceptions: new Set(), unusedPending: [] };

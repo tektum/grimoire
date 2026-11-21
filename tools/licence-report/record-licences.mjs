@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Writes lock-licences.json: the licence and the bun.lock integrity of every locked package that is NOT installed on this machine
-// (optional packages of other platforms), which bun.lock does not record. Installed packages are read from node_modules by run.mjs.
+// Writes lock-licences.json: the licence and the bun.lock integrity of every locked package, which bun.lock does not
+// record, so that the check gives the same answer on every platform (a package installed on the machine that wrote the file is
+// not installed on another). Installed packages are still read from node_modules by run.mjs.
 // Weakness: the licence is the registry's metadata for name@version, not read from the tarball; the integrity ties the record to the locked tarball only.
 // Usage: node tools/licence-report/record-licences.mjs [--root DIR]   (needs the registry for packages not yet recorded)
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -25,7 +26,6 @@ const out = {};
 for (const [key, e] of Object.entries(packages)) {
   if (!key.startsWith("node_modules/") || e.link) continue;
   const id = `${e.name}@${e.version}`;
-  if (existsSync(join(root, key, "package.json"))) continue;
   const lockIntegrity = integrity[id];
   if (lockIntegrity === undefined) throw new Error(`bun.lock records no integrity for ${id}`);
   if (known[id]?.integrity === lockIntegrity) {
@@ -40,4 +40,4 @@ for (const [key, e] of Object.entries(packages)) {
 }
 const sorted = Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
 writeFileSync(file, `${JSON.stringify(sorted, null, 2)}\n`);
-console.log(`${Object.keys(sorted).length} licences of packages not installed here written to ${file}`);
+console.log(`${Object.keys(sorted).length} licences recorded for the locked packages, written to ${file}`);

@@ -165,3 +165,16 @@ test("duplicate exception entries fail the run naming both entries, even when un
     rmSync(dir, { recursive: true });
   }
 });
+
+test("a Dockerfile with an unreviewed base image fails even when there is no compose file", () => {
+  const dir = fixture({ pkgs: { good: "MIT" }, workspaceDeps: { good: "1" } });
+  try {
+    rmSync(join(dir, "compose.yaml"));
+    writeFileSync(join(dir, "Dockerfile"), "FROM unreviewed/base:1.2.3\n");
+    const r = run(dir);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /unreviewed\/base/);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
