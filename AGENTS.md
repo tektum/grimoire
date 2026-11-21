@@ -21,7 +21,7 @@ and `pull-request-visuals`. Use the one that matches your task.
   repository root. Tools (node and the others) come from `mise.toml` only.
   Never install a project tool globally or by hand.
 - Run commands with `mise exec -- <command>`, or activate mise in your shell.
-- Then run `mise exec -- npm ci --ignore-scripts`.
+- Then run `mise exec -- bun install --frozen-lockfile`.
 - Node 26 is required (`engines` in `package.json`).
 
 ## Commands
@@ -30,14 +30,14 @@ Run from the repository root. Each line works on `main` today.
 
 | What | Command |
 | --- | --- |
-| Lint (ESLint, then the sleep check) | `npm run lint` |
-| Typecheck | `npm run typecheck` |
-| Build | `npm run build` |
-| Unit tests | `npm test` |
-| Tests of the repository tools | `npm run test:tools` |
-| Integration tests | `npm run test:integration` |
-| Container tests | `npm run test:container` |
-| Benchmarks | `npm run test:benchmark` |
+| Lint (ESLint, then the sleep check) | `bun run lint` |
+| Typecheck | `bun run typecheck` |
+| Build | `bun run build` |
+| Unit tests | `bun run test` |
+| Tests of the repository tools | `bun run test:tools` |
+| Integration tests | `bun run test:integration` |
+| Container tests | `bun run test:container` |
+| Benchmarks | `bun run test:benchmark` |
 | Sleep check alone | `node tools/ci/check-test-sleeps.mjs` |
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
@@ -68,8 +68,8 @@ reference.
 - `permissions.allow`: exactly the commands in the table above, bare or wrapped
   in `mise exec --`, with no extra arguments. They run without asking. Nothing that writes outside
   the repository or touches the network is listed.
-- `permissions.deny`: no edits to `package-lock.json` (change `package.json` and
-  run `npm install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
+- `permissions.deny`: no edits to `bun.lock` (change `package.json` and
+  run `bun install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
 - Skills are discovered from `.claude/skills/`; no setting is needed.
 
 OMP is not known to read this file for permissions, so the rules above also
@@ -81,7 +81,7 @@ stand in this document. There is no project OMP configuration.
   fakes in `src/testing`, tests in `test/`.
 - Adapters (database, auth, storage, and so on) live in their own packages
   under `packages/adapters/*`. Apps live in `apps/*`. Both arrive later.
-- `tools/ci`: repository checks, with their own tests (`npm run test:tools`).
+- `tools/ci`: repository checks, with their own tests (`bun run test:tools`).
 - `.github/workflows`: CI. Change it only on purpose.
 
 ## Architecture rules (tests and lint enforce them)
@@ -120,11 +120,15 @@ stand in this document. There is no project OMP configuration.
   projects. Do not name other products or companies in files, commit messages
   or pull requests. Libraries we depend on and the sign-in service we integrate
   with are fine to name.
+- **Package manager.** bun is the package manager and Node is the runtime. Run
+  scripts with `bun run <script>`, install with `bun install`, and use `bunx` for
+  one-off tools. Never run npm or its package runner. Automation installs with
+  `bun install --frozen-lockfile`.
 - **Public text.** Plain English and short sentences. No local paths, machine
   names, agent or model names, or private links. Link only to files that exist
   on `main`.
-- Never edit `package-lock.json` by hand. Change `package.json` and run
-  `npm install`. Never edit generated output (`dist/`).
+- Never edit `bun.lock` by hand. Change `package.json` and run
+  `bun install`. Never edit generated output (`dist/`).
 
 ## Pull requests
 

@@ -43,5 +43,8 @@
   },
   "mise": {
     "enabled": true
+  },
+  "bun": {
+    "enabled": true
   }
 }

@@ -23,7 +23,7 @@ Prefer waiting for a condition (`vi.waitFor`, a polling helper). If a fixed dela
 - One entry per line. Never a whole file or a pattern.
 - The check scans test files under `apps/` and `packages/` only. An entry is needed for a fixed sleep above 250 ms, for every `setInterval`, and for a delay that is not a number literal (a plain number or a product of literals is read as a number). An entry that matches no reported line is stale and fails the check, so do not add one for anything else.
 - Stale entries (file gone, line no longer a sleep) fail the check, so remove an entry when you remove the sleep.
-- Check: `node tools/ci/check-test-sleeps.mjs`, then `npm run test:tools`.
+- Check: `node tools/ci/check-test-sleeps.mjs`, then `bun run test:tools`.
 
 ## Secret scan (`.gitleaks.toml`)
 

@@ -30,7 +30,7 @@ Grimoire is developed in the open, through small pull requests into `main`.
 
 ## Set-up
 
-Install [mise](https://mise.jdx.dev) and run `mise install`: `mise.toml` and `mise.lock` pin Node and the checking tools (gitleaks, actionlint, zizmor) for local work and for CI. Then run `npm ci`.
+Install [mise](https://mise.jdx.dev) and run `mise install`: `mise.toml` and `mise.lock` pin Node and the checking tools (gitleaks, actionlint, zizmor) for local work and for CI. Then run `bun install --frozen-lockfile`.
 
 To report a security issue, do not open a public issue: follow
 [SECURITY.md](SECURITY.md).
