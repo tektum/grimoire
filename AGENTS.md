@@ -83,7 +83,8 @@ stand in this document. There is no project OMP configuration.
   collaboration host), in-memory fakes in `src/testing`, the access decision and
   authoriser in `src/authorize`, tests in `test/`.
 - Adapters (database, auth, storage, and so on) live in their own packages
-  under `packages/adapters/*`. Apps live in `apps/*`. Both arrive later.
+  under `packages/adapters/*`; they arrive later. Apps live in `apps/*`: `apps/web`
+  (the web client) and `packages/api-client` exist today as empty placeholders.
 - `tools/ci`: repository checks, with their own tests (`bun run test:tools`).
 - `.github/workflows`: CI. Change it only on purpose.
 
