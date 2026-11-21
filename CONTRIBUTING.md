@@ -21,10 +21,16 @@ Grimoire is developed in the open, through small pull requests into `main`.
   recording of the new behaviour (and a diagram or terminal capture where it
   helps), and a bug-fix pull request includes before and after shots. If a
   visual makes no sense, say "not applicable" in the description and why.
+  Attach files with the GitHub CLI: for a feature, `gh pr create --attach './login.png#The new login page'`;
+  for a bug fix, `gh pr edit 12 --attach ./before.png --attach ./after.png`.
 - Never commit secrets or credentials.
 - Contributions are accepted under the same licence as the project, the
   Apache License 2.0 (inbound equals outbound); there is no contributor
   agreement.
+
+## Set-up
+
+Install [mise](https://mise.jdx.dev) and run `mise install`: `mise.toml` and `mise.lock` pin Node and the checking tools (gitleaks, actionlint, zizmor) for local work and for CI. Then run `npm ci`.
 
 To report a security issue, do not open a public issue: follow
 [SECURITY.md](SECURITY.md).
