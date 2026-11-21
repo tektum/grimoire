@@ -16,6 +16,20 @@
       "name": "@tektum/grimoire-web",
       "version": "0.0.0",
     },
+    "packages/adapters/auth-dev": {
+      "name": "@tektum/grimoire-adapter-auth-dev",
+      "version": "0.0.0",
+      "dependencies": {
+        "@tektum/grimoire-core": "*",
+      },
+    },
+    "packages/adapters/auth-fake": {
+      "name": "@tektum/grimoire-adapter-auth-fake",
+      "version": "0.0.0",
+      "dependencies": {
+        "@tektum/grimoire-core": "*",
+      },
+    },
     "packages/adapters/config-env": {
       "name": "@tektum/grimoire-adapter-config-env",
       "version": "0.0.0",
@@ -156,6 +170,10 @@
     "@rolldown/binding-win32-x64-msvc": ["@rolldown/binding-win32-x64-msvc@1.2.19", "", { "os": "win32", "cpu": "x64" }, "sha512-y/sqRRc6d7hECzOFc5n3LSeqctmIp9mMjY1Kq4s14uLPd/LZ4z7i1zrW6fMtp2mPeuQIC4e6ULMcwQzMomqQag=="],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.1.1", "", {}, "sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA=="],
+
+    "@tektum/grimoire-adapter-auth-dev": ["@tektum/grimoire-adapter-auth-dev@workspace:packages/adapters/auth-dev"],
+
+    "@tektum/grimoire-adapter-auth-fake": ["@tektum/grimoire-adapter-auth-fake@workspace:packages/adapters/auth-fake"],
 
     "@tektum/grimoire-adapter-config-env": ["@tektum/grimoire-adapter-config-env@workspace:packages/adapters/config-env"],
 
