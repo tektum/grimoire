@@ -8,7 +8,8 @@ export const DEV_TOKEN_TTL_MS = 3_600_000;
 /** Whole-token length bound, checked before any parsing. */
 const MAX_TOKEN_LENGTH = 256;
 /** Grammar: dev:<secret>:<userId>:<role>; secret is 16-128 and userId 1-64 of [A-Za-z0-9_-]; role is exactly admin|member|viewer. */
-const TOKEN = /^dev:([A-Za-z0-9_-]{16,128}):([A-Za-z0-9_-]{1,64}):(admin|member|viewer)$/;
+// Dev user ids are lowercase only: the dev email is `<id>@dev.invalid` and the users table compares emails case-insensitively, so ids that differ only by case would collide there.
+const TOKEN = /^dev:([A-Za-z0-9_-]{16,128}):([a-z0-9_-]{1,64}):(admin|member|viewer)$/;
 
 /** Constant-time equality: both sides are hashed first so the comparison runs over equal lengths whatever the candidate is. */
 const sameSecret = (a: string, b: string): boolean => timingSafeEqual(createHash('sha256').update(a).digest(), createHash('sha256').update(b).digest());

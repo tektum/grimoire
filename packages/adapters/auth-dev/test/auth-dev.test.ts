@@ -71,11 +71,9 @@ describe('dev adapter malformed tokens', () => {
     expect(await verifier.verify(undefined as unknown as string)).toEqual({ kind: 'invalid-token' });
     expect(await verifier.verify(null as unknown as string)).toEqual({ kind: 'invalid-token' });
   });
-  it('distinct tokens never alias one user (no case folding)', async () => {
-    const a = await verifier.verify(`dev:${SECRET}:Alice:admin`);
-    const b = await verifier.verify(`dev:${SECRET}:alice:admin`);
-    expect(a).toMatchObject({ userId: 'Alice' });
-    expect(b).toMatchObject({ userId: 'alice' });
+  it('user ids that differ only by case cannot exist: uppercase ids are refused (the users table compares emails case-insensitively)', async () => {
+    expect(await verifier.verify(`dev:${SECRET}:Alice:admin`)).toEqual({ kind: 'invalid-token' });
+    expect(await verifier.verify(`dev:${SECRET}:alice:admin`)).toMatchObject({ userId: 'alice' });
   });
 });
 
