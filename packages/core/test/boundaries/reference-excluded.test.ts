@@ -12,6 +12,17 @@ const probes = [
   "reference/tests/a.container.test.ts",
 ];
 
+type TsConfig = { include?: string[]; files?: string[]; exclude?: string[] };
+
+/** Whether a tsconfig in `dir` would compile the repository-relative `probe` (a config with neither `include` nor `files` is only extended, so it compiles nothing itself). */
+function compiles(dir: string, config: TsConfig, probe: string): boolean {
+  if (config.include === undefined && config.files === undefined) return false;
+  const rel = path.relative(dir, path.join(repoRoot, probe)).split(path.sep).join("/");
+  const matches = (glob: string) => path.matchesGlob(rel, glob) || path.matchesGlob(rel, `${glob.replace(/\/$/, "")}/**`);
+  const excluded = (config.exclude ?? []).some(matches);
+  return !excluded && ((config.files ?? []).some((f) => path.resolve(dir, f) === path.join(repoRoot, probe)) || (config.include ?? []).some(matches));
+}
+
 function tsconfigFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -31,16 +42,24 @@ describe("reference/ is excluded", () => {
     }
   });
 
-  it("is not matched by any tsconfig include", () => {
+  it("is not matched by any tsconfig include or file list", () => {
     const files = tsconfigFiles(repoRoot);
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      const config = JSON.parse(readFileSync(file, "utf8")) as { include?: string[] };
-      for (const include of config.include ?? []) {
-        const resolved = path.resolve(path.dirname(file), include);
-        expect(resolved.startsWith(path.join(repoRoot, "reference")), `${file}: ${include}`).toBe(false);
-      }
+      const config = JSON.parse(readFileSync(file, "utf8")) as TsConfig;
+      for (const probe of probes) expect(compiles(path.dirname(file), config, probe), `${file} compiles ${probe}`).toBe(false);
     }
+  });
+
+  it("the tsconfig matcher catches wildcard includes, file lists and honours exclude", () => {
+    const dir = path.join(repoRoot, "packages/core");
+    const probe = "reference/relay/src/index.ts";
+    expect(compiles(repoRoot, { include: ["**/*.ts"] }, probe)).toBe(true);
+    expect(compiles(repoRoot, { include: ["reference"] }, probe)).toBe(true);
+    expect(compiles(repoRoot, { files: [probe] }, probe)).toBe(true);
+    expect(compiles(repoRoot, { include: ["**/*.ts"], exclude: ["reference"] }, probe)).toBe(false);
+    expect(compiles(dir, { include: ["src", "test"] }, probe)).toBe(false);
+    expect(compiles(dir, { include: ["../../**/*.ts"] }, probe)).toBe(true);
   });
 
   it("is not matched by any vitest include", async () => {
