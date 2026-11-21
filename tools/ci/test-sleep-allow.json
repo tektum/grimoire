@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "file": "packages/test-support/test/collide-once.mjs",
+    "line": "setInterval(() => undefined, 1000);",
+    "reason": "Child-process fixture that only keeps the event loop alive until it is killed (no-op interval)."
+  }
+]
