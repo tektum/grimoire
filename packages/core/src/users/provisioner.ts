@@ -30,6 +30,14 @@ const emailDomain = (email: string): string | undefined => {
   return email.slice(email.lastIndexOf('@') + 1).toLowerCase();
 };
 
+/** An avatar is stored only as an https URL without credentials and within the length the identity-provider adapter already applies (2048); anything else is dropped and sign-in continues. */
+const MAX_AVATAR_URL_CHARS = 2048;
+function validAvatarUrl(value: string | undefined): value is string {
+  if (value === undefined || value.length > MAX_AVATAR_URL_CHARS || !URL.canParse(value)) return false;
+  const url = new URL(value);
+  return url.protocol === 'https:' && url.username === '' && url.password === '';
+}
+
 function newCredentials(profile: Profile, policy: SignInPolicy): { email: string; domain: string } | undefined {
   const domain = emailDomain(profile.email); // the ASCII check runs on the address as it is stored, before any lowercasing
   const email = profile.email.toLowerCase();
@@ -39,7 +47,10 @@ function newCredentials(profile: Profile, policy: SignInPolicy): { email: string
   return { email, domain };
 }
 
-/** Creates users only from verified identity-provider data; sign-in never accepts credentials locally. */
+/**
+ * Creates users only from verified identity-provider data; sign-in never accepts credentials locally. A returning user is re-checked
+ * against the allowed domains on every sign-in when the claims carry a profile.
+ */
 export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier; policy: SignInPolicy; logger?: Logger }): {
   signIn(i: { identity: { userId: string; profile?: Profile }; devRole?: Role }): Promise<SignInResult>;
 } {
@@ -66,7 +77,12 @@ export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier;
       };
       if (i.identity.userId === 'system:migration') return refuse('domain-not-allowed');
       const existing = await d.users.findByDescopeId(i.identity.userId);
-      if (existing) return finishExisting(existing);
+      if (existing) {
+        // A returning user is re-checked on every sign-in when the claims carry a profile (no extra fetch): the same checks as at
+        // creation, the same refusal, and the stored row is not touched. Without a profile the stored email decides, as before.
+        if (i.identity.profile && !newCredentials(i.identity.profile, d.policy)) return refuse('domain-not-allowed');
+        return finishExisting(existing);
+      }
       // Claims come first. The profile lookup is only required by an as-yet-unknown identity, for domains all sign-ins
       // in production need; refusing an empty production list avoids a needless management call.
       if (!i.identity.profile && d.policy.allowedEmailDomains.length === 0 && !d.policy.allowDevRole) return refuse('domain-not-allowed');
@@ -81,7 +97,7 @@ export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier;
       const allowed = newCredentials(profile, d.policy);
       if (!allowed) return refuse('domain-not-allowed');
       const role = d.policy.allowDevRole && i.devRole ? i.devRole : firstAdmin(allowed.email, profile, d.policy);
-      const input: NewUserInput = { descopeUserId: i.identity.userId, email: profile.email, name: profile.name, ...(profile.avatarUrl === undefined ? {} : { avatarUrl: profile.avatarUrl }), role };
+      const input: NewUserInput = { descopeUserId: i.identity.userId, email: profile.email, name: profile.name, ...(validAvatarUrl(profile.avatarUrl) ? { avatarUrl: profile.avatarUrl } : {}), role };
       const result = await d.users.createIfAbsent(input);
       if (result.kind === 'email-taken') return refuse('email-taken');
       // A race winner created one row only, but any losing local-dev sign-in still synchronizes its own explicit role.

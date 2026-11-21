@@ -116,6 +116,63 @@ describe('sign-in provisioning', () => {
     expect(await provisioner.signIn({ identity: identity(profile('a@allowed.com@evil.com')) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
   });
 
+  describe('returning users are re-checked when the claims carry a profile', () => {
+    const signedUp = async (policy: Partial<SignInPolicy> = {}) => {
+      const f = fixture({ allowedEmailDomains: ['example.test'], ...policy });
+      const first = await f.provisioner.signIn({ identity: identity(profile('person@example.test'), 'returning-1') });
+      expect(first).toMatchObject({ kind: 'ok', created: true });
+      return { ...f, before: structuredClone(f.users.all()) };
+    };
+    it('an outside-domain email in the claims is refused with the new-user reason, and the stored row is unchanged', async () => {
+      const f = await signedUp();
+      expect(await f.provisioner.signIn({ identity: identity(profile('person@outside.test'), 'returning-1') })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+      expect(f.users.all()).toEqual(f.before);
+    });
+    it('claims with emailVerified false are refused', async () => {
+      const f = await signedUp();
+      expect(await f.provisioner.signIn({ identity: identity(profile('person@example.test', false), 'returning-1') })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+      expect(f.users.all()).toEqual(f.before);
+    });
+    it('a malformed email claim is refused (default deny)', async () => {
+      const f = await signedUp();
+      for (const bad of ['not-an-email', 'a@b@example.test', 'a@\u212Aexample.test']) {
+        expect(await f.provisioner.signIn({ identity: identity(profile(bad), 'returning-1') }), bad).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+      }
+      expect(f.users.all()).toEqual(f.before);
+    });
+    it('claims with no profile still sign the user in on the stored email, with no profile fetch', async () => {
+      const f = await signedUp();
+      expect(await f.provisioner.signIn({ identity: identity(undefined, 'returning-1') })).toMatchObject({ kind: 'ok', created: false });
+    });
+    it('a returning user whose claims pass the checks signs in, and the stored email is not replaced by the claim email', async () => {
+      const f = await signedUp();
+      const again = await f.provisioner.signIn({ identity: identity(profile('PERSON@example.test'), 'returning-1') });
+      expect(again).toMatchObject({ kind: 'ok', created: false });
+      expect(f.users.all()).toEqual(f.before);
+    });
+  });
+
+  describe('the avatar URL is validated before it is stored', () => {
+    const create = async (avatarUrl: string) => {
+      const { provisioner, users } = fixture();
+      const result = await provisioner.signIn({ identity: identity({ ...profile(), avatarUrl }) });
+      expect(result).toMatchObject({ kind: 'ok', created: true });
+      return users.all()[0];
+    };
+    it.each([
+      ['http', 'http://example.test/a.png'],
+      ['javascript:', 'javascript:alert(1)'],
+      ['credentials in the URL', 'https://user:pw@example.test/a.png'],
+      ['over-long', `https://example.test/${'a'.repeat(2100)}`],
+      ['not a URL', 'https://'],
+    ])('%s is not stored, and the sign-in continues', async (_n, url) => {
+      expect((await create(url))?.avatarUrl).toBeUndefined();
+    });
+    it('a good https URL is stored', async () => {
+      expect((await create('https://example.test/a.png'))?.avatarUrl).toBe('https://example.test/a.png');
+    });
+  });
+
   it('checks the address as stored: a non-ASCII character that lowercases to ASCII is refused (Kelvin sign)', async () => {
     const { provisioner, users } = fixture({ allowedEmailDomains: ['kexample.test'] });
     expect(await provisioner.signIn({ identity: identity(profile('a@\u212Aexample.test')) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
