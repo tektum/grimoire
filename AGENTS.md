@@ -97,9 +97,10 @@ files, so these are rules for you:
 - Adapters (database, auth, storage, and so on) live in their own packages
   under `packages/adapters/*`. Today: `config-env` (reads the environment into the
   typed config, the only place that reads `process.env`), `logger-json` (JSON logs
-  with a secret scrubber that fails closed) and `db-kysely` (PostgreSQL
-  migrations in `db/migrations`, the page store and the permission queries). The
-  others arrive later.
+  with a secret scrubber that fails closed), `db-kysely` (PostgreSQL
+  migrations in `db/migrations`, the page store and the permission queries),
+  `auth-fake` and `auth-dev` (fake and development sign-in). The others arrive
+  later.
 - Apps live in `apps/*`: `apps/web` (the web client) and `packages/api-client`
   exist today as empty placeholders.
 - `packages/test-support`: the shared test harness (database helpers, a test
@@ -123,7 +124,8 @@ files, so these are rules for you:
 - Every port gets an in-memory fake next to the others in `src/testing`, no later
   than the first code whose tests depend on that port. Today the clock, config,
   logger, database, Markdown converter, user store and access store have one. The
-  auth verifier gets its fake with the auth adapters, and the collaboration host
+  auth verifier's fake is the `auth-fake` adapter (`auth-dev` signs development
+  tokens), and the collaboration host
   and page store get theirs (an in-memory page store) with the collaboration
   adapter.
 - A forbidden import is fixed by adding or using a port. Never loosen the rule.

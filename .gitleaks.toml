@@ -78,3 +78,16 @@ paths = [
 regexes = [
   '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
 ]
+
+# a made-up secret constant of a test (introduced by authdev)
+[[allowlists]]
+description = "a made-up secret constant of a test"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/auth\-dev/test/auth\-dev\.test\.ts$''',
+]
+regexes = [
+  '''SECRET = 'test-secret-[0-9a-f]+'''',
+]

@@ -20,6 +20,12 @@
       "path": "./packages/adapters/db-kysely"
     },
     {
+      "path": "./packages/adapters/auth-dev"
+    },
+    {
+      "path": "./packages/adapters/auth-fake"
+    },
+    {
       "path": "./db/migrations"
     },
     {
