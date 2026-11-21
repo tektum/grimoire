@@ -15,6 +15,9 @@ on:
 permissions:
   contents: read
 
+env:
+  MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
+
 concurrency:
   # Key PR runs by number so they cannot cancel the push run for a merged commit.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
