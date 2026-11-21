@@ -1,6 +1,8 @@
 # RunsOn label convention for heavy jobs that arrive with the code (not used
 # yet: every job below is a tiny gate job on ubuntu-latest):
 #   runs-on: runs-on=${{ github.run_id }}-${{ github.run_attempt }}-<job>/runner=4cpu-linux-x64
+# The mise binary is pinned below (version and the sha256 of the extracted binary). Bump both by hand
+# together, and keep min_version in mise.toml at or below it; Renovate updates the tools in mise.toml and mise.lock.
 name: CI
 
 on:
