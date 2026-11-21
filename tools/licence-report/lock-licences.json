@@ -47,6 +47,14 @@
     "licence": "Apache-2.0",
     "integrity": "sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q=="
   },
+  "@hocuspocus/common@4.8.0": {
+    "licence": "MIT",
+    "integrity": "sha512-UI8Vye3mds2aMUHaWfwkDq0+257JUpvKa0nyAOjXWLfyhYHsAq8eku+ynZc/PaShyOci/VD54cW/rLQJGHHPKg=="
+  },
+  "@hocuspocus/provider@4.8.0": {
+    "licence": "MIT",
+    "integrity": "sha512-WUwwu3W55n0fkMF1uYhx4WXlRjJ/t7OjsxiuzTMMQGDvvZrZA37CAysdqc7JXLVmN6A5IIWadE921pxN9/JotA=="
+  },
   "@humanfs/core@0.19.2": {
     "licence": "Apache-2.0",
     "integrity": "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="
@@ -90,6 +98,10 @@
   "@keyv/serialize@1.1.1": {
     "licence": "MIT",
     "integrity": "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA=="
+  },
+  "@lifeomic/attempt@3.1.0": {
+    "licence": "MIT",
+    "integrity": "sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw=="
   },
   "@napi-rs/wasm-runtime@1.2.6": {
     "licence": "MIT",
@@ -427,6 +439,10 @@
     "licence": "ISC",
     "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
   },
+  "isomorphic.js@0.2.5": {
+    "licence": "MIT",
+    "integrity": "sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw=="
+  },
   "json-schema-traverse@0.4.1": {
     "licence": "MIT",
     "integrity": "sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg=="
@@ -442,6 +458,10 @@
   "levn@0.4.1": {
     "licence": "MIT",
     "integrity": "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ=="
+  },
+  "lib0@0.2.120": {
+    "licence": "MIT",
+    "integrity": "sha512-/a2eRImR8sZbmMVKe2we1/KukDQkuPyPf8yol6epvCu2PH6hurjcRI3mdGFFAi0uGoRJGyns99JquZgxwW1tQg=="
   },
   "lightningcss-android-arm64@1.33.0": {
     "licence": "MPL-2.0",
@@ -690,6 +710,14 @@
   "word-wrap@1.2.5": {
     "licence": "MIT",
     "integrity": "sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA=="
+  },
+  "y-protocols@1.0.7": {
+    "licence": "MIT",
+    "integrity": "sha512-YSVsLoXxO67J6eE/nV4AtFtT3QEotZf5sK5BHxFBXso7VDUT3Tx07IfA6hsu5Q5OmBdMkQVmFZ9QOA7fikWvnw=="
+  },
+  "yjs@13.6.33": {
+    "licence": "MIT",
+    "integrity": "sha512-q/UYvr1gOk4XII+Cu1CW2dINjYqJJFifTzogEaIARznrvX7uOlHsdTEXcnOBMuIsrCGEEKdNxi74kyMLZlKVfw=="
   },
   "yocto-queue@0.1.0": {
     "licence": "MIT",

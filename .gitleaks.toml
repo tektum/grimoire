@@ -65,3 +65,16 @@ paths = [
 regexes = [
   '''SECRET = 'test-secret-[0-9a-f]+'''',
 ]
+
+# the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential (introduced by ts)
+[[allowlists]]
+description = "the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/test\-support/src/harness\.ts$''',
+]
+regexes = [
+  '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
+]
