@@ -10,8 +10,9 @@ exists, and each new part adds its own line here.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) holds the contribution rules. These
 instructions add what an agent needs on top of them. Claude Code reads this file
-when there is no `CLAUDE.md`, so there is none. Skills live in
-`.claude/skills/`, which both Claude Code and OMP read.
+when there is no `CLAUDE.md`, so there is none. Procedures
+(skills) live in `.claude/skills/`, which both Claude Code and OMP read, once
+that directory exists.
 
 ## Set-up
 
@@ -40,6 +41,10 @@ Run from the repository root. Each line works on `main` today.
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
 
+`mise.toml` lists node today. The secret scan needs gitleaks, which CI installs
+itself. Until `mise.toml` lists it, get gitleaks through mise in your own
+set-up. A tool missing from `mise.toml` is added there in a pull request.
+
 Today the integration, container and benchmark commands find no tests and exit
 with success. They start to matter when the first such tests arrive.
 
@@ -47,7 +52,11 @@ The list grows. Each later slice adds its line here: the licence check, the
 exit tests (`make` targets), the Compose stack. Do not document a command that
 is not on `main`.
 
-CI runs the same commands. The required check is `CI Required`.
+CI runs lint, typecheck, build, unit tests, the tool tests and the secret scan.
+It does not run the integration, container or benchmark tests, and a pull
+request that changes only documentation skips the static and unit jobs. A green
+`CI Required` is therefore not proof that the other suites pass: run them
+yourself when your change can affect them. The required check is `CI Required`.
 
 ## Where things live
 
@@ -60,9 +69,13 @@ CI runs the same commands. The required check is `CI Required`.
 
 ## Architecture rules (tests and lint enforce them)
 
-- The core imports no adapter and no provider SDK or runtime library. It talks
-  to the outside only through ports. ESLint (`eslint.config.js`) and the
-  boundary tests in `packages/core/test/boundaries` fail the build otherwise.
+- The core imports no provider SDK or runtime library (the list is in
+  `eslint.config.js`). It talks to the outside only through ports. ESLint and
+  the boundary tests in `packages/core/test/boundaries` fail the build
+  otherwise.
+- The core also imports no adapter package. That ban is stated here and will be
+  enforced by a test when the adapter packages exist. Until then, check it in
+  review.
 - The core never reads `process.env`. Only a config adapter reads it.
 - Server-only libraries stay out of the browser client and shared libraries.
 - Add a fake for every new port, next to the others in `src/testing`.
@@ -104,17 +117,14 @@ CI runs the same commands. The required check is `CI Required`.
 - Fill in the template: what changed, why, how it was verified, visuals,
   checklist.
 - Visuals: a feature attaches screenshots; a bug fix attaches a before and an
-  after shot; tooling-only changes say "not applicable" and why. See the
-  `pull-request-visuals` skill.
+  after shot; tooling-only changes say "not applicable" and why.
 - Review comments: read all of them, through the API. Answer every thread with
   a fix (name the commit) or a reason. Resolve the thread you answered. Never
-  dismiss a security finding without checking it against the code. See the
-  `answer-review` skill.
+  dismiss a security finding without checking it against the code.
 - Auto-merge with squash once checks pass. `main` needs a pull request, one
   approval, resolved conversations and `CI Required`. Never bypass these.
 - Stacked pull requests: after the base is squash-merged, rebase onto `main`
-  with `git rebase --onto origin/main <old-base> <branch>`. See the
-  `small-pull-request` skill.
+  with `git rebase --onto origin/main <old-base> <branch>`.
 
 ## Definition of done
 
@@ -128,8 +138,6 @@ Do not trust a claim, including your own. Check on the real thing.
 4. Report results with what was NOT verified first. Then what passed, with
    counts.
 5. When the Compose stack exists, verify against it, not only against fakes.
-
-See the `verify-claim` skill.
 
 ## Docker safety
 
