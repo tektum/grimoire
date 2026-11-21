@@ -16,7 +16,11 @@ export interface Authorizer {
 export function createAuthorizer(store: AccessStore): Authorizer {
   const pageFacts = async (rs: readonly AccessRequest[]): Promise<readonly AccessFacts[]> => {
     const facts = await store.facts(rs);
-    return rs.map((request, i) => facts[i] ?? { request });
+    // Facts that answer another request than the one asked are treated as no facts (a store bug must deny, never grant).
+    return rs.map((request, i) => {
+      const f = facts[i];
+      return f !== undefined && f.request.userId === request.userId && f.request.pageId === request.pageId ? f : { request };
+    });
   };
   return {
     async check(r, opts) {
@@ -28,7 +32,8 @@ export function createAuthorizer(store: AccessStore): Authorizer {
     },
     async checkCollection(r, opts) {
       const [f] = await store.collectionFacts([r]);
-      return decideCollection(f ?? { request: r }, opts);
+      const own = f !== undefined && f.request.userId === r.userId && f.request.collectionId === r.collectionId;
+      return decideCollection(own ? f : { request: r }, opts);
     },
     async visibleCollections(userId, opts) {
       const rows = await store.visibleCollections(userId, opts);
