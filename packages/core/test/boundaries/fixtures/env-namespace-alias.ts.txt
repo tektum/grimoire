@@ -1,0 +1,3 @@
+import * as proc from "node:process";
+
+export const value = proc.env.X;
