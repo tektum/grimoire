@@ -225,3 +225,16 @@ describe('secrets inside strings, whatever the key quoting or the key word', () 
     expect(lines[0]).toContain('keep-me');
   });
 });
+
+describe('known limits of the best-effort scrubber (changing one of these is a decision, not a fix)', () => {
+  it('known limit: an unquoted value ends at a semicolon, so the rest of a value that contains one stays', () => {
+    const out = redactString('password=abc;def');
+    expect(out).not.toContain('abc');
+    expect(out).toContain('def');
+  });
+
+  it('known limit: scheme-less credentials (user:secret@tcp(host)/db) are not recognised, unlike URLs with a scheme', () => {
+    expect(redactString('root:Sup3rSecret@tcp(10.0.0.5:3306)/app')).toContain('Sup3rSecret');
+    expect(redactString('postgres://root:Sup3rSecret@10.0.0.5:5432/app')).not.toContain('Sup3rSecret');
+  });
+});

@@ -5,6 +5,12 @@
  * This scrubber is applied to every value before it reaches pino. It fails closed: when a string
  * is ambiguous, more is removed, never less. It also flattens values pino cannot serialise safely
  * (getters, proxies, Map, Set, Date, Error, bigint, functions) into plain data.
+ *
+ * Recognised in free text: URLs with credentials (scheme://user:password@host, including PostgreSQL URLs), query strings and fragments,
+ * key=value and "key": "value" pairs whose key looks secret, bearer and basic credentials, and JWTs. This is a best-effort safety net, not a
+ * guarantee: the rule is that code never logs a secret, and named fields are redacted by name. Known limits (pinned by tests named
+ * "known limit"): an unquoted value ends at a ; so a value containing one is cut there, and scheme-less credentials such as
+ * user:secret@tcp(host:3306)/db are not recognised.
  */
 export const REDACTED = '[redacted]';
 export const UNSERIALISABLE = '[unserialisable]';
