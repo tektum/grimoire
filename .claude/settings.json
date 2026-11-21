@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(mise exec -- npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(mise exec -- npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(mise exec -- npm run build)",
+      "Bash(npm test)",
+      "Bash(mise exec -- npm test)",
+      "Bash(npm run test:tools)",
+      "Bash(mise exec -- npm run test:tools)",
+      "Bash(npm run test:integration)",
+      "Bash(mise exec -- npm run test:integration)",
+      "Bash(npm run test:container)",
+      "Bash(mise exec -- npm run test:container)",
+      "Bash(npm run test:benchmark)",
+      "Bash(mise exec -- npm run test:benchmark)",
+      "Bash(node tools/ci/check-test-sleeps.mjs)",
+      "Bash(mise exec -- node tools/ci/check-test-sleeps.mjs)",
+      "Bash(gitleaks git --config .gitleaks.toml --redact .)",
+      "Bash(mise exec -- gitleaks git --config .gitleaks.toml --redact .)",
+      "Bash(gitleaks dir --config .gitleaks.toml --redact .)",
+      "Bash(mise exec -- gitleaks dir --config .gitleaks.toml --redact .)"
+    ],
+    "deny": [
+      "Edit(**/package-lock.json)",
+      "Edit(**/dist/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)"
+    ]
+  }
+}
