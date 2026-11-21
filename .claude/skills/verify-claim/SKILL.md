@@ -9,7 +9,7 @@ A report is a claim. Check the thing itself.
 
 ## Steps
 
-1. **Start clean.** Use a fresh clone or a clean worktree of the exact commit: `git clone <url> <dir> && cd <dir> && git checkout <sha>`. Then `mise install` and `mise exec -- npm ci --ignore-scripts`. Uncommitted files hide breakage.
+1. **Start clean.** Use a fresh clone or a clean worktree of the exact commit: `git clone <url> <dir> && cd <dir> && git checkout <sha>`. Then `mise install` and `mise exec -- bun install --frozen-lockfile`. Uncommitted files hide breakage.
 2. **Run the whole gate** and keep the output: lint, typecheck, build, unit tests, tool tests, both secret scans (`small-pull-request` lists them, and says how to get gitleaks).
 3. **Count from the finished run.** Read the summary line (for example "29 passed"). Never count from memory or from a partial log. A run still going is not a result.
 4. **Reproduce the claim.** Run the exact command or scenario the claim names. If it says "fails before, passes after", run both.

@@ -16,11 +16,11 @@ One concern per pull request. If the diff needs two titles, split it.
 ## Check locally (all must exit 0)
 
 ```bash
-mise exec -- npm run lint
-mise exec -- npm run typecheck
-mise exec -- npm run build
-mise exec -- npm test
-mise exec -- npm run test:tools
+mise exec -- bun run lint
+mise exec -- bun run typecheck
+mise exec -- bun run build
+mise exec -- bun run test
+mise exec -- bun run test:tools
 mise exec -- gitleaks git --config .gitleaks.toml --redact .
 mise exec -- gitleaks dir --config .gitleaks.toml --redact .
 ```

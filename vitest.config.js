@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 const exclude = ["**/node_modules/**", "**/dist/**", "**/coverage/**", "reference/**"];
 const slow = ["**/*.int.test.ts", "**/*.container.test.ts"];
-// The converter benchmark takes minutes: it has its own project and script (`npm run test:benchmark`), never `npm test`.
+// The converter benchmark takes minutes: it has its own project and script (`bun run test:benchmark`), never `bun run test`.
 const benchmark = ["**/test/benchmark/**"];
 
 export default defineConfig({

@@ -1,0 +1,4 @@
+# bun's install settings. The layout is pinned rather than left to the lockfile's configVersion: a hoisted node_modules is the
+# layout the import-boundary rules, the TypeScript project references and the licence report were written against (as in procella).
+[install]
+linker = "hoisted"
