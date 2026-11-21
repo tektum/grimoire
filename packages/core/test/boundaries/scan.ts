@@ -40,7 +40,7 @@ export function scanSource(text: string): string[] {
   if (processNamedEnvImport.test(text)) found.push("imports env from the process module");
   for (const match of text.matchAll(processAliasImport)) {
     const alias = match[1] ?? "";
-    if (new RegExp(`\\b${alias.replace(/\$/g, "\\$")}\\s*\\.\\s*env\\b`).test(text)) {
+    if (new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\.\\s*env\\b`).test(text)) {
       found.push(`reads env through the process module import ${alias}`);
     }
   }
