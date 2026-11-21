@@ -17,6 +17,7 @@
     "typecheck": "tsc -b",
     "seed": "node apps/server/dist/cli.js seed",
     "test": "vitest run --project unit",
+    "test:coverage": "vitest run --project unit --coverage",
     "test:benchmark": "vitest run --project benchmark --passWithNoTests",
     "test:integration": "vitest run --project integration --passWithNoTests",
     "test:container": "vitest run --project container --passWithNoTests",
@@ -29,6 +30,7 @@
   "trustedDependencies": [],
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.1.1",
     "eslint": "10.15.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.73.0",

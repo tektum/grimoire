@@ -35,6 +35,7 @@ Run from the repository root. Each line works on `main` today.
 | Typecheck | `bun run typecheck` |
 | Build | `bun run build` |
 | Unit tests | `bun run test` |
+| Unit tests with coverage (enforces the floors in `vitest.config.js`) | `bun run test:coverage` |
 | Tests of the repository tools | `bun run test:tools` |
 | Integration tests | `bun run test:integration` |
 | Container tests | `bun run test:container` |
@@ -159,6 +160,19 @@ files, so these are rules for you:
   scripts with `bun run <script>`, install with `bun install`, and use `bunx` for
   one-off tools. Never run npm or its package runner. Automation installs with
   `bun install --frozen-lockfile`.
+- **Coverage must be meaningful.** Coverage is a smoke alarm, not a goal. Do not
+  write a test whose only purpose is to execute lines. Every test must fail if the
+  behaviour it names is wrong. Good: `it('rejects a token whose iat is in the
+  future', ...)` signs a token with iat = now + tolerance + 1 s and asserts
+  `{kind:'invalid'}`, and another at exactly the tolerance that asserts ok. Bad:
+  `it('verify runs', async () => { await verify(token); })`, which executes the
+  function and asserts nothing, or asserting that a mock was called with the same
+  value the code just built. If you cannot say what mistake the test would catch,
+  do not add it. A mutant that survives in a security module is a missing test.
+  The floors in `vitest.config.js` only go up: `COVERAGE_RATCHET=1 bun run
+  test:coverage` rewrites them after coverage has grown. A `/* v8 ignore */` or a
+  coverage exclusion needs a reason on the same line (a test checks it); never
+  exclude code to reach a number.
 - **Public text.** Plain English and short sentences. No local paths, machine
   names, agent or model names, or private links. Link only to files that exist
   on `main`.

@@ -21,6 +21,10 @@ bash:
         approval: allow
       - match: "mise exec -- bun run test:tools"
         approval: allow
+      - match: "bun run test:coverage"
+        approval: allow
+      - match: "mise exec -- bun run test:coverage"
+        approval: allow
       - match: "bun run licence"
         approval: allow
       - match: "mise exec -- bun run licence"
