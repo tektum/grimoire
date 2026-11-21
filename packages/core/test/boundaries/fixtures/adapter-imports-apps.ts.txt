@@ -1,0 +1,3 @@
+import { server } from "@tektum/grimoire-server";
+
+export const x = server;

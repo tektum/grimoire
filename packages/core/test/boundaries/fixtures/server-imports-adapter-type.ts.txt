@@ -1,0 +1,4 @@
+import type { Database } from "@tektum/grimoire-adapter-db-kysely";
+import type { Logger } from "@tektum/grimoire-core/ports/logger";
+
+export type X = [Database, Logger];

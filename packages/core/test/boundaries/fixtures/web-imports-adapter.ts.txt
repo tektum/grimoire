@@ -1,0 +1,3 @@
+import { createDatabase } from "@tektum/grimoire-adapter-db-kysely";
+
+export const x = createDatabase;

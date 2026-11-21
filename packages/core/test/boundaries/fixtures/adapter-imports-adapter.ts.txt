@@ -1,0 +1,3 @@
+import { createLoggerJson } from "@tektum/grimoire-adapter-logger-json";
+
+export const x = createLoggerJson;
