@@ -10,8 +10,8 @@ export const LIMIT_MS = 250;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
 const skipDirs = new Set(['node_modules', 'dist', 'coverage', '.git', 'out', 'test-results']);
-const testFile = (rel) => /(^|\/)(test|test-e2e)\//.test(rel) || /\.test\.[cm]?[jt]s$/.test(rel);
-const sourceFile = (name) => /\.[cm]?[jt]s$/.test(name);
+const testFile = (rel) => /(^|\/)(test|test-e2e)\//.test(rel) || /\.test\.[cm]?[jt]sx?$/.test(rel);
+const sourceFile = (name) => /\.[cm]?[jt]sx?$/.test(name);
 const CALL = /(?<!function\s)\b(?:sleep|delay|setTimeout)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g;
 
 /** The literal milliseconds of a sleep-like call argument list, or undefined when the delay is not a literal. */
@@ -77,5 +77,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   const intervals = check(root, ['apps', 'packages'], allow, true).filter((v) => v.kind === 'interval');
-  for (const v of intervals) console.log(`setInterval in tests: ${v.file}:${String(v.line)}: ${allow.find((a) => a.file === v.file && a.line.trim() === v.text)?.reason ?? ''}`);
+  for (const v of intervals) console.log(`setInterval in tests: ${v.file}:${String(v.line)}: ${allow.find((a) => a.file === v.file && typeof a.line === 'string' && a.line.trim() === v.text)?.reason ?? ''}`);
 }
