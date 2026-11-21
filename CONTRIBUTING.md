@@ -24,3 +24,7 @@ Grimoire is developed in the open, through small pull requests into `main`.
 
 To report a security issue, do not open a public issue: follow
 [SECURITY.md](SECURITY.md).
+
+## For maintainers
+
+Workflow runs from outside contributors are held until a maintainer approves them, and that approval is the security boundary. Before approving workflow runs for an outside pull request, read every change under `.github/` and to any script the workflows run (`Makefile`, `package.json` scripts, `tools/`); if such a pull request needs the heavy jobs, a maintainer pushes the reviewed commit to a branch in this repository.
