@@ -25,7 +25,9 @@ const localCredentialUrl = (url: string) => issue({
 const nonLocalBase = { ...base, GRIMOIRE_LOCAL: '0', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test' };
 
 it.each(['http://example.test', 'https://keys.example.test', 'http://127.0.0.1:9443'])('local mode accepts an uncredentialed URL: %s', (url) => {
-  expect(issue({ ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_DESCOPE_BASE_URL: url }, { purpose: 'migrate' })).toBeUndefined();
+  // The whole configuration must load (a migration run needs the migration URL), not only be free of a base URL problem.
+  const env = { ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_DESCOPE_BASE_URL: url, GRIMOIRE_DATABASE_MIGRATION_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire' };
+  expect(() => loadConfig(env, { purpose: 'migrate' })).not.toThrow();
 });
 
 it.each(['https://user@example.test', 'https://user:pass@example.test'])('rejects URL credentials: %s', (url) => {
