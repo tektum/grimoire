@@ -91,3 +91,16 @@ paths = [
 regexes = [
   '''SECRET = 'test-secret-[0-9a-f]+'''',
 ]
+
+# a made-up development token secret in a test fixture (introduced by desc1)
+[[allowlists]]
+description = "a made-up development token secret in a test fixture"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/config\-env/test/descope\-project\-id\.test\.ts$''',
+]
+regexes = [
+  '''GRIMOIRE_DEV_TOKEN_SECRET: \['test', 'secret', '[0-9a-f]+'\]''',
+]

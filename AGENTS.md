@@ -100,7 +100,7 @@ files, so these are rules for you:
   typed config, the only place that reads `process.env`), `logger-json` (JSON logs
   with a secret scrubber that fails closed), `db-kysely` (PostgreSQL
   migrations in `db/migrations`, the page store and the permission queries),
-  `auth-fake` and `auth-dev` (fake and development sign-in). The others arrive
+  `auth-fake` and `auth-dev` (fake and development sign-in), `auth-descope` (verifies Descope session tokens). The others arrive
   later.
 - Apps live in `apps/*`: `apps/web` (the web client) and `packages/api-client`
   exist today as empty placeholders.

@@ -20,6 +20,9 @@
       "path": "./packages/adapters/db-kysely"
     },
     {
+      "path": "./packages/adapters/auth-descope"
+    },
+    {
       "path": "./packages/adapters/auth-dev"
     },
     {
