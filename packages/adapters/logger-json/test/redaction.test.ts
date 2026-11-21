@@ -210,4 +210,18 @@ describe('secrets inside strings, whatever the key quoting or the key word', () 
   it('keeps the text around a quoted secret readable', () => {
     expect(redactString('failed: {"password":"hunter2","user":"ann"}')).toContain('"user":"ann"');
   });
+
+  it('a quoted value ends at the next unescaped quote, and runs to the end when there is none', () => {
+    for (const text of ['x {"password":"ab\\"cd"} y', "x {'token': 'ab\\'cd'} y", 'x password="ab\\"cd" y']) {
+      const out = redactString(text);
+      expect(out, text).not.toContain('cd');
+      expect(out, text).not.toContain('ab');
+    }
+    expect(redactString('x password="never closed LEAKME')).not.toContain('LEAKME');
+  });
+
+  it('an object that merely has a buffer key keeps its other fields', () => {
+    const lines = run({ id: 'keep-me', buffer: 'not binary' });
+    expect(lines[0]).toContain('keep-me');
+  });
 });

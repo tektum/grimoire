@@ -74,8 +74,9 @@ function cutKeyValues(s: string): string {
     const q = isQuote(s[start]) ? (s[start] ?? '') : '';
     let end = start;
     if (q !== '') {
-      end = s.indexOf(q, start + 1);
-      end = end === -1 ? s.length : end + 1;
+      end = start + 1; // up to the next unescaped matching quote; none means the rest of the text
+      while (end < s.length && s[end] !== q) end += s[end] === '\\' ? 2 : 1;
+      end = Math.min(end + 1, s.length);
     } else {
       while (end < s.length && s[end] !== ';' && s[end] !== '\n') end++;
     }
@@ -154,7 +155,7 @@ function binaryPlaceholder(value: object): string | undefined {
   }
   if (value instanceof Blob) return `[binary ${value.size} bytes]`;
   const o = value as Record<string, unknown>;
-  if (typeof o['arrayBuffer'] === 'function' || typeof o['byteLength'] === 'number' || 'buffer' in o) {
+  if (typeof o['arrayBuffer'] === 'function' || typeof o['byteLength'] === 'number' || o['buffer'] instanceof ArrayBuffer || o['buffer'] instanceof SharedArrayBuffer) {
     const n = typeof o['byteLength'] === 'number' ? o['byteLength'] : o['size'];
     return `[binary ${typeof n === 'number' ? n : '?'} bytes]`;
   }
