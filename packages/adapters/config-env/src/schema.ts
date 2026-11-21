@@ -53,6 +53,7 @@ const list = <T extends z.ZodType<string, string>>(item: T, rule: string) =>
 const httpRule = 'must be an http:// or https:// URL';
 const httpUrl = z.url({ protocol: HTTP, ...msg(httpRule) });
 const descopeBaseUrl = httpUrl.superRefine((v, ctx) => {
+  if (!URL.canParse(v)) return; // the URL check above already reports it; do not throw from here
   const url = new URL(v);
   if (url.username !== '' || url.password !== '') ctx.addIssue({ code: 'custom', message: 'must not contain username or password credentials' });
 });

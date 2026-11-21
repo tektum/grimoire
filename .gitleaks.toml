@@ -33,3 +33,35 @@ paths = [
 regexes = [
   '''SECRET = 'test-secret-[0-9a-f]+'''',
 ]
+
+# the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential (introduced by cfg2)
+[[allowlists]]
+description = "the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/config\-env/test/collab\-followup\-settings\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/descope\-base\-url\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/descope\-token\-lifetime\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/hardening\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/m3\-hardening\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/store\-timeout\-deadline\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/store\-timeout\.test\.ts$''',
+]
+regexes = [
+  '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
+]
+
+# a made-up secret constant of a test (introduced by cfg2)
+[[allowlists]]
+description = "a made-up secret constant of a test"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/config\-env/test/m3\-settings\.test\.ts$''',
+]
+regexes = [
+  '''SECRET = 'test-secret-[0-9a-f]+'''',
+]
