@@ -31,7 +31,7 @@ jobs:
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           version: 2026.11.9
-          sha256: 23ba592fcbc61f057e2b82c1eafd085832712ba0c759b714ca16cd06babca378
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: gitleaks
       - name: Scan commits
         run: gitleaks git --config .gitleaks.toml --redact --verbose .
@@ -49,7 +49,7 @@ jobs:
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           version: 2026.11.9
-          sha256: 23ba592fcbc61f057e2b82c1eafd085832712ba0c759b714ca16cd06babca378
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: actionlint zizmor
       - name: Run actionlint
         run: actionlint
@@ -91,7 +91,7 @@ jobs:
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           version: 2026.11.9
-          sha256: 23ba592fcbc61f057e2b82c1eafd085832712ba0c759b714ca16cd06babca378
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: node
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -116,7 +116,7 @@ jobs:
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
           version: 2026.11.9
-          sha256: 23ba592fcbc61f057e2b82c1eafd085832712ba0c759b714ca16cd06babca378
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: node
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
