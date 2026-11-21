@@ -31,8 +31,8 @@ const emailDomain = (email: string): string | undefined => {
 };
 
 function newCredentials(profile: Profile, policy: SignInPolicy): { email: string; domain: string } | undefined {
+  const domain = emailDomain(profile.email); // the ASCII check runs on the address as it is stored, before any lowercasing
   const email = profile.email.toLowerCase();
-  const domain = emailDomain(email);
   if (domain === undefined) return undefined;
   if (policy.allowedEmailDomains.length === 0) return policy.allowDevRole ? { email, domain } : undefined;
   if (!profile.emailVerified || !policy.allowedEmailDomains.some((d) => d.toLowerCase() === domain)) return undefined;

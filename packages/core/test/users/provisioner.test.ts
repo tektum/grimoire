@@ -116,6 +116,12 @@ describe('sign-in provisioning', () => {
     expect(await provisioner.signIn({ identity: identity(profile('a@allowed.com@evil.com')) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
   });
 
+  it('checks the address as stored: a non-ASCII character that lowercases to ASCII is refused (Kelvin sign)', async () => {
+    const { provisioner, users } = fixture({ allowedEmailDomains: ['kexample.test'] });
+    expect(await provisioner.signIn({ identity: identity(profile('a@\u212Aexample.test')) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+    expect(users.all()).toEqual([]);
+  });
+
   it('a trailing domain dot does not authorize a@allowed.com. for allowed.com', async () => {
     const { provisioner } = fixture({ allowedEmailDomains: ['allowed.com'] });
     expect(await provisioner.signIn({ identity: identity(profile('a@allowed.com.')) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
