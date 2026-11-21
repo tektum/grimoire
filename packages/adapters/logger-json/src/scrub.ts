@@ -243,8 +243,9 @@ function scrubObject(value: object, depth: number, b: Budget): unknown {
   const counter = { n: 0 };
   for (const [rawKey, v] of entries) {
     const k = typeof rawKey === 'string' && !(value instanceof Map) ? rawKey : mapKey(rawKey, counter);
-    let name = keyText(k);
-    for (let n = 2; Object.hasOwn(out, name); n += 1) name = `${keyText(k)} (key ${n})`; // two keys never overwrite each other, whatever they print as
+    const printed = keyText(k);
+    let name = printed;
+    for (let n = 2; Object.hasOwn(out, name); n += 1) name = `${printed} (key ${n})`; // two keys never overwrite each other, whatever they print as
     out[name] = isSecretKey(k) ? REDACTED : scrub(v, depth + 1, b);
   }
   if (total > MAX_ITEMS) out[TRUNCATED] = `${total - MAX_ITEMS} more`;
