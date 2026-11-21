@@ -1,0 +1,56 @@
+import type { LogLevel } from './logger.js';
+
+/** Collaboration limits; field = camelCase of the GRIMOIRE_COLLAB_* suffix (contracts section 3). */
+export interface CollabConfig {
+  readonly maxPayloadBytes: number;
+  readonly maxStateBytes: number;
+  readonly stateWarnPercent: number;
+  readonly messagesPerWindow: number;
+  readonly rateWindowSeconds: number;
+  readonly maxConnectionsPerPage: number;
+  readonly maxConnections: number;
+  readonly maxOpenDocuments: number;
+  readonly memoryLimitBytes: number;
+  readonly memoryGuardPercent: number;
+  readonly idleUnloadSeconds: number;
+  readonly connectAttemptsPerWindow: number;
+  readonly connectWindowSeconds: number;
+  readonly banSeconds: number;
+  readonly maxUnauthSocketsPerAddress: number;
+  readonly maxUnauthSockets: number;
+  /** Close and release an unauthenticated socket after this many seconds. */
+  readonly preauthTimeoutSeconds: number;
+  /** Per-user caps count authenticated sockets and document sessions, not just distinct sockets/documents. */
+  readonly maxSocketsPerUser: number;
+  readonly maxDocumentsPerUser: number;
+  /** Update bytes accepted per second across every page edited by one user. */
+  readonly bytesPerSecondPerUser: number;
+  readonly maxUnauthQueuedBytes: number;
+  readonly debounceMs: number;
+  readonly maxDebounceMs: number;
+  readonly storeRetryBaseMs: number;
+  readonly storeRetryMaxMs: number;
+  /** One page-store query (load or store) gives up after this long; shorter than the shutdown save deadline. */
+  readonly storeTimeoutMs: number;
+  /** Re-check signed collaboration access this often, after the current grant expires. */
+  readonly recheckSeconds: number;
+}
+
+export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
+  readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
+  readonly database: { readonly url?: string; readonly migrationUrl?: string };
+  readonly descopeProjectId?: string; readonly allowedOrigins: readonly string[];
+  readonly descopeBaseUrl?: string;
+  /** Maximum issued-token lifetime accepted by the Descope verifier, in seconds (default 24 hours). */
+  readonly descopeMaxTokenLifetimeSeconds: number;
+  /** Local or test profile lookup only; production uses trusted signed claims. */
+  readonly descopeManagementKey?: string;
+  readonly firstAdminEmails: readonly string[];
+  /** Lowercase host names; empty is permitted only in local mode, never any domain. */
+  readonly allowedEmailDomains: readonly string[];
+  readonly trustedProxies: readonly string[]; readonly shutdownSaveDeadlineMs: number;
+  /** Local mode only: the secret every development token carries (GRIMOIRE_DEV_TOKEN_SECRET). */
+  readonly devTokenSecret?: string;
+  /** Local mode may bind a non-loopback address only when this is set (GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK). */
+  readonly localAllowNonLoopback: boolean;
+  readonly collab: CollabConfig }
