@@ -94,7 +94,7 @@ files, so these are rules for you:
 - `packages/core`: the domain. Ports (interfaces) in `src/ports` (clock, config,
   logger, database, Markdown converter, user store, auth verifier, access store,
   collaboration host), in-memory fakes in `src/testing`, the access decision and
-  authoriser in `src/authorize`, tests in `test/`.
+  authoriser in `src/authorize`, the user provisioner in `src/users`, tests in `test/`.
 - Adapters (database, auth, storage, and so on) live in their own packages
   under `packages/adapters/*`. Today: `config-env` (reads the environment into the
   typed config, the only place that reads `process.env`), `logger-json` (JSON logs
