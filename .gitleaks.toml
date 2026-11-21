@@ -5,3 +5,31 @@ title = "grimoire gitleaks"
 
 [extend]
 useDefault = true
+
+# the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential (introduced by cfg)
+[[allowlists]]
+description = "the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/config\-env/test/allowed\-domains\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/host\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/problems\.test\.ts$''',
+]
+regexes = [
+  '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
+]
+
+# a made-up secret constant of a test (introduced by cfg)
+[[allowlists]]
+description = "a made-up secret constant of a test"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/config\-env/test/config\.test\.ts$''',
+]
+regexes = [
+  '''SECRET = 'test-secret-[0-9a-f]+'''',
+]
