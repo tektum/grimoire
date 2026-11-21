@@ -92,6 +92,11 @@ describe('verify: token type, lifetime bound and sub rules', () => {
     expect(await kinds(goodClaims({ exp: 32_503_680_000 }))).toBe('invalid-token');
     expect(await kinds(goodClaims({ exp: 1e300 }))).toBe('invalid-token');
   });
+  it('the issued lifetime (exp - iat) is bounded too, not only what remains', async () => {
+    expect(await kinds(goodClaims({ iat: t - 7200, exp: t + 600 }), { maxTokenLifetimeMs: 3_600_000 })).toBe('invalid-token');
+    expect(await kinds(goodClaims({ iat: t - 600, exp: t + 600 }), { maxTokenLifetimeMs: 3_600_000 })).toBe('ok');
+    expect(await kinds(goodClaims({ iat: t - 3000, exp: t + 600 }), { maxTokenLifetimeMs: 3_600_000 })).toBe('ok');
+  });
   it('remaining lifetime above the default 24 h is invalid, just inside it is ok, and the maximum is configurable', async () => {
     expect(await kinds(goodClaims({ exp: t + 24 * 3600 + 60 }))).toBe('invalid-token');
     expect(await kinds(goodClaims({ exp: t + 24 * 3600 - 60 }))).toBe('ok');
@@ -228,6 +233,7 @@ describe('verify: key server failures are service-unavailable, never ok, never i
     ['redirect', { status: 302 }],
     ['invalid JSON', { raw: '{not json' }],
     ['garbage key set', { raw: '{"keys":"x"}' }],
+    ['empty key set', { raw: '{"keys":[]}' }],
     ['JSON but no keys', { raw: '[]' }],
     ['timeout', 'hang'],
     ['huge body', 'huge'],

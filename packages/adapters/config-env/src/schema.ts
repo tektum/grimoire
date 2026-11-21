@@ -1,5 +1,6 @@
 import { BlockList, isIP } from 'node:net';
 import { z } from 'zod';
+import { isDescopeProjectId } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 
 const P = 'GRIMOIRE_';
@@ -179,6 +180,10 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
     .refine(() => !(server && local && raw['GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK'] !== '1' && !isLoopback(raw['GRIMOIRE_HOST'] ?? '127.0.0.1')), {
       path: ['GRIMOIRE_HOST'], when: always,
       error: () => `is not a loopback address in local mode (development tokens): bind 127.0.0.1 or ::1, or set ${P}LOCAL_ALLOW_NON_LOOPBACK=1 where the network is trusted`,
+    })
+    .refine(() => !set('GRIMOIRE_DESCOPE_PROJECT_ID') || isDescopeProjectId(String(raw['GRIMOIRE_DESCOPE_PROJECT_ID'])), {
+      path: ['GRIMOIRE_DESCOPE_PROJECT_ID'], when: always,
+      error: () => 'must be letters and digits only (1 to 128 characters), the same rule the token verifier applies',
     })
     .refine(() => !(server && !local && !set('GRIMOIRE_DESCOPE_PROJECT_ID')), {
       path: ['GRIMOIRE_DESCOPE_PROJECT_ID'], when: always,

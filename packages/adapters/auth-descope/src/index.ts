@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, customFetch, errors, jwtVerify, type JWTVerifyOptions } from 'jose';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Logger } from '@tektum/grimoire-core/ports/logger';
-import type { AuthVerifier, Profile, ProfileResult, VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
+import { isDescopeProjectId, type AuthVerifier, type Profile, type ProfileResult, type VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
 
 export interface DescopeVerifierOptions {
   projectId: string;
@@ -35,7 +35,15 @@ const CLOCK_TOLERANCE_SECONDS = 5;
 const SESSION_DRN = 'DS';
 /** sub: 1-256 characters, no control characters (C0, DEL, C1), no leading or trailing whitespace. Descope ids are short alphanumerics, so this is wider. */
 const hasControl = (v: string): boolean => [...v].some((c) => { const n = c.codePointAt(0) ?? 0; return n <= 0x1f || (n >= 0x7f && n <= 0x9f); });
-const PROJECT_ID = /^[A-Za-z0-9]{1,128}$/;
+/** A key we can verify with: an RSA signing key for RS256 with a sound base64url modulus (at least 2048 bits) and exponent. */
+const B64URL = /^[A-Za-z0-9_-]+$/;
+function usableKey(k: unknown): boolean {
+  if (!isRecord(k) || k['kty'] !== 'RSA') return false;
+  if (k['alg'] !== undefined && k['alg'] !== 'RS256') return false;
+  if (k['use'] !== undefined && k['use'] !== 'sig') return false;
+  const { n, e } = k;
+  return typeof n === 'string' && typeof e === 'string' && B64URL.test(n) && B64URL.test(e) && Buffer.from(n, 'base64url').byteLength >= 256;
+}
 const INVALID: VerifyResult = { kind: 'invalid-token' };
 const UNAVAILABLE: VerifyResult = { kind: 'service-unavailable' };
 /** jose errors that mean "could not get keys", not "bad token". */
@@ -99,7 +107,7 @@ function profileFromClaims(p: Record<string, unknown>): Profile | undefined {
 
 export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifier {
   if (typeof o.projectId !== 'string' || o.projectId === '') throw new Error('Descope project id is required');
-  if (!PROJECT_ID.test(o.projectId)) throw new Error('Descope project id must be alphanumeric');
+  if (!isDescopeProjectId(o.projectId)) throw new Error('Descope project id must be alphanumeric');
   const { projectId, logger, clock } = o;
   const base = descopeBaseUrl(projectId, o.baseUrl);
   const fetchTimeoutMs = o.fetchTimeoutMs ?? 3000;
@@ -131,7 +139,7 @@ export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifie
       }
       const text = await readBounded(res, MAX_KEYS_BYTES);
       const parsed: unknown = JSON.parse(text);
-      if (!isRecord(parsed) || !Array.isArray(parsed['keys'])) throw new KeysInvalid();
+      if (!isRecord(parsed) || !Array.isArray(parsed['keys']) || !parsed['keys'].some(usableKey)) throw new KeysInvalid(); // a set without a usable key never replaces the cache nor counts as a good fetch
       lastGood = clock.now();
       blockedUntil = 0;
       return new Response(text, { status: 200, headers: { 'content-type': 'application/json' } });
@@ -148,8 +156,13 @@ export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifie
     [customFetch]: keyFetch,
   });
 
-  const refresh = async (): Promise<void> => {
-    try { await keys.reload(); } catch { /* keyFetch has logged the reason; the cache is unchanged */ }
+  /** One refresh at a time: concurrent callers await the same promise (one fetch, one backoff); it is cleared when it settles. */
+  let inFlight: Promise<void> | undefined;
+  const refresh = (): Promise<void> => {
+    inFlight ??= (async () => {
+      try { await keys.reload(); } catch { /* keyFetch has logged the reason; the cache is unchanged */ } finally { inFlight = undefined; }
+    })();
+    return inFlight;
   };
   const timer = setInterval(() => { void refresh(); }, reloadIntervalMs);
   timer.unref();
@@ -177,7 +190,7 @@ export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifie
       // jose checks exp and nbf but not iat, and only checks claim presence: types and a future iat are ours (hand-written).
       if (typeof sub !== 'string' || sub === '' || sub.length > 256 || hasControl(sub) || sub !== sub.trim()) return INVALID;
       if (!Number.isSafeInteger(exp) || !Number.isSafeInteger(iat) || (nbf !== undefined && !Number.isSafeInteger(nbf))) return INVALID;
-      if (typeof exp !== 'number' || typeof iat !== 'number' || iat < 0 || exp * 1000 - now > maxLifetimeMs) return INVALID;
+      if (typeof exp !== 'number' || typeof iat !== 'number' || iat < 0 || (exp - iat) * 1000 > maxLifetimeMs || exp * 1000 - now > maxLifetimeMs) return INVALID; // issued lifetime and remaining lifetime are both bounded
       if (iat * 1000 > now + CLOCK_TOLERANCE_SECONDS * 1000) return INVALID;
       const profile = profileFromClaims(payload);
       return profile === undefined ? { kind: 'ok', userId: sub, expiresAt: exp * 1000 } : { kind: 'ok', userId: sub, expiresAt: exp * 1000, profile };
@@ -196,8 +209,10 @@ export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifie
       return { kind: 'unavailable' };
     };
     try {
-      // Hand-written: the SDK would add a second jose and four packages for one GET. Path and header are documented, not verified.
-      const res = await fetch(`${base}/v1/mgmt/user?userid=${encodeURIComponent(userId)}`, {
+      // Hand-written, without the provider's SDK (fewer dependencies in the trust path). Checked against the provider's Load User documentation
+      // (http://docs.descope.com/api/management/users/load-user, 2026-11-21): GET /v1/mgmt/user, query parameter userId (or loginId),
+      // `Authorization: Bearer <project id>:<management key>`, answer { user: { email, name, verifiedEmail, picture } }.
+      const res = await fetch(`${base}/v1/mgmt/user?userId=${encodeURIComponent(userId)}`, {
         method: 'GET',
         redirect: 'manual',
         signal: AbortSignal.timeout(fetchTimeoutMs),

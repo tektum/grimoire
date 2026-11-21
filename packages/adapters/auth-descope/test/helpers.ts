@@ -30,7 +30,7 @@ export async function signHs256WithPublicKeyText(pair: KeyPair, kid: string): Pr
   return new SignJWT(goodClaims()).setProtectedHeader({ alg: 'HS256', kid }).sign(new TextEncoder().encode(pem));
 }
 
-export type Behaviour = 'ok' | 'hang' | { status: number } | { raw: string } | 'huge';
+export type Behaviour = 'ok' | 'hang' | { status: number; keys?: true } | { raw: string } | { chunked: string } | { stalledAfterHeaders: number } | 'huge';
 
 /** A local key-set server on 127.0.0.1 that counts requests. */
 export class KeyServer {
@@ -64,8 +64,23 @@ export class KeyServer {
     if (b === 'hang') return;
     if (b === 'ok') { res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ keys: this.keys })); return; }
     if (b === 'huge') { res.writeHead(200, { 'content-type': 'application/json' }).end(`{"keys":[],"pad":"${'x'.repeat(5_000_000)}"}`); return; }
-    if ('status' in b) { res.writeHead(b.status).end('nope'); return; }
-    res.writeHead(200, { 'content-type': 'application/json' }).end(b.raw);
+    if ('status' in b) { res.writeHead(b.status, b.keys === true ? { 'content-type': 'application/json' } : {}).end(b.keys === true ? JSON.stringify({ keys: this.keys }) : 'nope'); return; }
+    if ('stalledAfterHeaders' in b) {
+      // Declares a body of this many bytes and never sends one: only a reader that trusts the declaration can answer before the timeout.
+      res.writeHead(200, { 'content-type': 'application/json', 'content-length': String(b.stalledAfterHeaders) });
+      res.flushHeaders();
+      return;
+    }
+    if ('chunked' in b) {
+      // No Content-Length: the first write sends the headers, so the body is streamed and its size is not declared.
+      res.writeHead(200, { 'content-type': 'application/json' });
+      const half = Math.floor(b.chunked.length / 2);
+      res.write(b.chunked.slice(0, half));
+      res.end(b.chunked.slice(half));
+      return;
+    }
+    // an explicit Content-Length: the size is declared before the body
+    res.writeHead(200, { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(b.raw)) }).end(b.raw);
   }
 }
 
