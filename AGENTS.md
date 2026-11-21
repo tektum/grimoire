@@ -64,11 +64,11 @@ yourself when your change can affect them. The required check is `CI Required`.
 key is explained here. The keys are documented in the Claude Code settings
 reference.
 
-- `permissions.allow`: the lint, typecheck, build, test and secret-scan commands
-  from the table above run without asking. Nothing that writes outside the
-  repository or touches the network is listed.
+- `permissions.allow`: exactly the commands in the table above, bare or wrapped
+  in `mise exec --`, with no extra arguments. They run without asking. Nothing that writes outside
+  the repository or touches the network is listed.
 - `permissions.deny`: no edits to `package-lock.json` (change `package.json` and
-  run `npm install`) or to `dist/` (generated), and no reading of `.env` files.
+  run `npm install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
 - Skills are discovered from `.claude/skills/`; no setting is needed.
 
 OMP is not known to read this file for permissions, so the rules above also
