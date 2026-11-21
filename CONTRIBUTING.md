@@ -10,6 +10,13 @@ Grimoire is developed in the open, through small pull requests into `main`.
   and all review threads must be resolved.
 - Pull requests from outside the project are welcome, but reviews may take a
   while.
+- Workflow runs for pull requests from forks need a maintainer's approval and
+  run only the cheap checks on GitHub-hosted runners; the heavy jobs (on the
+  project's own runners) run only for branches in this repository, so
+  `CI Required` stays red for a fork pull request.
+- To merge a contribution from a fork, a maintainer who has reviewed its
+  commit pushes it to a branch in this repository and opens a pull request
+  from that branch, so that every job runs before the merge.
 - Never commit secrets or credentials.
 - Contributions are accepted under the same licence as the project, the
   Apache License 2.0 (inbound equals outbound); there is no contributor
@@ -17,3 +24,7 @@ Grimoire is developed in the open, through small pull requests into `main`.
 
 To report a security issue, do not open a public issue: follow
 [SECURITY.md](SECURITY.md).
+
+## For maintainers
+
+Workflow runs from outside contributors are held until a maintainer approves them, and that approval is the security boundary. Before approving workflow runs for an outside pull request, read every change under `.github/` and to any script the workflows run (`Makefile`, `package.json` scripts, `tools/`); if such a pull request needs the heavy jobs, a maintainer pushes the reviewed commit to a branch in this repository.

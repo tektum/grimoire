@@ -7,7 +7,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # replay stack: pull requests based on replay/** branches are checked too (remove when the replay is finished)
+    branches: [main, 'replay/**']
 
 permissions:
   contents: read
@@ -15,7 +16,7 @@ permissions:
 concurrency:
   # Key PR runs by number so they cannot cancel the push run for a merged commit.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gitleaks:
@@ -69,6 +70,66 @@ jobs:
           annotations: true
           version: ${{ env.ZIZMOR_VERSION }}
 
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          code=true
+          if [ -n "${BASE_SHA:-}" ] && ! git diff --name-only "$BASE_SHA"...HEAD | grep -qvE '^(docs/|.*\.md$|LICENSE$)'; then code=false; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  static:
+    name: Static checks
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-static/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+  unit:
+    name: Unit tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-unit/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Fresh-runner preflight (IPv6 loopback)
+        run: |
+          getent ahostsv6 localhost >/dev/null || sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0
+          node -e "require('node:net').createServer().listen(0,'::1',function(){this.close()})"
+      - run: npm test
+
   ci-required:
     name: CI Required
     runs-on: ubuntu-latest
@@ -77,15 +138,20 @@ jobs:
     needs:
       - gitleaks
       - workflow-policy
+      - changes
+      - static
+      - unit
     steps:
       - name: Verify every needed job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -eu
-          # Strict success-only semantics: a skipped or failed job fails the gate.
+          # A failed or cancelled job always fails the gate. A skipped job passes only when the changes job
+          # reported a documents-only change (code=false): anything else that is skipped fails.
+          code=$(jq -r '.changes.outputs.code // "true"' <<< "$NEEDS_JSON")
           jq -r 'to_entries[] | if .value.result == "success" then "OK   \(.key)" else "FAIL \(.key) (result=\(.value.result))" end' <<< "$NEEDS_JSON"
-          if jq -e '[ to_entries[] | select(.value.result != "success") ] | length > 0' <<< "$NEEDS_JSON" >/dev/null; then
+          if jq -e --arg code "$code" '[ to_entries[] | select(.value.result != "success") | select(.value.result != "skipped" or $code == "true") ] | length > 0' <<< "$NEEDS_JSON" >/dev/null; then
             echo ""
             echo "::error::One or more required jobs did not succeed. CI gate failing."
             exit 1

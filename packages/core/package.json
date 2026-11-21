@@ -1,0 +1,29 @@
+{
+  "name": "@tektum/grimoire-core",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./ports/*": {
+      "types": "./dist/ports/*.d.ts",
+      "default": "./dist/ports/*.js"
+    },
+    "./testing/*": {
+      "types": "./dist/testing/*.d.ts",
+      "default": "./dist/testing/*.js"
+    },
+    "./authorize": {
+      "types": "./dist/authorize/index.d.ts",
+      "default": "./dist/authorize/index.js"
+    },
+    "./authorize/*": {
+      "types": "./dist/authorize/*.d.ts",
+      "default": "./dist/authorize/*.js"
+    },
+    "./users/*": {
+      "types": "./dist/users/*.d.ts",
+      "default": "./dist/users/*.js"
+    }
+  }
+}
