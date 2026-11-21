@@ -13,14 +13,15 @@
     "packages/adapters/*"
   ],
   "scripts": {
-    "lint": "eslint .",
+    "lint": "eslint . && node tools/ci/check-test-sleeps.mjs",
     "typecheck": "tsc -b",
     "seed": "node apps/server/dist/cli.js seed",
     "test": "vitest run --project unit",
     "test:benchmark": "vitest run --project benchmark --passWithNoTests",
     "test:integration": "vitest run --project integration --passWithNoTests",
     "test:container": "vitest run --project container --passWithNoTests",
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "test:tools": "node --test tools/ci/test/"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
