@@ -17,6 +17,14 @@
       "name": "@tektum/grimoire-web",
       "version": "0.0.0",
     },
+    "packages/adapters/auth-descope": {
+      "name": "@tektum/grimoire-adapter-auth-descope",
+      "version": "0.0.0",
+      "dependencies": {
+        "@tektum/grimoire-core": "*",
+        "jose": "6.2.18",
+      },
+    },
     "packages/adapters/auth-dev": {
       "name": "@tektum/grimoire-adapter-auth-dev",
       "version": "0.0.0",
@@ -182,6 +190,8 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.1.1", "", {}, "sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA=="],
 
+    "@tektum/grimoire-adapter-auth-descope": ["@tektum/grimoire-adapter-auth-descope@workspace:packages/adapters/auth-descope"],
+
     "@tektum/grimoire-adapter-auth-dev": ["@tektum/grimoire-adapter-auth-dev@workspace:packages/adapters/auth-dev"],
 
     "@tektum/grimoire-adapter-auth-fake": ["@tektum/grimoire-adapter-auth-fake@workspace:packages/adapters/auth-fake"],
@@ -333,6 +343,8 @@
     "isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
     "isomorphic.js": ["isomorphic.js@0.2.5", "", {}, "sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw=="],
+
+    "jose": ["jose@6.2.18", "", {}, "sha512-doV4thUwgkrycJH4yLeqwTGIIZphHl+pk7CPReuMIhYhncmgzdko85MaCG4YQFTxqMFr1/oEH32tZuKKovcDEg=="],
 
     "js-tokens": ["js-tokens@10.0.1", "", {}, "sha512-XMt+uh+yEs6srFvEb/pEe4IMvbtoXVdNxF7lZFU+I9sdWI641L97L+gXQMTGm1x3RjPUVizNVjHueclXr0U7sw=="],
 
