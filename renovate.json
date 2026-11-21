@@ -22,7 +22,7 @@
   "packageRules": [
     {
       "description": "0.x minor bumps can be breaking; keep manual",
-      "matchCurrentVersion": "/^0\\./",
+      "matchCurrentVersion": "/^v?0\\./",
       "matchUpdateTypes": [
         "minor"
       ],
