@@ -129,6 +129,7 @@ jobs:
           getent ahostsv6 localhost >/dev/null || sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0
           node -e "require('node:net').createServer().listen(0,'::1',function(){this.close()})"
       - run: npm test
+      - run: npm run test:tools
 
   ci-required:
     name: CI Required

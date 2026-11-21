@@ -1,0 +1,167 @@
+[
+  {
+    "file": "apps/server/test/collab/limits-config.int.test.ts",
+    "line": "await sleep(6500); // past the 6 s reconnect-allowance window of a new connection",
+    "reason": "The product starts a 6 s reconnect-allowance window per new connection (wall clock, in a child process); no log event, row or frame marks its end, and the clock cannot be injected across the process boundary."
+  },
+  {
+    "file": "apps/server/test/collab/limits-support.ts",
+    "line": "await new Promise((r) => setTimeout(r, 300)); // the document is set up and loaded right after the Authenticated frame",
+    "reason": "Set-up settle on a raw socket: the server loads the document right after the Authenticated frame and nothing observable on the raw client marks it; a 250 ms cut would change the timing the limit tests rely on."
+  },
+  {
+    "file": "apps/server/test/collab/limits.int.test.ts",
+    "line": "await sleep(6500); // past the 6 s reconnect-allowance window of a new connection",
+    "reason": "The product starts a 6 s reconnect-allowance window per new connection (wall clock, in a child process); no log event, row or frame marks its end, and the clock cannot be injected across the process boundary."
+  },
+  {
+    "file": "apps/server/test/collab/preauth-slots.int.test.ts",
+    "line": "await new Promise<void>((resolve) => { setTimeout(resolve, 4000); });",
+    "reason": "Negative claim on the child server real 4 s clock: a link that has not signed in is still open after 4 s; no event marks that nothing happened and the clock cannot be faked across the OS process."
+  },
+  {
+    "file": "apps/server/test/collab/preauth-slots.int.test.ts",
+    "line": "await new Promise<void>((resolve) => { setTimeout(resolve, 30000); });",
+    "reason": "The mandated 30 s connected-window requirement: a signed-in socket is still open after 30 real seconds; a negative claim on a real clock in a child process."
+  },
+  {
+    "file": "apps/server/test/collab/stale.int.test.ts",
+    "line": "await sleep(2500);",
+    "reason": "Proves that a refused conversion is not retried in a loop: the absence of a second collab.convert_failed over a window longer than the retry interval; nothing observable marks that it did not happen."
+  },
+  {
+    "file": "apps/server/test/server/support/hooks-entry.mjs",
+    "line": "if (spec === 'slow') extra.push({ name: 'test-slow', phase: 'save-pages', deadlineMs: 20_000, run: () => sleep(2500) });",
+    "reason": "Test fixture, not a wait: a deliberately slow shutdown hook that makes the product slow on purpose."
+  },
+  {
+    "file": "apps/server/test/server/support/slow-route-entry.mjs",
+    "line": "await sleep(1500);",
+    "reason": "Test fixture, not a wait: a deliberately slow or late-failing route that makes the product slow on purpose."
+  },
+  {
+    "file": "apps/server/test/server/support/slow-route-entry.mjs",
+    "line": "await sleep(500);",
+    "reason": "Test fixture, not a wait: a deliberately slow or late-failing route that makes the product slow on purpose."
+  },
+  {
+    "file": "apps/server/test/server/survival.int.test.ts",
+    "line": "setTimeout(() => { s.destroy(); }, 500).unref();",
+    "reason": "Not a wait for an outcome: the upper bound of a read window for a socket the server keeps open; a close resolves earlier."
+  },
+  {
+    "file": "apps/server/test-e2e/scenarios/office.ts",
+    "line": "await sleep(600); // 12 tokens per client in about 7 s, well inside the budget",
+    "reason": "Pacing of a load generator (12 tokens per client in about 7 s, inside the rate budget); the rate is the point of the scenario."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/persistence/fixes.test.ts",
+    "line": "if (d.getText('prosemirror').toString().startsWith('HOSTILE')) { await new Promise((r) => setTimeout(r, 1000)); hostileMs += 1000; return fail('timeout'); }",
+    "reason": "Test fixture, not a wait: a deliberately slow hostile save that makes the code under test slow on purpose."
+  },
+  {
+    "file": "packages/adapters/markdown-milkdown/test/pool/fixtures/behaviours.mjs",
+    "line": "await new Promise((resolve) => setTimeout(resolve, 2000));",
+    "reason": "Test fixture, not a wait: a child worker that deliberately hangs."
+  },
+  {
+    "file": "apps/server/test/benchmark/save-latency.test.ts",
+    "line": "await new Promise((r) => setTimeout(r, DEBOUNCE + 100)); // the big page's save is now converting",
+    "reason": "Fixed offset of the benchmark scenario: DEBOUNCE (a named product constant) plus 100 ms places the second edit while the first save converts; the measured quantity is the second save, not this wait."
+  },
+  {
+    "file": "apps/server/test/collab/collab.int.test.ts",
+    "line": "const typing = setInterval(() => { c.text.insert(c.text.length, 'x'); }, 500);",
+    "reason": "Typing driver for a feature under test (a client that keeps editing during a store outage): a steady 500 ms edit rate is the stimulus; it is cleared in finally and the assertions wait on conditions."
+  },
+  {
+    "file": "apps/server/test/collab/limits-abuse.int.test.ts",
+    "line": "const timer = setInterval(tick, periodMs);",
+    "reason": "Abuse driver: the fixed period is the stimulus (a steady edit rate for the stated duration); cleared inside the tick at the deadline; assertions wait on close codes."
+  },
+  {
+    "file": "apps/server/test/collab/limits-config.int.test.ts",
+    "line": "await sleep(pauseMs);",
+    "reason": "Pause length is a parameter of the limit scenario (the rate window under test), passed as a literal by each caller; it is the stimulus, not a wait for a state."
+  },
+  {
+    "file": "apps/server/test/collab/limits-rates.int.test.ts",
+    "line": "if (wait > 0) await sleep(wait);",
+    "reason": "Pacing of the stimulus: sleeps only the remainder to the next scheduled edit (a fixed rate); not a wait for a state."
+  },
+  {
+    "file": "apps/server/test/collab/support.ts",
+    "line": "export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));",
+    "reason": "The shared sleep helper itself: its delay is the caller literal, and the sleep checker flags every caller over 250 ms."
+  },
+  {
+    "file": "apps/server/test/server/shutdown.test.ts",
+    "line": "run: async () => { trace.push(`${name}:start`); await new Promise((r) => setTimeout(r, ms)); trace.push(`${name}:end`); },",
+    "reason": "A fake shutdown hook that takes ms (a caller literal) to finish: simulates a slow hook, it does not wait for a state."
+  },
+  {
+    "file": "apps/server/test/server/start-signal.int.test.ts",
+    "line": "if (!sent && output.includes('server.starting')) { sent = true; setTimeout(() => { child.kill('SIGTERM'); }, delayMs); }",
+    "reason": "Parameter of the signal-timing test: the delay (caller literal) after the first log line at which SIGTERM is sent is the stimulus."
+  },
+  {
+    "file": "apps/server/test/server/support/hooks-entry.mjs",
+    "line": "const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));",
+    "reason": "Child-process fixture helper: hooks that take a stated time to finish; the delay is the simulated work, not a wait for a state."
+  },
+  {
+    "file": "apps/server/test/server/survival.int.test.ts",
+    "line": "setTimeout(() => { s.resetAndDestroy(); resolve(); }, i % 7); // 0 to 6 ms: before, during and after the guard's awaited step",
+    "reason": "Stimulus: i % 7 (0 to 6 ms) spreads socket resets across connection phases; a deliberate tiny jitter, not a wait."
+  },
+  {
+    "file": "apps/server/test-e2e/support.ts",
+    "line": "export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));",
+    "reason": "The shared sleep helper itself: its delay is the caller literal, and the sleep checker flags every caller over 250 ms."
+  },
+  {
+    "file": "apps/server/test-e2e/support.ts",
+    "line": "const timer = setTimeout(() => { failure = `timed out after ${String(timeoutMs)} ms`; void runCleanups().then(finish); }, timeoutMs);",
+    "reason": "The scenario watchdog: its deadline is the scenario timeout argument; it is the limit, not a wait for a state."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/host/host.int.test.ts",
+    "line": "const l = await live('member', { sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))) });",
+    "reason": "Injects the host sleep dependency (a timer under test), not a test wait."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/persistence/gate.test.ts",
+    "line": "await new Promise((r) => setTimeout(r, state[0] === 1 ? 40 : 1));",
+    "reason": "Fake work with a 40 ms or 1 ms duration to force an ordering inside the unit under test; both under 250 ms."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/persistence/save.test.ts",
+    "line": "await new Promise((r) => setTimeout(r, k === 1 ? 80 : 0));",
+    "reason": "Fake store latency of 80 ms or 0 to force an ordering inside the unit under test; both under 250 ms."
+  },
+  {
+    "file": "packages/test-support/test/collide-once.mjs",
+    "line": "setInterval(() => undefined, 1000);",
+    "reason": "Child-process fixture that only keeps the event loop alive until it is killed (no-op interval)."
+  },
+  {
+    "file": "apps/server/test/collab/db-hang.int.test.ts",
+    "line": "const typing = setInterval(() => { c.text.insert(c.text.length, `${String(i++)},`); }, 500);",
+    "reason": "Typing driver for a store stall of the child server real clock: a steady 500 ms edit rate is the stimulus; cleared in finally; the wait itself is waitUntil on log events."
+  },
+  {
+    "file": "apps/server/test-e2e/m2/scenarios/hostile-neighbour.ts",
+    "line": "const health = setInterval(() => {",
+    "reason": "Health probe: /healthz is polled every 250 ms for the whole scenario to prove it never fails; a sampler, not a wait; cleared in onDone."
+  },
+  {
+    "file": "apps/server/test-e2e/m2/support.ts",
+    "line": "this.timer = setInterval(() => {",
+    "reason": "Latency probe client: sends a sync request every 10 ms (it measures the answer time of the server); a sampler, stopped by the returned stop function."
+  },
+  {
+    "file": "packages/adapters/markdown-milkdown/test/pool/measure.mjs",
+    "line": "const ticker = setInterval(() => {",
+    "reason": "Event-loop gap meter: a 10 ms ticker whose largest gap is the measurement; a sampler, cleared at the end of the measurement."
+  }
+]
