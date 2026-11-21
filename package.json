@@ -21,7 +21,7 @@
     "test:integration": "vitest run --project integration --passWithNoTests",
     "test:container": "vitest run --project container --passWithNoTests",
     "build": "tsc -b",
-    "test:tools": "node --test tools/ci/test/"
+    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/"
   },
   "trustedDependencies": [],
   "devDependencies": {
