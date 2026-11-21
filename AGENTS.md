@@ -71,9 +71,11 @@ yourself when your change can affect them. The required check is `CI Required`.
 key is explained here. The keys are documented in the Claude Code settings
 reference.
 
-- `permissions.allow`: exactly the commands in the table above, bare or wrapped
-  in `mise exec --`, with no extra arguments. They run without asking. Nothing that writes outside
-  the repository or touches the network is listed.
+- `permissions.allow`: the commands in the table above, bare or wrapped in
+  `mise exec --`, with no extra arguments, except the `make` rows: those pull
+  images and create or delete Docker volumes, so each use is approved. Allowed
+  commands run without asking. Nothing that writes outside the repository or
+  touches the network is listed.
 - `permissions.deny`: no edits to `bun.lock` (change `package.json` and
   run `bun install`) or to any `dist/` (generated), and no reading of `.env` files at any depth.
 - Skills are discovered from `.claude/skills/`; no setting is needed.
