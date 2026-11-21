@@ -17,6 +17,10 @@ Grimoire is developed in the open, through small pull requests into `main`.
 - To merge a contribution from a fork, a maintainer who has reviewed its
   commit pushes it to a branch in this repository and opens a pull request
   from that branch, so that every job runs before the merge.
+- Show the change: a feature pull request includes screenshots or a short
+  recording of the new behaviour (and a diagram or terminal capture where it
+  helps), and a bug-fix pull request includes before and after shots. If a
+  visual makes no sense, say "not applicable" in the description and why.
 - Never commit secrets or credentials.
 - Contributions are accepted under the same licence as the project, the
   Apache License 2.0 (inbound equals outbound); there is no contributor
