@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { applyAllow, check, findSleeps } from '../check-test-sleeps.mjs';
+import { applyAllow, check, findSleeps, staleEntries } from '../check-test-sleeps.mjs';
 
 // The fixtures are written to a scratch directory inside this folder (the system temp directory may be full) and removed afterwards.
 const base = mkdtempSync(path.join(import.meta.dirname, 'work-'));
@@ -71,4 +71,38 @@ test('a setInterval whose arguments span several lines is still found', () => {
 
 test('a scan root that does not exist is skipped', () => {
   assert.deepEqual(check(base, ['no-such-dir'], []), []);
+});
+
+test('a call that spans several lines is read by syntax', () => {
+  const text = 'await new Promise((resolve) =>\n  setTimeout(\n    resolve,\n    5000,\n  ),\n);\n';
+  assert.deepEqual(findSleeps('x.test.ts', text).map((v) => [v.kind, v.ms]), [['literal-over-limit', 5000]]);
+});
+
+test('nesting depth does not hide a timer, and a sleep helper inside other calls is found', () => {
+  assert.deepEqual(findSleeps('x.test.ts', 'setTimeout(() => { done(wrap(a, b(c(d)))); }, 5000);').map((v) => v.ms), [5000]);
+  assert.deepEqual(findSleeps('x.test.ts', 'await Promise.all([run(wrap(sleep(5000)))]);').map((v) => v.ms), [5000]);
+});
+
+test('the delay of setTimeout is its second argument', () => {
+  assert.deepEqual(findSleeps('x.test.ts', 'setTimeout(fn, 5000, 1);').map((v) => v.ms), [5000]);
+  assert.deepEqual(findSleeps('x.test.ts', 'setTimeout(() => f(a, b), 300);').map((v) => v.ms), [300]);
+  assert.deepEqual(findSleeps('x.test.ts', 'setTimeout(() => f(a, b), 100);'), []);
+  assert.deepEqual(findSleeps('x.test.ts', 'setTimeout(fn);').map((v) => v.kind), ['non-literal']);
+});
+
+test('.tsx and .jsx test files are scanned', () => {
+  mkdirSync(path.join(base, 'ui/test'), { recursive: true });
+  writeFileSync(path.join(base, 'ui/test/view.test.tsx'), 'await sleep(5000);\n');
+  writeFileSync(path.join(base, 'ui/test/view2.test.jsx'), 'await sleep(5000);\n');
+  assert.deepEqual(check(base, ['ui'], []).map((v) => path.basename(v.file)).sort(), ['view.test.tsx', 'view2.test.jsx']);
+  assert.deepEqual(findSleeps('x.test.tsx', 'const a = <div onClick={() => setTimeout(go, 5000)} />;').map((v) => v.ms), [5000]);
+});
+
+test('an allow-list entry for a missing file, or one that no longer matches a sleep, is a stale entry', () => {
+  const file = 'pkg/test/sleep-300.test.ts';
+  const ok = { file, line: 'await sleep(300);', reason: 'r' };
+  assert.deepEqual(staleEntries(base, ['pkg'], [ok]), []);
+  assert.equal(staleEntries(base, ['pkg'], [ok, { file: 'pkg/test/gone.test.ts', line: 'await sleep(300);', reason: 'r' }]).length, 1);
+  assert.equal(staleEntries(base, ['pkg'], [ok, { file, line: 'await sleep(301);', reason: 'r' }]).length, 1);
+  assert.equal(staleEntries(base, ['pkg'], [{ file: 'pkg/test/ok.test.ts', line: 'await sleep(250);', reason: 'r' }]).length, 1);
 });
