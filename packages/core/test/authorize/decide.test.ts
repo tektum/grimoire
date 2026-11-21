@@ -105,12 +105,48 @@ describe('default deny', () => {
     expect(decide(base({ user: { role: 'admin', suspended: undefined as unknown as boolean } }))).toEqual({ access: 'none', reason: 'suspended' });
     expect(decide(base({ page: { deleted: undefined as unknown as boolean, epoch: 1, collection: live } }))).toEqual({ access: 'none', reason: 'deleted' });
   });
-  it('refuses an epoch that is not a non-negative integer', () => {
-    for (const epoch of [-1, 1.5, Number.NaN, Infinity]) expect(decide(base({ page: { deleted: false, epoch, collection: live } }))).toEqual({ access: 'none', reason: 'no-page' });
+  it.each([-1, 1.5, Number.NaN, Infinity])('refuses the epoch %s, which is not a non-negative integer', (epoch) => {
+    expect(decide(base({ page: { deleted: false, epoch, collection: live } }))).toEqual({ access: 'none', reason: 'no-page' });
   });
   it('refuses entries that are not an array', () => {
     const entries = 'read_write' as unknown as readonly 'read'[];
     expect(decide(base({ page: { deleted: false, epoch: 1, collection: { deleted: false, defaultPermission: null, entries } } }))).toEqual({ access: 'none', reason: 'no-access' });
+  });
+  const perms = [null, 'read', 'read_write'] as const;
+  const unknownRoleCases = perms.flatMap((defaultPermission) => (['read', 'read_write'] as const).map((entry) => ({ defaultPermission, entry })));
+  it.each(unknownRoleCases)('grants nothing to an unknown role, default $defaultPermission and entry $entry, page or collection', ({ defaultPermission, entry }) => {
+    const user = { role: 'owner' as unknown as Role, suspended: false };
+    const collection = { deleted: false, defaultPermission, entries: [entry] };
+    expect(decide(base({ user, page: { deleted: false, epoch: 1, collection } }))).toEqual({ access: 'none', reason: 'no-access' });
+    expect(decideCollection({ request: { userId: 'u', collectionId: 'c' }, user, collection })).toEqual({ access: 'none', reason: 'no-access' });
+  });
+  const cf = (user: { role: Role; suspended: boolean }, collection: { deleted: boolean; defaultPermission: 'read_write'; entries: readonly 'read'[] }) =>
+    ({ request: { userId: 'u', collectionId: 'c' }, user, collection });
+  const notFalse: [string, string | number | undefined][] = [['undefined', undefined], ["the string 'false'", 'false'], ['0', 0]];
+  it.each(notFalse)('collection form: suspended given as %s is treated as set', (_n, v) => {
+    expect(decideCollection(cf({ role: 'admin', suspended: v as unknown as boolean }, live))).toEqual({ access: 'none', reason: 'suspended' });
+  });
+  it.each(notFalse)('collection form: deleted given as %s is treated as set', (_n, v) => {
+    expect(decideCollection(cf({ role: 'admin', suspended: false }, { ...live, deleted: v as unknown as boolean }))).toEqual({ access: 'none', reason: 'deleted' });
+  });
+  it.each([["the string 'yes'", 'yes'], ['1', 1]])('collection form: includeDeleted given as %s does not lift a deleted collection', (_n, v) => {
+    const gone = { ...live, deleted: true };
+    expect(decideCollection(cf({ role: 'admin', suspended: false }, gone), { includeDeleted: v as unknown as boolean })).toEqual({ access: 'none', reason: 'deleted' });
+  });
+  it('refuses entries that are iterable but not an array, even when every item is a valid permission', () => {
+    const entries = new Set(['read_write']) as unknown as readonly 'read'[];
+    expect(decide(base({ page: { deleted: false, epoch: 1, collection: { deleted: false, defaultPermission: null, entries } } }))).toEqual({ access: 'none', reason: 'no-access' });
+    expect(decideCollection({ request: { userId: 'u', collectionId: 'c' }, user: { role: 'member', suspended: false }, collection: { deleted: false, defaultPermission: null, entries } })).toEqual({ access: 'none', reason: 'no-access' });
+  });
+  it('accepts epoch 0 as a real epoch', () => {
+    expect(decide(base({ page: { deleted: false, epoch: 0, collection: live } }))).toEqual({ access: 'read-write', epoch: 0 });
+  });
+  it('refuses a deleted page or collection when no options are passed, and lifts it only for includeDeleted true', () => {
+    const gone = { ...live, deleted: true };
+    expect(decide(base({ page: { deleted: false, epoch: 1, collection: gone } }))).toEqual({ access: 'none', reason: 'deleted' });
+    expect(decide(base({ page: { deleted: false, epoch: 1, collection: gone } }), {})).toEqual({ access: 'none', reason: 'deleted' });
+    expect(decide(base({ page: { deleted: false, epoch: 1, collection: gone } }), { includeDeleted: true })).toEqual({ access: 'read-write', epoch: 1 });
+    expect(decideCollection({ request: { userId: 'u', collectionId: 'c' }, user: { role: 'member', suspended: false }, collection: gone })).toEqual({ access: 'none', reason: 'deleted' });
   });
   it('includeDeleted only lifts the deleted check', () => {
     expect(decide({ request: { userId: 'u', pageId: 'p' } }, { includeDeleted: true })).toEqual({ access: 'none', reason: 'no-user' });
