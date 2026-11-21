@@ -1,0 +1,7 @@
+# Gitleaks config. Extends the default rules. Nothing is allow-listed yet:
+# each pull request that adds credential-shaped test fixtures allow-lists only
+# what it needs here, with a comment explaining why.
+title = "grimoire gitleaks"
+
+[extend]
+useDefault = true
