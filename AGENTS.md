@@ -77,8 +77,10 @@ stand in this document. There is no project OMP configuration.
 
 ## Where things live
 
-- `packages/core`: the domain. Ports (interfaces) in `src/ports`, in-memory
-  fakes in `src/testing`, tests in `test/`.
+- `packages/core`: the domain. Ports (interfaces) in `src/ports` (clock, config,
+  logger, database, Markdown converter, user store, auth verifier, access store,
+  collaboration host), in-memory fakes in `src/testing`, the access decision and
+  authoriser in `src/authorize`, tests in `test/`.
 - Adapters (database, auth, storage, and so on) live in their own packages
   under `packages/adapters/*`. Apps live in `apps/*`. Both arrive later.
 - `tools/ci`: repository checks, with their own tests (`bun run test:tools`).
@@ -90,9 +92,10 @@ stand in this document. There is no project OMP configuration.
   `eslint.config.js`). It talks to the outside only through ports. ESLint and
   the boundary tests in `packages/core/test/boundaries` fail the build
   otherwise.
-- The core also imports no adapter package. That ban is stated here and will be
-  enforced by a test when the adapter packages exist. Until then, check it in
-  review.
+- The core also imports no adapter package, and adapters import no other
+  adapter and nothing from `apps/`. `packages/core/test/boundaries/adapter-imports.test.ts`
+  enforces this, and `lint-fixtures.test.ts` checks that each rule fires on a
+  sample file (the samples are the `.ts.txt` files in `fixtures/`).
 - The core never reads `process.env`. Only a config adapter reads it.
 - Server-only libraries stay out of the browser client and shared libraries.
 - Add a fake for every new port, next to the others in `src/testing`.
