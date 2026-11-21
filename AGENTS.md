@@ -104,6 +104,8 @@ files, so these are rules for you:
   later.
 - Apps live in `apps/*`: `apps/web` (the web client) and `packages/api-client`
   exist today as empty placeholders.
+- `packages/editor-schema`: the editor schema shared by the browser and the Markdown
+  converter. It imports no server library (a test checks it).
 - `packages/test-support`: the shared test harness (database helpers, a test
   client, and `eventually`, the helper that waits for a condition instead of
   sleeping). Tests use it rather than their own timers.
