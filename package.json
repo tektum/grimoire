@@ -21,7 +21,10 @@
     "test:integration": "vitest run --project integration --passWithNoTests",
     "test:container": "vitest run --project container --passWithNoTests",
     "build": "tsc -b",
-    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/"
+    "licence": "node tools/licence-report/run.mjs",
+    "licence:check-images": "node tools/licence-report/run.mjs --check-images",
+    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/",
+    "licence:pending": "node tools/licence-report/run.mjs --allow-pending"
   },
   "trustedDependencies": [],
   "devDependencies": {

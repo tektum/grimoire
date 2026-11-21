@@ -38,18 +38,19 @@ Run from the repository root. Each line works on `main` today.
 | Integration tests | `bun run test:integration` |
 | Container tests | `bun run test:container` |
 | Benchmarks | `bun run test:benchmark` |
+| Licence check (installed packages and the recorded rest) | `bun run licence` |
+| Licence check of the container base images | `bun run licence:check-images` |
 | Sleep check alone | `node tools/ci/check-test-sleeps.mjs` |
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
 
-`mise.toml` lists node today. The secret scan needs gitleaks, which CI installs
-itself. Until `mise.toml` lists it, get gitleaks through mise in your own
-set-up. A tool missing from `mise.toml` is added there in a pull request.
+`mise.toml` lists node, bun, gitleaks, actionlint and zizmor, with their checksums in
+`mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
 
 Today the integration, container and benchmark commands find no tests and exit
 with success. They start to matter when the first such tests arrive.
 
-The list grows. Each later slice adds its line here: the licence check, the
+The list grows. Each later slice adds its line here: the
 exit tests (`make` targets), the Compose stack. Do not document a command that
 is not on `main`.
 
@@ -109,7 +110,10 @@ stand in this document. There is no project OMP configuration.
   `tools/ci/test-sleep-allow.json` with `file`, the exact `line` text and a
   non-empty `reason`. Stale entries fail the check.
 - **Licences: permissive only** (Apache-2.0, MIT, BSD, ISC and similar). Never
-  add a copyleft dependency. A licence check will run in CI once it lands.
+  add a copyleft dependency. `bun run licence` runs in CI: it refuses copyleft in
+  shipped code and allows MPL-2.0 only for development-only tools. After a
+  dependency change, run `node tools/licence-report/record-licences.mjs` and commit
+  `tools/licence-report/lock-licences.json`.
 - **No secrets.** Never commit tokens, keys or credentials, and never paste them
   into a pull request. Gitleaks runs in CI on history and files. If a test
   fixture must look like a secret, add an allow-list entry to
