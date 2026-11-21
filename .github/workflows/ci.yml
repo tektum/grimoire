@@ -38,8 +38,8 @@ jobs:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: gitleaks
-      - name: Scan commits
-        run: gitleaks git --config .gitleaks.toml --redact --verbose .
+      - name: Scan commits (the history of the checked-out commit, not other branches)
+        run: gitleaks git --config .gitleaks.toml --redact --verbose --log-opts HEAD .
       - name: Scan tree
         run: gitleaks dir --config .gitleaks.toml --redact --verbose .
 
