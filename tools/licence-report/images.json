@@ -1,0 +1,39 @@
+{
+  "postgres": {
+    "licence": "PostgreSQL",
+    "source": "https://www.postgresql.org/about/licence/",
+    "tags": [
+      "17"
+    ]
+  },
+  "chrislusf/seaweedfs": {
+    "licence": "Apache-2.0",
+    "source": "https://github.com/seaweedfs/seaweedfs/blob/master/LICENSE",
+    "tags": [
+      "4.54"
+    ]
+  },
+  "node": {
+    "licence": "MIT",
+    "source": "https://github.com/nodejs/docker-node/blob/main/LICENSE",
+    "tags": [
+      "26-slim"
+    ],
+    "note": "build stage only, not shipped"
+  },
+  "gcr.io/distroless/nodejs26-debian13": {
+    "licence": "Apache-2.0",
+    "source": "https://github.com/GoogleContainerTools/distroless/blob/main/LICENSE",
+    "tags": [
+      "nonroot"
+    ]
+  },
+  "oven/bun": {
+    "licence": "MIT",
+    "source": "https://github.com/oven-sh/bun/blob/main/LICENSE.md",
+    "tags": [
+      "1.4.4-slim"
+    ],
+    "note": "build stage only, not shipped"
+  }
+}
