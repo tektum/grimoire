@@ -23,6 +23,7 @@
     "build": "tsc -b",
     "test:tools": "node --test tools/ci/test/"
   },
+  "trustedDependencies": [],
   "devDependencies": {
     "@types/node": "26.6.6",
     "eslint": "10.15.0",
