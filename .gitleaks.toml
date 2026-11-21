@@ -104,3 +104,16 @@ paths = [
 regexes = [
   '''GRIMOIRE_DEV_TOKEN_SECRET: \['test', 'secret', '[0-9a-f]+'\]''',
 ]
+
+# a made-up management key of a test double (introduced by desc2)
+[[allowlists]]
+description = "a made-up management key of a test double"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/auth\-descope/test/profile\.test\.ts$''',
+]
+regexes = [
+  '''KEY = 'mgmt-key-SECRET-0123456789'''',
+]
