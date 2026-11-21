@@ -1,0 +1,73 @@
+# Codecov configuration (https://docs.codecov.com/docs/codecov-yaml). Statuses are informational at first: the
+# in-repository thresholds in vitest.config.js are what fails CI; Codecov shows trends and the pull-request comment.
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1% # the total may not fall by more than one percentage point
+        informational: true
+    patch:
+      default:
+        target: 90% # new and changed lines: tested, not merely executed (see AGENTS.md)
+        threshold: 3%
+        informational: true
+
+flags:
+  unit:
+    paths:
+      - apps/
+      - packages/
+    carryforward: true
+  integration:
+    paths:
+      - apps/
+      - packages/
+    carryforward: true
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        informational: true
+  individual_components:
+    - component_id: core
+      name: Core (access decision, ports)
+      paths: [packages/core/**]
+    - component_id: auth
+      name: Authentication adapters
+      paths: [packages/adapters/auth-*/**]
+    - component_id: logger
+      name: Logger and scrubber
+      paths: [packages/adapters/logger-json/**]
+    - component_id: config
+      name: Configuration
+      paths: [packages/adapters/config-env/**]
+    - component_id: db
+      name: Database adapter
+      paths: [packages/adapters/db-kysely/**]
+    - component_id: collab
+      name: Collaboration host
+      paths: [packages/adapters/collab-hocuspocus/**]
+    - component_id: markdown
+      name: Markdown conversion
+      paths: [packages/adapters/markdown-milkdown/**, packages/editor-schema/**]
+    - component_id: server
+      name: Server
+      paths: [apps/server/**]
+
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  require_changes: true
+
+ignore:
+  - "reference/**"
+  - "**/test/**"
+  - "**/test-e2e/**"
+  - "**/src/testing/**"
+  - "packages/test-support/**"
