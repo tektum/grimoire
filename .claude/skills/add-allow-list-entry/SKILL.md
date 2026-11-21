@@ -21,7 +21,7 @@ Prefer waiting for a condition (`vi.waitFor`, a polling helper). If a fixed dela
 
 - `file` is the path from the repository root. `line` is the exact line text (surrounding whitespace is ignored). `reason` is not empty.
 - One entry per line. Never a whole file or a pattern.
-- A delay that is not a number literal, and every `setInterval` in a test, also needs an entry.
+- The check scans test files under `apps/` and `packages/` only. An entry is needed for a fixed sleep above 250 ms, for every `setInterval`, and for a delay that is not a number literal (a plain number or a product of literals is read as a number). An entry that matches no reported line is stale and fails the check, so do not add one for anything else.
 - Stale entries (file gone, line no longer a sleep) fail the check, so remove an entry when you remove the sleep.
 - Check: `node tools/ci/check-test-sleeps.mjs`, then `npm run test:tools`.
 

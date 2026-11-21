@@ -25,7 +25,7 @@ mise exec -- gitleaks git --config .gitleaks.toml --redact .
 mise exec -- gitleaks dir --config .gitleaks.toml --redact .
 ```
 
-If you touched `.github/workflows`, also run `actionlint` and `zizmor` (both from `mise.toml` once listed there; otherwise ask).
+`gitleaks` is not in `mise.toml` yet (CI installs its own copy). Until it is, install it through mise in your own set-up, for example `mise use -g gitleaks`; this is the one tool allowed outside the project file, and only until the file lists it. If you touched `.github/workflows`, also run `actionlint` and `zizmor` (both from `mise.toml` once listed there; otherwise ask).
 
 Check the added lines before pushing: `git diff origin/main...HEAD`. Look for local paths, private names, other products' names and secrets. Check that every relative link in changed Markdown resolves.
 
