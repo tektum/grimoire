@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
@@ -16,10 +16,17 @@ async function errorsFor(code: string, file: string) {
 const ruleIds = async (code: string, file: string) => (await errorsFor(code, file)).map((e) => e.ruleId);
 const oneError = (rule = "no-restricted-imports") => [rule];
 
-const adapters = ["auth-dev", "auth-fake", "collab-hocuspocus", "config-env", "db-kysely", "logger-json"];
+// The adapter list of eslint.config.js itself, so that a new adapter is covered without editing this file.
+const adapters = JSON.parse(/const adapterNames = (\[[^\]]*\]);/.exec(readFileSync(path.join(repoRoot, "eslint.config.js"), "utf8"))?.[1] ?? "[]") as string[];
 const serverOnly = ["hono", "@hono/node-server", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible"];
 
 describe("adapter packages", () => {
+  it("covers every adapter that eslint.config.js restricts", () => {
+    expect(adapters).toContain("auth-descope");
+    expect(adapters).toContain("markdown-milkdown");
+    expect(adapters.length).toBeGreaterThanOrEqual(8);
+  });
+
   it("reject importing another adapter (fixture)", async () => {
     expect(await ruleIds(fixture("adapter-imports-adapter.ts.txt"), "packages/adapters/db-kysely/src/fixture.ts")).toEqual(oneError());
   });
