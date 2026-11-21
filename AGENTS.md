@@ -11,8 +11,9 @@ exists, and each new part adds its own line here.
 [CONTRIBUTING.md](CONTRIBUTING.md) holds the contribution rules. These
 instructions add what an agent needs on top of them. Claude Code reads this file
 when there is no `CLAUDE.md`, so there is none. Procedures
-(skills) live in `.claude/skills/`, which both Claude Code and OMP read, once
-that directory exists.
+(skills) live in `.claude/skills/`, which both Claude Code and OMP read:
+`small-pull-request`, `answer-review`, `verify-claim`, `add-allow-list-entry`
+and `pull-request-visuals`. Use the one that matches your task.
 
 ## Set-up
 
