@@ -1,6 +1,8 @@
 # RunsOn label convention for heavy jobs that arrive with the code (not used
 # yet: every job below is a tiny gate job on ubuntu-latest):
 #   runs-on: runs-on=${{ github.run_id }}-${{ github.run_attempt }}-<job>/runner=4cpu-linux-x64
+# The mise binary is pinned below (version and the sha256 of the extracted binary). Bump both by hand
+# together, and keep min_version in mise.toml at or below it; Renovate updates the tools in mise.toml and mise.lock.
 name: CI
 
 on:
@@ -28,19 +30,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Install gitleaks
-        env:
-          # renovate: datasource=github-releases depName=gitleaks/gitleaks
-          GITLEAKS_VERSION: 8.30.1
-          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-        run: |
-          curl -fsSLo gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks && rm gitleaks.tar.gz
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: gitleaks
       - name: Scan commits
-        run: ./gitleaks git --config .gitleaks.toml --redact --verbose .
+        run: gitleaks git --config .gitleaks.toml --redact --verbose .
       - name: Scan tree
-        run: ./gitleaks dir --config .gitleaks.toml --redact --verbose .
+        run: gitleaks dir --config .gitleaks.toml --redact --verbose .
 
   workflow-policy:
     name: Workflow Policy
@@ -50,25 +48,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Run actionlint
-        env:
-          # renovate: datasource=github-releases depName=rhysd/actionlint
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-        run: |
-          curl -fsSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
-          tar -xzf actionlint.tar.gz actionlint && rm actionlint.tar.gz
-          ./actionlint
-      - name: Run zizmor
-        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
-        env:
-          # renovate: datasource=github-releases depName=zizmorcore/zizmor
-          ZIZMOR_VERSION: 1.30.1
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
-          advanced-security: false
-          annotations: true
-          version: ${{ env.ZIZMOR_VERSION }}
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: actionlint zizmor
+      - name: Run actionlint
+        run: actionlint
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --format=github .
 
   changes:
     name: Changes
@@ -100,10 +90,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
-          node-version-file: .nvmrc
-          cache: npm
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run typecheck
@@ -119,10 +115,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
-          node-version-file: .nvmrc
-          cache: npm
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
       - run: npm ci --ignore-scripts
       - name: Fresh-runner preflight (IPv6 loopback)
         run: |

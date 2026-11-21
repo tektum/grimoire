@@ -34,30 +34,14 @@
         "major"
       ],
       "automerge": false
-    },
-    {
-      "description": "Pinned tool binaries carry a sha256 that must be bumped by hand in the same PR",
-      "matchDepNames": [
-        "gitleaks/gitleaks",
-        "rhysd/actionlint"
-      ],
-      "automerge": false
     }
   ],
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Version pins in workflow step env vars, e.g. the gitleaks binary (sha256 must be bumped in the same PR; the checksum step fails otherwise)",
-      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
-      "matchStrings": [
-        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+\\w+_VERSION: (?<currentValue>\\S+)"
-      ],
-      "extractVersionTemplate": "^v?(?<version>.*)$"
-    }
-  ],
   "github-actions": {
     "pinDigests": true
+  },
+  "mise": {
+    "enabled": true
   }
 }
