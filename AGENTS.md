@@ -58,6 +58,22 @@ request that changes only documentation skips the static and unit jobs. A green
 `CI Required` is therefore not proof that the other suites pass: run them
 yourself when your change can affect them. The required check is `CI Required`.
 
+## Agent configuration
+
+`.claude/settings.json` is read by Claude Code. JSON has no comments, so each
+key is explained here. The keys are documented in the Claude Code settings
+reference.
+
+- `permissions.allow`: the lint, typecheck, build, test and secret-scan commands
+  from the table above run without asking. Nothing that writes outside the
+  repository or touches the network is listed.
+- `permissions.deny`: no edits to `package-lock.json` (change `package.json` and
+  run `npm install`) or to `dist/` (generated), and no reading of `.env` files.
+- Skills are discovered from `.claude/skills/`; no setting is needed.
+
+OMP is not known to read this file for permissions, so the rules above also
+stand in this document. There is no project OMP configuration.
+
 ## Where things live
 
 - `packages/core`: the domain. Ports (interfaces) in `src/ports`, in-memory

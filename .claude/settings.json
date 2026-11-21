@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm test)",
+      "Bash(npm run test:*)",
+      "Bash(mise exec -- npm run *)",
+      "Bash(node tools/ci/check-test-sleeps.mjs)",
+      "Bash(gitleaks git --config .gitleaks.toml *)",
+      "Bash(gitleaks dir --config .gitleaks.toml *)"
+    ],
+    "deny": [
+      "Edit(./package-lock.json)",
+      "Edit(./dist/**)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  }
+}
