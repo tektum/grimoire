@@ -31,12 +31,12 @@ export default defineConfig({
       thresholds: {
         autoUpdate: process.env.COVERAGE_RATCHET === "1",
         statements: 71,
-        branches: 58,
+        branches: 71,
         functions: 65,
         lines: 73,
         "packages/core/src/**": { statements: 98, branches: 95, functions: 100, lines: 100 },
         "packages/adapters/config-env/src/**": { statements: 98, branches: 96, functions: 98, lines: 98 },
-        "packages/adapters/logger-json/src/**": { statements: 86, branches: 95, functions: 96, lines: 98 },
+        "packages/adapters/logger-json/src/**": { statements: 98, branches: 95, functions: 96, lines: 98 },
         // db-kysely is exercised only by the integration project (needs Postgres): no unit floor until that is collected.
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
       },
