@@ -1,5 +1,7 @@
 # Grimoire
 
+[![codecov](https://codecov.io/gh/tektum/grimoire/graph/badge.svg)](https://codecov.io/gh/tektum/grimoire)
+
 Grimoire is a collaborative documentation tool. People write and read pages together in a WYSIWYG editor, and every page is stored as Markdown. It is being built by Tektum to replace the team's current documentation tool. It is meant for the staff of a single company, from about 100 to 1,000 people, who sign in through the company login.
 
 ## Status
