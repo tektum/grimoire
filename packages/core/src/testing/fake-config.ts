@@ -43,8 +43,8 @@ export function makeFakeConfig(
     trustedProxies: [],
     localAllowNonLoopback: false,
     shutdownSaveDeadlineMs: 45000,
-    ...rest,
     descopeMaxTokenLifetimeSeconds: 86400,
+    ...rest,
     collab: { ...defaultCollabConfig, ...collab },
   };
 }
