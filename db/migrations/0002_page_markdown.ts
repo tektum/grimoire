@@ -1,8 +1,8 @@
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 
-// M2-T04 (contracts section 7): the Markdown copy of a page next to its Yjs state, saved in the same transaction.
-// `markdown_stale_since` marks a page whose Markdown is older than its state (M2-T04 fix round). `last_edited_by` has no foreign key until the users table exists (M3-T03). Hashes are not backfilled: existing rows have no Markdown yet.
+// The Markdown copy of a page next to its Yjs state, saved in the same transaction.
+// `markdown_stale_since` marks a page whose Markdown is older than its state. `last_edited_by` has no foreign key until the users table exists. Hashes are not backfilled: existing rows have no Markdown yet.
 // Grants are explicit, as in 0001 (no TRUNCATE, REFERENCES or TRIGGER).
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`

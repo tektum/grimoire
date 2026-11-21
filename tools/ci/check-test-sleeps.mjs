@@ -1,4 +1,4 @@
-// Fails on any fixed sleep of more than 250 ms in a test file (M3-T01c, decision 128): `sleep(n)`, `delay(n)`, `setTimeout(..., n)` and
+// Fails on any fixed sleep of more than 250 ms in a test file (decision 128): `sleep(n)`, `delay(n)`, `setTimeout(..., n)` and
 // `await new Promise((r) => setTimeout(r, n))`. A delay that is not a numeric literal (a name or an expression) cannot be checked, so
 // it needs an allow-list entry with a reason; so does every `setInterval` in test code (the allowed ones are listed on each run). Wait for a condition instead (`vi.waitFor`, the shared `eventually`).
 // A line is exempt only through an entry of tools/ci/test-sleep-allow.json that names the file, the exact line text and a reason.

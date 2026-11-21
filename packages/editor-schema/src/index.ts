@@ -1,5 +1,5 @@
 /**
- * The one editor plugin array, used by the browser editor (M6) and by the server converter (R7.7).
+ * The one editor plugin array, used by the browser editor (the web client, planned) and by the server converter (R7.7).
  *
  * A heading is a paragraph with a `level` attribute (0 = plain paragraph), so turning a block into a heading is an
  * attribute change on the same Yjs element and never a delete-and-recreate that would lose concurrent typing [R3.7].

@@ -1,7 +1,7 @@
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 
-// M3-T03 (contracts section 5): users, groups, collections and their access rows, and the permission columns of `pages`.
+// Users, groups, collections and their access rows, and the permission columns of `pages`.
 // Raw SQL, as in 0001 to 0003: the schema builder has no citext, `collate "C"`, partial unique indexes or deferrable composite foreign keys.
 // Access is enforced in the server (decision 128): no row-level security here; the runtime role's privileges below are the backstop.
 // `citext` is created by db/init/02-extensions.sql on a fresh local volume; this statement is then a no-op. On a managed service the extension must exist

@@ -77,7 +77,7 @@ describe('dev adapter malformed tokens', () => {
   });
 });
 
-describe('the token carries the secret (F2)', () => {
+describe('the token carries the secret', () => {
   const bad: [string, string][] = [
     ['no secret (the old grammar)', 'dev:alice:admin'],
     ['wrong secret', 'dev:wrong-secret-0123456789abc:alice:admin'],

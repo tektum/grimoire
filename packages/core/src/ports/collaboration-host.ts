@@ -14,7 +14,7 @@ export interface StoredPage {
   state: Uint8Array | null;
   markdown: string | null;
   markdownHash: Uint8Array | null;
-  /** `state_epoch` of the row; a save is refused when it differs (M2-T06). */
+  /** `state_epoch` of the row; a save is refused when it differs. */
   epoch: number;
   /** Epoch milliseconds since when the Markdown is older than the state (a save stored the state without fresh Markdown); `null`: current. */
   markdownStaleSince: number | null;
