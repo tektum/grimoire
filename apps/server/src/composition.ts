@@ -1,0 +1,166 @@
+// Composition root: the only module that constructs adapters and wires them into the core ports.
+import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
+import type { Clock } from '@tektum/grimoire-core/ports/clock';
+import type { Config } from '@tektum/grimoire-core/ports/config';
+import type { CollabDeps, CollaborationHost } from '@tektum/grimoire-core/ports/collaboration-host';
+import type { Database } from '@tektum/grimoire-core/ports/database';
+import type { DevRoleSource } from '@tektum/grimoire-core/ports/dev-role';
+import { createPageAccess } from '@tektum/grimoire-core/authorize';
+import type { PageAccessChecker } from '@tektum/grimoire-core/authorize';
+import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
+import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
+import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
+import { createDevAuth } from '@tektum/grimoire-adapter-auth-dev';
+import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
+import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
+import type { Env } from '@tektum/grimoire-adapter-config-env';
+import { createAccessStore, createDatabase, createPageStore, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
+import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
+import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
+import { createEventLog } from './events.js';
+import type { EventLog } from './events.js';
+import { Shutdown } from './lifecycle/shutdown.js';
+import type { ShutdownHook } from './lifecycle/shutdown.js';
+import { DERIVED_BUDGETS_MS } from './lifecycle/budget.js';
+
+export interface AppContext {
+  readonly config: Config;
+  readonly log: EventLog;
+  readonly clock: Clock;
+  readonly db: Database;
+  readonly auth: { readonly verifier: AuthVerifier; readonly roles?: DevRoleSource };
+  /** First sign-in rules; `allowDevRole` is `config.local`. The `GET /v1/me` route provisions with it. */
+  readonly signInPolicy: SignInPolicy;
+  readonly shutdown: Shutdown;
+  /** The collaboration host and what it needs; absent when the role has none (`api`). */
+  readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
+  /** Test-only facilities switched on (local mode only; `run.ts` logs one line at start-up when any is). */
+  readonly testFacilities: readonly ('slow-convert' | 'breaker-disabled')[];
+  /** Returned without registration: lifecycle/run.ts alone registers these and HTTP/collaboration hooks (S7). */
+  readonly shutdownHooks: readonly ShutdownHook[];
+}
+/** A composition that must not start although its settings are valid: a test double was handed in outside local mode. */
+export interface CompositionRefusal { readonly reason: 'authorizer-stub' | 'verifier-stub'; readonly host: string; readonly port: number }
+export type Composition =
+  | { readonly ok: true; readonly ctx: AppContext }
+  | { readonly ok: false; readonly issues: string[]; readonly problems: readonly ConfigProblem[]; readonly log: EventLog; readonly refused?: CompositionRefusal };
+
+/**
+ * Test seams: replacements for the authoriser and the verifier. Accepted only in local mode; outside it `compose` refuses to start,
+ * so production always gets the database authoriser and the Descope verifier.
+ */
+export interface CompositionOverrides {
+  readonly access?: PageAccessChecker;
+  readonly verifier?: AuthVerifier;
+}
+
+const systemClock: Clock = { now: () => Date.now() };
+export const CONVERT_TIMEOUT_MS = 10_000;
+/** Per-query limit of the authentication pool: below the host's 2 s bound on the database part of sign-in, so a hung query frees its connection. */
+export const AUTH_QUERY_TIMEOUT_MS = 1500;
+
+/** The pool's close and encompassing hook deadlines come from the one budget table. */
+export function markdownPoolHook(converter: MarkdownConverter): ShutdownHook {
+  return { name: 'markdown-pool', phase: 'release-jobs', deadlineMs: DERIVED_BUDGETS_MS.releaseJobs, run: () => converter.close() };
+}
+
+/** Loads configuration and constructs adapters; no global state, listener or shutdown registration occurs. */
+export function compose(env?: Env, overrides: CompositionOverrides = {}): Composition {
+  let config: Config;
+  try { config = env ? loadConfig(env) : loadConfigFromProcessEnv(); } catch (e) {
+    const problems = e instanceof ConfigError ? e.problems : [{ setting: 'configuration', rule: 'could not be loaded' }];
+    return { ok: false, issues: problems.map((x) => `${x.setting}: ${x.rule}`), problems, log: createEventLog(createJsonLogger({ clock: systemClock })) };
+  }
+  const facilities = parseTestFacilities(env, config.local);
+  if (facilities.problems.length > 0) {
+    return { ok: false, issues: facilities.problems.map((x) => `${x.setting}: ${x.rule}`), problems: facilities.problems, log: createEventLog(createJsonLogger({ clock: systemClock })) };
+  }
+  const url = config.database.url;
+  if (url === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ clock: systemClock })) };
+  const log = createEventLog(createJsonLogger({ level: config.logLevel, clock: systemClock }));
+  const logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
+  if (!config.local && (overrides.access !== undefined || overrides.verifier !== undefined)) {
+    const reason = overrides.access !== undefined ? 'authorizer-stub' : 'verifier-stub';
+    return { ok: false, issues: [`${reason}: refused outside local mode`], problems: [], log, refused: { reason, host: config.host, port: config.port } };
+  }
+  // Outside local mode the Descope verifier is the only one: there is no development verifier and no stub (R12.22). The settings
+  // already refuse a missing project id or an empty domain list (exit 2); the verifier itself also throws without a project id.
+  const descope = !config.local && config.descopeProjectId !== undefined ? createDescopeVerifier({
+    projectId: config.descopeProjectId, baseUrl: config.descopeBaseUrl, managementKey: config.descopeManagementKey,
+    logger, clock: systemClock, maxTokenLifetimeMs: config.descopeMaxTokenLifetimeSeconds * 1000,
+  }) : undefined;
+  const dev = config.local ? createDevAuth(config, systemClock) : undefined;
+  const builtVerifier = descope ?? dev?.verifier;
+  if (builtVerifier === undefined) return { ok: false, issues: ['GRIMOIRE_DESCOPE_PROJECT_ID: is required'], problems: [{ setting: 'GRIMOIRE_DESCOPE_PROJECT_ID', rule: 'is required' }], log };
+  const verifier = overrides.verifier ?? builtVerifier;
+  const auth: AppContext['auth'] = { verifier, ...(dev ? { roles: dev.roles } : {}) };
+  const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, allowDevRole: config.local };
+  const db = createDatabase(url);
+  const collabRole = config.role !== 'api';
+  const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
+  const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
+  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: CONVERT_TIMEOUT_MS, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
+  let collab: AppContext['collab'];
+  if (pageDb && authDb && converter) {
+    const users = createUserStore(authDb);
+    const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger });
+    const roles = dev?.roles;
+    // Outside local mode: the row of the verified subject, nothing created on the WebSocket (the client calls GET /v1/me first,
+    // ). Local mode: the provisioner with the development role, the same rows and rules as production otherwise.
+    const resolveUser: CollabDeps['resolveUser'] = roles
+      ? async (token, identity) => {
+        const devRole = roles.roleOf(token);
+        const r = await provisioner.signIn({ identity, ...(devRole !== undefined ? { devRole } : {}) });
+        return r.kind === 'ok' ? r.user : undefined;
+      }
+      : (_token, identity) => users.findByDescopeId(identity.userId);
+    collab = {
+      host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), pages: createPageStore(pageDb, systemClock), converter },
+    };
+  }
+  const shutdownHooks: ShutdownHook[] = [
+    ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
+    ...(converter ? [markdownPoolHook(converter)] : []),
+    ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
+    ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
+    { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
+  ];
+  const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : [])];
+  return { ok: true, ctx: { config, log, clock: systemClock, db, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(collab ? { collab } : {}) } };
+}
+
+export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
+export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
+export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
+export const migrateAdapter = migrateDatabase;
+
+export function composeMigrate(options: MigrateOptions = {}): CommandCompositionResult {
+  const log = createEventLog(createJsonLogger({ clock: systemClock }));
+  let config: Config;
+  try { config = options.env ? loadConfig(options.env, { purpose: 'migrate' }) : loadConfigFromProcessEnv({ purpose: 'migrate' }); } catch (e) {
+    log.error('migrate.config_invalid', { settings: e instanceof ConfigError ? e.problems : [{ setting: 'configuration', rule: 'invalid' }] });
+    return { ok: false, code: 2, log };
+  }
+  const url = config.database.migrationUrl;
+  if (!url) { log.error('migrate.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_MIGRATION_URL', rule: 'is required to run migrations' }] }); return { ok: false, code: 2, log }; }
+  return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}
+
+export function composeSeed(options: { readonly env?: Env } = {}): CommandCompositionResult {
+  const log = createEventLog(createJsonLogger({ clock: systemClock }));
+  let config: Config;
+  try { config = options.env ? loadConfig(options.env) : loadConfigFromProcessEnv(); } catch (e) {
+    log.error('seed.config_invalid', { settings: e instanceof ConfigError ? e.problems : [{ setting: 'configuration', rule: 'invalid' }] });
+    return { ok: false, code: 2, log };
+  }
+  const url = config.database.url;
+  if (!config.local || url === undefined) {
+    if (config.local) log.error('seed.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_URL', rule: 'is required to seed' }] });
+    else log.error('seed.refused', { settings: [{ setting: 'GRIMOIRE_LOCAL', rule: 'seeding needs it set to 1 (development only); nothing was written' }] });
+    return { ok: false, code: 2, log };
+  }
+  return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}

@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { createCollabHost } from '../../src/host.js';
@@ -71,5 +72,15 @@ describe('guardConnectHooks keeps the hooks a class defines on its prototype', (
     await wrapped.onStoreDocument?.({ documentName: 'p' } as never);
     expect(instance.stored).toEqual(['p']);
     await expect(wrapped.onConnect?.({ context: {} } as never)).rejects.toBeDefined();
+  });
+});
+
+describe('a refused upgrade answers on a socket that can still reset', () => {
+  it('a host that is not accepting (503) puts an error listener on the socket first: a reset is not an uncaught exception', () => {
+    const host = createCollabHost();
+    const socket = new PassThrough();
+    host.handleUpgrade({ url: '/collab', headers: {}, socket: {} } as never, socket as never, Buffer.alloc(0));
+    expect(socket.listenerCount('error')).toBeGreaterThan(0);
+    expect(() => socket.emit('error', new Error('write ECONNRESET'))).not.toThrow();
   });
 });

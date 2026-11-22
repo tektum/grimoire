@@ -1,0 +1,41 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/adapters/config-env"
+    },
+    {
+      "path": "../../packages/adapters/logger-json"
+    },
+    {
+      "path": "../../packages/adapters/db-kysely"
+    },
+    {
+      "path": "../../packages/adapters/auth-descope"
+    },
+    {
+      "path": "../../packages/adapters/auth-dev"
+    },
+    {
+      "path": "../../packages/adapters/auth-fake"
+    },
+    {
+      "path": "../../packages/adapters/markdown-milkdown"
+    },
+    {
+      "path": "../../packages/adapters/collab-hocuspocus"
+    }
+  ]
+}
