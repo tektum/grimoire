@@ -44,6 +44,7 @@ export interface HocuspocusCollabHost extends CollaborationHost {
 
 function reject(socket: Duplex, status: 403 | 404 | 429 | 503, retryAfterSeconds?: number): void {
   if (socket.destroyed) return;
+  socket.on('error', () => undefined); // after 'upgrade' Node no longer listens: a client reset while the answer is written must not be an uncaught exception
   const text = { 403: 'Forbidden', 404: 'Not Found', 429: 'Too Many Requests', 503: 'Service Unavailable' }[status];
   socket.end(`HTTP/1.1 ${String(status)} ${text}\r\nConnection: close\r\n${retryAfterSeconds === undefined ? '' : `Retry-After: ${String(retryAfterSeconds)}\r\n`}Content-Length: 0\r\n\r\n`);
 }
