@@ -60,6 +60,11 @@
     "reason": "Test fixture, not a wait: a child worker that deliberately hangs."
   },
   {
+    "file": "apps/server/test/benchmark/save-latency.test.ts",
+    "line": "await new Promise((r) => setTimeout(r, DEBOUNCE + 100)); // places the second edit about when the big page's save is converting",
+    "reason": "Fixed offset of the benchmark scenario: DEBOUNCE (a named product constant) plus 100 ms places the second edit about when the first save converts; the test then checks from the order of events that the big page was stored after the second edit (otherwise it fails), and the measured quantity is the second save, not this wait."
+  },
+  {
     "file": "apps/server/test/collab/collab.int.test.ts",
     "line": "const typing = setInterval(() => { c.text.insert(c.text.length, 'x'); }, 500);",
     "reason": "Typing driver for a feature under test (a client that keeps editing during a store outage): a steady 500 ms edit rate is the stimulus; it is cleared in finally and the assertions wait on conditions."
