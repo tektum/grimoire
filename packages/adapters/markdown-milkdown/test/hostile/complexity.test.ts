@@ -65,7 +65,7 @@ describe('Markdown complexity pre-check (the Markdown parser is quadratic in the
 });
 
 describe('a block with a huge number of children is refused before the serializer (it copies the child list once per child)', () => {
-  it('one raw html node of 62,500 whole elements splits into 187,500 children: refused in well under a second, not 100 s', async () => {
+  it('one raw html node of 62,500 whole elements splits into 187,500 children: refused in a few seconds of CPU at most (400 ms idle), not 100 s', async () => {
     const shape = SHAPES.find((candidate) => candidate.name === 'raw html of many tags');
     if (!shape) throw new Error('shape');
     const state = await stateFromDocJson(shape.build(500_000));
