@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FakeClock } from '../../../core/src/testing/fake-clock.js';
-import { makeFakeConfig } from '../../../core/src/testing/fake-config.js';
+import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
+import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { createDevAuth } from '../src/index.js';
 
 const clock = new FakeClock(1_000_000);

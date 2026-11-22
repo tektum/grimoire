@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FakeClock } from '../../../core/src/testing/fake-clock.js';
+import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { createJsonLogger } from '../src/index.js';
 
 function capture(level?: 'debug' | 'info' | 'warn' | 'error') {

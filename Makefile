@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test
+.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -46,6 +46,7 @@ reset: down-volumes up
 check-compose:
 	bun run vitest run --project unit apps/server/test/server/compose-settings.test.ts
 	$(COMPOSE) config --quiet
+	$(COMPOSE) -f compose.yaml -f compose.m3.yaml config --quiet
 
 migrate: .env dev-secret
 	$(COMPOSE) --profile tools run --rm --build migrate
@@ -53,3 +54,50 @@ migrate: .env dev-secret
 test:
 	bun run test
 
+# The collaboration end-to-end test: needs `make up`. Ten scenarios, each in its own process, against the running stack; results in test-results/m1/.
+# NOTE: the scenarios kill, restart and stop the app container and revoke and grant UPDATE on pages for the runtime role.
+test-m1: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	rm -f test-results/m1/*.json
+	node apps/server/test-e2e/run.ts
+
+# The office scenario: 100 users, 3 pages each, 300 clients on 30 pages.
+test-m1-office: dev-secret
+	E2E_RESULTS_DIR=test-results/m1-office node apps/server/test-e2e/scenarios/office.ts
+
+# Each limit raised in the app must make its scenario fail; then the app is recreated with the default limits.
+test-m1-mutation: dev-secret
+	node apps/server/test-e2e/mutation.ts
+
+# The Markdown end-to-end test: needs `make up`. Five scenarios, each in its own process, against the running stack; results in test-results/m2/.
+# NOTE: markdown-equals-live recreates the app container with the debug log level (collab.save_skipped is a debug line) and back; restart-mid-edit kills and starts it.
+# The mutation proof of the hostile-neighbour scenario: the same scenario with the per-page conversion breaker disabled (a test-only switch the server
+# refuses outside local mode) must FAIL because ordinary pages go stale. Prints the expected FAIL line; exits 0 only if that failure occurred. Needs `make up`.
+test-m2-hostile-mutation: dev-secret
+	@mkdir -p test-results/m2
+	@HOSTILE_NEIGHBOUR_NO_BREAKER=1 E2E_RESULTS_DIR=test-results/m2-mutation node apps/server/test-e2e/m2/run.ts hostile-neighbour > test-results/m2/hostile-mutation.log 2>&1; code=$$?; cat test-results/m2/hostile-mutation.log; \
+	if [ $$code -ne 0 ] && grep -q '^FAIL hostile-neighbour: .*behind its typing' test-results/m2/hostile-mutation.log; then echo "EXPECTED FAIL: hostile-neighbour fails without the breaker (ordinary pages went stale)"; \
+	else echo "UNEXPECTED: the scenario did not fail for the right reason with the breaker disabled (exit $$code)"; exit 1; fi
+
+test-m2: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	node --test apps/server/test-e2e/m2/own-paragraph.test.mjs
+	rm -f test-results/m2/*.json
+	node apps/server/test-e2e/m2/run.ts
+
+# The sign-in end-to-end test: starts the app OUTSIDE local mode (real Descope adapter, compose.m3.yaml) against the local key server of tools/m3-keyserver, then runs the
+# scenarios one after another against it; results in test-results/m3/. Needs a running stack (`make up` or `make reset`); recreates the app (and starts the key server).
+# Afterwards `make up` returns the app to local mode (and `make down-volumes` removes the key server with everything else).
+M3_COMPOSE := COMPOSE_FILE=compose.yaml:compose.m3.yaml
+test-m3: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	sh tools/m3-keyserver/pki.sh test-results/m3/pki
+	$(M3_COMPOSE) $(MAKE) up
+	rm -f test-results/m3/*.json
+	$(M3_COMPOSE) node apps/server/test-e2e/m3/run.ts

@@ -280,6 +280,125 @@ jobs:
         if: always()
         run: make down-volumes
 
+  e2e-m1:
+    name: Exit test M1
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: make up
+      - run: make test-m1
+      - name: Collect Compose logs
+        if: failure()
+        run: docker compose -p grimoire logs --no-color > compose.log
+      - name: Upload e2e-m1-results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-m1-results
+          path: |
+            test-results/
+            compose.log
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-volumes
+
+  e2e-m2:
+    name: Exit test M2
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: make up
+      - run: make test-m2
+      - name: Collect Compose logs
+        if: failure()
+        run: docker compose -p grimoire logs --no-color > compose.log
+      - name: Upload e2e-m2-results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-m2-results
+          path: |
+            test-results/
+            compose.log
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-volumes
+
+  e2e-m3:
+    name: Exit test M3
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: make test-m3
+      - name: Collect Compose logs
+        if: failure()
+        run: docker compose -p grimoire logs --no-color > compose.log
+      - name: Upload e2e-m3-results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-m3-results
+          path: |
+            test-results/
+            compose.log
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-volumes
+
   ci-required:
     name: CI Required
     runs-on: ubuntu-latest
@@ -295,6 +414,9 @@ jobs:
       - compose-config
       - integration
       - image
+      - e2e-m1
+      - e2e-m2
+      - e2e-m3
     steps:
       - name: Verify every needed job succeeded
         env:
