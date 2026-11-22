@@ -78,7 +78,9 @@ describe('accepted classes (each a named rule with its own test)', () => {
   });
 
   it('3. NUL and a lone surrogate are replaced by the converter and by the reader alike: accepted', async () => {
-    expect(reason(await convert(doc(para(text('a\u0000b \uD800 c')))))).toBe('ok');
+    const result = await convert(doc(para(text('a\u0000b \uD800 c'))));
+    // The NUL and the lone surrogate each come out as U+FFFD, in the Markdown and in the search text, and the page is accepted.
+    expect(result).toEqual({ ok: true, markdown: 'a\uFFFDb \uFFFD c\n', text: 'a\uFFFDb \uFFFD c' });
   });
 
   it('4. a space at the edge of a marked run: accepted', async () => {
@@ -88,6 +90,8 @@ describe('accepted classes (each a named rule with its own test)', () => {
 
   it('4. is not widened here: a lone marked space between letters is saved plain by the normal form, not by the rule (see below)', async () => {
     expect(reason(await convert(doc(para(text('a'), text('b', 'inlineCode'), text('c')))))).toBe('ok');
+    // The marked space itself: written and found as a plain space.
+    expect(await convert(doc(para(text('a'), text(' ', 'strong'), text('b'))))).toEqual({ ok: true, markdown: 'a b\n', text: 'a b' });
   });
 
   it('5. the order of marks is not a difference', async () => {
