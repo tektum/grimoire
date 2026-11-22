@@ -1,0 +1,27 @@
+{
+  "name": "@tektum/grimoire-adapter-collab-hocuspocus",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@hocuspocus/server": "4.8.0",
+    "@tektum/grimoire-core": "*",
+    "crossws": "0.4.17",
+    "rate-limiter-flexible": "11.5.0",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "4.8.0",
+    "@tektum/grimoire-test-support": "*"
+  }
+}
