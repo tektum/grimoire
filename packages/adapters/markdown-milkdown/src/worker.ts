@@ -3,12 +3,13 @@ import { move, transferableSymbol, valueSymbol } from 'piscina';
 import type { ConvertResult, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { convertInProcess } from './convert.js';
 import type { ConverterLimits } from './limits.js';
-import { seedInProcess } from './seed.js';
+import { reseedInProcess, seedInProcess } from './seed.js';
 
 /** What the pool sends: bytes or Markdown, and the limits. Plain data only. */
 export type WorkerRequest =
   | { op: 'to-markdown'; state: Uint8Array; limits: ConverterLimits }
-  | { op: 'seed'; markdown: string; limits: ConverterLimits };
+  | { op: 'seed'; markdown: string; limits: ConverterLimits }
+  | { op: 'reseed'; markdown: string; limits: ConverterLimits };
 
 /** TEST FACILITY: present only when the pool was given `testSlow`; read once at worker start, never per conversion. */
 const slow = ((): { marker: string; ms: number } | undefined => {
@@ -27,7 +28,7 @@ export default async function run(request: WorkerRequest): Promise<ConvertResult
     if (slow && result.ok && result.markdown.includes(slow.marker)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, slow.ms);
     return result;
   }
-  const result = await seedInProcess(request.markdown, request.limits);
+  const result = await (request.op === 'reseed' ? reseedInProcess : seedInProcess)(request.markdown, request.limits);
   if (!result.ok) return result;
   // Hand the seeded bytes back by moving their buffer, not copying it; a view into a larger buffer is copied out first.
   const { state } = result;

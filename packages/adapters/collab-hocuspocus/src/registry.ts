@@ -31,7 +31,7 @@ export interface RegistryOptions {
 /** The ordered extension list; Hocuspocus orders by `priority` (auth 1000, re-check 900, limits 800, presence 600, persistence 100, lifecycle 50). */
 export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; persistence: PersistenceExtension; recheck: Recheck } {
   const persistence = createPersistenceExtension({
-    deps: o.deps, log: o.log, sleep: o.sleep, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
+    deps: o.deps, log: o.log, sleep: o.sleep, convertConcurrency: o.deps.config.collab.convertPoolSize, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
   });
   const recheck = createRecheck({ deps: o.deps, log: o.log });
   const extensions: Extension[] = [

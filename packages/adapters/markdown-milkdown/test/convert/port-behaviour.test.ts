@@ -28,13 +28,13 @@ describe.each(subjects)('MarkdownConverter behaviour: %s', (_name, make) => {
     await converter.close();
     await converter.close();
     expect(await converter.toMarkdown(new Uint8Array(0))).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
-    expect(await converter.seed('# x')).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
+    expect(await converter.seed('# x', 'test-key')).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
   });
 });
 
 describe('MarkdownConverter on the adapter: seed failure', () => {
   it('returns too-large as a typed failure', async () => {
     const converter = new InProcessConverter({ maxSeedMarkdownBytes: 4 });
-    expect(await converter.seed('too long for the limit')).toMatchObject({ ok: false, reason: 'too-large' });
+    expect(await converter.seed('too long for the limit', 'test-key')).toMatchObject({ ok: false, reason: 'too-large' });
   });
 });

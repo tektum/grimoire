@@ -21,7 +21,7 @@ describe('seed limits', { timeout: 3_000_000 }, () => {
     const tryPool = async (kind: Kind, kb: number) => {
       const md = gen[kind](kb);
       const t = performance.now();
-      const r = await conv.seed(md);
+      const r = await conv.seed(md, 'test-key');
       return { kb, bytes: Buffer.byteLength(md), ok: r.ok, reason: r.ok ? '' : r.reason, state: r.ok ? r.state.byteLength : 0, ms: Math.round(performance.now() - t) };
     };
     for (const kind of ['words', 'list', 'table'] as Kind[]) {

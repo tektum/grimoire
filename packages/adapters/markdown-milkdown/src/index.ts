@@ -1,5 +1,5 @@
 export { convertInProcess, sanitise } from './convert.js';
-export { seedInProcess } from './seed.js';
+export { reseedInProcess, seedInProcess } from './seed.js';
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
 export type { ConverterLimits } from './limits.js';
 export { createMarkdownConverter, defaultWorkerPath } from './pool.js';

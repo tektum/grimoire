@@ -11,7 +11,7 @@ import { normaliseForMarkdown } from '@tektum/grimoire-editor-schema';
 import { getHeadless } from '../../dist/headless.js';
 import { generateBlocks, generateMarkdown } from '../../dist/testing/generate.js';
 
-const BIG = { maxStateBytes: 2 ** 31, maxBlocks: 2 ** 31, maxDepth: 100, maxSeedMarkdownBytes: 2 ** 31 };
+const BIG = { maxStateBytes: 2 ** 31, maxBlocks: 2 ** 31, maxDepth: 100, maxSeedMarkdownBytes: 2 ** 31, maxSeedLines: 2 ** 31, maxSeedLineMarkers: 2 ** 31, maxReseedMarkdownBytes: 2 ** 31, maxReseedLineMarkers: 2 ** 31 };
 const mb = (bytes) => Math.round(bytes / 1024 / 1024);
 const [mode, ...args] = process.argv.slice(2);
 

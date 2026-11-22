@@ -19,6 +19,8 @@ export interface PersistenceOptions {
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   /** Slot for the next milestone (page-change bookkeeping). Called after every document change; must not throw. */
   readonly onChange?: (e: { documentName: string }) => void;
+  /** Conversions the converter runs at once: its worker count (default 1). The gate in front of it admits this many, no fewer, so that a slow page cannot make another wait while a worker is idle. */
+  readonly convertConcurrency?: number;
   /** How long a conversion may wait for the converter before the save goes state-only as "busy" (default 10 s). */
   readonly convertWaitMs?: number;
   /** Later attempt at converting a page whose save was busy: first delay, cap and number of attempts (defaults 2 s, 30 s, 8). */
@@ -57,7 +59,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
   const retryBaseMs = o.convertRetryBaseMs ?? 2000;
   const retryMaxMs = o.convertRetryMaxMs ?? 30_000;
   const retryLimit = o.convertRetryLimit ?? 8;
-  const converter = createConversionGate(o.deps.converter, o.convertWaitMs === undefined ? {} : { waitMs: o.convertWaitMs });
+  const converter = createConversionGate(o.deps.converter, { ...(o.convertConcurrency === undefined ? {} : { concurrency: o.convertConcurrency }), ...(o.convertWaitMs === undefined ? {} : { waitMs: o.convertWaitMs }) });
   const saver = createSaver({ converter, log: o.log, clock: () => o.deps.clock.now(), ...(o.breaker ? { breaker: o.breaker } : {}) });
   const editors = createEditorTracker();
   const failures = new Map<string, number>();
@@ -241,8 +243,10 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
         const started = performance.now();
         let failure: { reason: string; busy: boolean } | undefined;
         try {
+          // `reseed` TRUSTS this Markdown (our own serialiser's, lenient limits). A row with Markdown and no state must never hold user-supplied text:
+          // user Markdown goes through `seed` and is stored as state (spec R7.13).
           const seeded = await pages.seed(pageId, async (markdown) => {
-            const r = await converter.seed(markdown);
+            const r = await converter.reseed(markdown, pageId);
             if (!r.ok) { failure = { reason: r.reason, busy: isBusy(r.reason, r.detail) }; throw new SeedError(r.reason); }
             return reidentify(r.state, pageId, markdown);
           });

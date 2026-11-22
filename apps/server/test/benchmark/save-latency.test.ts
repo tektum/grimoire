@@ -55,7 +55,7 @@ describe('save latency', { timeout: 600_000 }, () => {
     out['small_ms_from_edit_to_markdown_stored'] = smallRuns;
     out['small_saved'] = savedLines(small).slice(-1);
 
-    const sizeKb = Number(process.env['BENCH_MARKDOWN_KB'] ?? '400');
+    const sizeKb = Number(process.env['BENCH_MARKDOWN_KB'] ?? '180');
     const big = newPage();
     const line = 'The quick brown fox jumps over the lazy dog, again and again, with *emphasis* and `code` and a [link](https://example.com).\n\n';
     const md = line.repeat(Math.ceil((sizeKb * 1024) / line.length));

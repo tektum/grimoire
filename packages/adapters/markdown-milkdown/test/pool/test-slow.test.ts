@@ -9,14 +9,14 @@ let pool: PooledMarkdownConverter | undefined;
 afterEach(async () => { await pool?.close(); pool = undefined; });
 
 async function stateOf(c: PooledMarkdownConverter, markdown: string): Promise<Uint8Array> {
-  const s = await c.seed(markdown);
+  const s = await c.seed(markdown, 'test-key');
   if (!s.ok) throw new Error('seed failed');
   return s.state;
 }
 
 describe('the test-only slow conversion (a marker in the page text)', () => {
   it('a page carrying the marker converts past the timeout; a page without it does not', async () => {
-    pool = createMarkdownConverter({ timeoutMs: 3_000, testSlow: { marker: MARK, ms: 60_000 } });
+    pool = createMarkdownConverter({ timeoutMs: 3_000, seedTimeoutMs: 3_000, testSlow: { marker: MARK, ms: 60_000 } });
     const hostile = await stateOf(pool, `# Hostile\n\n${MARK}\n`);
     const plain = await stateOf(pool, '# Plain\n\nordinary\n');
     const t0 = Date.now();

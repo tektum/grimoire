@@ -299,75 +299,39 @@ export function compareDocuments(expected: unknown, actual: unknown): string | u
   return differ(comparable(expected as JsonNode), comparable(actual as JsonNode), '');
 }
 
+/** Why Markdown is refused before it is read: the limit that is exceeded and a sentence (never page text) naming it and its value. */
+export interface SeedProblem { readonly limit: 'bytes' | 'lines' | 'markers'; readonly message: string }
+
+/** The prefix of a line: spaces and tabs, then quote markers, bullets and numbers (`-`, `+`, `*` and `1.` only count before a space, a tab or the end of the line). */
+const LINE_PREFIX = /^[ \t]*(?:(?:>|[-+*](?=[ \t]|$)|\d+[.)](?=[ \t]|$))[ \t]*)*/gm;
+/** Every marker in a prefix is one of these characters: the `.` or `)` of a number stands for the number. */
+const MARKER = /[>+*.)-]/g;
+const LINE_BREAK = /\r\n|\r|\n/g;
+
 /**
- * What the Markdown reader can be made to do, bounded on the raw text: a conservative charge that never looks at block structure.
- * The reader is quadratic in the delimiters of one paragraph (10,000 unmatched `*a` cost 0.7 s, 20,000 cost 3 s, 30,000 closing
- * brackets about 40 s) and the converter's worker is killed after 10 s. Rule: the guard may count too much, it must never count too little.
- * So it charges every character of every line, whatever container the line is in (quote, list, code, table, heading): a paragraph never
- * continues over a blank line in any container, so a "context" is a run of non-blank lines, and wrapping text in any container can only
- * add characters to a run, never take any away. Nothing is exempt (a code block full of `*` is charged like prose).
- * `unescaped`: `* _ ~ [ ] ` and backtick, the characters that drive the reader's worst cases. `total`: those and the escaped ones.
- * Known limit (pinned by tests): a valid page with an extreme density of those characters in one run of lines (about 10,000 in a
- * row of non-blank lines) is refused as too complex, with the budget named.
+ * The cheap check before Markdown is turned into a page: its size, its number of lines and the quote and list markers in the
+ * prefix of each line. Two linear passes, no parsing and no model of the reader's block structure. It does NOT make the reader's
+ * time predictable (see docs/proof/m2-conversion.md): the time limit of the worker does that. Lines end at LF, CRLF or a lone CR.
  */
-export const MAX_UNESCAPED_DELIMITERS = 10_000;
-export const MAX_DELIMITERS = 100_000;
-/** All runs together may cost about as much as four of the largest allowed ones (a few seconds of parsing). */
-export const MAX_COST = 4 * MAX_UNESCAPED_DELIMITERS * MAX_UNESCAPED_DELIMITERS;
-
-const DELIMITER_CODES = new Set(['*', '_', '~', '[', ']', '`'].map((c) => c.charCodeAt(0)));
-const BACKSLASH = 92;
-const LINE_END = /\r\n|\r|\n/g;
-const BLANK = /^[ \t]*$/;
-
-/** The charge of a document: the largest run (unescaped, total) and the sum of the squares of the runs' unescaped counts. */
-export interface Complexity { readonly maxUnescaped: number; readonly maxTotal: number; readonly cost: number }
-
-/** Linear in the length of the text. Lines end at LF, CRLF or a lone CR (as the reader's do). */
-export function complexityOf(markdown: string): Complexity {
-  let unescaped = 0;
-  let total = 0;
-  let maxUnescaped = 0;
-  let maxTotal = 0;
-  let cost = 0;
-  const endRun = (): void => {
-    maxUnescaped = Math.max(maxUnescaped, unescaped);
-    maxTotal = Math.max(maxTotal, total);
-    cost += unescaped * unescaped;
-    unescaped = 0;
-    total = 0;
-  };
-  let start = 0;
-  while (start <= markdown.length) {
-    LINE_END.lastIndex = start;
-    const found = LINE_END.exec(markdown);
-    const end = found ? found.index : markdown.length;
-    const line = markdown.slice(start, end);
-    start = found ? end + found[0].length : markdown.length + 1;
-    if (BLANK.test(line)) {
-      endRun();
-      continue;
-    }
-    for (let i = 0; i < line.length; i += 1) {
-      const code = line.charCodeAt(i);
-      if (code === BACKSLASH) {
-        if (DELIMITER_CODES.has(line.charCodeAt(i + 1))) total += 1;
-        i += 1;
-      } else if (DELIMITER_CODES.has(code)) {
-        unescaped += 1;
-        total += 1;
-      }
+export function seedMarkdownProblem(
+  markdown: string,
+  limits: Pick<ConverterLimits, 'maxSeedMarkdownBytes' | 'maxSeedLines' | 'maxSeedLineMarkers'>,
+): SeedProblem | undefined {
+  const bytes = Buffer.byteLength(markdown, 'utf8');
+  if (bytes > limits.maxSeedMarkdownBytes) return { limit: 'bytes', message: `the Markdown is ${bytes} bytes; the limit is ${limits.maxSeedMarkdownBytes} bytes` };
+  const breaks = markdown.match(LINE_BREAK)?.length ?? 0;
+  const endsWithBreak = /[\r\n]$/.test(markdown);
+  if (breaks > limits.maxSeedLines || (breaks === limits.maxSeedLines && !endsWithBreak)) {
+    const lines = endsWithBreak ? breaks : breaks + 1;
+    return { limit: 'lines', message: `the Markdown has ${lines} lines; the limit is ${limits.maxSeedLines} lines` };
+  }
+  for (const prefix of markdown.matchAll(LINE_PREFIX)) {
+    const markers = prefix[0].match(MARKER)?.length ?? 0;
+    if (markers > limits.maxSeedLineMarkers) {
+      const line = (markdown.slice(0, prefix.index).match(LINE_BREAK)?.length ?? 0) + 1;
+      return { limit: 'markers', message: `line ${line} has ${markers} quote or list markers; the limit is ${limits.maxSeedLineMarkers} per line` };
     }
   }
-  endRun();
-  return { maxUnescaped, maxTotal, cost };
-}
-
-/** A sentence (never page text) naming the budget that is exceeded, or `undefined`. */
-export function markdownComplexityProblem(markdown: string): string | undefined {
-  const c = complexityOf(markdown);
-  if (c.maxUnescaped > MAX_UNESCAPED_DELIMITERS || c.maxTotal > MAX_DELIMITERS) return `more than ${MAX_UNESCAPED_DELIMITERS} delimiters in one run of lines: too complex for the Markdown reader`;
-  if (c.cost > MAX_COST) return 'more delimiter characters than the Markdown reader can take in the time it is given (the document-wide budget)';
   return undefined;
 }
 

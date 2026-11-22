@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import * as encoding from 'lib0/encoding';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import { convertInProcess, seedInProcess } from '@tektum/grimoire-adapter-markdown-milkdown';
+import { convertInProcess, reseedInProcess } from '@tektum/grimoire-adapter-markdown-milkdown';
 import * as Y from 'yjs';
 import { createReferenceEditor, installDom } from './reference-editor.mjs';
 import type { ReferenceEditor } from './reference-editor.mjs';
@@ -70,9 +70,10 @@ export async function canonicalOfState(state: Uint8Array): Promise<string> {
   if (!r.ok) throw new Error(`conversion refused: ${r.reason}: ${"detail" in r ? String(r.detail) : ""}`);
   return r.markdown;
 }
+/** The state the server builds for a row that has Markdown and no state: the system's rebuild (`reseed`, limits up to the stored-Markdown cap), not the person's seed (which has the small limits of untrusted text). */
 export async function stateOfMarkdown(markdown: string): Promise<Uint8Array> {
-  const r = await seedInProcess(markdown);
-  if (!r.ok) throw new Error(`seed refused: ${r.reason}`);
+  const r = await reseedInProcess(markdown);
+  if (!r.ok) throw new Error(`reseed refused: ${r.reason}`);
   return r.state;
 }
 

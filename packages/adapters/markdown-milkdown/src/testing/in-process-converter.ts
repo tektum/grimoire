@@ -1,7 +1,7 @@
 import type { ConvertResult, MarkdownConverter, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { convertInProcess } from '../convert.js';
 import type { ConverterLimits } from '../limits.js';
-import { seedInProcess } from '../seed.js';
+import { reseedInProcess, seedInProcess } from '../seed.js';
 
 /** The port on the in-process functions, with no worker: for tests and for the worker pool's own tests. */
 export class InProcessConverter implements MarkdownConverter {
@@ -17,6 +17,11 @@ export class InProcessConverter implements MarkdownConverter {
   seed(markdown: string): Promise<SeedResult> {
     if (this.closed) return Promise.resolve({ ok: false, reason: 'internal', detail: 'closed' });
     return seedInProcess(markdown, this.limits);
+  }
+
+  reseed(markdown: string): Promise<SeedResult> {
+    if (this.closed) return Promise.resolve({ ok: false, reason: 'internal', detail: 'closed' });
+    return reseedInProcess(markdown, this.limits);
   }
 
   close(): Promise<void> {

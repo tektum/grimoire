@@ -1,7 +1,7 @@
 import { normaliseForMarkdown } from '@tektum/grimoire-editor-schema';
 import { yXmlFragmentToProseMirrorRootNode } from 'y-prosemirror';
 import type { ConvertResult } from '@tektum/grimoire-core/ports/markdown-converter';
-import { checkNoLoss, compareDocuments, guardState, markdownComplexityProblem, sanitise, tooManyChildren } from './guards.js';
+import { checkNoLoss, compareDocuments, guardState, sanitise, seedMarkdownProblem, tooManyChildren } from './guards.js';
 import { getHeadless } from './headless.js';
 import type { Headless } from './headless.js';
 import { resolveLimits } from './limits.js';
@@ -53,16 +53,20 @@ export async function convertWith(
     const written = normaliseForMarkdown(doc);
     const crowded = tooManyChildren(written, resolved.maxBlocks);
     if (crowded !== undefined) return { ok: false, reason: 'too-large', detail: crowded };
-    const markdown = headless.serialize(written);
-    // Before the verifying parse, which is quadratic in the delimiters of one paragraph. The page keeps its live state.
-    if (markdownComplexityProblem(markdown) !== undefined) return { ok: false, reason: 'too-large', detail: 'the Markdown would have too many delimiters in one paragraph to read back' };
+    const serialised = headless.serialize(written);
+    // What is stored must be rebuildable by `reseed` (see the port's invariant), so it is held to the same pre-check, on the text that is stored: after
+    // `sanitise` (a NUL becomes three bytes), and for every limit the rebuild has, not the size alone (a code line of 101 quote markers is written as is).
+    const markdown = sanitise(serialised);
+    const unrebuildable = seedMarkdownProblem(markdown, { maxSeedMarkdownBytes: resolved.maxReseedMarkdownBytes, maxSeedLines: Number.MAX_SAFE_INTEGER, maxSeedLineMarkers: resolved.maxReseedLineMarkers });
+    if (unrebuildable !== undefined) return { ok: false, reason: 'too-large', detail: unrebuildable.message };
+    // The verifying parse is bounded by the caller's time limit, not by a pre-check; nesting is bounded by the depth guard above.
     if (resolved.verifyRoundTrip) {
-      const difference = compareDocuments(written.toJSON(), headless.parse(markdown).toJSON());
+      const difference = compareDocuments(written.toJSON(), headless.parse(serialised).toJSON());
       // The place is a path of node types, never page text.
       if (difference !== undefined) return { ok: false, reason: 'content-lost', detail: `the Markdown does not read back as the same document (${difference})`.slice(0, 200) };
     }
     const text = written.textBetween(0, written.content.size, '\n', leafText);
-    return { ok: true, markdown: sanitise(markdown), text: tidy(sanitise(text)) };
+    return { ok: true, markdown, text: tidy(sanitise(text)) };
   } catch (error: unknown) {
     // A stack overflow means nesting the depth check did not foresee; anything else is a bug, never a partial result.
     if (error instanceof RangeError) return { ok: false, reason: 'too-deep', detail: 'stack overflow while converting' };

@@ -22,7 +22,7 @@ it('a cap-sized conversion (0.9 MB of Markdown, a 1.5 MB state: the largest page
   const delay = monitorEventLoopDelay({ resolution: 10 });
   try {
     // Warm the worker first so the measured call is the conversion, not the start-up.
-    await converter.seed('warm');
+    await converter.seed('warm', 'test-key');
     delay.enable();
     const started = performance.now();
     const conversion = converter.toMarkdown(state);
