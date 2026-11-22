@@ -1,0 +1,16 @@
+Release plan: תוכנית שחרור v0.9
+The word שלום means hello; the sentence "הגרסה מוכנה for review" mixes both.
+בדוק את bun test לפני המיזוג
+Merge to main (ואז לסמן ב-tracker)
+Item
+פריט
+Status
+Search
+חיפוש
+done
+Import
+ייבוא
+נדחה
+שלום world שלום
+Numbers inside Hebrew: בשנת 2026 היו 1,234 משתמשים (12.5%).
+‫RTL embedding mark kept as a character‬ and a word with a right-to-left mark: abc‏ def

@@ -1,0 +1,19 @@
+--- marked, input Markdown
+<p>
+  "trailing break\"
+<p>
+  "next"
+<p>
+  <br>
+  "leading break"
+<p>
+  "spaces then text"
+--- marked, output Markdown
+<p>
+  "trailing break\"
+<p>
+  "next"
+<p>
+  "leading break"
+<p>
+  "spaces then text"

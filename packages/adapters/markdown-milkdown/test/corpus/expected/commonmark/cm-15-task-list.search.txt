@@ -1,0 +1,6 @@
+open
+done
+done capital
+nested open
+nested done
+ordered task

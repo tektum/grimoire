@@ -1,0 +1,7 @@
+--- marked, input Markdown
+<p>
+  "text"
+<h2>
+--- marked, output Markdown
+<p>
+  "text"

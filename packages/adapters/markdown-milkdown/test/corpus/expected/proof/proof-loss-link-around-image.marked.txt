@@ -1,0 +1,27 @@
+--- marked, input Markdown
+<p>
+  <a href="c">
+    <img alt="a" src="b.png">
+    " tail"
+<p>
+  <a href="c" title="link title">
+    <img alt="only image" src="b.png" title="img title">
+<p>
+  "text "
+  <a href="c">
+    <img alt="in text" src="b.png">
+  " text"
+--- marked, output Markdown
+<p>
+  <img alt="a" src="b.png">
+  " "
+  <a href="c">
+    "tail"
+<p>
+  <a href="c" title="link title">
+    <img alt="only image" src="b.png" title="img title">
+<p>
+  "text "
+  <a href="c">
+    <img alt="in text" src="b.png">
+  " text"

@@ -1,0 +1,6 @@
+text note after
+head x
+c
+x y
+task x
+alone inline

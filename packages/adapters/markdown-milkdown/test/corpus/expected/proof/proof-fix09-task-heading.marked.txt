@@ -1,0 +1,25 @@
+--- marked, input Markdown
+<ul>
+  <li>
+    <input type="checkbox">
+    " ## h"
+  <li>
+    <input checked="" type="checkbox">
+    " # big"
+  <li>
+    "[ ]"
+    <h2>
+      "heading after empty checkbox"
+--- marked, output Markdown
+<ul>
+  <li>
+    <input type="checkbox">
+    " ## h"
+  <li>
+    <input checked="" type="checkbox">
+    " # big"
+  <li>
+    <input type="checkbox">
+    <br>
+    <h2>
+      "heading after empty checkbox"

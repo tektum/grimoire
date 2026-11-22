@@ -1,0 +1,12 @@
+{
+  "seed": 20261120,
+  "targetBytes": 300000,
+  "inputBytes": 300180,
+  "inputSha256": "0e470c0a8b6822466dbb14780341e98447df2fdd367a4f5d1e0121a995c4505b",
+  "outcome": "converted",
+  "outputBytes": 302893,
+  "outputSha256": "9bac4f3e9b36bf84eee7ab6fcd05fa72a87a2d41a8b734052333ada059738814",
+  "textBytes": 270336,
+  "textSha256": "7fbfb7a10c386728243e9ded21f42446ab1f9fb6f717bd8f24d60a3b92175e43",
+  "secondSaveIdentical": true
+}

@@ -1,0 +1,5 @@
+URL schemes
+Allowed: web, mail, phone, chat, relative, sibling, anchor and spaced.
+Refused, the text stays: a, b, c, d, e, f, g, h, i, j, k.
+Images: allowed, refused alt text,  with no alt text, and an image link kept image.
+Autolinks and references: javascript:alert(3) and ref.

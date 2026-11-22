@@ -1,0 +1,5 @@
+*a **b** c*
+
+**a *b* c**
+
+~~strike *em* strike~~

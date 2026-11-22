@@ -1,0 +1,302 @@
+{
+ "commonmark/cm-01-headings": {
+  "note": "own CommonMark/GFM case: headings"
+ },
+ "commonmark/cm-02-paragraphs": {
+  "note": "own CommonMark/GFM case: paragraphs"
+ },
+ "commonmark/cm-03-emphasis-adjacent": {
+  "note": "own CommonMark/GFM case: emphasis adjacent"
+ },
+ "commonmark/cm-04-emphasis-nested": {
+  "note": "own CommonMark/GFM case: emphasis nested"
+ },
+ "commonmark/cm-05-links": {
+  "note": "own CommonMark/GFM case: links"
+ },
+ "commonmark/cm-06-images": {
+  "note": "own CommonMark/GFM case: images"
+ },
+ "commonmark/cm-07-autolinks": {
+  "note": "own CommonMark/GFM case: autolinks"
+ },
+ "commonmark/cm-08-inline-code": {
+  "note": "own CommonMark/GFM case: inline code"
+ },
+ "commonmark/cm-09-fenced-code": {
+  "note": "own CommonMark/GFM case: fenced code"
+ },
+ "commonmark/cm-10-fence-inside-fence": {
+  "note": "own CommonMark/GFM case: fence inside fence"
+ },
+ "commonmark/cm-11-quote-list": {
+  "note": "own CommonMark/GFM case: quote list"
+ },
+ "commonmark/cm-12-ordered-starts": {
+  "note": "own CommonMark/GFM case: ordered starts"
+ },
+ "commonmark/cm-13-list-tight": {
+  "note": "own CommonMark/GFM case: list tight"
+ },
+ "commonmark/cm-14-list-loose": {
+  "note": "own CommonMark/GFM case: list loose"
+ },
+ "commonmark/cm-15-task-list": {
+  "note": "own CommonMark/GFM case: task list"
+ },
+ "commonmark/cm-16-table-align": {
+  "note": "own CommonMark/GFM case: table align"
+ },
+ "commonmark/cm-17-table-cells": {
+  "note": "own CommonMark/GFM case: table cells"
+ },
+ "commonmark/cm-18-thematic-breaks": {
+  "note": "own CommonMark/GFM case: thematic breaks"
+ },
+ "commonmark/cm-19-hard-breaks": {
+  "note": "own CommonMark/GFM case: hard breaks"
+ },
+ "commonmark/cm-20-escapes": {
+  "note": "own CommonMark/GFM case: escapes"
+ },
+ "commonmark/cm-21-entities": {
+  "note": "own CommonMark/GFM case: entities"
+ },
+ "commonmark/cm-22-html-block": {
+  "note": "own CommonMark/GFM case: html block"
+ },
+ "commonmark/cm-23-html-inline": {
+  "note": "own CommonMark/GFM case: html inline"
+ },
+ "commonmark/cm-24-indented-code": {
+  "note": "own CommonMark/GFM case: indented code"
+ },
+ "commonmark/cm-25-setext": {
+  "note": "own CommonMark/GFM case: setext"
+ },
+ "commonmark/cm-26-nested-bullets": {
+  "note": "own CommonMark/GFM case: nested bullets"
+ },
+ "commonmark/cm-27-reference-links": {
+  "note": "own CommonMark/GFM case: reference links"
+ },
+ "commonmark/cm-28-link-marks": {
+  "note": "own CommonMark/GFM case: link marks",
+  "markedDiff": "a link is always the outermost mark: **[a](u)** is written [**a**](u); same text and marks, other nesting"
+ },
+ "commonmark/cm-29-lazy-quote": {
+  "note": "own CommonMark/GFM case: lazy quote"
+ },
+ "commonmark/cm-30-heading-marks": {
+  "note": "own CommonMark/GFM case: heading marks"
+ },
+ "commonmark/cm-31-code-in-list": {
+  "note": "own CommonMark/GFM case: code in list"
+ },
+ "commonmark/cm-32-tabs": {
+  "note": "own CommonMark/GFM case: tabs"
+ },
+ "commonmark/cm-33-adjacent-blocks": {
+  "note": "own CommonMark/GFM case: adjacent blocks"
+ },
+ "commonmark/cm-34-long-line": {
+  "note": "own CommonMark/GFM case: long line"
+ },
+ "commonmark/cm-35-mixed-lists": {
+  "note": "own CommonMark/GFM case: mixed lists"
+ },
+ "commonmark/cm-36-empty-things": {
+  "note": "own CommonMark/GFM case: empty things",
+  "markedDiff": "an empty list item, quote or paragraph is written as <br />, so marked shows a line break where the input had nothing"
+ },
+ "wiki/wiki-meeting-notes": {
+  "note": "meeting notes: headings, bold fields, nested bullets, quote, task items, table"
+ },
+ "wiki/wiki-runbook": {
+  "note": "runbook: code blocks in nested lists, quote, rule"
+ },
+ "wiki/wiki-decision-record": {
+  "note": "decision record with an aligned table"
+ },
+ "wiki/wiki-hebrew": {
+  "note": "page in Hebrew: headings, lists, quote, table, tasks, link"
+ },
+ "wiki/wiki-bidi": {
+  "note": "page mixing right-to-left and left-to-right text, with bidi control characters"
+ },
+ "wiki/wiki-cjk": {
+  "note": "page with CJK text: full-width punctuation and spaces"
+ },
+ "wiki/wiki-emoji-combining": {
+  "note": "page with emoji, ZWJ sequences, flags, combining marks, invisible characters"
+ },
+ "proof/proof-fix01-empty-paragraph-in-item": {
+  "note": "schema-fixes table 1: an empty paragraph in a list item"
+ },
+ "proof/proof-fix01b-mixed-tight-loose": {
+  "note": "schema-fixes table 1b: mixed tight and loose items, a table inside an item"
+ },
+ "proof/proof-fix02-hard-break-at-edges": {
+  "note": "schema-fixes table 2: hard break at the end or start of a block",
+  "markedDiff": "a hard break at the start of a block is dropped (normalisation 2)"
+ },
+ "proof/proof-fix02b-double-hard-break": {
+  "note": "schema-fixes table 2b: two hard breaks in a row"
+ },
+ "proof/proof-fix03-text-before-image": {
+  "note": "schema-fixes table 3: text ending in whitespace before an image"
+ },
+ "proof/proof-fix04-trailing-empty-paragraphs": {
+  "note": "schema-fixes table 4: trailing empty paragraphs",
+  "markedDiff": "trailing empty paragraphs are not written (fix 4)"
+ },
+ "proof/proof-fix05-cell-edge-spaces": {
+  "note": "schema-fixes table 5: spaces at the edges of cells (code text keeps its spaces)"
+ },
+ "proof/proof-fix06-break-in-cell-and-heading": {
+  "note": "schema-fixes table 6: hard break in a cell and in a heading"
+ },
+ "proof/proof-fix07-mark-adjacency": {
+  "note": "schema-fixes table 7: marks in adjacency"
+ },
+ "proof/proof-fix08-late-ordered-in-quote": {
+  "note": "schema-fixes table 8: ordered list not starting at 1 after a paragraph and in a quote (CommonMark: a list interrupts a paragraph only if it starts with 1, so the reader is right here; the reference renderer differs)",
+  "markedDiff": "marked reads `> 7. z` right after a paragraph as a list; the converter reads it as text 7. z",
+  "finding": "`text` then `> 7. z` (no blank line): the reader makes the quote hold the paragraph 7. z, marked makes it a list starting at 7"
+ },
+ "proof/proof-fix09-task-heading": {
+  "note": "schema-fixes table 9: task checkbox before a heading",
+  "markedDiff": "an item whose first line is only the checkbox is read as an empty task item; the reference renderer shows the text [ ]"
+ },
+ "proof/proof-fix10-html-at-line-start": {
+  "note": "schema-fixes table 10: inline HTML at the start of a line",
+  "markedDiff": "an unclosed <pre> or <script> at the start of a line is written as literal text (fixes 10 and 12)"
+ },
+ "proof/proof-fix11-level-in-cell": {
+  "note": "schema-fixes table 11: heading markers inside table cells"
+ },
+ "proof/proof-fix12-html-start-1-to-5": {
+  "note": "schema-fixes table 12: HTML block start conditions 1 to 5 without their terminators",
+  "markedDiff": "start conditions 1 to 5 without their terminator become literal text; marked reads raw HTML that swallows the rest of the page (fix 12)"
+ },
+ "proof/proof-fix12-html-start-6-7": {
+  "note": "schema-fixes table 12: HTML block start conditions 6 and 7, also in a tight item"
+ },
+ "proof/proof-fix13-incomplete-html": {
+  "note": "schema-fixes table 13: incomplete raw HTML"
+ },
+ "proof/proof-fix14-element-in-one-node": {
+  "note": "schema-fixes table 14: a whole element in one HTML node"
+ },
+ "proof/proof-fix15-padded-br": {
+  "note": "schema-fixes table 15: padded and doubled break values",
+  "markedDiff": "padded <br> inside a line stays one hard break per tag (fix 15); a paragraph of only <br><br> is saved as one empty paragraph, which marked reads as a single <br>"
+ },
+ "proof/proof-norm-underscore-emphasis": {
+  "note": "normalisations: _em_ and __strong__ are written with asterisks"
+ },
+ "proof/proof-norm-first-save-style": {
+  "note": "normalisations: setext to ATX, - to *, ___ to ***, bare URL, reference image inlined, padded tables"
+ },
+ "proof/proof-norm-spaces-around-breaks": {
+  "note": "normalisations: spaces and tabs beside a hard break and at block edges"
+ },
+ "proof/proof-loss-address-as-link": {
+  "note": "losses: text that looks like an address is read back as a link (rule 1)"
+ },
+ "proof/proof-loss-code-pipe-in-cell": {
+  "note": "losses: backslash before a pipe in inline code in a cell"
+ },
+ "proof/proof-loss-overlapping-marks": {
+  "note": "losses: partly overlapping marks with a space between"
+ },
+ "proof/proof-loss-empty-heading-at-end": {
+  "note": "losses: an empty heading at the end of the document",
+  "markedDiff": "an empty heading at the end of the document is not written (loss table)"
+ },
+ "proof/proof-loss-link-around-image": {
+  "note": "losses and known limits: a link around an image, with and without other content",
+  "markedDiff": "a link around an image and other text: the link stays on the text and is lost on the image (known limit)"
+ },
+ "proof/proof-loss-loose-list": {
+  "note": "losses: lists written loose where they were tight"
+ },
+ "proof/proof-drift-quote-list": {
+  "note": "second-save drift: blank line between items in a quote after a nested list"
+ },
+ "proof/proof-drift-tab-in-cell": {
+  "note": "second-save drift: a tab inside a table cell"
+ },
+ "proof/proof-load-bare-br": {
+  "note": "converted on load: a raw HTML node that is a bare break becomes a hard break",
+  "markedDiff": "a bare <br> node is a hard break, and a hard break at the end of a block is dropped (converted on load, normalisation 2)"
+ },
+ "proof/proof-load-typed-br-text": {
+  "note": "converted on load: text that spells a break stays text"
+ },
+ "proof/proof-limit-footnote-math": {
+  "note": "known limits: footnotes and math are plain text"
+ },
+ "proof/proof-limit-javascript-link": {
+  "note": "FIXED (review F4): dangerous link schemes are not stored: a refused link keeps its text and loses the link",
+  "markedDiff": "marked renders javascript:, data: and vbscript: links as links; we keep the text and drop the link on purpose"
+ },
+ "proof/proof-limit-empty-paragraph": {
+  "note": "known limits: an empty paragraph is written as a break"
+ },
+ "proof/proof-limit-table-no-alignment": {
+  "note": "known limits: a table without alignment stays without it"
+ },
+ "proof/proof-limit-whitespace-paragraph": {
+  "note": "known limits: paragraphs of spaces"
+ },
+ "proof/proof-limit-nul-and-surrogates": {
+  "note": "NUL is replaced by U+FFFD (a lone surrogate cannot be written to a UTF-8 file)",
+  "markedDiff": "U+0000 is replaced by U+FFFD (sanitise)"
+ },
+ "import-shapes/callout-aside": {
+  "note": "constructed from documentation, not from a real export: callouts as <aside>"
+ },
+ "import-shapes/toggle-details": {
+  "note": "constructed from documentation, not from a real export: toggles as <details>"
+ },
+ "import-shapes/table-br-cells": {
+  "note": "constructed from documentation, not from a real export: <br> inside table cells"
+ },
+ "import-shapes/page-links": {
+  "note": "constructed from documentation, not from a real export: page links with id suffixes, an attachment image"
+ },
+ "import-shapes/todo-list": {
+  "note": "constructed from documentation, not from a real export: to-do lists, bullets with four-space nesting"
+ },
+ "import-shapes/page-document": {
+  "note": "constructed from documentation, not from a real export: a whole exported page with property lines"
+ },
+ "proof/proof-finding-nested-emphasis": {
+  "note": "FINDING: emphasis inside strong inside emphasis: the inner emphasis is lost",
+  "markedDiff": "the inner emphasis is lost",
+  "finding": "`*a **b *c* d** e*` is saved `*a **b c d** e*`: c loses its italics"
+ },
+ "proof/proof-finding-code-span-edge-spaces": {
+  "note": "FIXED: spaces kept by a code span (CommonMark strips one each side) used to be dropped at the edge of a block; the writer pads and the normal form never trims code text"
+ },
+ "proof/proof-finding-soft-break-splits-marks": {
+  "note": "FINDING: a code span that spans a soft line break is written as two code spans (a link, emphasis and strong over a soft break are kept as one mark)",
+  "markedDiff": "a code span over a soft break is written as two",
+  "finding": "`` `a`` newline ``b` `` becomes two code spans, one per line"
+ },
+ "proof/proof-finding-html-block-open-tag": {
+  "note": "FIXED: an HTML block that opens with a tag and holds an image is written back verbatim"
+ },
+ "proof/proof-finding-empty-task-checkbox": {
+  "note": "FIXED on import: a checkbox with no text after it is an empty task item, as the editor writes one (`* [ ] <br />`)",
+  "markedDiff": "the reference renderer shows the text [ ] where we read an empty task item"
+ },
+ "proof/proof-fix-url-schemes": {
+  "note": "review F4: allowed addresses (http, https, mailto, tel, xmpp, relative, fragment) are kept; javascript:, data:, vbscript:, file:, blob: and spaced or encoded spellings are not; an image with a refused address becomes its alt text; an image link keeps the image",
+  "markedDiff": "marked renders the refused addresses as links and images; we drop them on purpose"
+ },
+ "proof/proof-fix-line-endings": {
+  "note": "review F6: CRLF line endings, a hard break written with a backslash, and U+2028, U+2029, U+0085, vertical tab and form feed inside paragraphs, a heading, a table cell and code are kept and read back the same"
+ }
+}

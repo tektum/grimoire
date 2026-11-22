@@ -1,0 +1,14 @@
+--- marked, input Markdown
+<hr>
+<h2>
+  "title: Page tags: [a, b]"
+<h1>
+  "Body"
+--- marked, output Markdown
+<hr>
+<h2>
+  "title: Page"
+  <br>
+  "tags: [a, b]"
+<h1>
+  "Body"

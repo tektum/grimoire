@@ -1,0 +1,7 @@
+trailing break\\
+
+next
+
+leading break
+
+spaces then text

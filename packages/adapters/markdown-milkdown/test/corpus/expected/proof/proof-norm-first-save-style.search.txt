@@ -1,0 +1,9 @@
+Setext
+dash
+bullets
+https://example.org/bare and www.example.org
+ref
+a
+b
+1
+2

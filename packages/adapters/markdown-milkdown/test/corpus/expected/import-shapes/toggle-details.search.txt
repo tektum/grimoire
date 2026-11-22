@@ -1,0 +1,2 @@
+Hidden paragraph with bold.
+hidden item

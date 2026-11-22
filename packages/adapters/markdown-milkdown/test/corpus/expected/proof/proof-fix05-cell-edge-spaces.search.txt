@@ -1,0 +1,6 @@
+a
+b
+padded
+x
+ code 
+b

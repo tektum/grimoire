@@ -1,0 +1,4 @@
+const a: number = 1;
+print("tilde")
+no language
+info string

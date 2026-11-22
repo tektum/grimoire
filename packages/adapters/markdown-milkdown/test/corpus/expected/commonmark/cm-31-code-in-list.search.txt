@@ -1,0 +1,4 @@
+step
+bun ci
+next
+bun test

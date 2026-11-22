@@ -1,0 +1,29 @@
+--- marked, input Markdown
+<p>
+  <a href="u">
+    "a b"
+<p>
+  <em>
+    "a b"
+<p>
+  <strong>
+    "a b"
+<p>
+  <code>
+    "a b"
+--- marked, output Markdown
+<p>
+  <a href="u">
+    "a b"
+<p>
+  <em>
+    "a b"
+<p>
+  <strong>
+    "a b"
+<p>
+  <code>
+    "a"
+  " "
+  <code>
+    "b"

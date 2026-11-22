@@ -1,0 +1,3 @@
+Footnote and math $a,b$ and
+$$ \sum_{i} x,y $$
+the note

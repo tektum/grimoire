@@ -1,0 +1,21 @@
+--- marked, input Markdown
+<ul>
+  <li>
+<ol>
+  <li>
+<blockquote>
+<h1>
+<pre>
+  <code>
+--- marked, output Markdown
+<ul>
+  <li>
+    <br>
+<ol>
+  <li>
+    <br>
+<blockquote>
+  <br>
+<h1>
+<pre>
+  <code>

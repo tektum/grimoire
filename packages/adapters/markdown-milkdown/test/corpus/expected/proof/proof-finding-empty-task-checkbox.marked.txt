@@ -1,0 +1,20 @@
+--- marked, input Markdown
+<ul>
+  <li>
+    "[ ]"
+  <li>
+    <input type="checkbox">
+    " x"
+  <li>
+    "[x]"
+--- marked, output Markdown
+<ul>
+  <li>
+    <input type="checkbox">
+    <br>
+  <li>
+    <input type="checkbox">
+    " x"
+  <li>
+    <input checked="" type="checkbox">
+    <br>
