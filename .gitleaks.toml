@@ -225,3 +225,29 @@ paths = [
 regexes = [
   '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
 ]
+
+# the RFC 6455 sample nonce in a hand-written WebSocket upgrade request (introduced by m1)
+[[allowlists]]
+description = "the RFC 6455 sample nonce in a hand-written WebSocket upgrade request"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^apps/server/test\-e2e/scenarios/origin\.ts$''',
+]
+regexes = [
+  '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
+]
+
+# the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential (introduced by m2)
+[[allowlists]]
+description = "the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^apps/server/test/server/test\-facilities\.test\.ts$''',
+]
+regexes = [
+  '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
+]

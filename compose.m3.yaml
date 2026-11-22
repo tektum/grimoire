@@ -1,0 +1,50 @@
+# Milestone 3 exit-test overlay (`make test-m3`): `docker compose -f compose.yaml -f compose.m3.yaml`. It does NOT change compose.yaml. It runs the app OUTSIDE local
+# mode with the real Descope token adapter, pointed at a local key server (tools/m3-keyserver) over https: outside local mode the base URL must be https, so the
+# harness generates a throwaway CA and server certificate (tools/m3-keyserver/pki.sh, into test-results/m3/pki, ignored by git) and the app trusts the CA through
+# NODE_EXTRA_CA_CERTS. The key server runs in a container built from the same image as the app (distroless Node) with the tool folder mounted read-only; the
+# image itself never contains tools/. Its port is published on 127.0.0.1 only. Test project id: P2m3exittestprojectabcdefghij.
+# Restarting only the key server mints a new key id: the app picks it up within 30 s (the SDK's unknown-key cooldown), not at once; see docs/proof/m3-descope.md Q9.
+services:
+  keyserver:
+    build: .
+    command: ["/keyserver/server.mjs"]
+    environment:
+      NODE_ENV: test
+      NODE_EXTRA_CA_CERTS: /pki/ca.pem # only for the container health check
+      GRIMOIRE_M3_KEYSERVER_TEST: "1"
+      GRIMOIRE_M3_KEYSERVER_ALLOW_BIND_ALL: "1" # the container listens on its network; the published port below is loopback only
+      M3_KEYSERVER_HOST: 0.0.0.0
+      M3_KEYSERVER_PORT: "8443"
+      M3_KEYSERVER_PROJECT_ID: "${M3_PROJECT_ID:-P2m3exittestprojectabcdefghij}"
+      M3_KEYSERVER_TLS_CERT: /pki/server.pem
+      M3_KEYSERVER_TLS_KEY: /pki/server.key
+    volumes:
+      - ./tools/m3-keyserver:/keyserver:ro
+      - ./test-results/m3/pki:/pki:ro
+    ports:
+      - "127.0.0.1:58443:8443"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "/nodejs/bin/node", "-e", "fetch('https://127.0.0.1:8443/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
+
+  app:
+    depends_on:
+      keyserver:
+        condition: service_healthy
+    volumes:
+      - ./test-results/m3/pki:/pki:ro
+    environment:
+      GRIMOIRE_LOCAL: "0"
+      GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK: ""
+      GRIMOIRE_DEV_TOKEN_SECRET: ""
+      GRIMOIRE_DESCOPE_PROJECT_ID: "${M3_PROJECT_ID:-P2m3exittestprojectabcdefghij}"
+      GRIMOIRE_DESCOPE_BASE_URL: https://keyserver:8443
+      GRIMOIRE_ALLOWED_EMAIL_DOMAINS: example.test
+      GRIMOIRE_COLLAB_RECHECK_SECONDS: "${GRIMOIRE_COLLAB_RECHECK_SECONDS:-5}"
+      NODE_EXTRA_CA_CERTS: /pki/ca.pem

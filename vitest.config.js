@@ -34,7 +34,7 @@ export default defineConfig({
         branches: 83,
         functions: 84,
         lines: 90,
-        "apps/server/src/**": { statements: 66, branches: 57, functions: 70, lines: 69 },
+        "apps/server/src/**": { statements: 67, branches: 60, functions: 71, lines: 70 },
         "packages/core/src/**": { statements: 98, branches: 96, functions: 100, lines: 100 },
         "packages/editor-schema/src/**": { statements: 95, branches: 87, functions: 96, lines: 96 },
         "packages/adapters/auth-descope/src/**": { statements: 99, branches: 98, functions: 100, lines: 100 },
