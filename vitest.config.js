@@ -30,16 +30,16 @@ export default defineConfig({
       // except by a reviewed edit of this file. A `/* v8 ignore */` or an exclusion above needs a reason on the same line.
       thresholds: {
         autoUpdate: process.env.COVERAGE_RATCHET === "1",
-        statements: 77,
-        branches: 72,
-        functions: 76,
-        lines: 79,
+        statements: 81,
+        branches: 78,
+        functions: 79,
+        lines: 83,
         "packages/core/src/**": { statements: 98, branches: 96, functions: 100, lines: 100 },
         "packages/editor-schema/src/**": { statements: 95, branches: 87, functions: 96, lines: 96 },
         "packages/adapters/auth-descope/src/**": { statements: 99, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/config-env/src/**": { statements: 98, branches: 96, functions: 98, lines: 98 },
         "packages/adapters/logger-json/src/**": { statements: 99, branches: 97, functions: 96, lines: 98 },
-        "packages/adapters/markdown-milkdown/src/**": { statements: 53, branches: 37, functions: 55, lines: 60 },
+        "packages/adapters/markdown-milkdown/src/**": { statements: 70, branches: 58, functions: 71, lines: 75 },
         // db-kysely is exercised only by the integration project (needs Postgres): no unit floor until that is collected.
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
