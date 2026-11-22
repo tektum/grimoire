@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import * as Y from 'yjs';
@@ -19,10 +20,14 @@ describe('a document refused for a per-user cap does not take the admitted docum
     try {
       const shared = new HocuspocusProviderWebsocket({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
       const admitted: HocuspocusProvider[] = [];
-      for (const page of pages.slice(0, 2)) {
-        const p = new HocuspocusProvider({ websocketProvider: shared, document: new Y.Doc(), name: page, token: token('alice') });
+      const seen: string[] = []; // what each provider was told, in order: the evidence if an admitted document loses its authentication
+      shared.on('close', ({ event }: { event: { code: number } }) => { seen.push(`socket closed ${String(event.code)}`); });
+      for (const [i, page] of pages.slice(0, 2).entries()) {
+        const p = new HocuspocusProvider({ websocketProvider: shared, document: new Y.Doc(), name: page, token: token('alice'),
+          onAuthenticationFailed: ({ reason }) => { seen.push(`doc${String(i)} permission denied: ${reason}`); },
+          onClose: ({ event }) => { seen.push(`doc${String(i)} closed ${String(event.code)} ${event.reason}`); } });
         admitted.push(p); p.attach();
-        await eventually(() => (p.isAuthenticated ? true : undefined), 5000, 'admitted');
+        await eventually(() => (p.isAuthenticated ? true : undefined), 5000, 'authenticated');
       }
       const refusals: string[] = [];
       const third = new HocuspocusProvider({ websocketProvider: shared, document: new Y.Doc(), name: pages[2] as string, token: token('alice'), onAuthenticationFailed: ({ reason }) => { refusals.push(`auth:${reason}`); }, onClose: ({ event }) => { refusals.push(`close:${String(event.code)}`); } });
@@ -37,13 +42,54 @@ describe('a document refused for a per-user cap does not take the admitted docum
       await eventually(() => (watcher.getText('prosemirror').toString().includes('still here') ? true : undefined), 5000, 'the admitted document still edits');
       // On a failure the evidence is in the message: which admitted document lost its authentication, and what the server logged about connections and limits.
       const states = admitted.map((p, i) => `doc${String(i)}: authenticated=${String(p.isAuthenticated)} synced=${String(p.synced)}`).join('; ');
-      const connectionEvents = server.events.filter((e) => /socket|connection|limit|upgrade|close|refus/.test(String(e['event']))).map((e) => `${String(e['event'])}:${String(e['limit'] ?? e['reason'] ?? '')}`).join(', ');
-      expect(admitted.every((p) => p.isAuthenticated), `${states} | server: ${connectionEvents}`).toBe(true);
+      const connectionEvents = server.events.filter((e) => /socket|connection|limit|upgrade|close|refus|connected/.test(String(e['event']))).map((e) => `${String(e['event'])}:${String(e['limit'] ?? e['code'] ?? e['reason'] ?? '')}@${String(e['pageId'] ?? '').slice(0, 4)}`).join(', ');
+      expect(admitted.every((p) => p.isAuthenticated), `${states} | client saw: ${seen.join('; ')} | server: ${connectionEvents}`).toBe(true);
       // The third document was refused for the right reason: the server counted a per-user document limit (not some unrelated failure).
       expect(server.events.some((e) => e['event'] === 'collab.limit_hit' && e['limit'] === 'user-documents')).toBe(true);
       for (const p of [...admitted, third, w]) p.destroy();
       shared.destroy();
     } finally { await server.kill(); }
+  }, 60_000);
+});
+
+describe('the per-user document cap when the documents of one socket open at the same moment', () => {
+  // Forced interleaving (no awaiting between the attaches): three documents of one user race for a cap of two on ONE socket, so a refusal arrives while the other
+  // documents are still authenticating. Whatever the order, exactly two are admitted, one is refused, and the shared socket is never closed as a whole.
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('three documents attached in the same tick, cap of two: two stay authenticated and edit, one is refused, the socket stays open (round %i)', async () => {
+    const server = await startServer({ env: { GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_COLLAB_MAX_DOCUMENTS_PER_USER: '2', GRIMOIRE_COLLAB_MAX_SOCKETS_PER_USER: '5' } });
+    const providers: HocuspocusProvider[] = [];
+    const refused = new Set<string>();
+    let socketCloses = 0;
+    let shared: HocuspocusProviderWebsocket | undefined;
+    let w: HocuspocusProvider | undefined;
+    try {
+      shared = new HocuspocusProviderWebsocket({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
+      shared.on('close', () => { socketCloses += 1; });
+      for (const page of pages.slice(0, 3)) {
+        const p = new HocuspocusProvider({ websocketProvider: shared, document: new Y.Doc(), name: page, token: token('alice'), onClose: () => { refused.add(page); }, onAuthenticationFailed: () => { refused.add(page); } });
+        providers.push(p); p.attach();
+      }
+      await eventually(() => (server.events.some((e) => e['event'] === 'collab.limit_hit' && e['limit'] === 'user-documents') ? true : undefined), 10_000, 'one document is refused');
+      // The refused document is told so over the socket, a different channel from the server's log: count it once the client has been told (a close, or a permission-denied),
+      // and only then the documents that stay (until a refusal is delivered, the client still counts the doomed document as authenticated).
+      await eventually(() => (refused.size === 1 ? true : undefined), 10_000, 'the client is told which document is refused');
+      await eventually(() => (providers.filter((p) => p.isAuthenticated && p.synced).length === 2 ? true : undefined), 10_000, 'the two other documents are authenticated and synced');
+      const kept = providers.filter((p) => p.isAuthenticated && p.synced);
+      const watcher = new Y.Doc();
+      w = new HocuspocusProvider({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: kept[0]!.configuration.name, token: token('bob') });
+      await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
+      const mark = `still here ${randomUUID()}`; // unique per round: the pages are shared by every round and by the earlier test, so a fixed text could already be there
+      kept[0]!.document.getText('prosemirror').insert(0, mark);
+      await eventually(() => (watcher.getText('prosemirror').toString().includes(mark) ? true : undefined), 5000, 'an admitted document still edits');
+      const limitHits = server.events.filter((e) => e['event'] === 'collab.limit_hit' && e['limit'] === 'user-documents').length;
+      expect(limitHits, 'exactly one refusal').toBe(1);
+      expect(providers.filter((p) => p.isAuthenticated).length, 'the two admitted documents are still authenticated').toBe(2);
+      expect(socketCloses, 'the shared socket was never closed').toBe(0);
+    } finally {
+      for (const p of [...providers, ...(w ? [w] : [])]) p.destroy(); // on every path, so a failed check leaves no provider or socket behind
+      shared?.destroy();
+      await server.kill();
+    }
   }, 60_000);
 });
 

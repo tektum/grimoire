@@ -80,11 +80,13 @@ test-m1-mutation: dev-secret
 # The Markdown end-to-end test: needs `make up`. Five scenarios, each in its own process, against the running stack; results in test-results/m2/.
 # NOTE: markdown-equals-live recreates the app container with the debug log level (collab.save_skipped is a debug line) and back; restart-mid-edit kills and starts it.
 # The mutation proof of the hostile-neighbour scenario: the same scenario with the per-page conversion breaker disabled (a test-only switch the server
-# refuses outside local mode) must FAIL because ordinary pages go stale. Prints the expected FAIL line; exits 0 only if that failure occurred. Needs `make up`.
+# refuses outside local mode) must FAIL because ordinary pages go stale: two hostile pages, each held to one conversion at a time, still hold both workers when nothing cuts them off.
+# The scenario checks first that each hostile page kept failing conversions and that no breaker opened, so reaching the staleness check proves the cause. Prints the expected
+# FAIL line; exits 0 only if that failure occurred. Needs `make up`.
 test-m2-hostile-mutation: dev-secret
 	@mkdir -p test-results/m2
 	@HOSTILE_NEIGHBOUR_NO_BREAKER=1 E2E_RESULTS_DIR=test-results/m2-mutation node apps/server/test-e2e/m2/run.ts hostile-neighbour > test-results/m2/hostile-mutation.log 2>&1; code=$$?; cat test-results/m2/hostile-mutation.log; \
-	if [ $$code -ne 0 ] && grep -q '^FAIL hostile-neighbour: .*behind its typing' test-results/m2/hostile-mutation.log; then echo "EXPECTED FAIL: hostile-neighbour fails without the breaker (ordinary pages went stale)"; \
+	if [ $$code -ne 0 ] && grep -q '^FAIL hostile-neighbour: no ordinary page.s stored Markdown was ever more than .* behind its typing' test-results/m2/hostile-mutation.log; then echo "EXPECTED FAIL: hostile-neighbour fails without the breaker (ordinary pages went stale)"; \
 	else echo "UNEXPECTED: the scenario did not fail for the right reason with the breaker disabled (exit $$code)"; exit 1; fi
 
 test-m2: dev-secret
