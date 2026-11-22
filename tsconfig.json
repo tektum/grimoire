@@ -20,6 +20,9 @@
       "path": "./packages/adapters/logger-json"
     },
     {
+      "path": "./packages/adapters/markdown-milkdown"
+    },
+    {
       "path": "./packages/adapters/db-kysely"
     },
     {
