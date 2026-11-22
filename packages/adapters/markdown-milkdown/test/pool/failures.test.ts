@@ -97,11 +97,12 @@ describe('back-pressure', () => {
     const queued = [converter.seed('echo'), converter.seed('echo')];
     // The calls are admitted synchronously, so the queue already holds the two: observed, not waited for.
     expect(converter.stats().queued).toBe(2);
-    // "At once" means the answer needs no worker and no I/O: it is settled after a few microtask turns, which cannot run any worker or timer callback,
-    // so the running call is certainly still running. No clock and no race with a real call.
-    let refused: unknown;
-    void converter.seed('echo').then((r) => { refused = r; });
-    for (let turn = 0; turn < 10; turn++) await Promise.resolve();
+    // "At once" means the answer needs no worker and no I/O: awaiting it continues in microtasks, before any worker message or timer callback can run, so the
+    // running call cannot have finished by then. The refusal is awaited itself (no fixed number of turns) and the running call is checked by a flag.
+    let runningDone = false;
+    void running.then(() => { runningDone = true; });
+    const refused = await converter.seed('echo');
+    expect(runningDone).toBe(false);
     expect(refused).toEqual({ ok: false, reason: 'internal', detail: 'queue-full' });
     expect(converter.stats().queued).toBe(2);
     expect(await running).toMatchObject(OK);
