@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { appUrl, requireBuild, mainJs } from './support/harness.js';
 import type { ServerProcess } from './support/harness.js';
-import { spawn } from 'node:child_process';
+import { spawnWatched } from '@tektum/grimoire-test-support/harness';
 import { freePort } from './support/harness.js';
 
 // No database is reached before the signal, so a dummy URL is enough.
@@ -12,12 +12,9 @@ afterEach(async () => { await Promise.all(running.splice(0).map((s) => s.kill())
 /** Starts the real entry point and sends SIGTERM `delayMs` after its first log line: during start-up, before it listens or just after. */
 function signalledStart(delayMs: number): Promise<{ code: number | null; output: string }> {
   return freePort().then((port) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [mainJs], {
-      env: {
-        PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
-        GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), GRIMOIRE_DATABASE_URL: DB_URL,
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const child = spawnWatched([mainJs], {
+      PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+      GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), GRIMOIRE_DATABASE_URL: DB_URL,
     });
     let output = ''; let sent = false;
     const onData = (d: Buffer): void => {

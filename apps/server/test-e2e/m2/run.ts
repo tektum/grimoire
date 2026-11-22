@@ -1,6 +1,6 @@
 // The Markdown end-to-end test (`make test-m2`): four scenarios one after another, each in its own Node process, against the running stack; results in test-results/m2/.
 // Own spawn loop: the collaboration runner looks for scenarios next to itself, and its scenario files are not to be edited.
-import { spawn } from 'node:child_process';
+import { spawnWatched } from '@tektum/grimoire-test-support/harness';
 import path from 'node:path';
 import { here } from '../support.ts';
 
@@ -9,9 +9,9 @@ export const SCENARIOS = ['markdown-equals-live', 'seed-once', 'restart-mid-edit
 function runScenario(name: string): Promise<{ code: number; lines: string[]; ms: number }> {
   const started = Date.now();
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [path.join(here, 'm2', 'scenarios', `${name}.ts`)], { env: { ...process.env, E2E_RESULTS_DIR: process.env['E2E_RESULTS_DIR'] ?? 'test-results/m2' }, stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawnWatched([path.join(here, 'm2', 'scenarios', `${name}.ts`)], { ...process.env, E2E_RESULTS_DIR: process.env['E2E_RESULTS_DIR'] ?? 'test-results/m2' }, ['ignore', 'pipe', 'inherit']);
     let out = '';
-    child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
     child.on('close', (code) => { resolve({ code: code ?? 1, lines: out.split('\n').filter((l) => l !== ''), ms: Date.now() - started }); });
   });
 }
