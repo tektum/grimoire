@@ -1,0 +1,74 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
+import { createCollabLog, createConversionGate, createSaver } from '@tektum/grimoire-adapter-collab-hocuspocus/testing';
+import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
+import type { PooledMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
+import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
+import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
+
+// Verification finding F1: a page whose text is a very long run of `]` never converts in time. While one conversion of it runs, later saves of the SAME
+// page must not start their own: the saver keeps at most one conversion per page in flight (and one waiting, latest wins). The REAL pool, with short
+// time limits injected so the scenario takes seconds, not the 140 s of the original measurement. No database.
+const POOL_TIMEOUT_MS = 600;
+let pool: PooledMarkdownConverter;
+beforeAll(() => { pool = createMarkdownConverter({ poolSize: 2, timeoutMs: POOL_TIMEOUT_MS }); });
+afterAll(async () => { await pool.close(); });
+
+const paragraph = (text: string): Y.Doc => {
+  const d = new Y.Doc();
+  const p = new Y.XmlElement('paragraph'); const t = new Y.XmlText(); t.insert(0, text); p.insert(0, [t]);
+  d.getXmlFragment('prosemirror').insert(0, [p]);
+  return d;
+};
+const HOSTILE = ']'.repeat(100_000);
+const isHostile = (state: Uint8Array): boolean => state.byteLength > 50_000;
+
+/** The real pool, watched: how many conversions of the hostile page are in the pool at once, and which states reached it. */
+function watched() {
+  const seen = { now: 0, max: 0, calls: 0, last: undefined as Uint8Array | undefined };
+  const inner: MarkdownConverter = {
+    seed: (m, k) => pool.seed(m, k), reseed: (m, k) => pool.reseed(m, k), close: () => pool.close(),
+    async toMarkdown(state) {
+      const hostile = isHostile(state);
+      if (hostile) { seen.now++; seen.calls++; seen.max = Math.max(seen.max, seen.now); seen.last = state; }
+      try { return await pool.toMarkdown(state); } finally { if (hostile) seen.now--; }
+    },
+  };
+  return { seen, inner };
+}
+
+describe('one conversion in flight per page (real pool)', () => {
+  // Driven by events, not by a clock: the first save is sent, the test waits until its conversion has reached the pool, and then the other 29 saves are sent
+  // at once while it runs (it cannot end before its time limit: the page is a run of brackets the parser cannot finish). Every count below follows from that order.
+  it.each([['breaker off (the verifier\'s worst case)', true], ['breaker as in production', false]])('30 saves of one page during one running conversion, %s', async (_n, disabled) => {
+    const { seen, inner } = watched();
+    const gate = createConversionGate(inner, { concurrency: 2, waitMs: 5_000 });
+    const saver = createSaver({ converter: gate, log: createCollabLog(new FakeLogger()), breaker: { disabled } });
+    const doc = paragraph(HOSTILE);
+    const edit = (i: number): Uint8Array => { doc.getXmlFragment('prosemirror').toArray()[0]!.toArray()[0]!.insert(i, 'x'); return Y.encodeStateAsUpdate(doc); }; // a different state at each save
+    const hostileSaves = [saver.convert('hostile', edit(0))];
+    await vi.waitFor(() => { expect(seen.calls).toBe(1); }, { timeout: 5_000, interval: 5 });
+    let firstSettled = false;
+    void hostileSaves[0]!.then(() => { firstSettled = true; });
+    let lastState = new Uint8Array();
+    for (let i = 1; i < 30; i++) { lastState = edit(i); hostileSaves.push(saver.convert('hostile', lastState)); }
+    const honest = await saver.convert('honest', Y.encodeStateAsUpdate(paragraph('hello *world*')));
+    const servedWhileHostileRan = !firstSettled;
+    const results = await Promise.all(hostileSaves);
+    expect(seen.max).toBe(1); // never two workers for one page
+    expect(honest.ok).toBe(true); // another page was served ...
+    expect(servedWhileHostileRan).toBe(true); // ... while the hostile page's conversion was still running
+    expect(results.filter((r) => !r.ok && r.reason === 'superseded')).toHaveLength(28); // saves 2 to 29 were replaced by a newer one
+    expect(results[0]).toMatchObject({ ok: false, reason: 'timeout' });
+    expect(seen.now).toBe(0); // nothing is running ...
+    expect(gate.waiting()).toBe(0); // ... nor waiting
+    if (disabled) {
+      expect(seen.calls).toBe(2); // the first and the newest, nothing in between
+      expect(Buffer.from(seen.last!).equals(Buffer.from(lastState))).toBe(true); // the newest state was converted last (latest wins)
+      expect(results.at(-1)).toMatchObject({ ok: false, reason: 'timeout' }); // the newest save got a real answer, not a "superseded" one
+    } else {
+      expect(seen.calls).toBe(1); // the timeout opened the breaker, which answers the waiting save
+      expect(results.at(-1)).toEqual({ ok: false, busy: false, reason: 'breaker-open' });
+    }
+  }, 60_000);
+});

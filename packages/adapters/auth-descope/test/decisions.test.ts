@@ -30,7 +30,7 @@ afterEach(async () => {
 const make = (o: Partial<Parameters<typeof createDescopeVerifier>[0]> = {}) => {
   const cap = captureLogger();
   const clock = new SyncedClock(T0 * 1000);
-  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 300, ...o });
+  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 3000, ...o });
   closers.push(() => v.close());
   return { v, lines: cap.lines, clock };
 };

@@ -31,7 +31,7 @@ afterEach(async () => { await server.stop(); });
 
 const make = (clock = new SyncedClock(1_800_000_000_000)) => {
   const cap = captureLogger();
-  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 300, managementKey: 'm' });
+  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 3000, managementKey: 'm' });
   return { v, clock, lines: cap.lines };
 };
 

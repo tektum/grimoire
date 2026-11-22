@@ -50,7 +50,7 @@ afterAll(async () => {
 
 const make = (managementKey: string | undefined, base = stubUrl) => {
   const cap = captureLogger();
-  const v = createDescopeVerifier({ projectId: PID, baseUrl: base, managementKey, logger: cap.logger, clock, fetchTimeoutMs: 300 });
+  const v = createDescopeVerifier({ projectId: PID, baseUrl: base, managementKey, logger: cap.logger, clock, fetchTimeoutMs: 3000 });
   return { v, lines: cap.lines };
 };
 

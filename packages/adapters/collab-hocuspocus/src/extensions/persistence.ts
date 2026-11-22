@@ -79,6 +79,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
   // Saves of one page run one after the other, whoever starts them (Hocuspocus's store hook, which already holds a per-document mutex, or the
   // "convert later" timer below, which does not): each encodes the state when it starts, so an older conversion can never overwrite a newer one.
   const tails = new Map<string, Promise<void>>();
+  const waiting = new Map<string, { document: Y.Doc; owner: object | undefined; done: Promise<{ busy: boolean }> }>();
   const serial = <T>(pageId: string, fn: () => Promise<T>): Promise<T> => {
     const run = (tails.get(pageId) ?? Promise.resolve()).then(fn);
     const tail = run.then(() => undefined, () => undefined);
@@ -207,7 +208,22 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
   /** `owner`: the load generation a timer-started save belongs to; such a save is dropped when the page has unloaded or shutdown has begun. */
   const run = async (pageId: string, document: Y.Doc, owner?: object): Promise<void> => {
     const g = owner ?? genFor(pageId);
-    const { busy } = await serial(pageId, () => (owner !== undefined && (draining || gen(pageId) !== owner) ? Promise.resolve({ busy: false }) : saveLoop(pageId, document)));
+    // At most one save of a page WAITS behind the running one (the slot is per page, not per owner: a timer-started save, which has an owner, never waits
+    // beside the page's own saves, because every save that starts cancels the page's retry timer and a timer is only set when a save ends): a save that arrives while another already waits joins it (they share the answer),
+    // because the waiting save encodes the state when it starts, so it already holds everything the joiner would have saved. Without this the saves
+    // of a page queue one behind the other and each runs its own conversion, however slow the conversion is (the saver's own single flight never
+    // sees two at once, as this queue starts them one at a time).
+    const queued = waiting.get(pageId);
+    if (queued !== undefined && queued.document === document && queued.owner === owner) { await queued.done; return; }
+    const entry: { document: Y.Doc; owner: object | undefined; done: Promise<{ busy: boolean }> } = {
+      document, owner,
+      done: serial(pageId, () => {
+        if (waiting.get(pageId) === entry) waiting.delete(pageId); // it starts now: a later save is a new waiting one
+        return owner !== undefined && (draining || gen(pageId) !== owner) ? Promise.resolve({ busy: false }) : saveLoop(pageId, document);
+      }),
+    };
+    waiting.set(pageId, entry);
+    const { busy } = await entry.done;
     if (busy) convertLater(pageId, document, g);
   };
 
