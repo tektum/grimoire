@@ -20,6 +20,10 @@ export interface FakeMarkdownConverterOptions {
 export class FakeMarkdownConverter implements MarkdownConverter {
   readonly convertCalls: Uint8Array[] = [];
   readonly seedCalls: string[] = [];
+  /** The key of each `seed` call, in order. */
+  readonly seedKeys: string[] = [];
+  /** The key of each `reseed` call, in order. */
+  readonly reseedKeys: string[] = [];
   private readonly convertQueue: Script<Uint8Array, ConvertResult>[] = [];
   private readonly seedQueue: Script<string, SeedResult>[] = [];
   private closed = false;
@@ -49,11 +53,18 @@ export class FakeMarkdownConverter implements MarkdownConverter {
     return Promise.resolve(typeof script === 'function' ? script(state) : script);
   }
 
-  seed(markdown: string): Promise<SeedResult> {
+  seed(markdown: string, key: string): Promise<SeedResult> {
     if (this.closed) return Promise.resolve({ ...CLOSED });
     this.seedCalls.push(markdown);
+    this.seedKeys.push(key);
     const script = this.seedQueue.shift() ?? this.options.seed ?? { ok: true, state: new Uint8Array(0) };
     return Promise.resolve(typeof script === 'function' ? script(markdown) : script);
+  }
+
+  /** A rebuild from stored Markdown: scripted like `seed` (same queue and calls), and its key is also kept in `reseedKeys`. */
+  reseed(markdown: string, key: string): Promise<SeedResult> {
+    this.reseedKeys.push(key);
+    return this.seed(markdown, key);
   }
 
   close(): Promise<void> {

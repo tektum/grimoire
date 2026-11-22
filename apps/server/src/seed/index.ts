@@ -31,11 +31,18 @@ export async function seedLocal(db: Database): Promise<void> {
       "insert into collection_access (id, collection_id, user_id, permission) values ($1, $2, $3, 'read_write') on conflict (id) do nothing",
       [BOB_PRIVATE_ACCESS, PRIVATE, bob],
     );
-    for (const p of SEED_PAGES) { // parents come first; the parent foreign key is deferred anyway
-      await tx.query(
-        'insert into pages (id, collection_id, parent_id, position, title, markdown, text_content, created_by) values ($1, $2, $3, $4, $5, $6, $6, $7) on conflict (id) do nothing',
-        [p.id, DEV, p.parentId, p.position, p.title, p.markdown, alice],
-      );
-    }
+    for (const p of SEED_PAGES) await insertMarkdownOnlyPageUnsafeForUserText(tx, p, alice); // parents come first; the parent foreign key is deferred anyway
   });
+}
+
+/**
+ * Inserts a page row that has Markdown and NO state. The collaboration host rebuilds such a row with `reseed`, which trusts Markdown our own
+ * serialiser wrote (lenient limits). So this is for fixed, reviewed Markdown only (the dev seed data): NEVER for Markdown a person or an importer supplied,
+ * which must go through `seed` and be stored as state (spec R7.13). The name is greppable on purpose.
+ */
+export async function insertMarkdownOnlyPageUnsafeForUserText(tx: { query: (sql: string, params: unknown[]) => Promise<unknown> }, p: (typeof SEED_PAGES)[number], createdBy: string = ALICE): Promise<void> {
+  await tx.query(
+    'insert into pages (id, collection_id, parent_id, position, title, markdown, text_content, created_by) values ($1, $2, $3, $4, $5, $6, $6, $7) on conflict (id) do nothing',
+    [p.id, DEV, p.parentId, p.position, p.title, p.markdown, createdBy],
+  );
 }

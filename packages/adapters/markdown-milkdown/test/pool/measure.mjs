@@ -72,7 +72,7 @@ await pool.close();
 // Memory of this process over repeated out-of-memory conversions (the worker's heap is not ours).
 const count = Number(process.argv[2] ?? 200);
 const oom = createMarkdownConverter({ workerPath: fixture, heapMb: 64 });
-await oom.seed('echo');
+await oom.seed('echo', 'test-key');
 const mem = () => {
   globalThis.gc?.();
   const m = process.memoryUsage();
@@ -81,9 +81,9 @@ const mem = () => {
 const before = mem();
 let failures = 0;
 const t0 = performance.now();
-for (let i = 0; i < count; i += 1) if ((await oom.seed('alloc')).reason === 'out-of-memory') failures += 1;
+for (let i = 0; i < count; i += 1) if ((await oom.seed('alloc', 'test-key')).reason === 'out-of-memory') failures += 1;
 const afterRun = mem();
-const stillServes = (await oom.seed('echo')).ok;
+const stillServes = (await oom.seed('echo', 'test-key')).ok;
 await oom.close();
 out.oom = { count, failures, totalMs: Math.round(performance.now() - t0), before, after: afterRun, stillServes, threadsAfterClose: oom.stats().threads };
 console.log(JSON.stringify(out, null, 2));

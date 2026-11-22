@@ -29,7 +29,7 @@ export interface ConversionGate extends MarkdownConverter {
  * Admits at most `concurrency` calls into the converter, in submission order, each waiting at most `waitMs`. Hand-written because the pool's single
  * timeout covers queue wait and run and reports both as `timeout`, so a caller cannot tell "the pool was busy" from "this conversion ran too long"
  * (verification finding 1), and because the pool does not complete queued calls in submission order (finding 4). Admitted calls find the pool idle,
- * so a `timeout` the pool reports afterwards is a run. `concurrency` must equal the pool size (1 by contract). The wait timer is a normal ref'd
+ * so a `timeout` the pool reports afterwards is a run. `concurrency` must equal the pool size (the host passes `convertPoolSize`; 1 when not given). The wait timer is a normal ref'd
  * timer: it also keeps the event loop alive while a shutdown waits on a conversion.
  */
 export function createConversionGate(inner: MarkdownConverter, o: { concurrency?: number; waitMs?: number } = {}): ConversionGate {
@@ -69,7 +69,8 @@ export function createConversionGate(inner: MarkdownConverter, o: { concurrency?
   const failedSeed: SeedResult = { ok: false, reason: 'internal', detail: 'worker-failed' };
   return {
     toMarkdown: (state, opts) => run(() => inner.toMarkdown(state), busyConvert, failedConvert, opts?.low === true),
-    seed: (markdown) => run(() => inner.seed(markdown), busySeed, failedSeed),
+    seed: (markdown, key) => run(() => inner.seed(markdown, key), busySeed, failedSeed),
+    reseed: (markdown, key) => run(() => inner.reseed(markdown, key), busySeed, failedSeed),
     close: () => inner.close(),
     waiting: () => queue.length,
   };

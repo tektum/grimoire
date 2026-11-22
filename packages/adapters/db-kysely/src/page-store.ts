@@ -32,6 +32,9 @@ export function createPageStore(db: Database, clock: Clock, options: PageStoreOp
   const seeding = new Map<string, Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>>();
 
   /**
+   * The Markdown here is converted by `reseed` (lenient limits): it must be Markdown our own serialiser stored, never user-supplied text left in a row
+   * with no state (spec R7.13).
+   *
    * Read, release the connection, convert with no transaction open (a heavy page must not hold a pooled connection or the row lock while it waits for the
    * converter, review F3), then write under a short locked transaction that re-checks the row: still no state, same Markdown, same epoch. Otherwise the
    * result is discarded and the row read again.

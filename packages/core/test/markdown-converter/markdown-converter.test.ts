@@ -23,7 +23,7 @@ export function portBehaviour(name: string, make: () => { converter: MarkdownCon
       await converter.close();
       await converter.close();
       expect(await converter.toMarkdown(new Uint8Array(0))).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
-      expect(await converter.seed('# x')).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
+      expect(await converter.seed('# x', 'test-key')).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
     });
   });
 }
@@ -49,8 +49,8 @@ describe('FakeMarkdownConverter', () => {
     const failed: SeedResult = { ok: false, reason: 'too-large', detail: 'scripted' };
     const fake = new FakeMarkdownConverter({ seed: (markdown) => ({ ok: true, state: new Uint8Array([markdown.length]) }) });
     fake.enqueueSeed(failed);
-    expect(await fake.seed('abc')).toEqual(failed);
-    expect(await fake.seed('abc')).toEqual({ ok: true, state: new Uint8Array([3]) });
+    expect(await fake.seed('abc', 'test-key')).toEqual(failed);
+    expect(await fake.seed('abc', 'test-key')).toEqual({ ok: true, state: new Uint8Array([3]) });
     expect(fake.seedCalls).toEqual(['abc', 'abc']);
   });
 

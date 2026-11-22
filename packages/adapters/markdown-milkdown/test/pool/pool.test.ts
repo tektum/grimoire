@@ -19,8 +19,8 @@ afterAll(async () => {
 
 describe('options', () => {
   it('default to the contracts', () => {
-    expect(converter.options).toMatchObject({ poolSize: 1, timeoutMs: 10_000, heapMb: 512, maxDepth: 100, maxBlocks: 50_000 });
-    expect(converter.options).toMatchObject({ maxStateBytes: 1_536_000, maxSeedMarkdownBytes: 1_048_576 });
+    expect(converter.options).toMatchObject({ poolSize: 2, seedTimeoutMs: 5_000, timeoutMs: 10_000, heapMb: 512, maxDepth: 100, maxBlocks: 50_000 });
+    expect(converter.options).toMatchObject({ maxStateBytes: 1_536_000, maxSeedMarkdownBytes: 196_608 });
   });
   it('refuse a timeout the timer cannot hold, and every limit that is not a positive integer (a NaN or a 0 cannot switch a check off)', async () => {
     expect(() => createMarkdownConverter({ timeoutMs: 4_294_967_296 })).toThrow(RangeError);
@@ -72,7 +72,7 @@ describe('determinism: the pool answers byte for byte as the in-process converte
   });
   it('every case of the stability corpus, to Markdown and back', async () => {
     for (const { name, markdown } of loadCorpus()) {
-      const seeded = await converter.seed(markdown);
+      const seeded = await converter.seed(markdown, 'test-key');
       expect(seeded, name).toEqual(await seedInProcess(markdown));
       if (!seeded.ok) continue;
       expect(await converter.toMarkdown(seeded.state), name).toEqual(await convertInProcess(seeded.state));
@@ -92,7 +92,7 @@ describe('typed results', () => {
   it('seed failures of the converter pass through unchanged', async () => {
     const small = createMarkdownConverter({ maxSeedMarkdownBytes: 4 });
     try {
-      expect(await small.seed('longer than four')).toMatchObject({ ok: false, reason: 'too-large' });
+      expect(await small.seed('longer than four', 'test-key')).toMatchObject({ ok: false, reason: 'too-large' });
     } finally {
       await small.close();
     }
@@ -132,7 +132,7 @@ describe('transfer', () => {
     expect(buffer.byteLength).toBe(state.byteLength);
   });
   it('the seeded state arrives as a plain Uint8Array on its own buffer', async () => {
-    const seeded = await converter.seed('# seeded\n');
+    const seeded = await converter.seed('# seeded\n', 'test-key');
     expect(seeded.ok).toBe(true);
     if (seeded.ok) {
       expect(seeded.state.byteOffset).toBe(0);
@@ -144,11 +144,11 @@ describe('transfer', () => {
 describe('close', () => {
   it('resolves, leaves no thread, is idempotent, and later calls fail typed', async () => {
     const own = createMarkdownConverter();
-    expect(own.stats().threads).toBe(1);
+    expect(own.stats().threads).toBe(2);
     await own.close();
     await own.close();
     expect(own.stats()).toEqual({ threads: 0, queued: 0 });
-    expect(await own.toMarkdown(new Uint8Array(1))).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
-    expect(await own.seed('x')).toEqual({ ok: false, reason: 'internal', detail: 'closed' });
+    expect(await own.toMarkdown(new Uint8Array(1))).toEqual({ ok: false, reason: 'internal', detail: 'closed', message: 'The converter is shutting down. Try again in a moment.' });
+    expect(await own.seed('x', 'test-key')).toEqual({ ok: false, reason: 'internal', detail: 'closed', message: 'The converter is shutting down. Try again in a moment.' });
   });
 });

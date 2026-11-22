@@ -17,11 +17,10 @@ const WORDS = ['page', 'editor', 'search', 'review', 'shared', 'notes', 'table',
 
 export const LONG_PAGE_SEED = 20261120;
 /**
- * The Yjs state of this mix is about 3.5 times the Markdown, so the state limit (1,536,000 bytes) binds long before the
- * 1 MiB seed limit: 300 KB of Markdown gives a state of 1.04 MB (68% of the limit), 400 KB gives 1.39 MB (90%, 6 s per
- * run, too slow for `bun run test`), 500 KB is refused as too large. See the proof note.
+ * The Yjs state of this mix is about 3.5 times the Markdown, so 190 KB of Markdown, just under the 192 KiB seed limit, gives a
+ * state well under the state limit (1,536,000 bytes). See the proof note.
  */
-export const LONG_PAGE_TARGET_BYTES = 300_000;
+export const LONG_PAGE_TARGET_BYTES = 190_000;
 
 /** A page built by repeating ten kinds of block, chosen at random, until it reaches the target size. */
 export function buildLongPage(): string {

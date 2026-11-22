@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import type { SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { FRAGMENT_NAME } from '@tektum/grimoire-editor-schema';
 import { normaliseForMarkdown } from '@tektum/grimoire-editor-schema';
-import { guardState, markdownComplexityProblem, tooManyChildren } from './guards.js';
+import { guardState, seedMarkdownProblem, tooManyChildren } from './guards.js';
 import { getHeadless } from './headless.js';
 import { resolveLimits } from './limits.js';
 import type { ConverterLimits } from './limits.js';
@@ -11,16 +11,37 @@ import type { ConverterLimits } from './limits.js';
 /** Fixed so the same Markdown always gives the same bytes; two seeds of one page then merge as one (Yjs ignores repeats). */
 const SEED_CLIENT_ID = 3_000_000_000;
 
-/** Markdown in, Yjs update bytes out, with no editor: Milkdown's parser, then y-prosemirror. Never throws. */
-export async function seedInProcess(markdown: string, limits?: Partial<ConverterLimits>): Promise<SeedResult> {
+/** The pre-check limits of one entry point. */
+type Precheck = Pick<ConverterLimits, 'maxSeedMarkdownBytes' | 'maxSeedLines' | 'maxSeedLineMarkers'>;
+
+/**
+ * Markdown that a person or another system supplied, in, Yjs update bytes out, with no editor: Milkdown's parser, then y-prosemirror.
+ * The size, line and marker limits are the user's (`maxSeed*`). Never throws.
+ */
+export function seedInProcess(markdown: string, limits?: Partial<ConverterLimits>): Promise<SeedResult> {
+  return build(markdown, limits, (resolved) => resolved);
+}
+
+/**
+ * Markdown that OUR OWN serialiser stored, in; the system rebuilds the page's editor state from it. Its own limits (`maxReseed*`: up
+ * to the stored-Markdown cap, no line cap, a higher marker cap that the serialiser itself can reach); the pool gives it a longer time
+ * limit. A separate function, so that user-supplied Markdown can never be handed the lenient limits: `seedInProcess` does not read them.
+ */
+export function reseedInProcess(markdown: string, limits?: Partial<ConverterLimits>): Promise<SeedResult> {
+  return build(markdown, limits, (resolved) => ({
+    maxSeedMarkdownBytes: resolved.maxReseedMarkdownBytes,
+    maxSeedLines: Number.MAX_SAFE_INTEGER,
+    maxSeedLineMarkers: resolved.maxReseedLineMarkers,
+  }));
+}
+
+async function build(markdown: string, limits: Partial<ConverterLimits> | undefined, precheck: (resolved: ConverterLimits) => Precheck): Promise<SeedResult> {
   try {
     const resolved = resolveLimits(limits);
     if (typeof markdown !== 'string') return { ok: false, reason: 'invalid-markdown', detail: 'input is not a string' };
-    if (Buffer.byteLength(markdown, 'utf8') > resolved.maxSeedMarkdownBytes) {
-      return { ok: false, reason: 'too-large', detail: 'Markdown exceeds the seed limit' };
-    }
-    // Before the parser: it is quadratic in the delimiters of one paragraph (see `markdownComplexityProblem`).
-    if (markdownComplexityProblem(markdown) !== undefined) return { ok: false, reason: 'too-large', detail: 'the Markdown has too many delimiters in one paragraph' };
+    // Before the parser: size, lines and nesting markers only. The parser's time is bounded by the worker's time limit, not here.
+    const problem = seedMarkdownProblem(markdown, precheck(resolved));
+    if (problem !== undefined) return { ok: false, reason: 'too-large', detail: problem.message };
     const headless = await getHeadless();
     let node;
     try {

@@ -13,10 +13,14 @@ import type { WorkerRequest } from './worker.js';
 
 /** Constructor options of the pooled converter; the defaults are listed in docs/proof/m2-pool.md. */
 export interface ConverterOptions extends Partial<ConverterLimits> {
-  /** Worker threads; 1 because the pool is a guard, not a speed-up. */
+  /** Worker threads; 2 so that one document that runs to the time limit does not stop every other one. */
   poolSize?: number;
-  /** Per call, queue wait plus run. */
+  /** Per `toMarkdown` call, queue wait plus run. */
   timeoutMs?: number;
+  /** Per `seed` call, queue wait plus run: the bound on hostile Markdown, which the pre-check cannot make predictable. */
+  seedTimeoutMs?: number;
+  /** Per `reseed` call (the system rebuilding a page from Markdown its own serialiser stored): longer than a seed, because the Markdown may be four times larger and is not capped by lines. */
+  reseedTimeoutMs?: number;
   /** `resourceLimits.maxOldGenerationSizeMb` of each worker. */
   heapMb?: number;
   /** Calls that may wait for a free worker; one more is refused at once. Not in the contracts (see docs/proof/m2-pool.md). */
@@ -36,6 +40,8 @@ export interface ConverterOptions extends Partial<ConverterLimits> {
 export interface ResolvedConverterOptions extends ConverterLimits {
   poolSize: number;
   timeoutMs: number;
+  seedTimeoutMs: number;
+  reseedTimeoutMs: number;
   heapMb: number;
   queueLimit: number;
   closeDeadlineMs: number;
@@ -71,8 +77,10 @@ const bounded = (name: string, value: number): number => {
 export function resolveOptions(options: ConverterOptions = {}): ResolvedConverterOptions {
   return {
     ...resolveLimits(options),
-    poolSize: positive('poolSize', options.poolSize ?? 1),
+    poolSize: positive('poolSize', options.poolSize ?? 2),
     timeoutMs: bounded('timeoutMs', options.timeoutMs ?? 10_000),
+    seedTimeoutMs: bounded('seedTimeoutMs', options.seedTimeoutMs ?? 5_000),
+    reseedTimeoutMs: bounded('reseedTimeoutMs', options.reseedTimeoutMs ?? 30_000),
     heapMb: positive('heapMb', options.heapMb ?? 512),
     queueLimit: positive('queueLimit', options.queueLimit ?? 32),
     closeDeadlineMs: positive('closeDeadlineMs', options.closeDeadlineMs ?? 5_000),
@@ -80,9 +88,19 @@ export function resolveOptions(options: ConverterOptions = {}): ResolvedConverte
   };
 }
 
-type Failure = { ok: false; reason: ConvertFailure & SeedFailure; detail: string };
-const fail = (reason: Failure['reason'], detail: string): Failure => ({ ok: false, reason, detail });
-const closedFailure = fail('internal', 'closed');
+type Failure = { ok: false; reason: ConvertFailure & SeedFailure; detail: string; message?: string };
+const fail = (reason: Failure['reason'], detail: string, message?: string): Failure => ({ ok: false, reason, detail, ...(message !== undefined ? { message } : {}) });
+/** The person-readable sentence of each refusal the pool makes itself, by its stable code (`detail`). */
+export const REFUSAL_MESSAGES = {
+  'no-key': 'This request could not be started because it was not identified. Try again; if it keeps happening, report it.',
+  'one-at-a-time': 'Another conversion for this page is still running. Try again in a moment.',
+  'queue-full': 'The converter is busy with other pages. Try again in a moment.',
+  closed: 'The converter is shutting down. Try again in a moment.',
+} as const;
+const refuse = (code: keyof typeof REFUSAL_MESSAGES): Failure => fail('internal', code, REFUSAL_MESSAGES[code]);
+/** "10 seconds", "0.6 seconds". */
+const seconds = (ms: number): string => `${Math.round(ms / 100) / 10} seconds`;
+const closedFailure = refuse('closed');
 
 const CONVERT_REASONS: readonly string[] = ['invalid-state', 'too-large', 'too-deep', 'content-lost', 'timeout', 'out-of-memory', 'internal'];
 const SEED_REASONS: readonly string[] = ['invalid-markdown', 'too-large', 'timeout', 'out-of-memory', 'internal'];
@@ -118,13 +136,13 @@ function asSeedResult(value: unknown): SeedResult | undefined {
 const QUEUE_FULL = /queue is at limit|No task queue available/;
 
 /** Pool errors to typed failures. The detail is fixed text: an error message could carry page content. */
-function mapPoolError(error: unknown, signal: AbortSignal, closing: boolean): Failure {
+function mapPoolError(error: unknown, signal: AbortSignal, closing: boolean, timedOut: { detail: string; message: string }): Failure {
   if (closing) return closedFailure;
-  if (signal.aborted) return fail('timeout', 'the conversion exceeded its time limit');
+  if (signal.aborted) return fail('timeout', timedOut.detail, timedOut.message);
   const code = isRecord(error) ? error['code'] : undefined;
   const message = isRecord(error) ? error['message'] : undefined;
   if (code === 'ERR_WORKER_OUT_OF_MEMORY') return fail('out-of-memory', 'the conversion exceeded the worker memory limit');
-  if (typeof message === 'string' && QUEUE_FULL.test(message)) return fail('internal', 'queue-full');
+  if (typeof message === 'string' && QUEUE_FULL.test(message)) return refuse('queue-full');
   if (typeof message === 'string' && /^worker exited/.test(message)) return fail('internal', 'worker-exited');
   return fail('internal', 'worker-failed');
 }
@@ -136,7 +154,7 @@ function mapPoolError(error: unknown, signal: AbortSignal, closing: boolean): Fa
  */
 export function createMarkdownConverter(options?: ConverterOptions): PooledMarkdownConverter {
   const resolved = resolveOptions(options);
-  const { poolSize, timeoutMs, heapMb, queueLimit, closeDeadlineMs, workerPath, ...limits } = resolved;
+  const { poolSize, timeoutMs, seedTimeoutMs, reseedTimeoutMs, heapMb, queueLimit, closeDeadlineMs, workerPath, ...limits } = resolved;
   const testSlow = options?.testSlow;
   if (testSlow && (testSlow.marker === '' || !Number.isInteger(testSlow.ms) || testSlow.ms < 1)) throw new RangeError('testSlow needs a marker and a positive integer ms');
   const pool = new Piscina<WorkerRequest, unknown>({
@@ -157,24 +175,41 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
   let closing: Promise<void> | undefined;
   // Calls running or waiting. piscina's own `maxQueue` does not count a task that carries an AbortSignal, and every call does.
   let pending = 0;
+  // Keys with a seed running or waiting.
+  const seedKeys = new Set<string>();
+
+  /** One conversion of Markdown to state: `seed` (user-supplied Markdown) or `reseed` (our own stored Markdown), one in flight per key and kind. */
+  async function seedAs(op: 'seed' | 'reseed', scope: string, markdown: string, key: string, limitMs: number): Promise<SeedResult> {
+    if (typeof key !== 'string' || key === '') return refuse('no-key');
+    // One conversion in flight per key, refused at once rather than queued: a hostile document then costs only its sender.
+    if (seedKeys.has(scope + key)) return refuse('one-at-a-time');
+    seedKeys.add(scope + key);
+    try {
+      return await dispatch({ op, markdown, limits }, [], asSeedResult, limitMs, { detail: `the Markdown took too long to convert (limit ${limitMs} ms)`, message: `The text took longer than ${seconds(limitMs)} to convert, so it was not changed. Splitting the page into smaller pages may help.` });
+    } finally {
+      seedKeys.delete(scope + key);
+    }
+  }
 
   async function dispatch<R extends { ok: boolean }>(
     request: WorkerRequest,
     transferList: ArrayBuffer[],
     accept: (value: unknown) => R | undefined,
+    limitMs: number,
+    timedOut: { detail: string; message: string },
   ): Promise<R | Failure> {
     if (closing !== undefined) return closedFailure;
-    if (pending >= poolSize + queueLimit) return fail('internal', 'queue-full');
+    if (pending >= poolSize + queueLimit) return refuse('queue-full');
     pending += 1;
     // Created now, so the limit covers the wait in the queue as well as the run.
     let signal: AbortSignal | undefined;
     try {
-      signal = AbortSignal.timeout(timeoutMs);
+      signal = AbortSignal.timeout(limitMs);
       // piscina's TransferList type resolves to the structured-clone options object when only Node's types are loaded; at run time it is an array.
       const reply = await pool.run(request, { signal, transferList: transferList as never });
       return accept(reply) ?? fail('internal', 'worker-bad-reply');
     } catch (error: unknown) {
-      return mapPoolError(error, signal ?? AbortSignal.abort(), closing !== undefined);
+      return mapPoolError(error, signal ?? AbortSignal.abort(), closing !== undefined, timedOut);
     } finally {
       pending -= 1;
     }
@@ -188,7 +223,7 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
       // larger buffer must not detach the memory around it. A Buffer's slice() shares memory, so copy through the constructor.
       // Admission first (closed, queue, size): a hostile payload is never copied on this thread past the limit, and a detached buffer is a typed failure.
       if (closing !== undefined) return closedFailure;
-      if (pending >= poolSize + queueLimit) return fail('internal', 'queue-full');
+      if (pending >= poolSize + queueLimit) return refuse('queue-full');
       if (state.byteLength > limits.maxStateBytes) return fail('too-large', `state of ${state.byteLength} bytes exceeds the limit`);
       let copy: Uint8Array;
       try {
@@ -196,11 +231,10 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
       } catch {
         return { ok: false, reason: 'invalid-state', detail: 'the byte array cannot be read' };
       }
-      return dispatch({ op: 'to-markdown', state: copy, limits }, [copy.buffer as ArrayBuffer], asConvertResult);
+      return dispatch({ op: 'to-markdown', state: copy, limits }, [copy.buffer as ArrayBuffer], asConvertResult, timeoutMs, { detail: 'the conversion exceeded its time limit', message: `This page took longer than ${seconds(timeoutMs)} to convert to Markdown. Your edit is kept; the Markdown copy was not updated.` });
     },
-    seed(markdown) {
-      return dispatch({ op: 'seed', markdown, limits }, [], asSeedResult);
-    },
+    seed: (markdown, key) => seedAs('seed', 'user:', markdown, key, seedTimeoutMs),
+    reseed: (markdown, key) => seedAs('reseed', 'system:', markdown, key, reseedTimeoutMs),
     close() {
       // piscina's close waits for running and queued work up to closeTimeout, then terminates the workers.
       closing ??= pool.close().catch(() => undefined);

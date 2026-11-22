@@ -11,9 +11,12 @@ export async function headlessForTests(): Promise<Headless> {
   return createHeadless();
 }
 
-/** Markdown to a Yjs update, through the seeding path. Throws on failure (tests only). */
+/** The pre-check limits lifted, so a test can build a state of any size the converter itself accepts. */
+const UNBOUNDED_PRECHECK = { maxSeedMarkdownBytes: 64 * 1024 * 1024, maxSeedLines: 100_000_000, maxSeedLineMarkers: 100_000 } as const;
+
+/** Markdown to a Yjs update, through the seeding path with the pre-check lifted. Throws on failure (tests only). */
 export async function stateFromMarkdown(markdown: string): Promise<Uint8Array> {
-  const seeded = await seedInProcess(markdown);
+  const seeded = await seedInProcess(markdown, UNBOUNDED_PRECHECK);
   if (!seeded.ok) throw new Error(`seed failed: ${seeded.reason}: ${seeded.detail}`);
   return seeded.state;
 }

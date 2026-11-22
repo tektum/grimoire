@@ -101,7 +101,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const collabRole = config.role !== 'api';
   const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
   const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
-  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: CONVERT_TIMEOUT_MS, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
+  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: CONVERT_TIMEOUT_MS, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
   let collab: AppContext['collab'];
   if (pageDb && authDb && converter) {
     const users = createUserStore(authDb);

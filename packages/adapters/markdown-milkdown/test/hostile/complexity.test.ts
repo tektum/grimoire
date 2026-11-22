@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { markdownComplexityProblem } from '../../src/guards.js';
-import { convertInProcess, seedInProcess } from '../../src/index.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { convertInProcess, createMarkdownConverter } from '../../src/index.js';
+import { ensureBuilt } from '../pool/support.js';
 import { SHAPES } from '../../src/testing/hostile-shapes.js';
 import { stateFromDocJson } from '../../src/testing/states.js';
 
@@ -20,50 +20,51 @@ async function leastCpu(run: () => Promise<unknown>): Promise<{ ms: number; last
   return { ms, last };
 }
 
-describe('Markdown complexity pre-check (the Markdown parser is quadratic in the delimiters of one paragraph)', () => {
-  it('refuses 30,000 unescaped closing brackets in one paragraph before parsing (the parser takes about 40 s on them)', async () => {
-    const markdown = ']'.repeat(30_000);
-    expect(markdownComplexityProblem(markdown)).toMatch(/delimiters/);
-    const { ms, last: result } = await leastCpu(() => seedInProcess(markdown));
-    expect(result).toMatchObject({ ok: false, reason: 'too-large' });
-    expect(ms).toBeLessThan(1_000);
-  });
+// The delimiter budget that used to refuse these shapes is gone (it also refused valid dense pages). Every input it was built and reviewed against stays here, now
+// against what protects the server: the size, line and marker pre-check, and above all the seed time limit with the per-caller isolation of the pool. For each shape the
+// seed must settle within the limit (an answer, or a refusal), and the same converter must serve an ordinary page right after, for another caller.
+const HOSTILE: readonly (readonly [string, string])[] = [
+  ['30,000 unescaped closing brackets in one paragraph', ']'.repeat(30_000)],
+  ['unmatched emphasis', '*a'.repeat(30_000)],
+  ['alternating strong', '**a**a'.repeat(10_000)],
+  ['strike-through', '~~a'.repeat(20_000)],
+  ['underscores', '_a'.repeat(30_000)],
+  ['backtick pairs', '`a'.repeat(30_000)],
+  ['120,000 escaped opening brackets', '\\['.repeat(120_000)],
+  ['40,000 escaped opening brackets', '\\['.repeat(40_000)],
+  ['a quote run with lone ">" lines (one run)', Array.from({ length: 20_000 }, () => '> *x* **y**').join('\n>\n')],
+  ['a quote run with blank lines', Array.from({ length: 20_000 }, () => '> *x* **y**').join('\n\n')],
+  ['a fence full of asterisks', ['```', '*'.repeat(200_000), '```', ''].join('\n')],
+  ['a table of 20,000 emphasised rows', ['| a | b |', '| - | - |', ...Array.from({ length: 20_000 }, () => '| *x* | **y** |')].join('\n')],
+  ['a tight list of 20,000 items with emphasis and links', Array.from({ length: 20_000 }, (_, i) => `- *item ${i}* and **bold** and [link](https://x.y/${i})`).join('\n')],
+  ['two fences with asterisks between ``` and ~~~', ['```', '*'.repeat(50_000), '~~~', '*'.repeat(50_000), '```', ''].join('\n')],
+  ['a fence, then unmatched emphasis', ['```', 'x', '```', '*a'.repeat(30_000), ''].join('\n')],
+  ['many separate paragraphs of emphasis', Array.from({ length: 30_000 }, () => '*a* **b** `c`').join('\n\n')],
+];
 
-  it.each([
-    ['unmatched emphasis', '*a'.repeat(30_000)],
-    ['alternating strong', '**a**a'.repeat(10_000)],
-    ['strike-through', '~~a'.repeat(20_000)],
-    ['underscores', '_a'.repeat(30_000)],
-    ['backtick pairs', '`a'.repeat(30_000)],
-  ])('refuses %s over the cap', (_name, markdown) => {
-    expect(markdownComplexityProblem(markdown)).toMatch(/delimiters/);
-  });
+describe('hostile shapes of the retired delimiter budget: bounded by the seed limits, the converter stays healthy', () => {
+  beforeAll(() => { ensureBuilt(); });
+  const LIMIT_MS = 1_500;
+  it.each(HOSTILE)('%s', async (_name, markdown) => {
+    const converter = createMarkdownConverter({ seedTimeoutMs: LIMIT_MS });
+    try {
+      const started = Date.now();
+      const result = await converter.seed(markdown, 'hostile-caller');
+      // The limit, plus the time to stop a worker and start another, plus a busy machine: far below what these shapes cost without the limit (seconds to minutes).
+      expect(Date.now() - started).toBeLessThan(LIMIT_MS + 8_000);
+      if (!result.ok) expect(['too-large', 'timeout']).toContain(result.reason);
+      expect(await converter.seed('# Ordinary\n\nA small page.', 'someone-else')).toMatchObject({ ok: true });
+    } finally { await converter.close(); }
+  }, 60_000);
 
-  it('counts escaped delimiters too, against a larger cap', () => {
-    const escaped = '\\[';
-    expect(markdownComplexityProblem(escaped.repeat(120_000))).toMatch(/delimiters/);
-    expect(markdownComplexityProblem(escaped.repeat(40_000))).toBeUndefined();
-  });
-
-  it('ordinary documents are accepted; a run of lines is charged as one (documented known limits below)', () => {
-    // A tight list of 1,000 items, each with emphasis and a link: 5,000 delimiters in one run of lines, under the budget of 10,000.
-    expect(markdownComplexityProblem(Array.from({ length: 1000 }, (_, i) => `- *item ${i}* and **bold** and [link](https://x.y/${i})`).join('\n'))).toBeUndefined();
-    // Blank lines end a run: many paragraphs, quote paragraphs and list items are separate runs, whatever their number.
-    expect(markdownComplexityProblem(Array.from({ length: 30_000 }, () => '*a* **b** `c`').join('\n\n'))).toBeUndefined();
-    expect(markdownComplexityProblem(Array.from({ length: 20_000 }, () => '> *x* **y**').join('\n>\n'))).toBeDefined(); // a lone ">" is not a blank line: one run (known limit)
-    expect(markdownComplexityProblem(Array.from({ length: 20_000 }, () => '> *x* **y**').join('\n\n'))).toBeUndefined();
-    // Known limits (the guard over-counts on purpose, see its comment): code, tables and very long tight lists are charged like prose.
-    expect(markdownComplexityProblem(`\`\`\`\n${'*'.repeat(200_000)}\n\`\`\`\n`)).toMatch(/delimiters/);
-    expect(markdownComplexityProblem(['| a | b |', '| - | - |', ...Array.from({ length: 20_000 }, () => '| *x* | **y** |')].join('\n'))).toMatch(/delimiters/);
-    expect(markdownComplexityProblem(Array.from({ length: 20_000 }, (_, i) => `- *item ${i}* and **bold** and [link](https://x.y/${i})`).join('\n'))).toMatch(/delimiters/);
-  });
-
-  it('fences are not special: the same text is charged inside and outside them', () => {
-    expect(markdownComplexityProblem(`\`\`\`\n${'*'.repeat(50_000)}\n~~~\n${'*'.repeat(50_000)}\n\`\`\`\n`)).toMatch(/delimiters/);
-    expect(markdownComplexityProblem(`\`\`\`\nx\n\`\`\`\n${'*a'.repeat(30_000)}\n`)).toMatch(/delimiters/);
-  });
+  it('an ordinary dense page (1,000 list items with emphasis and a link each) is seeded, not refused', async () => {
+    const converter = createMarkdownConverter();
+    try {
+      const dense = Array.from({ length: 1000 }, (_, i) => `- *item ${i}* and **bold** and [link](https://x.y/${i})`).join('\n');
+      expect(await converter.seed(dense, 'ordinary')).toMatchObject({ ok: true });
+    } finally { await converter.close(); }
+  }, 60_000);
 });
-
 describe('a block with a huge number of children is refused before the serializer (it copies the child list once per child)', () => {
   it('one raw html node of 62,500 whole elements splits into 187,500 children: refused within 5 s of CPU, not after 100 s', async () => {
     const shape = SHAPES.find((candidate) => candidate.name === 'raw html of many tags');
