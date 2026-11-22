@@ -92,14 +92,13 @@ describe('crash containment', () => {
 
 describe('back-pressure', () => {
   it('refuses the call past the queue limit at once, typed, while earlier calls keep their place', async () => {
-    const converter = fixture({ queueLimit: 2, timeoutMs: 800 });
+    const converter = fixture({ queueLimit: 2, timeoutMs: 5000 });
     const running = converter.seed('busy-300');
     const queued = [converter.seed('echo'), converter.seed('echo')];
     // The calls are admitted synchronously, so the queue already holds the two: observed, not waited for.
     expect(converter.stats().queued).toBe(2);
-    const started = performance.now();
-    const refused = await converter.seed('echo');
-    expect(performance.now() - started).toBeLessThan(100);
+    // "At once" is shown by order, not by a clock: the refusal arrives while the running call (a 300 ms busy loop) has not finished.
+    const refused = await Promise.race([converter.seed('echo'), running.then(() => 'the running call finished first' as const)]);
     expect(refused).toEqual({ ok: false, reason: 'internal', detail: 'queue-full' });
     expect(converter.stats().queued).toBe(2);
     expect(await running).toMatchObject(OK);
