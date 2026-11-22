@@ -4,6 +4,14 @@ import type { LogLevel } from './logger.js';
 export interface CollabConfig {
   readonly maxPayloadBytes: number;
   readonly maxStateBytes: number;
+  /** Largest Markdown, in UTF-8 bytes, that is turned into a page. */
+  readonly seedMaxMarkdownBytes: number;
+  /** Time one Markdown-to-page conversion may take before its worker is stopped. */
+  readonly seedTimeoutMs: number;
+  /** Time one rebuild of a page from the Markdown its own serialiser stored may take. */
+  readonly reseedTimeoutMs: number;
+  /** Worker threads converting Markdown and page state. */
+  readonly convertPoolSize: number;
   readonly stateWarnPercent: number;
   readonly messagesPerWindow: number;
   readonly rateWindowSeconds: number;

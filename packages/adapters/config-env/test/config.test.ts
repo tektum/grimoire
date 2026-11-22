@@ -38,6 +38,7 @@ describe('loadConfig defaults', () => {
       memoryGuardPercent: 80, idleUnloadSeconds: 60, connectAttemptsPerWindow: 50,
       connectWindowSeconds: 60, banSeconds: 300, maxUnauthSocketsPerAddress: 10, maxUnauthSockets: 500, maxUnauthQueuedBytes: 67_108_864,
       preauthTimeoutSeconds: 5, maxSocketsPerUser: 20, maxDocumentsPerUser: 50, bytesPerSecondPerUser: 2097152,
+      seedMaxMarkdownBytes: 196608, seedTimeoutMs: 5000, reseedTimeoutMs: 30000, convertPoolSize: 2,
       debounceMs: 3000, maxDebounceMs: 10000, storeRetryBaseMs: 1000, storeRetryMaxMs: 30000, storeTimeoutMs: 2000, recheckSeconds: 60,
     });
   });
@@ -105,6 +106,10 @@ const cases: readonly (readonly [string, string, string])[] = [
   ['GRIMOIRE_COLLAB_MAX_DEBOUNCE_MS', 'x', '20000'],
   ['GRIMOIRE_COLLAB_STORE_RETRY_BASE_MS', '0', '5'],
   ['GRIMOIRE_COLLAB_STORE_RETRY_MAX_MS', '0', '5'],
+  ['GRIMOIRE_SEED_MAX_MARKDOWN_BYTES', '0', '5'],
+  ['GRIMOIRE_SEED_TIMEOUT_MS', '0', '5000'],
+  ['GRIMOIRE_CONVERT_POOL_SIZE', '0', '4'],
+  ['GRIMOIRE_RESEED_TIMEOUT_MS', '999', '60000'],
 ];
 
 describe('every variable: reject and accept', () => {
@@ -246,5 +251,16 @@ describe('local mode refuses unsafe combinations', () => {
   });
   it('the rules do not apply to non-local mode', () => {
     expect(issuesOf({ ...noSecret, GRIMOIRE_LOCAL: '0', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_HOST: '0.0.0.0', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test' })).toEqual([]);
+  });
+});
+
+describe('conversion settings: refused when not a sensible number', () => {
+  it.each([
+    ['GRIMOIRE_SEED_MAX_MARKDOWN_BYTES', 'x'], ['GRIMOIRE_SEED_MAX_MARKDOWN_BYTES', '999999999999'], ['GRIMOIRE_SEED_MAX_MARKDOWN_BYTES', '-5'],
+    ['GRIMOIRE_SEED_TIMEOUT_MS', 'x'], ['GRIMOIRE_SEED_TIMEOUT_MS', '99'], ['GRIMOIRE_SEED_TIMEOUT_MS', '3600000'], ['GRIMOIRE_SEED_TIMEOUT_MS', '1.5'],
+    ['GRIMOIRE_RESEED_TIMEOUT_MS', 'x'], ['GRIMOIRE_RESEED_TIMEOUT_MS', '3600000'], ['GRIMOIRE_RESEED_TIMEOUT_MS', '0'], ['GRIMOIRE_RESEED_TIMEOUT_MS', '30000.5'],
+    ['GRIMOIRE_CONVERT_POOL_SIZE', 'x'], ['GRIMOIRE_CONVERT_POOL_SIZE', '1000'], ['GRIMOIRE_CONVERT_POOL_SIZE', '2.5'],
+  ])('%s rejects %s', (name, bad) => {
+    expect(issuesOf({ ...base, [name]: bad }).some((i) => i.startsWith(`${name}:`))).toBe(true);
   });
 });

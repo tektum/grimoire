@@ -106,6 +106,10 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field(int(1, MAX_INT)).default(45000),
   GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES: field(int(1, MAX_INT)).default(1048576),
   GRIMOIRE_COLLAB_MAX_STATE_BYTES: field(int(1, MAX_INT)).default(1536000),
+  GRIMOIRE_SEED_MAX_MARKDOWN_BYTES: field(int(1, 16_777_216)).default(196608),
+  GRIMOIRE_SEED_TIMEOUT_MS: field(int(100, 60_000)).default(5000),
+  GRIMOIRE_RESEED_TIMEOUT_MS: field(int(1000, 600_000)).default(30000),
+  GRIMOIRE_CONVERT_POOL_SIZE: field(int(1, 16)).default(2),
   GRIMOIRE_COLLAB_STATE_WARN_PERCENT: field(int(1, 99)).default(80),
   GRIMOIRE_COLLAB_MESSAGES_PER_WINDOW: field(int(1, MAX_INT)).default(300),
   GRIMOIRE_COLLAB_RATE_WINDOW_SECONDS: field(int(1, MAX_INT)).default(10),
@@ -262,6 +266,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   shutdownSaveDeadlineMs: v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS,
   collab: {
     maxPayloadBytes: v.GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES, maxStateBytes: v.GRIMOIRE_COLLAB_MAX_STATE_BYTES,
+    seedMaxMarkdownBytes: v.GRIMOIRE_SEED_MAX_MARKDOWN_BYTES, seedTimeoutMs: v.GRIMOIRE_SEED_TIMEOUT_MS, reseedTimeoutMs: v.GRIMOIRE_RESEED_TIMEOUT_MS, convertPoolSize: v.GRIMOIRE_CONVERT_POOL_SIZE,
     stateWarnPercent: v.GRIMOIRE_COLLAB_STATE_WARN_PERCENT, messagesPerWindow: v.GRIMOIRE_COLLAB_MESSAGES_PER_WINDOW,
     rateWindowSeconds: v.GRIMOIRE_COLLAB_RATE_WINDOW_SECONDS, maxConnectionsPerPage: v.GRIMOIRE_COLLAB_MAX_CONNECTIONS_PER_PAGE,
     maxConnections: v.GRIMOIRE_COLLAB_MAX_CONNECTIONS, maxOpenDocuments: v.GRIMOIRE_COLLAB_MAX_OPEN_DOCUMENTS,
