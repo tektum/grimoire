@@ -83,14 +83,6 @@
     "licence": "MIT",
     "integrity": "sha512-WUwwu3W55n0fkMF1uYhx4WXlRjJ/t7OjsxiuzTMMQGDvvZrZA37CAysdqc7JXLVmN6A5IIWadE921pxN9/JotA=="
   },
-  "@hocuspocus/server@4.8.0": {
-    "licence": "MIT",
-    "integrity": "sha512-P8U4I4R4Ft+B37d4CFs4tG8oPJ3rnJJiFx3CXBJpKSIrXTz5YDldRmv7eGqmUq4QRSoWR6FjN4DUIX1QO0PccA=="
-  },
-  "@hono/node-server@2.1.9": {
-    "licence": "MIT",
-    "integrity": "sha512-Sk4NQd3GFY0WZWCzndwFMPwJhtD0y9qjsQ+pjID0/03nK9pxyBCUoUHCho8QYBLBVhi0ssL8UkNPHqbgSOFPIQ=="
-  },
   "@humanfs/core@0.19.2": {
     "licence": "Apache-2.0",
     "integrity": "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="
@@ -463,10 +455,6 @@
     "licence": "MIT",
     "integrity": "sha512-lPdpagk13ANXV+HClJEpCZM7kUsl5XcvgqKzZhaj6Ve1ZFICcY2sGhAN1n1vT0tML6EclT7bfVgTxqL57Gkpow=="
   },
-  "async-mutex@0.5.0": {
-    "licence": "MIT",
-    "integrity": "sha512-1A94B18jkJ3DYq284ohPxoXbfTA5HsQ7/Mf4DEhcyLx3Bz27Rh59iScbB6EPiP+B+joue6YCxcMXSbFC1tZKwA=="
-  },
   "atomic-sleep@1.0.0": {
     "licence": "MIT",
     "integrity": "sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ=="
@@ -506,10 +494,6 @@
   "cross-spawn@7.0.6": {
     "licence": "MIT",
     "integrity": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="
-  },
-  "crossws@0.4.17": {
-    "licence": "MIT",
-    "integrity": "sha512-YG2kyfafNXKmu7e6k64yrj6whrw7m5sBIsOSXOlJ/72X3TQWRQuw8DhvXFDcBk8HF77PnTSygnm7xpYCTnFpow=="
   },
   "debug@4.4.3": {
     "licence": "MIT",
@@ -647,10 +631,6 @@
     "licence": "MIT",
     "integrity": "sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ=="
   },
-  "hono@4.13.19": {
-    "licence": "MIT",
-    "integrity": "sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA=="
-  },
   "hookified@1.15.1": {
     "licence": "MIT",
     "integrity": "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg=="
@@ -718,10 +698,6 @@
   "keyv@5.6.0": {
     "licence": "MIT",
     "integrity": "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw=="
-  },
-  "kleur@4.1.5": {
-    "licence": "MIT",
-    "integrity": "sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ=="
   },
   "kysely@0.29.9": {
     "licence": "MIT",
@@ -1174,10 +1150,6 @@
   "quick-format-unescaped@4.0.4": {
     "licence": "MIT",
     "integrity": "sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg=="
-  },
-  "rate-limiter-flexible@11.5.0": {
-    "licence": "ISC",
-    "integrity": "sha512-i4+ReS4/nJ+MQgpXLZQH8S5DDRQ8gCI+fJ+jgAExlbJgIP94zczX/1t26XfVVnUoSav+DW2u8lWAMfGnkYot4w=="
   },
   "real-require@1.0.0": {
     "licence": "MIT",
