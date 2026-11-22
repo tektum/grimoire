@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import net from 'node:net';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   appConnections, appUrl, createTestDatabase, dropTestDatabase, eventually, freePort, get, hooksEntry,
   requireBuild, runToEnd, mainJs, slowEntry, startServer, ServerProcess,
@@ -206,7 +206,8 @@ describe('shutdown of the real entry point', () => {
     const exit = await s.exited;
     expect(exit.code).toBe(0);
     expect(listenerReport(exit.output)).toMatchObject({ started: 1, stillListening: 0 }); // the process closed its listener before it exited
-    expect(await appConnections(MIGRATED)).toBe(0);
+    // PostgreSQL drops the backends a moment after the process that held them has exited: waited for, bounded, and the count is named if it never reaches 0.
+    await vi.waitFor(async () => { expect(await appConnections(MIGRATED), 'open app connections after the server exited').toBe(0); }, { timeout: 5000, interval: 50 });
     const names = s.events.map((e) => e['event']);
     expect(names).toEqual(expect.arrayContaining(['server.starting', 'http.listening', 'shutdown.started', 'shutdown.phase_started', 'shutdown.hook_done', 'shutdown.completed']));
     expect(names.indexOf('shutdown.hook_done')).toBeGreaterThan(-1);
