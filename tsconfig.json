@@ -35,6 +35,9 @@
       "path": "./packages/adapters/auth-fake"
     },
     {
+      "path": "./packages/adapters/collab-hocuspocus"
+    },
+    {
       "path": "./db/migrations"
     },
     {
