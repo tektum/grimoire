@@ -5,9 +5,6 @@
       "path": "./packages/core"
     },
     {
-      "path": "./apps/server"
-    },
-    {
       "path": "./packages/editor-schema"
     },
     {
@@ -36,9 +33,6 @@
     },
     {
       "path": "./packages/adapters/auth-fake"
-    },
-    {
-      "path": "./packages/adapters/collab-hocuspocus"
     },
     {
       "path": "./db/migrations"

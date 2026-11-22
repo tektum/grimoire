@@ -117,29 +117,3 @@ paths = [
 regexes = [
   '''KEY = 'mgmt-key-SECRET-0123456789'''',
 ]
-
-# the RFC 6455 sample nonce in a hand-written WebSocket upgrade request (introduced by c10)
-[[allowlists]]
-description = "the RFC 6455 sample nonce in a hand-written WebSocket upgrade request"
-condition = "AND"
-targetRules = ["generic-api-key"]
-regexTarget = "line"
-paths = [
-  '''^packages/adapters/collab\-hocuspocus/test/upgrade/upgrade\.int\.test\.ts$''',
-]
-regexes = [
-  '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
-]
-
-# the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential (introduced by s2)
-[[allowlists]]
-description = "the fixture configuration passes a made-up development token secret (test-secret-<hex>), not a credential"
-condition = "AND"
-targetRules = ["generic-api-key"]
-regexTarget = "line"
-paths = [
-  '''^apps/server/test/server/composition\.test\.ts$''',
-]
-regexes = [
-  '''GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-[0-9a-f]+'''',
-]
