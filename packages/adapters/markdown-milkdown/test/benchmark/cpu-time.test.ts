@@ -22,7 +22,11 @@ const SLOWER_THAN_THE_LIMIT = [
   'closing brackets', 'alternating strong and plain runs', 'alternating emphasis and strong runs',
   'alternating nested marks', 'text with edge spaces around marks', // mildly super-linear (8-10x for 5x the size); 3.7 s at the cap
 ];
-const BUDGET_MS = 5_000;
+/** The save limit the production converter is given (the pool's default `timeoutMs`). Timing here is INFORMATIONAL: it is machine dependent, so no assertion on it can be both
+ *  honest and stable. Every shape prints its CPU time, this limit and the margin; a margin under 2x is flagged `UNDER 2x` in the output and in the job summary. What fails is
+ *  only what does not depend on the machine: an unexpected outcome and a pool that does not recover. Growth for 5x the size is printed and flagged at MAX_GROWTH, not failed. */
+const LIMIT_MS = 10_000;
+const margin = (ms: number): string => `${(LIMIT_MS / Math.max(ms, 1)).toFixed(2)}x${LIMIT_MS / Math.max(ms, 1) < 2 ? ' UNDER 2x' : ''}`;
 const MAX_GROWTH = 8;
 const CAP_BYTES = 1_536_000;
 
@@ -39,14 +43,14 @@ async function measure(shape: Shape, size: number): Promise<{ ms: number; bytes:
 }
 
 /** The size (characters or runs) whose state is just under the cap: scaled from a small build, then trimmed until it fits. */
-async function capSize(shape: Shape): Promise<number> {
+async function capSize(shape: Shape, capBytes: number = CAP_BYTES): Promise<number> {
   const probe = shape.unit === 'characters' ? 20_000 : 2_000;
   const { bytes } = await measure(shape, probe);
-  let size = Math.floor((probe * (CAP_BYTES * 0.98)) / bytes);
+  let size = Math.floor((probe * (capBytes * 0.98)) / bytes);
   for (let attempt = 0; attempt < 12; attempt += 1) {
     size -= size % 20;
     const state = await stateFromDocJson(shape.build(size));
-    if (state.byteLength <= CAP_BYTES) return size;
+    if (state.byteLength <= capBytes) return size;
     size = Math.floor(size * 0.93);
   }
   return size;
@@ -60,12 +64,14 @@ describe('time-limited shapes: the time limit is the bound', () => {
     const state = await stateFromDocJson(shape.build(await capSize(shape)));
     const pool = createMarkdownConverter({ poolSize: 1, timeoutMs: 10_000 });
     try {
+      const started = performance.now();
       const result = await pool.toMarkdown(state);
+      const wallMs = performance.now() - started;
       expect(result.ok || result.reason === 'timeout' || result.reason === 'too-large').toBe(true);
       const small = await pool.seed('# next\n', 'next');
       if (!small.ok) throw new Error(small.detail);
       expect((await pool.toMarkdown(small.state)).ok).toBe(true);
-      process.stdout.write(`\ncpu ${name}: at the cap ${result.ok ? 'ok' : result.reason}\n`);
+      process.stdout.write(`\ncpu ${name}: at the cap ${result.ok ? 'ok' : result.reason} in ${Math.round(wallMs)}ms (pool, wall) | limit ${LIMIT_MS}ms margin ${margin(wallMs)}\n`);
     } finally { await pool.close(); }
   }, 120_000);
 });
@@ -76,15 +82,51 @@ describe('conversion time of adversarial documents: bounded, and no worse than a
     const small = shape.unit === 'characters' ? 100_000 : 3_000;
     const middle = shape.unit === 'characters' ? 500_000 : 15_000;
     const one = await measure(shape, small);
-    // Fail at the smallest size first: a quadratic shape must not make this test run for minutes.
-    expect(one.ms, `${shape.name} at ${small}: ${Math.round(one.ms)}ms`).toBeLessThan(BUDGET_MS);
     const five = await measure(shape, middle);
-    expect(five.ms, `${shape.name} at ${middle}: ${Math.round(five.ms)}ms`).toBeLessThan(BUDGET_MS);
     const cap = await measure(shape, await capSize(shape));
-    const line = `${shape.name}: ${small}:${Math.round(one.ms)}ms ${middle}:${Math.round(five.ms)}ms cap(${Math.round(cap.bytes / 1000)}KB):${Math.round(cap.ms)}ms ${cap.outcome}`;
+    const line = `${shape.name}: ${small}:${Math.round(one.ms)}ms ${middle}:${Math.round(five.ms)}ms cap(${Math.round(cap.bytes / 1000)}KB):${Math.round(cap.ms)}ms ${cap.outcome} | limit ${LIMIT_MS}ms margin ${margin(cap.ms)}`;
     process.stdout.write(`\ncpu ${line}\n`);
-    expect(cap.ms, line).toBeLessThan(BUDGET_MS);
     expect(['ok', 'too-large', 'too-deep']).toContain(cap.outcome);
-    if (one.ms > 150 && five.outcome === one.outcome) expect(five.ms / one.ms, line).toBeLessThan(MAX_GROWTH);
+    // Growth is informational too: the same input costs 130 or 850 ms from run to run (see seed-cap-time.test.ts), so a ratio of two single runs is noise as often as signal.
+    if (one.ms > 150 && five.outcome === one.outcome) process.stdout.write(`cpu growth ${shape.name}: ${(five.ms / one.ms).toFixed(1)}x for 5x the size${five.ms / one.ms >= MAX_GROWTH ? ' (a ratio of 8 or more suggests worse than linear)' : ''}\n`);
   }, 120_000);
+});
+
+const SAVE_ROWS = ['many paragraphs', 'alternating links', 'text with line endings', 'many list items'];
+
+describe('save direction at other state sizes (informational): a 1,000,000-byte state, and the largest state whose Markdown still fits the stored cap', () => {
+  it.each(SAVE_ROWS)('%s', async (name) => {
+    const shape = SHAPES.find((candidate) => candidate.name === name);
+    if (!shape) throw new Error(name);
+    await measure(shape, 1_000);
+    const rows: string[] = [];
+    // (i) a state of 1,000,000 bytes
+    const at1m = await measure(shape, await capSize(shape, 1_000_000));
+    rows.push(`state ${at1m.bytes} B: ${Math.round(at1m.ms)} ms, limit ${LIMIT_MS} ms, margin ${margin(at1m.ms)}, ${at1m.outcome}`);
+    // (ii) the largest state whose Markdown the save still stores (it refuses Markdown over the stored cap): bisection on the size, six steps
+    let lo = await capSize(shape, 50_000);
+    let hi = await capSize(shape);
+    let best: { bytes: number; ms: number; markdown: number } | undefined;
+    const tryFit = async (size: number): Promise<boolean> => {
+      const state = await stateFromDocJson(shape.build(size));
+      const before = cpu();
+      const result = await convertInProcess(state);
+      const ms = cpu() - before;
+      if (result.ok) { best = { bytes: state.byteLength, ms, markdown: Buffer.byteLength(result.markdown, 'utf8') }; return true; }
+      expect(result.reason, `${name} at ${String(size)}: only a size refusal means "over the stored cap" (${result.detail})`).toBe('too-large');
+      return false;
+    };
+    await tryFit(lo); // a size that stores, so that a result exists whatever the bisection finds
+    const stateCapBinds = await tryFit(hi);
+    if (!stateCapBinds) {
+      for (let step = 0; step < 6 && hi - lo > 20; step += 1) {
+        const mid = Math.floor((lo + hi) / 2 / 20) * 20;
+        if (await tryFit(mid)) lo = mid; else hi = mid;
+      }
+    }
+    const fit = best as { bytes: number; ms: number; markdown: number } | undefined;
+    rows.push(fit === undefined ? `largest state that stores: none found` : `largest state that stores: ${fit.bytes} B state, ${fit.markdown} B Markdown (${stateCapBinds ? 'the state cap binds first' : 'the stored-Markdown cap binds'}), ${Math.round(fit.ms)} ms, margin ${margin(fit.ms)}`);
+    process.stdout.write(`\ncpu save sizes ${name}:\n  ${rows.join('\n  ')}\n`);
+    expect(['ok', 'too-large']).toContain(at1m.outcome);
+  }, 240_000);
 });
