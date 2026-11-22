@@ -1,0 +1,6 @@
+# Override for the no-cloud check (R2.14): every service on a network with no route out.
+# Use: COMPOSE_FILE=compose.yaml:compose.offline.yaml make up
+# Published ports do not work on an internal network; containers still reach each other.
+networks:
+  default:
+    internal: true

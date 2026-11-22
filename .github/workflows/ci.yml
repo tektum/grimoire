@@ -179,6 +179,7 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run licence
+      - run: bun run licence:check-images
       - name: Upload licence-report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -253,6 +254,32 @@ jobs:
         if: always()
         run: make down
 
+  image:
+    name: Image and stack
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-image/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: make up
+      - name: Collect Compose logs
+        if: failure()
+        run: docker compose -p grimoire logs --no-color > compose.log
+      - name: Upload image-logs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-logs
+          path: compose.log
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-volumes
+
   ci-required:
     name: CI Required
     runs-on: ubuntu-latest
@@ -267,6 +294,7 @@ jobs:
       - licence
       - compose-config
       - integration
+      - image
     steps:
       - name: Verify every needed job succeeded
         env:
