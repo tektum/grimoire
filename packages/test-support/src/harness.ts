@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, StdioOptions } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -64,12 +64,24 @@ export type LogEvent = Record<string, unknown>;
 const baseEnv = (extra: Record<string, string>): Record<string, string> => ({
   PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', ...extra,
 });
+/** Preload that makes a child exit when its parent is gone: `node --import PARENT_WATCH ...` (every child the helpers start has it). */
+export const PARENT_WATCH = path.resolve(import.meta.dirname, 'parent-watch.mjs');
+const children = new Set<ChildProcess>();
+// The parent leaving for any reason that runs exit handlers kills what it started, without a grace period (a test child holds no data worth a drain).
+process.on('exit', () => { for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
+/** Starts a child that dies with this process: the parent's exit handler kills it, and PARENT_WATCH covers a parent that cannot run handlers (SIGKILL, crash). */
+export function spawnWatched(args: readonly string[], env: Readonly<Record<string, string | undefined>>, stdio: StdioOptions = ['ignore', 'pipe', 'pipe']): ChildProcess {
+  const child = spawn(process.execPath, ['--import', PARENT_WATCH, ...args], { env: { ...env, GRIMOIRE_TEST_PARENT_PID: String(process.pid) }, stdio });
+  children.add(child);
+  child.once('close', () => { children.delete(child); });
+  return child;
+}
 export function runToEnd(args: string[], env: Record<string, string>): Promise<Exit> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, args, { env: baseEnv(env), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawnWatched(args, baseEnv(env));
     let output = '';
-    child.stdout.on('data', (data: Buffer) => { output += data.toString(); });
-    child.stderr.on('data', (data: Buffer) => { output += data.toString(); });
+    child.stdout?.on('data', (data: Buffer) => { output += data.toString(); });
+    child.stderr?.on('data', (data: Buffer) => { output += data.toString(); });
     child.on('close', (code, signal) => { resolve({ code, signal, output }); });
   });
 }
@@ -93,7 +105,7 @@ export class ServerProcess {
   readonly port: number;
   constructor(args: string[], env: Record<string, string>, port: number) {
     this.port = port;
-    this.child = spawn(process.execPath, args, { env: baseEnv({ GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), ...env }), stdio: ['ignore', 'pipe', 'pipe'] });
+    this.child = spawnWatched(args, baseEnv({ GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), ...env }));
     this.child.stdout?.on('data', (data: Buffer) => { this.out += data.toString(); });
     this.child.stderr?.on('data', (data: Buffer) => { this.out += data.toString(); });
     this.exited = new Promise<Exit>((resolve) => {

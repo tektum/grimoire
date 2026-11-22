@@ -1,5 +1,5 @@
 // Runs the ten collaboration scenarios one after another, each in its own Node process (the exit test: `make test-m1`).
-import { spawn } from 'node:child_process';
+import { spawnWatched } from '@tektum/grimoire-test-support/harness';
 import path from 'node:path';
 import { here } from './support.ts';
 
@@ -8,9 +8,9 @@ export const SCENARIOS = ['convergence', 'read-only', 'bad-input', 'connection-c
 /** Runs one scenario process; resolves with its exit code and stdout lines. */
 export function runScenario(name: string, env: Record<string, string> = {}): Promise<{ code: number; lines: string[] }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [path.join(here, 'scenarios', `${name}.ts`)], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'inherit'] });
+    const child = spawnWatched([path.join(here, 'scenarios', `${name}.ts`)], { ...process.env, ...env }, ['ignore', 'pipe', 'inherit']);
     let out = '';
-    child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
     child.on('close', (code) => { resolve({ code: code ?? 1, lines: out.split('\n').filter((l) => l !== '') }); });
   });
 }

@@ -1,13 +1,12 @@
-import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appUrl, createTestDatabase, dropTestDatabase, freePort, mainJs, requireBuild } from '../server/support/harness.js';
-import { listenerReport, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
+import { listenerReport, spawnWatched, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
 import type { ListenerReport } from '@tektum/grimoire-test-support/harness';
 
 const DB = `grimoire_m3t01b_start_${String(process.pid)}`;
-const children = new Set<ReturnType<typeof spawn>>();
+const children = new Set<ReturnType<typeof spawnWatched>>();
 beforeEach(async () => { requireBuild(); await createTestDatabase(DB, true); });
 afterEach(async () => {
   for (const child of children) child.kill('SIGKILL');
@@ -22,11 +21,9 @@ const closed = (server: net.Server): Promise<void> => new Promise((resolve) => {
 interface ChildResult { readonly code: number | null; readonly output: string; readonly listeners: ListenerReport | undefined }
 function runEntrypoint(args: readonly string[], env: Readonly<Record<string, string>>): Promise<ChildResult> {
   const { promise, resolve } = Promise.withResolvers<ChildResult>();
-  const child = spawn(process.execPath, ['--import', TRACK_LISTENERS, ...args], {
-    env: {
-      PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-      GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_HOST: '127.0.0.1', ...env,
-    }, stdio: ['ignore', 'pipe', 'pipe'],
+  const child = spawnWatched(['--import', TRACK_LISTENERS, ...args], {
+    PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
+    GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_HOST: '127.0.0.1', ...env,
   });
   children.add(child);
   let output = '';
