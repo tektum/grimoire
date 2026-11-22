@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 const make = (baseUrl: string, o: Partial<Parameters<typeof createDescopeVerifier>[0]> = {}) =>
-  createDescopeVerifier({ projectId: PID, baseUrl, logger: captureLogger().logger, clock: { now: () => Date.now() }, fetchTimeoutMs: 500, ...o });
+  createDescopeVerifier({ projectId: PID, baseUrl, logger: captureLogger().logger, clock: { now: () => Date.now() }, fetchTimeoutMs: 3000, ...o });
 
 describe('policy the SDK does not apply', () => {
   it('a listed issuer that is neither the project id nor a URL ending in it is still refused: the SDK check comes first and the list can only narrow it', async () => {

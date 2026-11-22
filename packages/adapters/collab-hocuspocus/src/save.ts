@@ -6,6 +6,8 @@ import type { CollabLog } from './events.js';
 
 /** Fixed detail of the gate's own "no room" timeout; the pool never produces it, so a pool `timeout` is always a run that exceeded its limit. */
 export const WAITING_DETAIL = 'waiting-for-converter';
+/** What a person is told when the converter had no room for their call. */
+const BUSY_MESSAGE = 'The converter is busy with other pages. Try again in a moment.';
 /** How long a call may wait for the converter before it is answered "busy" (the pool's own default timeout). */
 export const DEFAULT_CONVERT_WAIT_MS = 10_000;
 
@@ -15,7 +17,7 @@ export const DEFAULT_CONVERT_WAIT_MS = 10_000;
  */
 export function isBusy(reason: ConvertFailure | string, detail: string): boolean {
   if (reason === 'timeout') return detail === WAITING_DETAIL;
-  return reason === 'internal' && (detail === 'queue-full' || detail === 'closed');
+  return reason === 'internal' && (detail === 'queue-full' || detail === 'closed' || detail === 'one-at-a-time');
 }
 
 export interface ConversionGate extends MarkdownConverter {
@@ -63,8 +65,8 @@ export function createConversionGate(inner: MarkdownConverter, o: { concurrency?
       release();
     }
   };
-  const busyConvert: ConvertResult = { ok: false, reason: 'timeout', detail: WAITING_DETAIL };
-  const busySeed: SeedResult = { ok: false, reason: 'timeout', detail: WAITING_DETAIL };
+  const busyConvert: ConvertResult = { ok: false, reason: 'timeout', detail: WAITING_DETAIL, message: BUSY_MESSAGE };
+  const busySeed: SeedResult = { ok: false, reason: 'timeout', detail: WAITING_DETAIL, message: BUSY_MESSAGE };
   const failedConvert: ConvertResult = { ok: false, reason: 'internal', detail: 'worker-failed' };
   const failedSeed: SeedResult = { ok: false, reason: 'internal', detail: 'worker-failed' };
   return {
@@ -136,8 +138,15 @@ export function createSaver(o: { converter: ConversionGate; log: CollabLog; now?
   /** Consecutive real failures per page; the alarm is raised on the first of a streak. Busy outcomes neither extend nor end a streak. */
   const streak = new Map<string, number>();
 
-  return {
-    async convert(pageId, state) {
+  // One save conversion in flight per page, and at most one waiting behind it ("latest wins"). Without this, every save of a page whose conversion is
+  // slow starts its own conversion before the breaker can open (verification finding F1), and one page occupies every worker. Coalescing rather than
+  // answering "busy": a busy save is only retried by a timer with a bounded number of attempts, so the newest state could stay unconverted after the page
+  // went quiet; a coalesced save is converted as soon as the running one ends, whatever it ends with. The waiting save that is replaced is answered
+  // busy ("superseded"), which stores its state and converts nothing: a newer state is already queued to be converted.
+  const flights = new Map<string, { next?: { state: Uint8Array; resolve: (c: Conversion) => void } }>();
+  const SUPERSEDED: Conversion = { ok: false, busy: true, reason: 'superseded' };
+
+  const convertNow = async (pageId: string, state: Uint8Array): Promise<Conversion> => {
       const b = breakers.get(pageId);
       let probe = false;
       if (b?.open) {
@@ -182,6 +191,29 @@ export function createSaver(o: { converter: ConversionGate; log: CollabLog; now?
         if (n === 1) o.log.emit('collab.convert_alarm', { pageId, reason: r.reason });
       }
       return { ok: false, busy, reason: r.reason };
+  };
+
+  const fly = async (pageId: string, state: Uint8Array): Promise<Conversion> => {
+    const flight: { next?: { state: Uint8Array; resolve: (c: Conversion) => void } } = {};
+    flights.set(pageId, flight);
+    try {
+      return await convertNow(pageId, state);
+    } finally {
+      flights.delete(pageId);
+      const next = flight.next;
+      if (next !== undefined) {
+        // Judged afresh: if the run just opened the page's breaker, this save is answered by the breaker without a conversion.
+        void fly(pageId, next.state).then(next.resolve, () => { next.resolve({ ok: false, busy: false, reason: 'internal' }); });
+      }
+    }
+  };
+
+  return {
+    convert(pageId, state) {
+      const flight = flights.get(pageId);
+      if (flight === undefined) return fly(pageId, state);
+      flight.next?.resolve(SUPERSEDED);
+      return new Promise<Conversion>((resolve) => { flight.next = { state, resolve }; });
     },
     toWrite(c, w) {
       if (!c.ok) return { kind: 'state-only', state: w.state, epoch: w.epoch };

@@ -1,4 +1,4 @@
-import type { ConvertResult } from '@tektum/grimoire-core/ports/markdown-converter';
+import type { ConvertResult, MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import * as Y from 'yjs';
 import { createPersistenceExtension } from '../../src/extensions/persistence.js';
@@ -14,11 +14,11 @@ export const textOf = (state: Uint8Array): string => { const d = new Y.Doc(); Y.
 export const okOf = (state: Uint8Array): ConvertResult => ({ ok: true, markdown: textOf(state), text: textOf(state).toLowerCase() });
 
 /** A persistence extension on fakes. `sleep` waits for `release()`, so "convert later" timers fire when the test says. */
-export function setup(options: Partial<PersistenceOptions> = {}, role: 'member' = 'member') {
+export function setup(options: Partial<PersistenceOptions> = {}, role: 'member' = 'member', converterOverride?: MarkdownConverter) {
   const t = makeDeps(role);
   t.pages.seed(PAGE);
   const waits: { ms: number; release: () => void }[] = [];
-  const converter = new FakeMarkdownConverter({ convert: okOf });
+  const converter = converterOverride ?? new FakeMarkdownConverter({ convert: okOf });
   const deps = { ...t.deps, converter };
   const ext = createPersistenceExtension({
     deps, log: t.log,

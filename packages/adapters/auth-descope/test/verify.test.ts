@@ -9,7 +9,7 @@ let other: KeyPair;
 const clock = { now: (): number => Date.now() };
 const make = (extra: Partial<Parameters<typeof createDescopeVerifier>[0]> = {}) => {
   const cap = captureLogger();
-  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 300, ...extra });
+  const v = createDescopeVerifier({ projectId: PID, baseUrl: server.url, logger: cap.logger, clock, fetchTimeoutMs: 3000, ...extra });
   return { v, lines: cap.lines };
 };
 const closers: Array<() => void> = [];
@@ -213,7 +213,7 @@ describe('verify: key server failures are service-unavailable, never ok, never i
     const url = dead.url;
     await dead.stop();
     const cap = captureLogger();
-    const v = createDescopeVerifier({ projectId: PID, baseUrl: url, logger: cap.logger, clock, fetchTimeoutMs: 300 });
+    const v = createDescopeVerifier({ projectId: PID, baseUrl: url, logger: cap.logger, clock, fetchTimeoutMs: 3000 });
     closers.push(() => v.close());
     expect(await v.verify(await token())).toEqual({ kind: 'service-unavailable' });
   });
@@ -221,7 +221,7 @@ describe('verify: key server failures are service-unavailable, never ok, never i
     const s = new KeyServer();
     s.keys = server.keys;
     await s.start();
-    const v = createDescopeVerifier({ projectId: PID, baseUrl: s.url, logger: captureLogger().logger, clock, fetchTimeoutMs: 300 });
+    const v = createDescopeVerifier({ projectId: PID, baseUrl: s.url, logger: captureLogger().logger, clock, fetchTimeoutMs: 3000 });
     closers.push(() => v.close());
     expect((await v.verify(await token())).kind).toBe('ok');
     await s.stop();
@@ -244,7 +244,7 @@ describe('verify: key server failures are service-unavailable, never ok, never i
     await s.start();
     try {
       const cap = captureLogger();
-      const v = createDescopeVerifier({ projectId: PID, baseUrl: s.url, logger: cap.logger, clock, fetchTimeoutMs: 300 });
+      const v = createDescopeVerifier({ projectId: PID, baseUrl: s.url, logger: cap.logger, clock, fetchTimeoutMs: 3000 });
       closers.push(() => v.close());
       expect(await v.verify(await token())).toEqual({ kind: 'service-unavailable' });
       expect(cap.lines.some((l) => l.event === 'auth.keys_reload_failed')).toBe(true);

@@ -35,7 +35,10 @@ describe('a document refused for a per-user cap does not take the admitted docum
       await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
       admitted[0]?.document.getText('prosemirror').insert(0, 'still here');
       await eventually(() => (watcher.getText('prosemirror').toString().includes('still here') ? true : undefined), 5000, 'the admitted document still edits');
-      expect(admitted.every((p) => p.isAuthenticated)).toBe(true);
+      // On a failure the evidence is in the message: which admitted document lost its authentication, and what the server logged about connections and limits.
+      const states = admitted.map((p, i) => `doc${String(i)}: authenticated=${String(p.isAuthenticated)} synced=${String(p.synced)}`).join('; ');
+      const connectionEvents = server.events.filter((e) => /socket|connection|limit|upgrade|close|refus/.test(String(e['event']))).map((e) => `${String(e['event'])}:${String(e['limit'] ?? e['reason'] ?? '')}`).join(', ');
+      expect(admitted.every((p) => p.isAuthenticated), `${states} | server: ${connectionEvents}`).toBe(true);
       // The third document was refused for the right reason: the server counted a per-user document limit (not some unrelated failure).
       expect(server.events.some((e) => e['event'] === 'collab.limit_hit' && e['limit'] === 'user-documents')).toBe(true);
       for (const p of [...admitted, third, w]) p.destroy();

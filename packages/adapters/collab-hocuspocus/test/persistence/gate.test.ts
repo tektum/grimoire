@@ -4,7 +4,7 @@ import { createConversionGate, isBusy, WAITING_DETAIL } from '../../src/save.js'
 
 describe('isBusy', () => {
   it.each([
-    ['internal', 'queue-full', true], ['internal', 'closed', true], ['timeout', WAITING_DETAIL, true],
+    ['internal', 'queue-full', true], ['internal', 'closed', true], ['internal', 'one-at-a-time', true], ['timeout', WAITING_DETAIL, true],
     ['timeout', 'the conversion exceeded its time limit', false], ['internal', 'worker-failed', false], ['internal', 'worker-exited', false],
     ['out-of-memory', 'x', false], ['invalid-state', 'x', false], ['too-large', 'x', false], ['too-deep', 'x', false], ['content-lost', 'x', false],
   ] as const)('%s / %s -> busy %s', (reason, detail, busy) => { expect(isBusy(reason, detail)).toBe(busy); });
@@ -39,7 +39,7 @@ describe('the conversion gate', () => {
     const gate = createConversionGate(inner, { waitMs: 30 });
     void gate.toMarkdown(new Uint8Array([1]));
     const r = await gate.toMarkdown(new Uint8Array([2]));
-    expect(r).toEqual({ ok: false, reason: 'timeout', detail: WAITING_DETAIL });
+    expect(r).toEqual({ ok: false, reason: 'timeout', detail: WAITING_DETAIL, message: 'The converter is busy with other pages. Try again in a moment.' });
     expect(inner.convertCalls).toHaveLength(1);
     expect(gate.waiting()).toBe(0);
   });
