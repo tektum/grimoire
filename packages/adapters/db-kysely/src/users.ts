@@ -37,7 +37,13 @@ export function createUserStore(db: Queryable): UserStore {
         return { kind: inserted.length === 1 ? 'created' : 'existing', user };
       } catch (e: unknown) {
         // An email race cannot be distinguished by a check first: let citext's unique constraint arbitrate, then map it to the port.
-        if (uniqueViolation(e)) return { kind: 'email-taken' };
+        if (uniqueViolation(e)) {
+          // A concurrent first sign-in of the SAME user: its row is committed by now and the unique violation was ours on the email index (the conflict target
+          // above is the subject, so a clash on the other unique index raises instead of doing nothing). The row for this subject is the answer, not a refusal.
+          const same = await get(db, input.descopeUserId);
+          if (same) return { kind: 'existing', user: same };
+          return { kind: 'email-taken' };
+        }
         throw e;
       }
     },

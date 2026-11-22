@@ -74,18 +74,6 @@ export function runToEnd(args: string[], env: Record<string, string>): Promise<E
   });
 }
 
-/** Preload that reports the child's listeners at exit: `node --import TRACK_LISTENERS ...`, then `listenerReport(output)`. */
-export const TRACK_LISTENERS = path.resolve(import.meta.dirname, 'track-listeners.mjs');
-export interface ListenerReport { readonly started: number; readonly stillListening: number; readonly addresses: readonly string[] }
-const MARKER = 'GRIMOIRE_TEST_LISTENERS ';
-/** The newest listener report of the child (at exit, or after SIGUSR2); undefined when there is none (not preloaded, or killed). */
-export function listenerReport(output: string): ListenerReport | undefined {
-  const line = output.split('\n').filter((l) => l.startsWith(MARKER)).at(-1);
-  return line === undefined ? undefined : (JSON.parse(line.slice(MARKER.length)) as ListenerReport);
-}
-/** The output without the report line. */
-export const withoutListenerReport = (output: string): string => output.split('\n').filter((l) => !l.startsWith(MARKER)).join('\n');
-
 export class ServerProcess {
   readonly child: ChildProcess;
   readonly exited: Promise<Exit>;
