@@ -1,5 +1,10 @@
 [
   {
+    "file": "packages/adapters/collab-hocuspocus/test/persistence/fixes.test.ts",
+    "line": "if (d.getText('prosemirror').toString().startsWith('HOSTILE')) { await new Promise((r) => setTimeout(r, 1000)); hostileMs += 1000; return fail('timeout'); }",
+    "reason": "Test fixture, not a wait: a deliberately slow hostile save that makes the code under test slow on purpose."
+  },
+  {
     "file": "packages/adapters/markdown-milkdown/test/pool/fixtures/behaviours.mjs",
     "line": "await new Promise((resolve) => setTimeout(resolve, 2000));",
     "reason": "Test fixture, not a wait: a child worker that deliberately hangs."
