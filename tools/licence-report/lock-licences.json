@@ -87,6 +87,10 @@
     "licence": "MIT",
     "integrity": "sha512-P8U4I4R4Ft+B37d4CFs4tG8oPJ3rnJJiFx3CXBJpKSIrXTz5YDldRmv7eGqmUq4QRSoWR6FjN4DUIX1QO0PccA=="
   },
+  "@hono/node-server@2.1.9": {
+    "licence": "MIT",
+    "integrity": "sha512-Sk4NQd3GFY0WZWCzndwFMPwJhtD0y9qjsQ+pjID0/03nK9pxyBCUoUHCho8QYBLBVhi0ssL8UkNPHqbgSOFPIQ=="
+  },
   "@humanfs/core@0.19.2": {
     "licence": "Apache-2.0",
     "integrity": "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="
@@ -642,6 +646,10 @@
   "hashery@1.5.1": {
     "licence": "MIT",
     "integrity": "sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ=="
+  },
+  "hono@4.13.19": {
+    "licence": "MIT",
+    "integrity": "sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA=="
   },
   "hookified@1.15.1": {
     "licence": "MIT",
