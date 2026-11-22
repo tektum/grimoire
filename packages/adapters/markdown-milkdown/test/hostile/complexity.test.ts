@@ -71,7 +71,7 @@ describe('a block with a huge number of children is refused before the serialize
     const state = await stateFromDocJson(shape.build(500_000));
     const { ms, last: result } = await leastCpu(() => convertInProcess(state));
     expect(result).toMatchObject({ ok: false, reason: 'too-large' });
-    expect(ms).toBeLessThan(1_500);
+    expect(ms, `cpu ms ${String(ms)}`).toBeLessThan(5_000); // about 400 ms CPU when idle; the defect it guards against is 100 s
   });
 
   it('30,000 hard breaks in one paragraph are refused; 1,000 convert', async () => {
