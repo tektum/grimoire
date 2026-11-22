@@ -97,8 +97,11 @@ describe('back-pressure', () => {
     const queued = [converter.seed('echo'), converter.seed('echo')];
     // The calls are admitted synchronously, so the queue already holds the two: observed, not waited for.
     expect(converter.stats().queued).toBe(2);
-    // "At once" is shown by order, not by a clock: the refusal arrives while the running call (a 300 ms busy loop) has not finished.
-    const refused = await Promise.race([converter.seed('echo'), running.then(() => 'the running call finished first' as const)]);
+    // "At once" means the answer needs no worker and no I/O: it is settled after a few microtask turns, which cannot run any worker or timer callback,
+    // so the running call is certainly still running. No clock and no race with a real call.
+    let refused: unknown;
+    void converter.seed('echo').then((r) => { refused = r; });
+    for (let turn = 0; turn < 10; turn++) await Promise.resolve();
     expect(refused).toEqual({ ok: false, reason: 'internal', detail: 'queue-full' });
     expect(converter.stats().queued).toBe(2);
     expect(await running).toMatchObject(OK);
