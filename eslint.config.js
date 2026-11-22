@@ -18,8 +18,10 @@ const forbiddenModules = [
   "yjs",
   "y-protocols",
 ];
+/** Every regular-expression metacharacter of a literal text escaped (backslash included), plus the slash and the hyphen, for use inside a selector's /.../. */
+const escapeRegex = (s) => s.replace(/[\\^$.*+?()[\]{}|/-]/g, "\\$&");
 const forbiddenImportPatterns = forbiddenModules.flatMap((m) => [m, `${m}/*`]);
-const forbiddenSourceRegex = `^(?:${forbiddenModules.map((m) => m.replace(/[-/]/g, "\\$&")).join("|")})(?:$|[^\\w-])`;
+const forbiddenSourceRegex = `^(?:${forbiddenModules.map(escapeRegex).join("|")})(?:$|[^\\w-])`;
 const importMessage =
   "packages/core must not import provider SDKs or runtime libraries; use a port interface (R2.19).";
 const envMessage =
@@ -52,7 +54,6 @@ const adapterPackage = (name) => `@tektum/grimoire-adapter-${name}`;
 const adaptersExcept = (name) => ["@tektum/grimoire-adapter-*", `!${adapterPackage(name)}`];
 const adapterLayerMessage =
   "An adapter may import only @tektum/grimoire-core and its own library: never another adapter or anything under apps/ (R2.18).";
-const escapeRegex = (s) => s.replace(/[-/]/g, "\\$&");
 const dynamicRulesFor = (sourceRegex, message) => [
   { selector: `ImportExpression[source.value=/${sourceRegex}/]`, message },
   { selector: `CallExpression[callee.name='require'][arguments.0.value=/${sourceRegex}/]`, message },

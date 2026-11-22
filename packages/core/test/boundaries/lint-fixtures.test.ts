@@ -55,6 +55,13 @@ describe("lint rules for packages/core", () => {
     expect(await errorsFor(fixture("clean.ts.txt"))).toEqual([]);
   });
 
+  it.each(forbiddenModules)("does not forbid a look-alike of %s that differs at one character (the module name is matched literally)", async (name) => {
+    const lookAlike = `${name.slice(0, -1)}${name.endsWith("x") ? "y" : "x"}`;
+    const wildcard = name.replace(/[-/]/, "X"); // a name with the hyphen or slash replaced
+    const code = `await import("${lookAlike}");\nawait import("${wildcard}x");\nvoid require("${lookAlike}");\n`;
+    expect((await errorsFor(code)).filter((e) => e.ruleId === "no-restricted-syntax")).toEqual([]);
+  });
+
   it.each(forbiddenModules)("forbids static, subpath and dynamic imports of %s", async (name) => {
     const sub = `${name}/sub`;
     const code = `import "${name}";\nimport "${sub}";\nawait import("${sub}");\nvoid require("${name}");\n`;
