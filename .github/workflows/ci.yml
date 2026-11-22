@@ -208,6 +208,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-integration/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    permissions:
+      id-token: write # Codecov upload by OIDC; contents stays read
+      contents: read
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -226,7 +229,15 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: make db-up
       - run: bun run build
-      - run: bun run test:integration
+      - run: bun run test:integration:coverage
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./coverage/integration/lcov.info
+          flags: integration
+          use_oidc: true
+          fail_ci_if_error: false
       - name: Collect Compose logs
         if: failure()
         run: docker compose -p grimoire logs --no-color > compose.log

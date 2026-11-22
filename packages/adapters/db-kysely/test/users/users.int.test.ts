@@ -150,3 +150,23 @@ describe('createUserStore', () => {
     expect(await users.updateRole('00000000-0000-4000-8000-00000000dead', 'admin')).toBeUndefined();
   });
 });
+
+describe('createIfAbsent when the same user signs in several times at once', () => {
+  it('every call gets the one row (one created, the rest existing): a clash on the email index of that same row is not email-taken', async () => {
+    const users = createUserStore(db);
+    for (let round = 0; round < 10; round++) {
+      const values = { descopeUserId: `race-${String(round)}`, email: `race-${String(round)}@example.test`, name: 'Racer', role: 'member' as Role };
+      const results = await Promise.all(Array.from({ length: 8 }, () => users.createIfAbsent(values)));
+      expect(results.map((r) => r.kind).filter((k) => k === 'email-taken')).toEqual([]);
+      expect(results.filter((r) => r.kind === 'created')).toHaveLength(1);
+      expect(new Set(results.map((r) => (r.kind === 'email-taken' ? '' : r.user.id))).size).toBe(1);
+    }
+  });
+
+  it('a different subject with the same email is still email-taken', async () => {
+    const users = createUserStore(db);
+    await users.createIfAbsent({ descopeUserId: 'taken-a', email: 'taken@example.test', name: 'A', role: 'member' as Role });
+    expect(await users.createIfAbsent({ descopeUserId: 'taken-b', email: 'taken@example.test', name: 'B', role: 'member' as Role })).toEqual({ kind: 'email-taken' });
+  });
+});
+
