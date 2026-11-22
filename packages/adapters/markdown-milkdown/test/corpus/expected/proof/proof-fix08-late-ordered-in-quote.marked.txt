@@ -1,0 +1,31 @@
+--- marked, input Markdown
+<ul>
+  <li>
+    "a"
+<blockquote>
+  <ol start="3">
+    <li>
+      "x"
+    <li>
+      "y"
+<p>
+  "text"
+<blockquote>
+  <ol start="7">
+    <li>
+      "z"
+--- marked, output Markdown
+<ul>
+  <li>
+    "a"
+<blockquote>
+  <ol start="3">
+    <li>
+      "x"
+    <li>
+      "y"
+<p>
+  "text"
+<blockquote>
+  <p>
+    "7. z"

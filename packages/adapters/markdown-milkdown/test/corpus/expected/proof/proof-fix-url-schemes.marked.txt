@@ -1,0 +1,122 @@
+--- marked, input Markdown
+<h1>
+  "URL schemes"
+<p>
+  "Allowed: "
+  <a href="https://example.com/a?b=c#d">
+    "web"
+  ", "
+  <a href="mailto:someone@example.com">
+    "mail"
+  ", "
+  <a href="tel:+15551234">
+    "phone"
+  ", "
+  <a href="xmpp:room@example.org?join">
+    "chat"
+  ", "
+  <a href="/docs/page">
+    "relative"
+  ", "
+  <a href="./other.md">
+    "sibling"
+  ", "
+  <a href="#section">
+    "anchor"
+  " and "
+  <a href="my%20file.pdf">
+    "spaced"
+  "."
+<p>
+  "Refused, the text stays: "
+  <a href="javascript:alert(1)">
+    "a"
+  ", "
+  <a href="JaVaScRiPt:alert(1)">
+    "b"
+  ", "
+  <a href="java%09script:alert(1)">
+    "c"
+  ", "
+  <a href="vbscript:msgbox(1)">
+    "d"
+  ", "
+  <a href="data:text/html;base64,PHNjcmlwdD4=">
+    "e"
+  ", "
+  <a href="file:///etc/passwd">
+    "f"
+  ", "
+  <a href="blob:https://example.com/1">
+    "g"
+  ", "
+  <a href="javascript:alert(1)">
+    "h"
+  ", "
+  <a href="%6Aavascript:alert(1)">
+    "i"
+  ", "
+  <a href="javascript%3Aalert(1)">
+    "j"
+  ", "
+  <a href="%20javascript:alert(1)">
+    "k"
+  "."
+<p>
+  "Images: "
+  <img alt="allowed" src="https://example.com/i.png" title="title">
+  ", "
+  <img alt="refused alt text" src="data:image/svg+xml,hi">
+  ", "
+  <img alt="" src="javascript:alert(1)">
+  " with no alt text, and an image link "
+  <a href="javascript:alert(2)">
+    <img alt="kept image" src="https://example.com/p.png">
+  "."
+<p>
+  "Autolinks and references: "
+  <a href="javascript:alert(3)">
+    "javascript:alert(3)"
+  " and "
+  <a href="vbscript:x">
+    "ref"
+  "."
+--- marked, output Markdown
+<h1>
+  "URL schemes"
+<p>
+  "Allowed: "
+  <a href="https://example.com/a?b=c#d">
+    "web"
+  ", "
+  <a href="mailto:someone@example.com">
+    "mail"
+  ", "
+  <a href="tel:+15551234">
+    "phone"
+  ", "
+  <a href="xmpp:room@example.org?join">
+    "chat"
+  ", "
+  <a href="/docs/page">
+    "relative"
+  ", "
+  <a href="./other.md">
+    "sibling"
+  ", "
+  <a href="#section">
+    "anchor"
+  " and "
+  <a href="my%20file.pdf">
+    "spaced"
+  "."
+<p>
+  "Refused, the text stays: a, b, c, d, e, f, g, h, i, j, k."
+<p>
+  "Images: "
+  <img alt="allowed" src="https://example.com/i.png" title="title">
+  ", refused alt text, with no alt text, and an image link "
+  <img alt="kept image" src="https://example.com/p.png">
+  "."
+<p>
+  "Autolinks and references: javascript:alert(3) and ref."

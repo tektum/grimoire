@@ -1,0 +1,19 @@
+--- marked, input Markdown
+<b>
+  <p>
+    "x"
+  <ul>
+    <li>
+    <li>
+      <pre>
+  <script>
+--- marked, output Markdown
+<b>
+  <p>
+    "x"
+  <ul>
+    <li>
+    <li>
+      "<pre>"
+  <p>
+    "<script>"

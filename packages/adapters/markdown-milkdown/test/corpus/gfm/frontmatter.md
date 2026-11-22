@@ -1,0 +1,6 @@
+---
+title: Page
+tags: [a, b]
+---
+
+# Body

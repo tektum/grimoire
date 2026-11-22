@@ -1,0 +1,1 @@
+Some **bold**, *italic*, ***both***, ~~struck~~ and `code`.

@@ -1,0 +1,6 @@
+* a
+  * b
+    * c
+      * d
++ plus
+- minus

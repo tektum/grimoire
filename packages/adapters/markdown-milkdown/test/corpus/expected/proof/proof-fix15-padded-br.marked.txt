@@ -1,0 +1,24 @@
+--- marked, input Markdown
+<p>
+  "a"
+  <br>
+  "b"
+<p>
+  <br>
+  <br>
+<p>
+  "x"
+  <br>
+  <br>
+  "y"
+--- marked, output Markdown
+<p>
+  "a"
+  <br>
+  "b"
+<br>
+<p>
+  "x"
+  <br>
+  <br>
+  "y"

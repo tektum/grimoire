@@ -1,0 +1,32 @@
+--- marked, input Markdown
+<p>
+  <em>
+    "a "
+    <strong>
+      "b "
+      <em>
+        "c"
+      " d"
+    " e"
+<p>
+  <strong>
+    "a "
+    <em>
+      "b "
+      <em>
+        "c"
+      " d"
+    " e"
+--- marked, output Markdown
+<p>
+  <em>
+    "a "
+    <strong>
+      "b c d"
+    " e"
+<p>
+  <strong>
+    "a "
+    <em>
+      "b c d"
+    " e"

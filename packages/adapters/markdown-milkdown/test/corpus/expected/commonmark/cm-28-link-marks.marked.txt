@@ -1,0 +1,46 @@
+--- marked, input Markdown
+<p>
+  <a href="https://example.org">
+    <em>
+      "em"
+    " and "
+    <strong>
+      "strong"
+    " and "
+    <code>
+      "code"
+<p>
+  <strong>
+    <a href="https://example.org">
+      "bold link"
+<p>
+  <em>
+    <a href="u">
+      "em link"
+  " plain "
+  <a href="u">
+    <strong>
+      "strong link"
+--- marked, output Markdown
+<p>
+  <a href="https://example.org">
+    <em>
+      "em"
+    " and "
+    <strong>
+      "strong"
+    " and "
+    <code>
+      "code"
+<p>
+  <a href="https://example.org">
+    <strong>
+      "bold link"
+<p>
+  <a href="u">
+    <em>
+      "em link"
+  " plain "
+  <a href="u">
+    <strong>
+      "strong link"

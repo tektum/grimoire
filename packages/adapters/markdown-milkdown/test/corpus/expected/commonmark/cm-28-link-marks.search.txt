@@ -1,0 +1,3 @@
+em and strong and code
+bold link
+em link plain strong link

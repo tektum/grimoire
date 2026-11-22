@@ -1,0 +1,13 @@
+--- marked, input Markdown
+<p>
+  <a href="javascript:alert(1)">
+    "x"
+  " and "
+  <a href="data:text/html,hi">
+    "y"
+  " and "
+  <a href="vbscript:x">
+    "z"
+--- marked, output Markdown
+<p>
+  "x and y and z"

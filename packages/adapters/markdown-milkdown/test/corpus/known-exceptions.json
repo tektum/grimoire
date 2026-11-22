@@ -1,0 +1,7 @@
+[
+  {
+    "file": "gfm/frontmatter.md",
+    "kinds": ["meaning"],
+    "reason": "YAML front matter is read as a rule and a setext heading with a line break inside; the heading is written with a hard break (## title: Page<br />tags: [a, b]), so two lines show where one heading line showed."
+  }
+]

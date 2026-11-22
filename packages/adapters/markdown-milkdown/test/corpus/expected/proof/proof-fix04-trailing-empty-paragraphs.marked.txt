@@ -1,0 +1,8 @@
+--- marked, input Markdown
+<p>
+  "last real paragraph"
+<br>
+<br>
+--- marked, output Markdown
+<p>
+  "last real paragraph"

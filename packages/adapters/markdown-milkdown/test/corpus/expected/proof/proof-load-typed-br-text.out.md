@@ -1,0 +1,3 @@
+typed \<br /> text
+
+`<br />` in code

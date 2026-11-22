@@ -1,0 +1,2 @@
+Inline $a^2+b^2$ and block:
+$$ E = mc^2 $$

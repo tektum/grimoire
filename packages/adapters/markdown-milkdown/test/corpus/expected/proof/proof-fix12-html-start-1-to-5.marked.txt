@@ -1,0 +1,22 @@
+--- marked, input Markdown
+<!--?php echo 1; text after php <!-- unclosed comment text after comment <![CDATA[ unclosed text after cdata <!DOCTYPE html text after doctype <pre-->
+"unclosed pre"
+--- marked, output Markdown
+<p>
+  "<?php echo 1;"
+  <br>
+  "text after php"
+  <br>
+  "<!-- unclosed comment"
+  <br>
+  "text after comment"
+  <br>
+  "<![CDATA[ unclosed"
+  <br>
+  "text after cdata"
+  <br>
+  "<!DOCTYPE html"
+  <br>
+  "text after doctype"
+  <br>
+  "<pre> unclosed pre"

@@ -1,0 +1,11 @@
+Weekly update
+Created: November 17, 2026 9:00 AM Tags: team, weekly
+Highlights
+Shipped search
+Fixed the import job
+More text here.
+Metric
+Value
+Users
+1,200
+Back
