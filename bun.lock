@@ -13,6 +13,30 @@
         "vitest": "5.1.1",
       },
     },
+    "apps/server": {
+      "name": "@tektum/grimoire-server",
+      "version": "0.0.0",
+      "bin": {
+        "grimoire": "./dist/cli.js",
+      },
+      "dependencies": {
+        "@hono/node-server": "2.1.9",
+        "@tektum/grimoire-adapter-auth-descope": "*",
+        "@tektum/grimoire-adapter-auth-dev": "*",
+        "@tektum/grimoire-adapter-collab-hocuspocus": "*",
+        "@tektum/grimoire-adapter-config-env": "*",
+        "@tektum/grimoire-adapter-db-kysely": "*",
+        "@tektum/grimoire-adapter-logger-json": "*",
+        "@tektum/grimoire-adapter-markdown-milkdown": "*",
+        "@tektum/grimoire-core": "*",
+        "hono": "4.13.19",
+      },
+      "devDependencies": {
+        "@tektum/grimoire-adapter-auth-fake": "*",
+        "@tektum/grimoire-test-support": "*",
+        "jose": "6.2.18",
+      },
+    },
     "apps/web": {
       "name": "@tektum/grimoire-web",
       "version": "0.0.0",
@@ -187,6 +211,8 @@
 
     "@hocuspocus/server": ["@hocuspocus/server@4.8.0", "", { "dependencies": { "@hocuspocus/common": "^4.8.0", "async-mutex": "^0.5.0", "crossws": "^0.4.16", "kleur": "^4.1.5", "lib0": "^0.2.119" }, "peerDependencies": { "y-protocols": "^1.0.6", "yjs": "^13.6.8" } }, "sha512-P8U4I4R4Ft+B37d4CFs4tG8oPJ3rnJJiFx3CXBJpKSIrXTz5YDldRmv7eGqmUq4QRSoWR6FjN4DUIX1QO0PccA=="],
 
+    "@hono/node-server": ["@hono/node-server@2.1.9", "", { "peerDependencies": { "hono": "^4 || ^5.0.0-0" } }, "sha512-Sk4NQd3GFY0WZWCzndwFMPwJhtD0y9qjsQ+pjID0/03nK9pxyBCUoUHCho8QYBLBVhi0ssL8UkNPHqbgSOFPIQ=="],
+
     "@humanfs/core": ["@humanfs/core@0.19.2", "", { "dependencies": { "@humanfs/types": "^0.15.0" } }, "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA=="],
 
     "@humanfs/node": ["@humanfs/node@0.16.8", "", { "dependencies": { "@humanfs/core": "^0.19.2", "@humanfs/types": "^0.15.0", "@humanwhocodes/retry": "^0.4.0" } }, "sha512-gE1eQNZ3R++kTzFUpdGlpmy8kDZD/MLyHqDwqjkVQI0JMdI1D51sy1H958PNXYkM2rAac7e5/CnIKZrHtPh3BQ=="],
@@ -326,6 +352,8 @@
     "@tektum/grimoire-core": ["@tektum/grimoire-core@workspace:packages/core"],
 
     "@tektum/grimoire-editor-schema": ["@tektum/grimoire-editor-schema@workspace:packages/editor-schema"],
+
+    "@tektum/grimoire-server": ["@tektum/grimoire-server@workspace:apps/server"],
 
     "@tektum/grimoire-test-support": ["@tektum/grimoire-test-support@workspace:packages/test-support"],
 
@@ -486,6 +514,8 @@
     "happy-dom": ["happy-dom@21.0.4", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw=="],
 
     "hashery": ["hashery@1.5.1", "", { "dependencies": { "hookified": "^1.15.0" } }, "sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ=="],
+
+    "hono": ["hono@4.13.19", "", {}, "sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA=="],
 
     "hookified": ["hookified@1.15.1", "", {}, "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg=="],
 
