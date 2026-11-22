@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test
+.PHONY: db-up db-down down down-volumes test
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -23,13 +23,6 @@ db-up: .env dev-secret
 	$(COMPOSE) up -d --wait --wait-timeout 120 postgres seaweedfs
 
 
-# Builds the image, starts PostgreSQL, the file store and the app (waits for healthy), then applies migrations
-# and checks /readyz from inside the container (the image has no curl; this also works with the offline override).
-up: .env dev-secret
-	$(COMPOSE) up -d --build --wait --wait-timeout 180
-	$(MAKE) migrate
-	$(COMPOSE) exec -T app /nodejs/bin/node -e "fetch('http://127.0.0.1:8080/readyz').then((r) => r.text().then((t) => { console.log(t); process.exit(r.ok ? 0 : 1); }))"
-
 # Stops and removes the containers and the network; the data volumes stay, so `make up` brings the same data back.
 down:
 	$(COMPOSE) --profile tools down --remove-orphans
@@ -39,16 +32,6 @@ db-down: down
 # The only targets that delete data (database and file store volumes).
 down-volumes:
 	$(COMPOSE) --profile tools down -v --remove-orphans
-
-reset: down-volumes up
-
-# Every setting the loader knows is passed to the app container or listed as deliberately not passed (no stack needed).
-check-compose:
-	bun run vitest run --project unit apps/server/test/server/compose-settings.test.ts
-	$(COMPOSE) config --quiet
-
-migrate: .env dev-secret
-	$(COMPOSE) --profile tools run --rm --build migrate
 
 test:
 	bun run test
