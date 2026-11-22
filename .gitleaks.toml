@@ -185,3 +185,30 @@ paths = [
 regexes = [
   '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
 ]
+
+# a made-up secret constant of a test (introduced by sc1)
+[[allowlists]]
+description = "a made-up secret constant of a test"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^apps/server/test/collab/auth\.int\.test\.ts$''',
+]
+regexes = [
+  '''SECRET = 'test-secret-[0-9a-f]+'''',
+]
+
+# the RFC 6455 sample nonce in a hand-written WebSocket upgrade request (introduced by sc1)
+[[allowlists]]
+description = "the RFC 6455 sample nonce in a hand-written WebSocket upgrade request"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^apps/server/test/collab/collab\.int\.test\.ts$''',
+  '''^apps/server/test/collab/upgrade\.int\.test\.ts$''',
+]
+regexes = [
+  '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
+]

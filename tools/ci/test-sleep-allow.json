@@ -1,5 +1,10 @@
 [
   {
+    "file": "apps/server/test/collab/stale.int.test.ts",
+    "line": "await sleep(2500);",
+    "reason": "Proves that a refused conversion is not retried in a loop: the absence of a second collab.convert_failed over a window longer than the retry interval; nothing observable marks that it did not happen."
+  },
+  {
     "file": "apps/server/test/server/support/hooks-entry.mjs",
     "line": "if (spec === 'slow') extra.push({ name: 'test-slow', phase: 'save-pages', deadlineMs: 20_000, run: () => sleep(2500) });",
     "reason": "Test fixture, not a wait: a deliberately slow shutdown hook that makes the product slow on purpose."
@@ -30,6 +35,16 @@
     "reason": "Test fixture, not a wait: a child worker that deliberately hangs."
   },
   {
+    "file": "apps/server/test/collab/collab.int.test.ts",
+    "line": "const typing = setInterval(() => { c.text.insert(c.text.length, 'x'); }, 500);",
+    "reason": "Typing driver for a feature under test (a client that keeps editing during a store outage): a steady 500 ms edit rate is the stimulus; it is cleared in finally and the assertions wait on conditions."
+  },
+  {
+    "file": "apps/server/test/collab/support.ts",
+    "line": "export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));",
+    "reason": "The shared sleep helper itself: its delay is the caller literal, and the sleep checker flags every caller over 250 ms."
+  },
+  {
     "file": "apps/server/test/server/shutdown.test.ts",
     "line": "run: async () => { trace.push(`${name}:start`); await new Promise((r) => setTimeout(r, ms)); trace.push(`${name}:end`); },",
     "reason": "A fake shutdown hook that takes ms (a caller literal) to finish: simulates a slow hook, it does not wait for a state."
@@ -58,6 +73,11 @@
     "file": "packages/test-support/test/collide-once.mjs",
     "line": "setInterval(() => undefined, 1000);",
     "reason": "Child-process fixture that only keeps the event loop alive until it is killed (no-op interval)."
+  },
+  {
+    "file": "apps/server/test/collab/db-hang.int.test.ts",
+    "line": "const typing = setInterval(() => { c.text.insert(c.text.length, `${String(i++)},`); }, 500);",
+    "reason": "Typing driver for a store stall of the child server real clock: a steady 500 ms edit rate is the stimulus; cleared in finally; the wait itself is waitUntil on log events."
   },
   {
     "file": "packages/adapters/markdown-milkdown/test/pool/measure.mjs",
