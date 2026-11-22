@@ -92,14 +92,17 @@ describe('crash containment', () => {
 
 describe('back-pressure', () => {
   it('refuses the call past the queue limit at once, typed, while earlier calls keep their place', async () => {
-    const converter = fixture({ queueLimit: 2, timeoutMs: 800 });
+    const converter = fixture({ queueLimit: 2, timeoutMs: 5000 });
     const running = converter.seed('busy-300');
     const queued = [converter.seed('echo'), converter.seed('echo')];
     // The calls are admitted synchronously, so the queue already holds the two: observed, not waited for.
     expect(converter.stats().queued).toBe(2);
-    const started = performance.now();
+    // "At once" means the answer needs no worker and no I/O: awaiting it continues in microtasks, before any worker message or timer callback can run, so the
+    // running call cannot have finished by then. The refusal is awaited itself (no fixed number of turns) and the running call is checked by a flag.
+    let runningDone = false;
+    void running.then(() => { runningDone = true; });
     const refused = await converter.seed('echo');
-    expect(performance.now() - started).toBeLessThan(100);
+    expect(runningDone).toBe(false);
     expect(refused).toEqual({ ok: false, reason: 'internal', detail: 'queue-full' });
     expect(converter.stats().queued).toBe(2);
     expect(await running).toMatchObject(OK);
