@@ -117,3 +117,16 @@ paths = [
 regexes = [
   '''KEY = 'mgmt-key-SECRET-0123456789'''',
 ]
+
+# the RFC 6455 sample nonce in a hand-written WebSocket upgrade request (introduced by c10)
+[[allowlists]]
+description = "the RFC 6455 sample nonce in a hand-written WebSocket upgrade request"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+paths = [
+  '''^packages/adapters/collab\-hocuspocus/test/upgrade/upgrade\.int\.test\.ts$''',
+]
+regexes = [
+  '''Sec-WebSocket-Key.{0,4}dGhlIHNhbXBsZSBub25jZQ==''',
+]
