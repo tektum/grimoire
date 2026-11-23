@@ -2,7 +2,7 @@
 
 Store: `chrislusf/seaweedfs:4.54` as pinned in `compose.yaml` (`weed mini -s3` with the two identities of the Compose file: the admin identity and the runtime identity that may read, write and list the `grimoire` bucket only). Adapter: `packages/adapters/files-s3`. The client talks to `http://127.0.0.1:8333`; signed URLs carry `http://localhost:8333`, which is not one of the application's origins.
 
-Run: the integration job of the pull request that added these tests (`make db-up`, then `bun run test:integration`), files `file-storage.conformance.int.test.ts` and `credentials.int.test.ts`. Both passed in full: 21 tests in the first file (the 20 cases below and a check that every case ran), 4 in the second. No case was skipped: the store has every capability the suite names.
+Run: the integration job of the pull request that added these tests (`make db-up`, then `bun run test:integration`), files `file-storage.conformance.int.test.ts` and `credentials.int.test.ts`. Both passed in full: 21 tests in the first file (the 20 cases below and a check that every case ran), 4 in the second (the `delete` call on another bucket was added to that file afterwards and passed in the run of the pull request that added it). No case was skipped: the store has every capability the suite names.
 
 ## Cases of the conformance suite
 
@@ -35,7 +35,7 @@ The same cases the in-memory fake passes. The create-only header is the default 
 
 ## Credentials
 
-`credentials.int.test.ts` passes. With the runtime key, through the adapter: creating a bucket and setting CORS are refused with 403; every call on a bucket that is not the runtime key's own is refused; an unsigned read and an unsigned listing are 403. `ensureBucket` with the admin key succeeds twice and the CORS rule reads back with the application's origins, the methods `GET`, `HEAD` and `PUT`, `ETag` exposed and a maximum age of 600.
+`credentials.int.test.ts` passes. With the runtime key, through the adapter: creating a bucket and setting CORS are refused with 403; each of `head`, `get`, `put`, `list` and `delete` on a bucket that is not the runtime key's own is refused; an unsigned read and an unsigned listing are 403. `ensureBucket` with the admin key succeeds twice and the CORS rule reads back with the application's origins, the methods `GET`, `HEAD` and `PUT`, `ETag` exposed and a maximum age of 600.
 
 ## Findings
 
