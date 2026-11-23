@@ -53,6 +53,8 @@ export interface FileStorageHarness {
   send(request: SignedRequest): Promise<SignedResponse>;
   /** Lets `seconds` pass for signed URLs: the fake moves its clock, a real store waits. */
   advance(seconds: number): Promise<void>;
+  /** An origin the store's CORS rule allows (the browser's side of `cors-preflight`); a made-up one when unset. */
+  readonly corsOrigin?: string;
   /** A URL to the object without any signature. */
   unsignedUrl(key: string): string;
 }
@@ -489,10 +491,10 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
   {
     name: 'cors-preflight',
     requires: 'cors',
-    async run({ store, send }) {
+    async run({ store, send, corsOrigin }) {
       const key = `${freshPrefix()}/a`;
       const signed = await store.signUpload(key, { size: 5, contentType: binary, ttlSeconds: 60, ifNoneMatch: true });
-      const origin = 'https://app.example.test';
+      const origin = corsOrigin ?? 'https://app.example.test';
       const answer = await send({
         method: 'OPTIONS',
         url: signed.url,
