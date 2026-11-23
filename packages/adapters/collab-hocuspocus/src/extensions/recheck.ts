@@ -235,7 +235,10 @@ export function createRecheck(o: RecheckOptions): Recheck {
       if (v.kind === 'unavailable') { log.emit('collab.auth_unavailable', { source: 'verifier' }); return; }
       if (v.kind !== 'ok') {
         log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'invalid' });
-        closeOne(data.connection, t, 'invalid-token'); // the client must sign in again
+        // The provider answers the server's request at the boundary with the token it has, which may have expired in the meantime: once the connection's
+        // own expiry has passed the session is over, whatever the stale token was (R4.14), and the sweep's reason is the true one.
+        if (t.expiresAt <= deps.clock.now()) closeOne(data.connection, t, 'session-expired', 'session-expired');
+        else closeOne(data.connection, t, 'invalid-token'); // the client must sign in again
         return;
       }
       if (v.userId !== t.descopeUserId) {

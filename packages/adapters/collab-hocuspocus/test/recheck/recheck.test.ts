@@ -308,6 +308,17 @@ describe('the token round', () => {
     }
   });
 
+  it('a token that fails verification AFTER the connection\'s own expiry closes it session-expired, not invalid-token (R4.14): the session expired, the sweep has not run yet', async () => {
+    for (const stale of [`sub:${SUBJECT}:1`, 'garbage']) { // the same subject\'s expired token (what the provider answers at the boundary) and an unverifiable one
+      const r = started(rig());
+      subjectVerifier(r);
+      const c = await r.open({ expiresInMs: 5000 });
+      r.t.clock.advance(5500); // past expiry, before the next sweep tick
+      await r.tokenSync(c, stale);
+      expect(c.closes).toEqual([{ code: 4401, reason: 'session-expired' }]);
+    }
+  });
+
   it('a verifier outage is not an invalid token: the connection is kept to its own expiry, collab.auth_unavailable is logged, and a later token is accepted', async () => {
     const r = started(rig());
     r.t.verifier.result = { kind: 'service-unavailable' };
