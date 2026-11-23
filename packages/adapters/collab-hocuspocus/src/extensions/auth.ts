@@ -7,7 +7,7 @@ import type { CollabLog } from '../events.js';
 import { readContext } from '../context.js';
 import type { ConnectionContext } from '../context.js';
 import type { PeerRegistry } from '../peers.js';
-import { readHandshake } from '../handshake.js';
+import { epochMessage, readHandshake } from '../handshake.js';
 import { Refusal } from '../refusal.js';
 import type { UpgradeGuard } from '../upgrade-guard.js';
 
@@ -109,8 +109,10 @@ export function createAuthExtension(o: AuthOptions): Extension {
       }
       if (r.kind !== 'allowed') throw r.refusal;
       data.connectionConfig.readOnly = r.access.access !== 'read-write';
+      // A client that recorded another epoch (a reset, a restore, or a restored backup) must reload, never merge; checked before admission so a refused reconnect holds no place.
+      if (hs.epoch !== undefined && hs.epoch !== r.access.epoch) throw new Refusal('stale-epoch');
       o.admit?.(data, r.user.id); // decided now, in arrival order, before the client is told it is authenticated and before the page loads
-      return { userId: r.user.id, descopeUserId: v.userId, accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch };
+      return { userId: r.user.id, descopeUserId: v.userId, accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch, ...(hs.wrapped ? { wrapped: true } : {}), ...(hs.wrapped && hs.epoch === undefined ? { epochUnknown: true } : {}) };
     },
 
     /**
@@ -131,6 +133,7 @@ export function createAuthExtension(o: AuthOptions): Extension {
       const { peerId } = c;
       data.connection.onClose(() => { o.peers.releaseDocument(peerId, data.documentName); });
       o.guard.onAuthenticated(c.peerId);
+      if (c.wrapped && c.epoch !== undefined) data.connection.sendStateless(epochMessage(c.epoch));
       o.log.emit('collab.connected', { pageId: data.documentName, accessLevel: c.accessLevel });
     },
   };
