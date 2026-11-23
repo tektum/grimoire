@@ -299,6 +299,31 @@ describe('the catch-up after a restart (R9.3)', () => {
   });
 });
 
+describe('a revision owed at shutdown', () => {
+  it('is not made by the shutdown, and the catch-up after the restart makes it exactly once', async () => {
+    const b = build();
+    const editedAt = b.clock.now();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'saved at shutdown', lastEditedAt: editedAt, lastEditedBy: ANA });
+    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.stop(); // the shutdown: timers cancelled, nothing waits for revision work
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([]);
+    expect(b.repo.calls).toEqual([]);
+
+    // The server starts again, a few minutes later, with a new scheduler over the same stores; the first page open runs the catch-up.
+    b.clock.advance(6 * MINUTE);
+    const restarted = createRevisionScheduler({ repo: b.repo, clock: b.clock, report: revisionReport(createCollabLog(b.logger)), timers: b.timers });
+    restarted.opened();
+    await restarted.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle', createdAt: editedAt, markdown: 'saved at shutdown', authors: [ANA] })]);
+    restarted.opened();
+    b.timers.advance(10 * MINUTE);
+    await restarted.whenIdle();
+    expect(b.repo.made(PAGE)).toHaveLength(1);
+    expect(b.events('collab.revision_created')).toHaveLength(1);
+  });
+});
+
 describe('stopping', () => {
   it('cancels every timer, the catch-up\'s second pass included', async () => {
     const b = build();
