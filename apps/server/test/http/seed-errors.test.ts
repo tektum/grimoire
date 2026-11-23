@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { SeedRefusal } from '@tektum/grimoire-core/pages/seeded-content';
 import { seedRefusalToHttp } from '../../src/http/seed-errors.js';
 
 const BUSY = 'The converter is busy with other pages. Try again in a moment.';
-const seed = (reason: string, detail: string, message?: string) => ({ stage: 'seed' as const, reason, detail, ...(message ? { message } : {}) });
-const back = (reason: string) => ({ stage: 'convert' as const, reason, detail: 'x' });
+const seed = (reason: SeedRefusal['reason'], detail: string, message?: string) => ({ stage: 'seed' as const, reason, detail, ...(message ? { message } : {}) });
+const back = (reason: SeedRefusal['reason']) => ({ stage: 'convert' as const, reason, detail: 'x' });
 
 describe('seedRefusalToHttp', () => {
   it.each([
@@ -11,7 +12,7 @@ describe('seedRefusalToHttp', () => {
     ['the Markdown has 9 lines; the limit is 8 lines', 'invalid-markdown'],
     ['line 3 has 51 quote or list markers; the limit is 50 per line', 'invalid-markdown'],
   ])('answers 422 invalid with the pool sentence: %s', (message, reason) => {
-    expect(seedRefusalToHttp(seed(reason, 'limit', message))).toEqual({ code: 'invalid', message });
+    expect(seedRefusalToHttp(seed(reason as SeedRefusal['reason'], 'limit', message))).toEqual({ code: 'invalid', message });
   });
 
   it('uses the limit sentence in detail when the pool sends no message', () => {
@@ -37,11 +38,11 @@ describe('seedRefusalToHttp', () => {
     ['internal', 'x'],
     ['internal', 'no-key'],
   ])('answers 503 unavailable with Retry-After 5 for %s / %s', (reason, detail) => {
-    expect(seedRefusalToHttp(seed(reason, detail))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
+    expect(seedRefusalToHttp(seed(reason as SeedRefusal['reason'], detail))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
   });
 
   it.each(['content-lost', 'too-large'])('answers 422 invalid when %s follows a good seed', (reason) => {
-    expect(seedRefusalToHttp(back(reason)).code).toBe('invalid');
+    expect(seedRefusalToHttp(back(reason as SeedRefusal['reason'])).code).toBe('invalid');
   });
 
   it('answers 503 when the converter itself fails after a good seed', () => {

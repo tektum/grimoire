@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { markdownHash as hashOf } from '@tektum/grimoire-core/pages/hash';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { PageStore, PageWrite, StoredPage, WriteOutcome } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
@@ -15,7 +15,6 @@ type PageRow = { [K in 'title' | 'ydoc' | 'markdown' | 'markdown_hash' | 'state_
 const COLUMNS = 'title, ydoc, markdown, markdown_hash, state_epoch, extract(epoch from markdown_stale_since) * 1000 as stale_ms';
 
 /** R4.21: one hash rule for an editor save and a title change through the API. UTF-8; NUL cannot occur in a title or in Markdown, so the pair is unambiguous. */
-const hashOf = (title: string, markdown: string): Buffer => createHash('sha256').update(title, 'utf8').update('\0').update(markdown, 'utf8').digest();
 
 const copy = (b: Uint8Array | null): Uint8Array | null => (b === null ? null : new Uint8Array(b));
 

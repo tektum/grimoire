@@ -1,12 +1,5 @@
+import type { SeedRefusal } from '@tektum/grimoire-core/pages/seeded-content';
 import type { ErrorCode } from './error.js';
-
-/** The shape of a refusal from `seedUserMarkdown` (core `pages/seeded-content`); no page text, ever. */
-export interface SeedRefusalLike {
-  readonly stage: 'seed' | 'convert';
-  readonly reason: string;
-  readonly detail: string;
-  readonly message?: string;
-}
 
 export interface HttpRefusal {
   readonly code: ErrorCode;
@@ -21,7 +14,7 @@ const BUSY_HEADERS = { 'retry-after': '5' };
  * The one place a refusal becomes an answer. `no-key` is a bug (the route forgot the key): it is a 503, and the 5xx handler
  * logs `http.handler_error` for it. Feed the result to `fail(code, message, headers)`.
  */
-export function seedRefusalToHttp(r: SeedRefusalLike): HttpRefusal {
+export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'detail' | 'message'>): HttpRefusal {
   if (r.stage === 'convert') {
     // A good seed whose state cannot be written back: the document is the problem, unless the converter itself failed.
     if (r.reason === 'content-lost' || r.reason === 'too-large' || r.reason === 'too-deep' || r.reason === 'invalid-state') {
