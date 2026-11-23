@@ -28,6 +28,13 @@ export function excludesWithoutReason(text) {
   return text.slice(start, end).split('\n').slice(1).filter((l) => /"[^"]+"/.test(l) && !l.includes('...') && !/\/\/\s*\S/.test(l)).map((l) => l.trim());
 }
 
+/** Entries of the `integrationCovered` array of the unit config without a trailing `// reason`. */
+export function integrationCoveredWithoutReason(text) {
+  const start = text.indexOf('export const integrationCovered = [');
+  const end = text.indexOf('];', start);
+  return text.slice(start, end).split('\n').slice(1).filter((l) => /"[^"]+"/.test(l) && !/\/\/\s*\S/.test(l)).map((l) => l.trim());
+}
+
 test('a v8 ignore needs a reason after -- on the same line', () => {
   assert.deepEqual(ignoresWithoutReason('/* v8 ignore next -- unreachable: exhaustive switch */'), []);
   assert.deepEqual(ignoresWithoutReason('x();\n/* v8 ignore next */'), [2]);
@@ -40,11 +47,20 @@ test('a coverage exclusion needs a reason after // on the same line', () => {
   assert.deepEqual(excludesWithoutReason(ok.replace(' // why', '')), ['"a/**",']);
 });
 
+test('a file left out of the unit run because only integration tests cover it needs its reason too', () => {
+  const ok = 'export const integrationCovered = [\n  "a.ts", // why\n];';
+  assert.deepEqual(integrationCoveredWithoutReason(ok), []);
+  assert.deepEqual(integrationCoveredWithoutReason(ok.replace(' // why', '')), ['"a.ts",']);
+  assert.deepEqual(integrationCoveredWithoutReason('nothing here'), []);
+});
+
 test('every ignore directive in the sources and every coverage exclusion of this repository has its reason', () => {
   const offenders = [];
   for (const top of ['apps', 'packages']) for (const file of sources(path.join(root, top))) {
     for (const line of ignoresWithoutReason(readFileSync(file, 'utf8'))) offenders.push(`${path.relative(root, file)}:${String(line)}`);
   }
   assert.deepEqual(offenders, []);
-  assert.deepEqual(excludesWithoutReason(readFileSync(path.join(root, 'vitest.config.js'), 'utf8')), []);
+  const config = readFileSync(path.join(root, 'vitest.config.js'), 'utf8');
+  assert.deepEqual(excludesWithoutReason(config), []);
+  assert.deepEqual(integrationCoveredWithoutReason(config), []);
 });
