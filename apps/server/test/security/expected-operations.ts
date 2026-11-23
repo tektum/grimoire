@@ -1,0 +1,42 @@
+/**
+ * Every operation the API has with the policy it declares, written out by hand once: the walk reads the generated document, and fails when the document and this
+ * list differ, so an added or removed route, and a route moved to a weaker policy, are decisions made in two places. A task that adds a route adds its line here.
+ * The policy is written as in docs/api-surface.txt: its kind, then the rest of its fields in the order of their names.
+ */
+export const EXPECTED_OPERATIONS: readonly (readonly [operation: string, policy: string])[] = [
+  ['DELETE /v1/collections/{id}', 'collection:admin:id'],
+  ['DELETE /v1/collections/{id}/access/{entryId}', 'collection:admin:id'],
+  ['DELETE /v1/groups/{id}', 'admin'],
+  ['DELETE /v1/groups/{id}/members/{userId}', 'admin'],
+  ['DELETE /v1/pages/{id}', 'page:write:id'],
+  ['DELETE /v1/trash/{id}', 'admin'],
+  ['GET /v1/collections', 'authenticated'],
+  ['GET /v1/collections/{id}', 'collection:read:id'],
+  ['GET /v1/collections/{id}/access', 'collection:admin:id'],
+  ['GET /v1/collections/{id}/tree', 'collection:read:id'],
+  ['GET /v1/config', 'public'],
+  ['GET /v1/groups', 'admin'],
+  ['GET /v1/groups/{id}/members', 'admin'],
+  ['GET /v1/me', 'authenticated:true'],
+  ['GET /v1/pages/by-url-id/{urlId}', 'page:read:urlId'],
+  ['GET /v1/pages/{id}', 'page:read:id'],
+  ['GET /v1/pages/{id}/markdown', 'page:read:id'],
+  ['GET /v1/pages/{id}/revisions', 'page:read:id'],
+  ['GET /v1/pages/{id}/revisions/{rid}', 'page:read:id'],
+  ['GET /v1/trash', 'authenticated'],
+  ['GET /v1/users', 'admin'],
+  ['PATCH /v1/collections/{id}', 'collection:admin:id'],
+  ['PATCH /v1/groups/{id}', 'admin'],
+  ['PATCH /v1/pages/{id}', 'page:write:id'],
+  ['PATCH /v1/users/{id}', 'admin'],
+  ['POST /v1/collections', 'admin'],
+  ['POST /v1/groups', 'admin'],
+  ['POST /v1/pages', 'collection-body:collectionId:write'],
+  ['POST /v1/pages/{id}/move', 'page:write:id'],
+  ['POST /v1/pages/{id}/reset-state', 'admin'],
+  ['POST /v1/pages/{id}/revisions/{rid}/restore', 'page:write:id'],
+  ['POST /v1/trash/{id}/restore', 'trash:write:id'],
+  ['POST /v1/users/names', 'authenticated'],
+  ['PUT /v1/collections/{id}/access', 'collection:admin:id'],
+  ['PUT /v1/groups/{id}/members/{userId}', 'admin'],
+];
