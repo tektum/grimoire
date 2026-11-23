@@ -66,4 +66,14 @@ describe('grimoire migrate installs pg-boss', () => {
     }
     expect((await sqlAsApp<{ n: number }>("select count(*)::int as n from pgboss.job where name = 'm4-grants'"))[0]?.n).toBe(1);
   }, 120_000);
+
+  it('does not let the runtime role create a queue: that is DDL and belongs to the migration role', async () => {
+    const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined });
+    try {
+      await expect(queue.ensureQueue('m4-runtime-made')).rejects.toThrow();
+    } finally {
+      await queue.stop({ graceMs: 0 });
+    }
+    expect(await sqlAdmin<{ name: string }>(DB, "select name from pgboss.queue where name = 'm4-runtime-made'")).toEqual([]);
+  }, 120_000);
 });
