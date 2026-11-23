@@ -22,8 +22,11 @@ describe('FakePageStore markdown hash', () => {
     expect(await store.store('p', write('a', [2]))).toEqual({ written: true });
     expect(await store.store('p', write('a', [2]))).toEqual({ written: false, reason: 'unchanged' });
     expect(await store.store('p', write('a', [3]))).toEqual({ written: true });
+    expect(store.rows.get('p')).toEqual(Uint8Array.from([3]));
     expect(store.markdowns.get('p')).toBe('a');
     expect(await store.store('p', write('b', [3]))).toEqual({ written: true });
+    expect(store.markdowns.get('p')).toBe('b');
+    expect(store.texts.get('p')).toBe('b');
     expect(store.hashes.get('p')).toEqual(realRule('', 'b'));
   });
 });
