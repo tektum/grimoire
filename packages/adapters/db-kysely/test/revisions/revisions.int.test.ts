@@ -125,12 +125,18 @@ async function holdingThePageLock<T>(pageId: string, start: () => Promise<T>[], 
   const holder = t.app.transaction(async (tx) => { await lockPage(tx, pageId); held(); await gate; });
   await locked;
   const calls = Promise.all(start());
-  await vi.waitFor(async () => {
-    const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
-    expect(Number(waiting[0]?.n)).toBe(queued);
-  });
-  release();
-  await holder;
+  try {
+    await vi.waitFor(async () => {
+      const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+      expect(Number(waiting[0]?.n)).toBe(queued);
+    });
+  } finally {
+    // Whatever the wait found, the gate opens, the holder commits and the queued calls settle, so a failing run reports its assertion and leaves no
+    // transaction, connection or lock behind for the teardown to wait on.
+    release();
+    await holder.catch(() => undefined);
+    await calls.catch(() => undefined);
+  }
   return calls;
 }
 
