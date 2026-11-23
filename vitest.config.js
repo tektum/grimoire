@@ -4,6 +4,8 @@ const exclude = ["**/node_modules/**", "**/dist/**", "**/coverage/**", "referenc
 const slow = ["**/*.int.test.ts", "**/*.container.test.ts"];
 // The converter benchmark takes minutes: it has its own project and script (`bun run test:benchmark`), never `bun run test`.
 const benchmark = ["**/test/benchmark/**"];
+// The web client's tests run in their own project (a browser-like environment); the unit project must not match them.
+const web = ["apps/web/**"];
 // Files that only the integration project covers, because they need a database. The unit run leaves them out of its coverage and
 // floors; the integration run and the merged run (vitest.integration-coverage.config.js, vitest.merged-coverage.config.js) count them.
 export const integrationCovered = [
@@ -24,10 +26,11 @@ export default defineConfig({
       reporter: ["text", "lcov", "json-summary"],
       reportsDirectory: "coverage",
       // Every real source file counts, tested or not: an untested file shows as 0%, it is never silently left out.
-      include: ["{apps,packages}/**/src/**/*.ts"],
+      include: ["{apps,packages}/**/src/**/*.{ts,tsx}"],
       exclude: [
         ...exclude,
         "**/*.test.ts", // tests
+        "**/*.test.tsx", // tests of the web client
         "**/*.d.ts", // type declarations: no code
         "**/test/**", // tests and their helpers
         "**/test-e2e/**", // end-to-end scenarios (run in containers)
@@ -64,6 +67,8 @@ export default defineConfig({
         "packages/adapters/jobs-pgboss/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/pages/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
+        // The web client: no code of its own yet; the pull request that adds the shell sets this to the measured value, and it only rises.
+        "apps/web/src/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/auth-descope/src/index.ts": { statements: 99, branches: 98, functions: 100, lines: 100 },
@@ -75,7 +80,15 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["{apps,packages}/**/{src,test}/**/*.test.ts"],
-          exclude: [...exclude, ...slow, ...benchmark],
+          exclude: [...exclude, ...slow, ...benchmark, ...web],
+        },
+      },
+      {
+        test: {
+          name: "web",
+          environment: "happy-dom",
+          include: ["apps/web/{src,test}/**/*.test.{ts,tsx}"],
+          exclude: [...exclude, "apps/web/test-e2e/**"],
         },
       },
       {

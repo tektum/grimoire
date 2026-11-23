@@ -75,7 +75,7 @@ describe("reference/ is excluded", () => {
   it("is not matched by any vitest include", async () => {
     const module: unknown = await import(pathToFileURL(path.join(repoRoot, "vitest.config.js")).href);
     const config = (module as { default: { test: { projects: { test: { include: string[]; exclude: string[] } }[] } } }).default;
-    expect(config.test.projects.length).toBe(4);
+    expect(config.test.projects.length).toBe(5); // unit, web, benchmark, integration, container
     for (const project of config.test.projects) {
       expect(project.test.exclude).toContain("reference/**");
       for (const include of project.test.include) {

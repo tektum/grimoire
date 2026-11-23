@@ -37,6 +37,11 @@ const allowedDuplicates: Record<string, string> = {
   // Not in the contracts file. editor-schema's tests (two-editors, fragment-name, yjs-losses, headings, size benchmark)
   // must live in editor-schema and each needs these libraries; the converter needs them too.
   "y-prosemirror": "editor-schema tests write the Yjs fragment (y-prosemirror); the converter reads it at run time",
+  // The web client mounts the editor in the browser: it loads the same copy of the editor libraries as the schema package, pinned identically.
+  "@milkdown/preset-commonmark": "the web client's editor loads the same copy as the schema package; versions pinned identically",
+  "@milkdown/preset-gfm": "the web client's editor loads the same copy as the schema package; versions pinned identically",
+  "@milkdown/prose": "the web client's editor loads the same copy as the schema package; versions pinned identically",
+  "@milkdown/utils": "the web client's editor loads the same copy as the schema package; versions pinned identically",
   "@milkdown/plugin-collab": "editor-schema two-editors and fragment-name tests bind the collab plugin; converter parity tests too",
   "happy-dom": "editor-schema tests run a real editor, which needs a DOM; converter parity tests too",
   zod: "one copy, same pin as the other declaration",
