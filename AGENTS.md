@@ -35,7 +35,10 @@ Run from the repository root. Each line works on `main` today.
 | Typecheck | `bun run typecheck` |
 | Build | `bun run build` |
 | Unit tests | `bun run test` |
-| Unit tests with coverage (enforces the floors in `vitest.config.js`) | `bun run test:coverage` |
+| Unit tests with coverage (enforces the unit floors in `vitest.config.js`; no Docker) | `bun run test:coverage` |
+| Integration tests with coverage (enforces the integration floors in `vitest.integration-coverage.config.js`; needs `make db-up`) | `bun run test:integration:coverage` |
+| The same two runs, each leaving a blob in `vitest-blobs/` (what CI runs) | `bun run test:coverage:ci`, `bun run test:integration:coverage:ci` |
+| Merge those blobs and enforce every floor on the merged coverage (`vitest.merged-coverage.config.js`) | `bun run test:coverage:merged` |
 | Tests of the repository tools | `bun run test:tools` |
 | Integration tests | `bun run test:integration` |
 | Container tests | `bun run test:container` |
@@ -48,6 +51,13 @@ Run from the repository root. Each line works on `main` today.
 | Sleep check alone | `node tools/ci/check-test-sleeps.mjs` |
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
+
+Which command enforces what: the unit run enforces the unit floors on its own coverage;
+the integration run enforces the integration floors on its own coverage; the merged run
+enforces both sets on the unit and integration coverage together. In CI the `Unit tests`
+and `Integration tests` jobs each run their own check and upload their blob, and the
+`Coverage` job merges the two and writes the coverage per package to the job summary. A
+file that only integration tests cover counts in the merged run.
 
 `mise.toml` lists node, bun, gitleaks, actionlint and zizmor, with their checksums in
 `mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
