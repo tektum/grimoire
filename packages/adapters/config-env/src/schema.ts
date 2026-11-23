@@ -1,6 +1,7 @@
 import { BlockList, isIP } from 'node:net';
 import { z } from 'zod';
 import { isDescopeProjectId } from '@tektum/grimoire-core/ports/auth-verifier';
+import { parseVersion } from '@tektum/grimoire-core/version';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 
 const P = 'GRIMOIRE_';
@@ -51,7 +52,7 @@ const list = <T extends z.ZodType<string, string>>(item: T, rule: string) =>
   z.string(msg(rule)).transform((v) => v.split(',').map((s) => s.trim()).filter((s) => s !== ''))
     .pipe(z.array(item).min(1, msg(rule)));
 
-const VERSION_RULE = 'must be a version of three dot-separated numbers';
+const VERSION_RULE = 'must be a version of three dot-separated numbers without leading zeros';
 const httpRule = 'must be an http:// or https:// URL';
 const httpUrl = z.url({ protocol: HTTP, ...msg(httpRule) });
 const descopeBaseUrl = httpUrl.superRefine((v, ctx) => {
@@ -147,7 +148,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_REGION: field(text),
   GRIMOIRE_S3_ADDRESSING_STYLE: field(z.enum(['path', 'virtual'], msg('must be one of: path, virtual'))),
   GRIMOIRE_REQUIRE_HANDSHAKE: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
-  GRIMOIRE_MIN_CLIENT_VERSION: field(z.string(msg(VERSION_RULE)).regex(/^\d+\.\d+\.\d+$/, msg(VERSION_RULE))).default('0.0.0'),
+  GRIMOIRE_MIN_CLIENT_VERSION: field(z.string(msg(VERSION_RULE)).refine((v) => parseVersion(v) !== null, msg(VERSION_RULE))).default('0.0.0'),
   GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(1000),
   GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(60),
   GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: field(int(1, MAX_INT)).default(6000),
