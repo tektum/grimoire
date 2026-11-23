@@ -108,7 +108,7 @@ describe('TrashRepo.restore', () => {
     const late = await make('late', root);
     await remove(early);
     await remove(root);
-    const out = await trash().restore(root, limits, place);
+    const out = await trash().restore(root, collection, limits, place);
     expect(out.kind).toBe('restored');
     expect(await Promise.all([root, child, late, early].map(state))).toEqual(['live', 'live', 'live', 'deleted']);
     expect(
@@ -129,7 +129,7 @@ describe('TrashRepo.restore', () => {
     const root = await make('root', parent);
     await remove(root);
     await remove(parent);
-    const out = await trash().restore(root, limits, place);
+    const out = await trash().restore(root, collection, limits, place);
     if (out.kind !== 'restored') throw new Error(out.kind);
     expect(out.page.parentId).toBeNull();
     const first = (await pages().get(a))?.position as string;
@@ -142,7 +142,7 @@ describe('TrashRepo.restore', () => {
     const parent = await make('parent');
     const free = await make('free', parent);
     await remove(free);
-    const kept = await trash().restore(free, limits, place);
+    const kept = await trash().restore(free, collection, limits, place);
     if (kept.kind !== 'restored') throw new Error(kept.kind);
     expect(kept.page.parentId).toBe(parent);
     const taken = await make('taken', parent);
@@ -150,22 +150,67 @@ describe('TrashRepo.restore', () => {
     await remove(taken);
     const clash = await make('clash', parent);
     await t.admin.query(`update pages set position = $2 where id = $1`, [clash, position]);
-    const moved = await trash().restore(taken, limits, place);
+    const moved = await trash().restore(taken, collection, limits, place);
     if (moved.kind !== 'restored') throw new Error(moved.kind);
     expect(moved.page.parentId).toBe(parent);
     expect(moved.page.position > position).toBe(true);
+  });
+
+  it('keeps the place of a top-level root when it is free, and goes last when a live page took it', async () => {
+    const first = await make('first');
+    const second = await make('second');
+    await remove(second);
+    const kept = await trash().restore(second, collection, limits, place);
+    if (kept.kind !== 'restored') throw new Error(kept.kind);
+    const order = await t.admin.query<{ id: string }>(`select id from pages where collection_id = $1 and deleted_at is null order by position`, [collection]);
+    expect(order.map((r) => r.id)).toEqual([first, second]);
+    const position = (await pages().get(second))?.position as string;
+    await remove(second);
+    const clash = await make('clash');
+    await t.admin.query(`update pages set position = $2 where id = $1`, [clash, position]);
+    const moved = await trash().restore(second, collection, limits, place);
+    if (moved.kind !== 'restored') throw new Error(moved.kind);
+    expect(moved.page.parentId).toBeNull();
+    expect(moved.page.position > position).toBe(true);
+  });
+
+  it('sends a root to the top level when under its live parent the batch would be deeper than allowed', async () => {
+    const top = await make('top');
+    const mid = await make('mid', top);
+    const root = await make('root', mid);
+    await make('leaf', root);
+    await remove(root);
+    const tight = { maxDepth: 4, maxPages: 10_000 };
+    const out = await trash().restore(root, collection, tight, place);
+    if (out.kind !== 'restored') throw new Error(out.kind);
+    expect(out.page.parentId).toBeNull();
+    const fits = await make('fits', mid);
+    await make('fits-leaf', fits);
+    await remove(fits);
+    const ok = await trash().restore(fits, collection, tight, place);
+    if (ok.kind !== 'restored') throw new Error(ok.kind);
+    expect(ok.page.parentId).toBe(mid);
+  });
+
+  it('restores nothing when the page is in another collection than the one that was checked', async () => {
+    const root = await make('root');
+    const child = await make('child', root);
+    await remove(root);
+    const elsewhere = await newCollection('elsewhere');
+    expect((await trash().restore(root, elsewhere, limits, place)).kind).toBe('conflict');
+    expect(await Promise.all([root, child].map(state))).toEqual(['deleted', 'deleted']);
   });
 
   it('is collection-deleted for a deleted collection, collection-full over the limit, and not-found for anything that is not a root', async () => {
     const root = await make('root');
     const child = await make('child', root);
     await remove(root);
-    expect((await trash().restore(root, { maxDepth: 32, maxPages: 1 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore(root, collection, { maxDepth: 32, maxPages: 1 }, place)).kind).toBe('collection-full');
     expect(await state(root)).toBe('deleted');
-    expect((await trash().restore(child, limits, place)).kind).toBe('not-found');
-    expect((await trash().restore('00000000-0000-4000-8000-000000000999', limits, place)).kind).toBe('not-found');
+    expect((await trash().restore(child, collection, limits, place)).kind).toBe('not-found');
+    expect((await trash().restore('00000000-0000-4000-8000-000000000999', collection, limits, place)).kind).toBe('not-found');
     await createCollections(t.app).softDelete(collection, user);
-    expect((await trash().restore(root, limits, place)).kind).toBe('collection-deleted');
+    expect((await trash().restore(root, collection, limits, place)).kind).toBe('collection-deleted');
     expect(await state(root)).toBe('deleted');
   });
 
@@ -176,10 +221,10 @@ describe('TrashRepo.restore', () => {
     await make('live');
     const other = await newCollection('elsewhere');
     await make('x', null, other);
-    expect((await trash().restore(root, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('restored');
+    expect((await trash().restore(root, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('restored');
     const again = await make('r2');
     await remove(again);
-    expect((await trash().restore(again, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore(again, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('collection-full');
   });
 });
 
@@ -201,7 +246,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
   it('deletes the batch rows in one statement with their revisions and attachment rows, writes one audit row, and leaves other batches', async () => {
     const { root, child, other } = await batchWithFiles();
     expect(await trash().attachmentKeys(root)).toEqual([`attachments/${child}/1/a.png`]);
-    expect(await trash().purge(root, user)).toEqual({ pages: 2 });
+    expect(await trash().purge(root, user, [`attachments/${child}/1/a.png`])).toEqual({ pages: 2 });
     expect(await Promise.all([root, child, other].map(state))).toEqual(['gone', 'gone', 'deleted']);
     expect(await count(`select count(*) as n from revisions where page_id = $1`, child)).toBe(0);
     expect(await count(`select count(*) as n from attachments where page_id = $1`, child)).toBe(0);
@@ -215,8 +260,8 @@ describe('TrashRepo.purge and purgeBatch', () => {
 
   it('is a no-op for a batch already gone: nothing deleted, no second audit row', async () => {
     const { root } = await batchWithFiles();
-    await trash().purge(root, user);
-    expect(await trash().purge(root, user)).toEqual({ pages: 0 });
+    await trash().purge(root, user, []);
+    expect(await trash().purge(root, user, [])).toEqual({ pages: 0 });
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(1);
   });
 
@@ -243,6 +288,30 @@ describe('TrashRepo.purge and purgeBatch', () => {
     expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, root, user)).toEqual({ pages: 2, files: 1 });
   });
 
+  it('takes with it a page below the batch that was deleted earlier, and its files, instead of failing on the parent link', async () => {
+    const parent = await make('parent');
+    const early = await make('early', parent);
+    await t.admin.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'e.png', 'image/png', 3, $2, 'ready')`, [early, `attachments/${early}/1/e.png`]);
+    await remove(early);
+    await remove(parent);
+    expect(await trash().attachmentKeys(parent)).toEqual([`attachments/${early}/1/e.png`]);
+    expect(await trash().purge(parent, user, [`attachments/${early}/1/e.png`])).toEqual({ pages: 2 });
+    expect(await Promise.all([parent, early].map(state))).toEqual(['gone', 'gone']);
+  });
+
+  it('marks the attachments whose page was restored in between as deleted, and writes no audit row', async () => {
+    const root = await make('root');
+    const key = `attachments/${root}/1/r.png`;
+    await t.admin.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'r.png', 'image/png', 3, $2, 'ready')`, [root, key]);
+    await remove(root);
+    const keys = await trash().attachmentKeys(root);
+    expect((await trash().restore(root, collection, limits, place)).kind).toBe('restored');
+    expect(await trash().purge(root, user, keys)).toEqual({ pages: 0 });
+    expect(await state(root)).toBe('live');
+    expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, root)).toBe(1);
+    expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(0);
+  });
+
   it('removes the pages of a deleted collection by their shared batch', async () => {
     const a = await make('a');
     const b = await make('b');
@@ -250,7 +319,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     const info = await trash().rootOf(a);
     expect(info?.batch).toBeDefined();
     expect(info?.batch).not.toBe(a);
-    expect(await trash().purge(info?.batch as string, user)).toEqual({ pages: 2 });
+    expect(await trash().purge(info?.batch as string, user, [])).toEqual({ pages: 2 });
     expect(await Promise.all([a, b].map(state))).toEqual(['gone', 'gone']);
   });
 });

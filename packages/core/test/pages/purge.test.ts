@@ -31,9 +31,7 @@ describe('purgeBatch', () => {
   it('writes exactly one audit row with ids only', async () => {
     const b = build(() => Promise.resolve());
     await purgeBatch(b.deps, b.root, ADMIN);
-    expect(b.trash.audit.events).toEqual([
-      { actorId: ADMIN, action: 'page.purged', targetType: 'page', targetId: b.root, detail: { batch: b.root, pages: 2 } },
-    ]);
+    expect(b.trash.audit.events).toEqual([{ actorId: ADMIN, action: 'page.purged', targetType: 'page', targetId: b.root, detail: { batch: b.root, pages: 2 } }]);
   });
 
   it('leaves every row and writes no audit row when the objects cannot be removed, so it can be run again', async () => {
@@ -53,6 +51,48 @@ describe('purgeBatch', () => {
     expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 0, files: 0 });
     expect(b.events).toEqual([]);
     expect(b.trash.audit.events).toHaveLength(1);
+  });
+
+  it('takes a page below the batch that was deleted earlier, with its files', async () => {
+    const trash = new FakeTrashRepo();
+    const parent = trash.seedDeleted({ collectionId: COLLECTION });
+    const early = trash.seedDeleted({ collectionId: COLLECTION, parentId: parent, attachments: ['attachments/e/1/e.png'] });
+    const asked: string[] = [];
+    expect(
+      await purgeBatch(
+        {
+          trash,
+          deleteFiles: (keys) => {
+            asked.push(...keys);
+            return Promise.resolve();
+          },
+        },
+        parent,
+        ADMIN,
+      ),
+    ).toEqual({ pages: 2, files: 1 });
+    expect(asked).toEqual(['attachments/e/1/e.png']);
+    expect([trash.state(parent), trash.state(early)]).toEqual(['gone', 'gone']);
+  });
+
+  it('marks the objects it removed when a restore brought the page back in between, and writes no audit row', async () => {
+    const trash = new FakeTrashRepo();
+    const root = trash.seedDeleted({ collectionId: COLLECTION, attachments: ['attachments/r/1/r.png', 'attachments/r/2/s.png'] });
+    const restored = () => trash.restore(root, COLLECTION, { maxDepth: 32, maxPages: 10_000 }, () => 'z');
+    const out = await purgeBatch(
+      {
+        trash,
+        deleteFiles: async () => {
+          expect((await restored()).kind).toBe('restored');
+        },
+      },
+      root,
+      ADMIN,
+    );
+    expect(out).toEqual({ pages: 0, files: 2 });
+    expect(trash.state(root)).toBe('live');
+    expect(trash.keyDeleted('attachments/r/1/r.png') && trash.keyDeleted('attachments/r/2/s.png')).toBe(true);
+    expect(trash.audit.events).toEqual([]);
   });
 
   it('does not ask the file store anything for a batch without attachments', async () => {

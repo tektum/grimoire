@@ -54,7 +54,7 @@ export const restoreFromTrash = defineRoute({
   request: { params: IdParam },
   responses: {
     200: { description: 'The restored root page', content: { 'application/json': { schema: PageMetaSchema } } },
-    409: { description: 'The collection is deleted or would be over its page limit' },
+    409: { description: 'The collection is deleted or would be over its page limit, or the page moved to another collection meanwhile' },
   },
 });
 
@@ -88,6 +88,8 @@ router.openapi(listTrash, async (c) => {
     scope = visible.filter((v) => v.access === 'read-write').map((v) => v.collectionId);
   }
   const keys = decodeCursor('trash', cursor, 2);
+  // A cursor is checked down to its types: a forged one is 422 here, not a database error.
+  if (keys !== undefined && !(Number.isSafeInteger(keys[0]) && z.string().uuid().safeParse(keys[1]).success)) return fail('invalid');
   const after = keys === undefined ? undefined : { deletedAt: Number(keys[0]), id: String(keys[1]) };
   const rows = scope !== null && scope.length === 0 ? [] : await trash.roots(scope, limit + 1, after);
   const now = clock.now();
@@ -104,11 +106,14 @@ router.openapi(listTrash, async (c) => {
 router.openapi(restoreFromTrash, async (c) => {
   const user = caller(c);
   const { id } = c.req.valid('param');
-  const { access, trash, ordering } = c.get('deps');
-  // Write access on the page's collection, deleted or not. A reader without write, and anyone who cannot read, get the same 404.
-  const answer = await access.pageAccess({ userId: user.id, pageId: id }, { includeDeleted: true });
-  if (answer.result === 'not-found' || answer.access !== 'read-write') return fail('not_found');
-  const result = await trash.restore(id, PAGE_LIMITS, (before, after) => ordering.between(before, after));
+  const { authorizer, trash, ordering } = c.get('deps');
+  const root = await trash.rootOf(id);
+  if (root === undefined) return fail('not_found');
+  // Write access on the collection of the page, deleted or not. A reader without write, and anyone who cannot read, get the same 404.
+  const decision = await authorizer.checkCollection({ userId: user.id, collectionId: root.collectionId }, { includeDeleted: true });
+  if (decision.access !== 'read-write') return fail('not_found');
+  // The restore is bound to the collection that was checked: a page that moved since is not restored on that check.
+  const result = await trash.restore(id, root.collectionId, PAGE_LIMITS, (before, after) => ordering.between(before, after));
   switch (result.kind) {
     case 'restored':
       return c.json(result.page, 200);
@@ -118,6 +123,8 @@ router.openapi(restoreFromTrash, async (c) => {
       return fail('collection_deleted');
     case 'collection-full':
       return fail('collection_full');
+    case 'conflict':
+      return fail('conflict');
   }
 });
 

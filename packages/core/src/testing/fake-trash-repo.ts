@@ -34,6 +34,9 @@ export interface FakePage {
 /** In-memory TrashRepo for tests. Pages here are the trash's own; the `World` carries the facts the access checks read. */
 export class FakeTrashRepo implements TrashRepo {
   private readonly rows: Row[] = [];
+  private readonly deletedKeys = new Set<string>();
+  /** Test setup: runs inside `restore` before the collection is compared, to play a move that lands after the caller was checked. */
+  beforeRestore: (() => void) | undefined;
 
   constructor(
     readonly world: World = emptyWorld(),
@@ -54,6 +57,17 @@ export class FakeTrashRepo implements TrashRepo {
   state(id: string): 'live' | 'deleted' | 'gone' {
     const row = this.rows.find((r) => r.id === id);
     return row === undefined ? 'gone' : row.deletedAt === null ? 'live' : 'deleted';
+  }
+
+  /** Test setup: puts a page (deleted or live) in another collection, as a move of an ancestor does. */
+  relocate(id: string, collectionId: string): void {
+    const row = this.rows.find((r) => r.id === id);
+    if (row !== undefined) row.collectionId = collectionId;
+  }
+
+  /** Whether an attachment object key has been marked deleted by a purge that found its page live again. */
+  keyDeleted(key: string): boolean {
+    return this.deletedKeys.has(key);
   }
 
   private add(page: FakePage, deleted: boolean): string {
@@ -96,19 +110,41 @@ export class FakeTrashRepo implements TrashRepo {
     return Promise.resolve({ id, collectionId: row.collectionId, batch: row.batch as string, collectionDeleted });
   }
 
-  restore(id: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
+  /** The rows of a batch and every row below them, transitively: what a purge of the batch removes. */
+  private purgeSet(batch: string): Row[] {
+    const out = this.rows.filter((r) => r.batch === batch);
+    for (let i = 0; i < out.length; i++) out.push(...this.rows.filter((r) => r.parentId === out[i]?.id && !out.includes(r)));
+    return out;
+  }
+
+  private depthAbove(parent: Row | undefined): number {
+    let depth = 0;
+    for (let up = parent; up !== undefined; up = this.rows.find((r) => r.id === up?.parentId)) depth += 1;
+    return depth;
+  }
+
+  private heightBelow(root: Row, batch: Row[]): number {
+    const down = (row: Row): number => 1 + Math.max(0, ...batch.filter((r) => r.parentId === row.id).map(down));
+    return down(root);
+  }
+
+  restore(id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
+    this.beforeRestore?.();
     const root = this.rows.find((r) => r.id === id);
     if (root === undefined || !this.isRoot(root)) return Promise.resolve({ kind: 'not-found' });
+    if (root.collectionId !== expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     if (this.world.collections.find((c) => c.id === root.collectionId)?.deleted === true) return Promise.resolve({ kind: 'collection-deleted' });
     const batch = this.rows.filter((r) => r.batch === root.batch);
     const live = this.rows.filter((r) => r.deletedAt === null && r.collectionId === root.collectionId);
     if (live.length + batch.length > limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
     const parent = root.parentId === null ? undefined : live.find((r) => r.id === root.parentId);
+    // A parent that is gone or deleted, or under which the batch would be deeper than allowed, sends the root to the top level.
+    const unavailable = root.parentId !== null && (parent === undefined || this.depthAbove(parent) + this.heightBelow(root, batch) > limits.maxDepth);
     const siblings = live
-      .filter((r) => r.parentId === (parent?.id ?? null))
+      .filter((r) => r.parentId === (unavailable ? null : root.parentId))
       .map((r) => r.position)
       .sort();
-    if (parent === undefined) {
+    if (unavailable) {
       root.parentId = null;
       root.position = position(null, siblings[0] ?? null);
     } else if (siblings.includes(root.position)) {
@@ -139,17 +175,19 @@ export class FakeTrashRepo implements TrashRepo {
   }
 
   attachmentKeys(batch: string): Promise<readonly string[]> {
-    return Promise.resolve(this.rows.filter((r) => r.batch === batch).flatMap((r) => r.attachments));
+    return Promise.resolve(this.purgeSet(batch).flatMap((r) => r.attachments));
   }
 
-  purge(batch: string, actorId: string): Promise<{ pages: number }> {
-    const gone = this.rows.filter((r) => r.batch === batch);
-    if (gone.length === 0) return Promise.resolve({ pages: 0 });
+  purge(batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ pages: number }> {
+    const gone = this.purgeSet(batch);
     for (const row of gone) {
       this.rows.splice(this.rows.indexOf(row), 1);
       const at = this.world.pages.findIndex((p) => p.id === row.id);
       if (at >= 0) this.world.pages.splice(at, 1);
     }
+    // Objects already removed whose page is still there (a restore came in between): mark them, so no live page keeps a row for a missing object.
+    for (const row of this.rows) for (const key of row.attachments) if (removedKeys.includes(key)) this.deletedKeys.add(key);
+    if (gone.length === 0) return Promise.resolve({ pages: 0 });
     this.audit.events.push({ actorId, action: 'page.purged', targetType: 'page', targetId: batch, detail: { batch, pages: gone.length } });
     return Promise.resolve({ pages: gone.length });
   }

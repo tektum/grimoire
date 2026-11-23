@@ -128,6 +128,16 @@ describe('GET /v1/trash', () => {
     expect([...second.body.items, ...third.body.items].map((i) => i.id)).toEqual([ids[2], ids[3], ids[4]]);
     expect(third.body.nextCursor).toBeNull();
     expect((await b.call('member', 'GET', '/v1/trash?cursor=nonsense')).status).toBe(422);
+    const forged = (keys: unknown[]) => Buffer.from(JSON.stringify({ l: 'trash', k: keys }), 'utf8').toString('base64url');
+    for (const keys of [
+      ['x', 'y'],
+      [1.5, ids[0]],
+      [1000, 'not-a-uuid'],
+      [1000, 7],
+    ]) {
+      const res = await b.call('member', 'GET', `/v1/trash?cursor=${forged(keys)}`);
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
   });
 
   it('filters by collection: 404 for a collection the caller cannot read or only reads, the whole of it for a writer or an administrator', async () => {
@@ -180,6 +190,28 @@ describe('POST /v1/trash/{id}/restore', () => {
     const moved = (await (await b.call('member', 'POST', `/v1/trash/${taken}/restore`)).json()) as { parentId: string; position: string };
     expect(moved.parentId).toBe(parent);
     expect(moved.position > 'b1').toBe(true);
+  });
+
+  it('keeps the place of a top-level page when it is free, and sends a root to the top level when the batch would be too deep under its parent', async () => {
+    const b = build();
+    b.trash.seedLive({ collectionId: b.shared.id, position: 'a1' });
+    const top = b.trash.seedDeleted({ collectionId: b.shared.id, position: 'a5' });
+    expect(await (await b.call('member', 'POST', `/v1/trash/${top}/restore`)).json()).toMatchObject({ parentId: null, position: 'a5' });
+    let tail = b.trash.seedLive({ collectionId: b.shared.id, position: 'c1' });
+    for (let level = 2; level < 32; level++) tail = b.trash.seedLive({ collectionId: b.shared.id, parentId: tail });
+    const root = b.trash.seedDeleted({ collectionId: b.shared.id, parentId: tail });
+    b.trash.seedDeleted({ collectionId: b.shared.id, parentId: root, batch: root });
+    const deep = (await (await b.call('member', 'POST', `/v1/trash/${root}/restore`)).json()) as { parentId: string | null };
+    expect(deep.parentId).toBeNull();
+  });
+
+  it('restores only into the collection that was checked: a page that moved after the check is 409 conflict and stays in the trash', async () => {
+    const b = build();
+    const root = b.trash.seedDeleted({ collectionId: b.shared.id });
+    b.trash.beforeRestore = () => b.trash.relocate(root, b.closed.id); // the page moves with a live ancestor after the access check
+    const res = await b.call('member', 'POST', `/v1/trash/${root}/restore`);
+    expect([res.status, await code(res)]).toEqual([409, 'conflict']);
+    expect(b.trash.state(root)).toBe('deleted');
   });
 
   it('is 409 collection_deleted for a deleted collection, and 409 collection_full at 10,000 live pages', async () => {
