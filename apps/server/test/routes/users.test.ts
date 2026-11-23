@@ -175,7 +175,11 @@ describe('every route with the admin policy', () => {
     'GET /v1/groups': undefined, 'POST /v1/groups': { name: 'x' }, 'PATCH /v1/groups/{id}': { name: 'y' }, 'DELETE /v1/groups/{id}': undefined,
     'GET /v1/groups/{id}/members': undefined, 'PUT /v1/groups/{id}/members/{userId}': undefined, 'DELETE /v1/groups/{id}/members/{userId}': undefined,
     'POST /v1/collections': { name: 'x' },
+    'POST /v1/pages/{id}/reset-state': undefined,
   };
+
+  // A page the caller cannot read is 404 before the role is looked at, and this build has no pages: its 403 on a readable page is in reset-state.test.ts.
+  const UNREADABLE_FIRST = new Set(['POST /v1/pages/{id}/reset-state']);
 
   it('is listed in the table, and answers a member and a viewer 403', async () => {
     const doc = buildDocument() as { paths: Record<string, Record<string, { 'x-grimoire-policy'?: { kind: string } }>> };
@@ -188,7 +192,7 @@ describe('every route with the admin policy', () => {
     for (const key of admin) {
       const [method, template] = key.split(' ') as [string, string];
       const path = template.replace('{id}', id(1)).replace('{userId}', id(2));
-      for (const who of ['member', 'viewer']) expect((await call(who, method, path, VALID[key])).status, `${key} ${who}`).toBe(403);
+      for (const who of ['member', 'viewer']) expect((await call(who, method, path, VALID[key])).status, `${key} ${who}`).toBe(UNREADABLE_FIRST.has(key) ? 404 : 403);
     }
   });
 });
