@@ -1,5 +1,6 @@
 // Composition root: the only module that constructs adapters and wires them into the core ports.
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
+import { migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { CollabDeps, CollaborationHost } from '@tektum/grimoire-core/ports/collaboration-host';
@@ -147,7 +148,12 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
 export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
 export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
-export const migrateAdapter = migrateDatabase;
+/** Kysely migrations first, then pg-boss's own schema with its grants for the runtime role (the role name is fixed by the migrations). */
+export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string): Promise<{ readonly applied: string[] }> {
+  const { applied } = await migrateDatabase(db, dir);
+  await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' }); // not counted: `applied` lists the Kysely migrations
+  return { applied };
+}
 
 export function composeMigrate(options: MigrateOptions = {}): CommandCompositionResult {
   const log = createEventLog(createJsonLogger({ clock: systemClock }));
