@@ -5,7 +5,7 @@ import type { EnqueueOptions, JobHandler, JobQueue } from '@tektum/grimoire-core
 /** The schema pg-boss keeps its tables in; the Kysely migrations never touch it. */
 export const PGBOSS_SCHEMA = 'pgboss';
 
-/** Stop waits this long for running jobs by default: inside the 2 s "release" step of the shutdown budget. */
+/** Stop waits this long for running jobs by default; the server checks that it fits the release step of the shutdown budget. */
 export const DEFAULT_STOP_GRACE_MS = 1500;
 
 export interface EnsureQueueOptions {
@@ -27,7 +27,10 @@ function asDatabase(tx: Queryable): PgBossDatabase {
 }
 
 export class PgBossJobQueue implements JobQueue {
-  constructor(private readonly boss: PgBossLike) {}
+  constructor(
+    private readonly boss: PgBossLike,
+    private readonly stopGraceMs: number = DEFAULT_STOP_GRACE_MS,
+  ) {}
 
   /** Creates the queue unless it exists. Run it at start-up, before `work`, `schedule` or `enqueue` use the name. */
   async ensureQueue(name: string, options: EnsureQueueOptions = {}): Promise<void> {
@@ -67,7 +70,7 @@ export class PgBossJobQueue implements JobQueue {
   }
 
   /** Stops fetching, waits up to `graceMs` for running jobs, then closes pg-boss's connections. */
-  async stop({ graceMs = DEFAULT_STOP_GRACE_MS }: { graceMs?: number } = {}): Promise<void> {
+  async stop({ graceMs = this.stopGraceMs }: { graceMs?: number } = {}): Promise<void> {
     await this.boss.stop({ graceful: true, close: true, timeout: graceMs });
   }
 }
@@ -76,6 +79,8 @@ export interface CreateOptions {
   /** A connection string of a role that can use the pgboss schema. */
   readonly connectionString: string;
   readonly max?: number;
+  /** How long `stop` waits for running jobs unless it is told otherwise. Default 1.5 s. */
+  readonly stopGraceMs?: number;
 }
 
 /** pg-boss never migrates here (`migrate: false`): `grimoire migrate` owns the schema. Resolves once started. */
@@ -90,5 +95,5 @@ export async function createJobQueue(
     ...(options.max === undefined ? {} : { max: options.max }),
   });
   await boss.start();
-  return new PgBossJobQueue(boss);
+  return new PgBossJobQueue(boss, options.stopGraceMs);
 }

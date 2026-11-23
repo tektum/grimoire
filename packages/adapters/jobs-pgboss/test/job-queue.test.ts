@@ -1,13 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-// The server package owns the shutdown budget and an adapter may not import it, so the test reads the numbers from its source.
-function budgetMs(key: string): number {
-  const source = readFileSync(new URL('../../../../apps/server/src/lifecycle/budget.ts', import.meta.url), 'utf8');
-  const m = new RegExp(`\\b${key}:\\s*(\\d+)`).exec(source);
-  if (!m) throw new Error(`budget.ts has no ${key}`);
-  return Number(m[1]);
-}
-
 import { DEFAULT_STOP_GRACE_MS, PGBOSS_SCHEMA, PgBossJobQueue, createJobQueue, type PgBossLike } from '../src/index.js';
 
 function stub() {
@@ -93,13 +84,12 @@ describe('PgBossJobQueue', () => {
     expect(await q.isLive()).toBe(false);
   });
 
-  it('stop waits a bounded grace and closes; the default fits the shutdown budget', async () => {
+  it('stop waits a bounded grace and closes', async () => {
     const boss = stub();
     const q = new PgBossJobQueue(boss);
     await q.stop();
     await q.stop({ graceMs: 100 });
     expect(boss.stop.mock.calls).toEqual([[{ graceful: true, close: true, timeout: DEFAULT_STOP_GRACE_MS }], [{ graceful: true, close: true, timeout: 100 }]]);
-    expect(DEFAULT_STOP_GRACE_MS).toBeLessThanOrEqual(budgetMs('poolWork') + budgetMs('poolHookOverhead'));
   });
 });
 
@@ -112,6 +102,13 @@ describe('createJobQueue', () => {
     expect(make).toHaveBeenNthCalledWith(1, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false });
     expect(make).toHaveBeenNthCalledWith(2, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false, max: 4 });
     expect(boss.start).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the stop grace given at creation as the default of stop', async () => {
+    const boss = stub();
+    const q = await createJobQueue({ connectionString: 'postgresql://example/db', stopGraceMs: 700 }, () => boss);
+    await q.stop();
+    expect(boss.stop).toHaveBeenCalledWith({ graceful: true, close: true, timeout: 700 });
   });
 
   it('builds a real PgBoss by default without connecting until started', async () => {
