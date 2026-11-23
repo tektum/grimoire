@@ -67,6 +67,19 @@ describe('Config.files', () => {
     },
   );
 
+  it.each(['application/x-javascript', 'application/ecmascript', 'text/ecmascript', 'text/x-javascript', 'application/rss+xml', 'application/atom+xml'])(
+    'refuses the script or XML family member %s',
+    (type) => {
+      expect(issuesOf({ GRIMOIRE_FILES_ALLOWED_TYPES: type }).join('\n')).toContain('GRIMOIRE_FILES_ALLOWED_TYPES');
+    },
+  );
+
+  it('names the variable for a value with a non-ASCII character (the rule that reads the list must not throw)', () => {
+    const issues = issuesOf({ GRIMOIRE_FILES_ALLOWED_TYPES: 'image/pn\u00e9' });
+    expect(issues.join('\n')).toContain('GRIMOIRE_FILES_ALLOWED_TYPES');
+    expect(issues.join('\n')).not.toContain('could not be validated');
+  });
+
   it.each(['image', 'image/', 'Image/PNG', 'image/png;charset=x', ','])('refuses the malformed type list %j', (value) => {
     expect(issuesOf({ GRIMOIRE_FILES_ALLOWED_TYPES: value }).join('\n')).toContain('GRIMOIRE_FILES_ALLOWED_TYPES');
   });
@@ -75,6 +88,10 @@ describe('Config.files', () => {
     const issues = issuesOf({ GRIMOIRE_S3_PUBLIC_ENDPOINT: 'http://127.0.0.1:8080/files' });
     expect(issues.join('\n')).toContain('GRIMOIRE_S3_PUBLIC_ENDPOINT');
     expect(issuesOf({ GRIMOIRE_S3_PUBLIC_ENDPOINT: 'http://localhost:8333' })).toEqual([]);
+  });
+
+  it('applies the same rule to the internal endpoint when it is the one in use (no public endpoint set)', () => {
+    expect(issuesOf({ GRIMOIRE_S3_ENDPOINT: 'http://127.0.0.1:8080/files' }).join('\n')).toContain('GRIMOIRE_S3_ENDPOINT');
   });
 });
 

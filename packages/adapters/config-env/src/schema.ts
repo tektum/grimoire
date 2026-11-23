@@ -90,7 +90,7 @@ const SERVER_ONLY = 'is required to run the server';
 
 const MIME_RULE = 'must be a comma list of lowercase type/subtype names';
 const FORBIDDEN_TYPES = ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/xml', 'application/xml', 'text/javascript', 'application/javascript'];
-// The 13 types of R9.14: images, documents, archives and video that a browser never runs inline.
+// The 15 types of R9.14: images, documents, archives and video that a browser never runs inline.
 const DEFAULT_TYPES = [
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -98,6 +98,8 @@ const DEFAULT_TYPES = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/zip', 'video/mp4', 'video/webm',
 ];
+// Script and XML families as well as the exact names: a browser runs (or renders as XML, with scripts) every one of them inline.
+const executableType = (t: string): boolean => FORBIDDEN_TYPES.includes(t) || /(^|\/)(x-)?(java|ecma)script$|[+/]xml$/.test(t);
 const mime = z.string(msg(MIME_RULE)).regex(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/, msg(MIME_RULE));
 
 
@@ -192,7 +194,7 @@ LOOPBACK.addAddress('::1', 'ipv6');
 const isLoopback = (host: string): boolean => (isIP(host) === 4 ? LOOPBACK.check(host, 'ipv4') : isIP(host) === 6 && LOOPBACK.check(host, 'ipv6'));
 /** Whether the public store endpoint shares an origin with an allowed app origin (a stored file would then run as the app). */
 const publicEndpointIsAnAppOrigin = (raw: Raw): boolean => {
-  const endpoint = raw['GRIMOIRE_S3_PUBLIC_ENDPOINT'];
+  const endpoint = raw['GRIMOIRE_S3_PUBLIC_ENDPOINT'] ?? raw['GRIMOIRE_S3_ENDPOINT']; // the one Config.files will use
   if (endpoint === undefined || !URL.canParse(endpoint)) return false; // the URL rule reports a bad value
   const storeOrigin = new URL(endpoint).origin.toLowerCase();
   return (raw['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',').some((o) => o.trim().toLowerCase() === storeOrigin);
@@ -289,12 +291,12 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       path: ['GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
       error: () => 'must not be set for the server outside local mode: only the files-setup step holds the admin key',
     })
-    .refine((v) => (v.GRIMOIRE_FILES_ALLOWED_TYPES ?? []).every((t) => !FORBIDDEN_TYPES.includes(t)), {
+    .refine((v) => { const t: unknown = v.GRIMOIRE_FILES_ALLOWED_TYPES; return !Array.isArray(t) || t.every((x) => typeof x !== 'string' || !executableType(x)); }, {
       path: ['GRIMOIRE_FILES_ALLOWED_TYPES'], when: always,
-      error: () => `must not include a type a browser would run inline (${FORBIDDEN_TYPES.join(', ')})`,
+      error: () => `must not include a type a browser would run inline: script and XML types such as ${FORBIDDEN_TYPES.join(', ')}`,
     })
     .refine(() => !publicEndpointIsAnAppOrigin(raw), {
-      path: ['GRIMOIRE_S3_PUBLIC_ENDPOINT'], when: always,
+      path: [set('GRIMOIRE_S3_PUBLIC_ENDPOINT') ? 'GRIMOIRE_S3_PUBLIC_ENDPOINT' : 'GRIMOIRE_S3_ENDPOINT'], when: always,
       error: () => `must have an origin different from every origin in ${P}ALLOWED_ORIGINS (files are served from the store, not the app)`,
     });
 };
