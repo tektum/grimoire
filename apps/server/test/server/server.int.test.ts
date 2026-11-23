@@ -214,6 +214,7 @@ describe('shutdown of the real entry point', () => {
     // The promise is the order of PHASES (hooks within a phase run in parallel, shutdown.ts): save-pages, then release-jobs, then close-database.
     const done = s.events.filter((e) => e['event'] === 'shutdown.hook_done').map((e) => ({ hook: String(e['hook']), phase: String(e['phase']) }));
     const phaseOf = (hook: string): string | undefined => done.find((d) => d.hook === hook)?.phase;
+    for (const h of ['collab-stop-accepting', 'http-server']) expect(phaseOf(h), h).toBe('stop-accepting');
     expect(phaseOf('collab-save-pages')).toBe('save-pages');
     expect(phaseOf('markdown-pool')).toBe('release-jobs');
     for (const h of ['auth-pool', 'database-pool', 'page-store-pool']) expect(phaseOf(h), h).toBe('close-database');
