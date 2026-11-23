@@ -62,6 +62,10 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
       c.res = handle(e, c);
     }
   });
+  app.use(async (c, next) => {
+    c.set('deps', ctx.http);
+    await next();
+  });
   app.use(secureHeaders());
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   // CORS covers the API paths and comes before the body limit, so a 413 can be read from an allowed origin. The health routes stay plain.

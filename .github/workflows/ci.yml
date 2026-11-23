@@ -108,6 +108,30 @@ jobs:
       - run: bun run typecheck
       - run: bun run build
 
+  openapi:
+    name: OpenAPI check
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-openapi/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: Regenerate the OpenAPI document and client types; any difference fails
+        run: bun run openapi:check
+
   unit:
     name: Unit tests
     needs: changes
@@ -409,6 +433,7 @@ jobs:
       - workflow-policy
       - changes
       - static
+      - openapi
       - unit
       - licence
       - compose-config

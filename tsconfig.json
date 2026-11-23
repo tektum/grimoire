@@ -56,6 +56,9 @@
       "path": "./packages/editor-schema/tsconfig.test.json"
     },
     {
+      "path": "./packages/api-client/tsconfig.test.json"
+    },
+    {
       "path": "./packages/test-support"
     },
     {
