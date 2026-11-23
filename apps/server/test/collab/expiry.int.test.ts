@@ -7,7 +7,7 @@ import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/pro
 import * as Y from 'yjs';
 import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import type { DescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
-import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
+import { createCollabHost, RECHECK_DATABASE_TIMEOUT_MS } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import type { HocuspocusCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import { createAccessStore, createDatabase, createPageStore, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -27,6 +27,8 @@ import type { Client } from './support.js';
 // the real database, the real access store and host, with GRIMOIRE_COLLAB_RECHECK_SECONDS at its smallest (1). Real time passes: a
 // token that lives 4 seconds really expires. The clock is the system clock, as in composition.ts.
 const DB = 'grimoire_t07_recheck';
+const RECHECK_INTERVAL_SECONDS = 1;
+const SLACK_MS = 30_000;
 const CLOSED = '00000000-0000-4000-8000-0000000000da';
 const SYSTEM = '00000000-0000-4000-8000-000000000001';
 let issuer: Issuer;
@@ -53,7 +55,7 @@ async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}):
   const store: AccessStore = { ...real, facts: (rs) => { facts.push(rs.length); return real.facts(rs); } };
   const host = createCollabHost();
   await host.start({
-    config: makeFakeConfig({ collab: { recheckSeconds: 1, connectAttemptsPerWindow: 10_000, ...o.collab } }), logger, clock, verifier,
+    config: makeFakeConfig({ collab: { recheckSeconds: RECHECK_INTERVAL_SECONDS, connectAttemptsPerWindow: 10_000, ...o.collab } }), logger, clock, verifier,
     resolveUser: (_t, identity) => users.findByDescopeId(identity.userId),
     access: createPageAccess(store), pages: createPageStore(db, clock),
     converter: new FakeMarkdownConverter({ convert: () => ({ ok: true, markdown: '', text: '' }) }),
@@ -106,6 +108,9 @@ afterEach(async () => {
   for (const s of stops.splice(0)) await s();
 });
 afterAll(async () => { await dropTestDatabase(DB); });
+
+// One failed round takes up to the interval plus the re-check's database limit; slack for a loaded runner under coverage.
+const ROUND_BUDGET_MS = RECHECK_INTERVAL_SECONDS * 1000 + RECHECK_DATABASE_TIMEOUT_MS + SLACK_MS;
 
 describe('re-check on the real server and database (1 s interval)', () => {
   it('a user suspended while connected is closed within the interval; a neighbour on the same page is not', async () => {
@@ -256,15 +261,15 @@ describe('re-check on the real server and database (1 s interval)', () => {
     await authed(c);
     proxy.stall();
     const failures = (): number => r.logger.entries.filter((e) => e.event === 'collab.recheck_skipped').length;
-    await eventually(() => failures() >= 1, 15_000, 'a round failed');
+    await eventually(() => failures() >= 1, ROUND_BUDGET_MS, 'a round failed');
     const callsDuringOutage = r.facts.length;
-    await eventually(() => r.facts.length >= callsDuringOutage + 2, 15_000, 'two more rounds tried');
+    await eventually(() => r.facts.length >= callsDuringOutage + 2, 2 * ROUND_BUDGET_MS, 'two more rounds tried');
     expect(c.reasons).toEqual([]);
     expect(c.client.provider.isAuthenticated).toBe(true);
     proxy.release();
     await sqlAdmin(DB, "update users set suspended_at = now() where descope_user_id = 'T7outage'");
     expect(await closedBy(c)).toBe('access-changed');
-  }, 60_000);
+  }, 3 * ROUND_BUDGET_MS + SLACK_MS);
 
   it('300 open documents: a round costs a small bounded number of queries, not one per connection', async () => {
     const r = await rig({ collab: { maxOpenDocuments: 400, maxDocumentsPerUser: 400, maxSocketsPerUser: 400, maxConnections: 400, maxConnectionsPerPage: 400 } });
