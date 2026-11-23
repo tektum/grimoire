@@ -136,7 +136,7 @@ describe('shutdown of the real entry point', () => {
 
   it('a handler error on the real process writes only named JSON events to stdout and stderr', async () => {
     const s = await start({ entry: slowEntry, env: withDb(MIGRATED) });
-    for (const [path, status] of [['/boom/throw', 503], ['/boom/reject', 503], ['/boom/value', 503], ['/boom/http', 503]] as const) {
+    for (const [path, status] of [['/boom/throw', 503], ['/boom/reject', 503], ['/boom/value', 503], ['/boom/http', 503], ['/boom/refused', 403]] as const) {
       const res = await fetch(`${s.url}${path}`);
       expect(res.status).toBe(status);
       expect(await res.text()).not.toContain('hunter2');
