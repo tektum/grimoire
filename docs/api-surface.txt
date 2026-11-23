@@ -16,6 +16,7 @@ GET /v1/groups/{id}/members | op:listGroupMembers | policy:admin | path:id:strin
 GET /v1/me | op:getMe | policy:authenticated:true | path:- | query:- | req:- | res:200:Me | rate:- | idem:no
 GET /v1/pages/by-url-id/{urlId} | op:getPageByUrlId | policy:page:read:urlId | path:urlId:string(1..64) | query:- | req:- | res:200:Page | rate:- | idem:no
 GET /v1/pages/{id} | op:getPage | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:Page | rate:- | idem:no
+GET /v1/pages/{id}/markdown | op:getPageMarkdown | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:- | rate:- | idem:no
 GET /v1/users | op:listUsers | policy:admin | path:- | query:cursor?:string(..1024),limit?:integer(1..100)=50,q?:string(1..200) | req:- | res:200:AdminUserList | rate:- | idem:no
 PATCH /v1/collections/{id} | op:patchCollection | policy:collection:admin:id | path:id:string<uuid> | query:- | req:PatchCollection | res:200:Collection,409:{error:{code:string,message:string}} | rate:- | idem:no
 PATCH /v1/groups/{id} | op:patchGroup | policy:admin | path:id:string<uuid> | query:- | req:GroupName | res:200:Group,409:{error:{code:string,message:string}} | rate:- | idem:no

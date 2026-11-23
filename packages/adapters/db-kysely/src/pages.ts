@@ -106,6 +106,16 @@ export function createPages(db: KyselyDatabase): PageRepo {
       const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
       return detail;
     },
+    async markdownOf(id) {
+      const rows = await db.query<{ markdown: string | null; has_state: boolean; title: string; saved_ms: string; stale_ms: string | null }>(
+        `select markdown, ydoc is not null as has_state, title, (extract(epoch from updated_at) * 1000)::bigint::text as saved_ms,
+                (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms
+           from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id],
+      );
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      return { markdown: row.markdown, hasState: row.has_state, title: row.title, savedAt: Number(row.saved_ms), markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
+    },
     async idOfUrlId(urlId) {
       return (await db.query<{ id: string }>(`select id from pages where url_id = $1`, [urlId]))[0]?.id;
     },

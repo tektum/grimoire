@@ -9,7 +9,7 @@ export function corsMiddleware(allowedOrigins: readonly string[]): MiddlewareHan
     origin: allowedOrigins.map((o) => new URL(o).origin),
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', CLIENT_VERSION_HEADER],
-    exposeHeaders: ['Retry-After', 'Idempotent-Replay'],
+    exposeHeaders: ['Retry-After', 'Idempotent-Replay', 'X-Saved-At', 'X-Grimoire-Markdown-Stale', 'X-Grimoire-Markdown-Stale-Since'],
     maxAge: 600,
     credentials: false,
   });

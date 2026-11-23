@@ -23,6 +23,15 @@ export interface PageDetail extends PageMeta {
   readonly markdownStaleSince: number | null;
 }
 
+/** What `markdownOf` returns: the stored Markdown with the facts that go with it, from one row. */
+export interface MarkdownOfPage {
+  readonly markdown: string | null;
+  readonly hasState: boolean;
+  readonly title: string;
+  readonly savedAt: number;
+  readonly markdownStaleSince: number | null;
+}
+
 /** A change of a page's title and icon (R6.24). */
 export interface PageMetaPatch {
   readonly title?: string | undefined;
@@ -95,6 +104,12 @@ export interface PageRepo {
   create(input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
   /** A live page of a live collection with its breadcrumb, or undefined. */
   get(id: string): Promise<PageDetail | undefined>;
+  /**
+   * What the Markdown export serves, read from one row in one statement (so the body and its times belong together): the saved Markdown
+   * (null when none was ever saved), whether the row has an editor state, the title, `savedAt` and `markdownStaleSince` (epoch
+   * milliseconds, as in `PageDetail`), for a live page of a live collection; undefined otherwise. Never converts anything.
+   */
+  markdownOf(id: string): Promise<MarkdownOfPage | undefined>;
   /** The id of the page with this URL id, deleted or not (the caller decides access from the id), or undefined. */
   idOfUrlId(urlId: string): Promise<string | undefined>;
   /**
