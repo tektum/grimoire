@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { COLLAB_COLOURS, labelText } from './collab';
+import { inPageHref } from './inpage';
 
 const TOKENS = ['paper', 'ink', 'accent', 'muted', 'border', 'focus'] as const;
 const NAMES = ['Ada', 'Grace', 'Linus', 'Margaret', 'Dennis', 'Barbara', 'Ken', 'Radia'] as const;
@@ -24,7 +25,7 @@ export default function SamplePage() {
       <article className="page-text" aria-labelledby="sample-title">
         <h1 id="sample-title">Planning the autumn release</h1>
         <p>
-          The release is on track. Read the <a href={`${location.pathname}${location.search}#plan`}>plan below</a>, then add your notes:{' '}
+          The release is on track. Read the <a href={inPageHref(location.pathname, location.search, 'plan')}>plan below</a>, then add your notes:{' '}
           <Cursor index={0} name="Ada" />
           every edit appears for the others as you type, and <Cursor index={1} name="Grace" />
           their cursors carry a name, so nobody has to guess who is where.

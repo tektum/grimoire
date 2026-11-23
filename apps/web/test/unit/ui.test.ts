@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { inPageHref } from '../../src/ui/inpage';
 import { COLLAB_COLOURS, colourIndex, contrast, labelText } from '../../src/ui/collab';
 
 const ui = path.resolve(import.meta.dirname, '../../src/ui');
@@ -103,5 +104,14 @@ describe('direction-aware layout', () => {
     const css = global.replace(/\/\*[\s\S]*?\*\//g, '');
     const physical = css.match(/(?:^|[;{\s])(?:left|right|margin-left|margin-right|padding-left|padding-right|border-left|border-right|border-top-left-radius|border-bottom-left-radius|border-top-right-radius|border-bottom-right-radius)\s*:|text-align:\s*(?:left|right)|translateX\(/g);
     expect(physical).toBeNull();
+  });
+});
+
+describe('inPageHref', () => {
+  it('keeps path and query, adds the fragment, and collapses leading slashes', () => {
+    expect(inPageHref('/p/a-b1', '?x=1', 'main')).toBe('/p/a-b1?x=1#main');
+    expect(inPageHref('/', '', 'main')).toBe('/#main');
+    for (const path of ['//evil.example', '///evil.example/x', '////']) expect([path, inPageHref(path, '', 'main').startsWith('//')]).toEqual([path, false]);
+    expect(inPageHref('//evil.example', '', 'main')).toBe('/evil.example#main');
   });
 });

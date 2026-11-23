@@ -78,6 +78,14 @@ describe('Shell error boundary', () => {
 });
 
 describe('skip link', () => {
+  it('never becomes a protocol-relative URL, whatever the path starts with', async () => {
+    render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['//evil.example/x'] })} />);
+    const href = screen.getByRole('link', { name: 'Skip to the page' }).getAttribute('href')!;
+    expect(href.startsWith('//')).toBe(false);
+    expect(href.endsWith('#main')).toBe(true);
+    await screen.findAllByRole('heading', { level: 1 });
+  });
+
   it('points into the current page, not at the root of the document base', async () => {
     render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/p/a-b1/history?x=1'] })} />);
     const link = screen.getByRole('link', { name: 'Skip to the page' });
