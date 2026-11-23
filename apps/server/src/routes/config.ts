@@ -27,7 +27,7 @@ const router = createRouter();
 router.openapi(getConfig, (c) => {
   const { config, log } = c.get('deps');
   // Local mode may derive the address from where the server listens; any other mode must be told.
-  const collabUrl = config.publicCollabUrl ?? (config.local ? `ws://${config.host}:${String(config.port)}/collab` : undefined);
+  const collabUrl = config.publicCollabUrl ?? (config.local ? `ws://${config.host}:${String(config.collabPort ?? config.port)}/collab` : undefined);
   if (collabUrl === undefined) {
     log.warn('config.collab_url_missing', {});
     return errorResponse('unavailable') as never;
