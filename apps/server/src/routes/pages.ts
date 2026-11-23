@@ -1,10 +1,10 @@
 import { z } from '@hono/zod-openapi';
 import type { PageMeta } from '@tektum/grimoire-core/ports/page-repo';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
-import type { SeedRefusal } from '@tektum/grimoire-core/pages/seeded-content';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { caller, guardCollection } from '../http/collection-guard.js';
+import { seedRefusalToHttp } from '../http/seed-errors.js';
 
 /** Page tree limits (R5.8, R6.22, R6.54). */
 export const PAGE_LIMITS = { maxDepth: 32, maxPages: 10_000 } as const;
@@ -31,7 +31,7 @@ const CreateBody = z
   .object({
     collectionId: z.string().uuid(),
     parentId: z.string().uuid().nullable().optional(),
-    title: z.string().min(1).max(TITLE_MAX).optional(),
+    title: z.string().min(1).max(TITLE_MAX).refine((title) => !title.includes('\0'), 'The title cannot contain a NUL character').optional(),
     afterId: z.string().uuid().optional(),
     markdown: z.string().optional().describe('Seed Markdown; limited by the server (size, lines, markers per line)'),
   })
@@ -51,13 +51,6 @@ export const createPage = defineRoute({
   },
 });
 
-/** What a refused seed becomes (R3.21): a limit or a bad document is 422 with the converter's sentence; a second conversion of one user is 429; a busy or broken pool is 503. */
-function refuse(r: SeedRefusal): never {
-  if (r.detail === 'one-at-a-time') return fail('rate_limited', undefined, { 'retry-after': '1' });
-  const refused = r.stage === 'seed' ? ['invalid-markdown', 'too-large', 'timeout'] : ['too-large', 'too-deep'];
-  return refused.includes(r.reason) ? fail('invalid', r.message) : fail('unavailable', r.message);
-}
-
 const router = createRouter();
 
 router.openapi(createPage, async (c) => {
@@ -70,7 +63,10 @@ router.openapi(createPage, async (c) => {
   let content;
   if (body.markdown !== undefined) {
     const seeded = await seedUserMarkdown(converter, user.id, title, body.markdown);
-    if (isSeedRefusal(seeded)) return refuse(seeded);
+    if (isSeedRefusal(seeded)) {
+      const refused = seedRefusalToHttp(seeded);
+      return fail(refused.code, refused.message, refused.headers);
+    }
     content = seeded;
   }
   const result = await pages.create(

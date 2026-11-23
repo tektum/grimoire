@@ -95,6 +95,7 @@ describe('POST /v1/pages', () => {
       { collectionId: b.shared.id, afterId: '00000000-0000-4000-8000-000000000999' },
       { collectionId: b.shared.id, title: 'x'.repeat(256) },
       { collectionId: b.shared.id, title: '' },
+      { collectionId: b.shared.id, title: 'a\u0000b' },
       { collectionId: b.shared.id, surprise: 1 },
       { collectionId: 'nope' },
       {},
@@ -157,33 +158,39 @@ describe('POST /v1/pages with Markdown', () => {
   };
 
   it('answers a limit or a bad document with 422 and the converter\'s sentence, and inserts no row', async () => {
-    for (const reason of ['too-large', 'invalid-markdown', 'timeout'] as const) {
+    for (const reason of ['too-large', 'invalid-markdown'] as const) {
       const { b, res } = await refused({ ok: false, reason, detail: 'limit', message: 'The Markdown is over 131072 bytes.' })();
       const error = ((await res.json()) as { error: { code: string; message: string } }).error;
-      expect([res.status, error.code, error.message]).toEqual([422, 'invalid', 'The Markdown is over 131072 bytes.']);
-      expect(b.pages.count()).toBe(0);
+      expect([res.status, error.code, error.message, b.pages.count()]).toEqual([422, 'invalid', 'The Markdown is over 131072 bytes.', 0]);
     }
   });
 
-  it('answers a state the serialiser cannot take back with 422 too large', async () => {
-    const b = build();
-    b.converter.enqueueConvert({ ok: false, reason: 'too-large', detail: 'state', message: 'The page is too large.' });
-    const res = await make(b, { collectionId: b.shared.id, markdown: 'x' });
-    expect([res.status, await code(res), b.pages.count()]).toEqual([422, 'invalid', 0]);
+  it('keeps the limit sentence of a too-large seed that came without a message, in its detail', async () => {
+    const { res } = await refused({ ok: false, reason: 'too-large', detail: 'The Markdown is over 131072 bytes.' })();
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe('The Markdown is over 131072 bytes.');
   });
 
-  it('answers a full or broken pool with 503 and the busy sentence, and inserts no row', async () => {
+  it('answers a conversion that used up its time with 422, and a state the serialiser cannot take back with 422', async () => {
+    const { b, res } = await refused({ ok: false, reason: 'timeout', detail: 'x' })();
+    expect([res.status, await code(res), b.pages.count()]).toEqual([422, 'invalid', 0]);
+    for (const reason of ['timeout', 'content-lost', 'invalid-state', 'too-large'] as const) {
+      const c = build();
+      c.converter.enqueueConvert({ ok: false, reason, detail: 'x' });
+      const answer = await make(c, { collectionId: c.shared.id, markdown: 'x' });
+      expect([reason, answer.status, c.pages.count()]).toEqual([reason, 422, 0]);
+    }
+  });
+
+  it('answers a saturated pool with 503, the busy sentence and Retry-After 5, and inserts no row', async () => {
     for (const seed of [
-      { ok: false, reason: 'internal', detail: 'queue-full', message: 'The converter is busy. Try again soon.' },
-      { ok: false, reason: 'queue-timeout', detail: 'wait', message: 'The converter is busy. Try again soon.' },
+      { ok: false, reason: 'internal', detail: 'queue-full' },
+      { ok: false, reason: 'queue-timeout', detail: 'wait' },
     ] as const) {
       const { b, res } = await refused(seed)();
       const error = ((await res.json()) as { error: { code: string; message: string } }).error;
-      expect([res.status, error.code, error.message, b.pages.count()]).toEqual([503, 'unavailable', 'The converter is busy. Try again soon.', 0]);
+      expect([res.status, error.code, res.headers.get('retry-after'), b.pages.count()]).toEqual([503, 'unavailable', '5', 0]);
+      expect(error.message).toBe('The converter is busy with other pages. Try again in a moment.');
     }
-    const broken = build();
-    broken.converter.enqueueConvert({ ok: false, reason: 'content-lost', detail: 'x' });
-    expect((await make(broken, { collectionId: broken.shared.id, markdown: 'x' })).status).toBe(503);
   });
 
   it('lets one user have one conversion in flight: the second is 429 with Retry-After, another user is not held', async () => {
@@ -196,7 +203,7 @@ describe('POST /v1/pages with Markdown', () => {
     const second = make(b, { collectionId: b.shared.id, markdown: 'two' });
     const other = make(b, { collectionId: b.shared.id, markdown: 'three' }, 'admin');
     const refusedSecond = await second;
-    expect([refusedSecond.status, await code(refusedSecond), refusedSecond.headers.get('retry-after')]).toEqual([429, 'rate_limited', '1']);
+    expect([refusedSecond.status, await code(refusedSecond), refusedSecond.headers.get('retry-after')]).toEqual([429, 'rate_limited', '2']);
     release();
     expect([(await first).status, (await other).status]).toEqual([201, 201]);
     expect(b.pages.count()).toBe(2);
