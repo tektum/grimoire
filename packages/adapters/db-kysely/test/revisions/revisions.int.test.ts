@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
-import { createRevisions } from '../../src/revisions.js';
+import { createRevisions, lockPage } from '../../src/revisions.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -116,6 +116,24 @@ const savedPage = async (over: { title?: string; markdown?: string | null; stale
 const revisionsOf = (pageId: string) => t.admin.query<{ reason: string; title: string; markdown: string; ms: string; author_ids: string[]; last_author_id: string | null }>(
   `select reason, title, markdown, (extract(epoch from created_at) * 1000)::bigint::text as ms, author_ids, last_author_id from revisions where page_id = $1 order by created_at, id`, [pageId]);
 
+/** Holds the lock of one page's revisions in another transaction until released, and waits until `queued` calls are waiting behind it. */
+async function holdingThePageLock<T>(pageId: string, start: () => Promise<T>[], queued: number): Promise<T[]> {
+  let release!: () => void;
+  let held!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const locked = new Promise<void>((resolve) => { held = resolve; });
+  const holder = t.app.transaction(async (tx) => { await lockPage(tx, pageId); held(); await gate; });
+  await locked;
+  const calls = Promise.all(start());
+  await vi.waitFor(async () => {
+    const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+    expect(Number(waiting[0]?.n)).toBe(queued);
+  });
+  release();
+  await holder;
+  return calls;
+}
+
 describe('RevisionRepo.createFromPage', () => {
   it('makes a revision of the saved state, dated at the last edit, with the authors that are users and in the order given', async () => {
     const id = await savedPage({ title: 'T1', markdown: 'body one' });
@@ -164,7 +182,7 @@ describe('RevisionRepo.createFromPage, concurrently and with ids that are not UU
     const id = await savedPage({ title: 'Race', markdown: 'raced' });
     const repo = createRevisions(t.app);
     const ask = () => repo.createFromPage({ pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_500_000 });
-    const results = await Promise.all([ask(), ask(), ask(), ask()]);
+    const results = await holdingThePageLock(id, () => [ask(), ask(), ask(), ask()], 4);
     expect(results.map((r) => r.kind).sort()).toEqual(['created', 'unchanged', 'unchanged', 'unchanged']);
     expect(await revisionsOf(id)).toHaveLength(1);
   });
@@ -223,10 +241,10 @@ describe('RevisionRepo.catchUp', () => {
   it('makes one revision, not two, when the catch-up and a revision of the same page run at once', async () => {
     const id = await savedPage({ title: 'Both', markdown: 'both ways', editedMs: NOW - 30 * 60_000, editedBy: ana });
     const repo = createRevisions(t.app);
-    const [fromCatchUp, fromPage] = await Promise.all([
+    const [fromCatchUp, fromPage] = await holdingThePageLock(id, () => [
       repo.catchUp(NOW - 5 * 60_000, 100),
       repo.createFromPage({ pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at: NOW - 30 * 60_000 }),
-    ]);
+    ], 2) as [Awaited<ReturnType<typeof repo.catchUp>>, Awaited<ReturnType<typeof repo.createFromPage>>];
     expect((await revisionsOf(id))).toHaveLength(1);
     const caught = fromCatchUp.filter((m) => m.pageId === id).length;
     expect(caught + (fromPage.kind === 'created' ? 1 : 0)).toBe(1);
@@ -258,7 +276,7 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
 
   it('makes one safety copy, not several, when restores of one page run at once, and the others name that copy', async () => {
     const id = await savedPage({ title: 'Restoring', markdown: 'at once', editedMs: 1_700_001_050_000, editedBy: ana });
-    const results = await Promise.all([1, 2, 3, 4].map(() => createRevisions(t.app).snapshotBeforeRestore(id)));
+    const results = await holdingThePageLock(id, () => [1, 2, 3, 4].map(() => createRevisions(t.app).snapshotBeforeRestore(id)), 4);
     expect(results.map((r) => r.kind).sort()).toEqual(['created', 'existing', 'existing', 'existing']);
     expect(await revisionsOf(id)).toHaveLength(1);
   });
@@ -273,7 +291,9 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     expect([first.kind, second.kind]).toEqual(['created', 'created']);
     const listed = await repo.list(id, { limit: 10 });
     expect(listed.map((r) => r.title)).toEqual(['After rename', 'Before rename']);
-    expect(listed[0]?.createdAt).toBeGreaterThan(listed[1]?.createdAt ?? 0);
+    // The date a person sees is still the last edit; only the exact sort position moves, by a microsecond.
+    expect(listed.map((r) => r.createdAt)).toEqual([1_700_001_300_000, 1_700_001_300_000]);
+    expect((listed[0]?.sortKey ?? 0) - (listed[1]?.sortKey ?? 0)).toBe(1);
     expect(await repo.snapshotBeforeRestore(id)).toEqual({ kind: 'existing', id: second.kind === 'created' ? second.id : '' });
     expect(await revisionsOf(id)).toHaveLength(2);
   });

@@ -9,15 +9,17 @@ interface Row {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** One revision of one page is made at a time: a second call waits, then sees the first one's revision and finds its content unchanged. Does not block page saves. */
-const lockPage = (tx: { query(sql: string, params?: readonly unknown[]): Promise<readonly unknown[]> }, pageId: string): Promise<readonly unknown[]> =>
+export const lockPage = (tx: { query(sql: string, params?: readonly unknown[]): Promise<readonly unknown[]> }, pageId: string): Promise<readonly unknown[]> =>
   tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.revisions.page.' || $1::text, 0))`, [pageId]);
 
 /**
  * A new revision sorts as the newest of its page: never at or before the latest revision's time. A rename changes the title (and so the content)
  * without moving the last edit, so a revision of the renamed page would otherwise tie with, or precede, the one before it, and a tie is decided by id.
+ * The step is one microsecond: the API shows milliseconds, so the date a person sees stays the time of the last edit, while the order (and the
+ * cursor, which is exact to the microsecond) is strict.
  */
 const NEWEST = (page: string, wanted: string): string =>
-  `greatest(${wanted}, (select max(r.created_at) + interval '1 millisecond' from revisions r where r.page_id = ${page}))`;
+  `greatest(${wanted}, (select max(r.created_at) + interval '1 microsecond' from revisions r where r.page_id = ${page}))`;
 
 /** The time as whole milliseconds for the API. */
 const MS = `(extract(epoch from date_trunc('milliseconds', r.created_at)) * 1000)::bigint`;
