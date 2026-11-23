@@ -1,16 +1,15 @@
-/** The three roles of a user (the same values as `Role` of the user store; a port here imports nothing). */
-export type AdminRole = 'admin' | 'member' | 'viewer';
+import type { Role } from './user-store.js';
 
 /** A user as an administrator sees them (the only list that carries an email address). */
 export interface AdminUser {
   readonly id: string;
   readonly email: string;
   readonly name: string;
-  readonly role: AdminRole;
+  readonly role: Role;
   readonly suspended: boolean;
 }
 
-export interface UserPatch { readonly role?: AdminRole | undefined; readonly suspended?: boolean | undefined }
+export interface UserPatch { readonly role?: Role | undefined; readonly suspended?: boolean | undefined }
 
 /** `last-admin`: the change would leave no active administrator; nothing was written. */
 export type PatchUserResult = { kind: 'saved'; user: AdminUser } | { kind: 'not-found' } | { kind: 'last-admin' };
