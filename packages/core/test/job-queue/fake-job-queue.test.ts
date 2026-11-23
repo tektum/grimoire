@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FakeDatabase } from '../../src/testing/fake-database.js';
 import { FakeJobQueue } from '../../src/testing/fake-job-queue.js';
 
 describe('FakeJobQueue extras', () => {
@@ -47,5 +48,38 @@ describe('FakeJobQueue extras', () => {
     await q.work('late', async () => { ran = true; });
     await q.advance(0);
     expect(ran).toBe(true);
+  });
+
+  it('refuses a transactional enqueue when it has no database to read commits from', async () => {
+    const q = new FakeJobQueue();
+    await expect(q.enqueue('a', 1, {}, new FakeDatabase())).rejects.toThrow(/needs the committed database/);
+  });
+
+  it('gives transactional enqueues unique ids and null for a duplicate singleton', async () => {
+    const db = new FakeDatabase();
+    const q = new FakeJobQueue(db);
+    const ids = await db.transaction(async (tx) => [
+      await q.enqueue('a', 1, {}, tx),
+      await q.enqueue('a', 2, {}, tx),
+      await q.enqueue('a', 3, { singletonKey: 'k' }, tx),
+      await q.enqueue('a', 4, { singletonKey: 'k' }, tx),
+    ]);
+    expect(ids[3]).toBeNull();
+    expect(new Set(ids.slice(0, 3)).size).toBe(3);
+    const seen: number[] = [];
+    await q.work<number>('a', async (p) => { seen.push(p); });
+    await q.advance(0);
+    expect(seen).toEqual([1, 2, 3]);
+    expect(q.all.map((j) => j.id)).toEqual(ids.slice(0, 3));
+  });
+
+  it('counts the delay of a committed transactional job from the enqueue, not from the end of the advance', async () => {
+    const db = new FakeDatabase();
+    const q = new FakeJobQueue(db);
+    let runs = 0;
+    await q.work('a', async () => { runs++; });
+    await db.transaction(async (tx) => { await q.enqueue('a', 1, { delaySeconds: 5 }, tx); });
+    await q.advance(10);
+    expect(runs).toBe(1);
   });
 });

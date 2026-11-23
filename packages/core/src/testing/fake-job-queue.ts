@@ -46,18 +46,35 @@ export class FakeJobQueue implements JobQueue {
 
   async enqueue<Payload>(name: string, payload: Payload, options: EnqueueOptions = {}, tx?: Queryable): Promise<string | null> {
     if (tx) {
-      await tx.query('insert into fake_job_pending (name, payload, options) values ($1, $2, $3)', [name, JSON.stringify(payload), JSON.stringify(options)]);
-      return `pending-${name}`;
+      if (!this.committed) throw new Error('FakeJobQueue needs the committed database to accept enqueues with tx');
+      const key = options.singletonKey;
+      if (key !== undefined && (this.hasLiveSingleton(name, key) || (await this.pendingSingleton(tx, name, key)))) return null;
+      const id = `job-${++this.seq}`;
+      await tx.query('insert into fake_job_pending (id, name, payload, options) values ($1, $2, $3, $4)', [id, name, JSON.stringify(payload), JSON.stringify(options)]);
+      return id;
     }
     return this.add(name, payload, options);
   }
 
   private add(name: string, payload: unknown, options: EnqueueOptions): string | null {
     const key = options.singletonKey;
-    if (key !== undefined && this.jobs.some((j) => j.name === name && j.singletonKey === key && (j.state === 'queued' || j.state === 'active'))) return null;
-    const id = `job-${++this.seq}`;
+    if (key !== undefined && this.hasLiveSingleton(name, key)) return null;
+    return this.push(`job-${++this.seq}`, name, payload, options);
+  }
+
+  private hasLiveSingleton(name: string, key: string): boolean {
+    return this.jobs.some((j) => j.name === name && j.singletonKey === key && (j.state === 'queued' || j.state === 'active'));
+  }
+
+  /** True when `tx` holds a not yet adopted write with the same name and key (its own or a committed one). */
+  private async pendingSingleton(tx: Queryable, name: string, key: string): Promise<boolean> {
+    const rows = await tx.query<{ id: string; name: string; options: string }>('select id, name, options from fake_job_pending');
+    return rows.some((r) => r.name === name && !this.jobs.some((j) => j.id === r.id) && (JSON.parse(r.options) as EnqueueOptions).singletonKey === key);
+  }
+
+  private push(id: string, name: string, payload: unknown, options: EnqueueOptions): string {
     this.jobs.push({
-      id, name, payload, singletonKey: key, retryLimit: options.retryLimit ?? 0,
+      id, name, payload, singletonKey: options.singletonKey, retryLimit: options.retryLimit ?? 0,
       runAtMs: this.nowMs + (options.delaySeconds ?? 0) * 1000, attempt: 0, state: 'queued',
     });
     return id;
@@ -80,6 +97,7 @@ export class FakeJobQueue implements JobQueue {
 
   /** Moves the clock forward and runs every job that is due, to completion, in due order. */
   async advance(seconds: number): Promise<void> {
+    await this.adoptPending(); // before the clock moves, so a delay counts from the enqueue
     const target = this.nowMs + seconds * 1000;
     for (let minute = Math.floor(this.nowMs / MINUTE) + 1; minute <= Math.floor(target / MINUTE); minute++) {
       for (const [name, s] of this.schedules) {
@@ -91,7 +109,6 @@ export class FakeJobQueue implements JobQueue {
       }
     }
     this.nowMs = target;
-    await this.adoptPending();
     for (;;) {
       const due = this.jobs.filter((j) => j.state === 'queued' && j.runAtMs <= this.nowMs && this.handlers.has(j.name))
         .sort((a, b) => a.runAtMs - b.runAtMs)[0];
@@ -102,12 +119,14 @@ export class FakeJobQueue implements JobQueue {
 
   private async adoptPending(): Promise<void> {
     if (!this.committed) return;
-    const rows = await this.committed.query<{ name: string; payload: string; options: string }>('select name, payload, options from fake_job_pending');
-    for (const r of rows.slice(this.adopted)) this.add(r.name, JSON.parse(r.payload), JSON.parse(r.options) as EnqueueOptions);
-    this.adopted = rows.length;
+    const rows = await this.committed.query<{ id: string; name: string; payload: string; options: string }>('select id, name, payload, options from fake_job_pending');
+    for (const r of rows) {
+      if (this.jobs.some((j) => j.id === r.id)) continue;
+      const options = JSON.parse(r.options) as EnqueueOptions;
+      if (options.singletonKey !== undefined && this.hasLiveSingleton(r.name, options.singletonKey)) continue;
+      this.push(r.id, r.name, JSON.parse(r.payload), options);
+    }
   }
-
-  private adopted = 0;
 
   private async run(job: Job): Promise<void> {
     const handler = this.handlers.get(job.name) as JobHandler;
