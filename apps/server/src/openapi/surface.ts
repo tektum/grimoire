@@ -41,7 +41,12 @@ export const SURFACE_HEADER = [
 const bound = (a: number | undefined, b: number | undefined): string => (a === undefined && b === undefined ? '' : `(${a === undefined ? '' : String(a)}..${b === undefined ? '' : String(b)})`);
 
 /** A compact, readable shape: fields (`?` when optional), types, enum values, bounds, nested shapes; a reference is shown by its name. */
+/** The shape of a schema and, when it has one, its default value. */
 function shape(schema: Schema): string {
+  return `${core(schema)}${schema.default === undefined ? '' : `=${JSON.stringify(schema.default)}`}`;
+}
+
+function core(schema: Schema): string {
   if (schema.$ref !== undefined) return schema.$ref.split('/').pop() as string;
   const nullable = schema.nullable === true ? '|null' : '';
   const union = schema.oneOf ?? schema.anyOf;
@@ -57,11 +62,11 @@ function shape(schema: Schema): string {
     return `{${[...fields, ...extra].join(',')}}${strict}${schema.minProperties === undefined ? '' : `(min properties ${String(schema.minProperties)})`}${nullable}`;
   }
   const format = schema.format === undefined ? '' : `<${schema.format}>`;
-  const above = typeof schema.exclusiveMinimum === 'number' ? `>${String(schema.exclusiveMinimum)}` : '';
-  const below = typeof schema.exclusiveMaximum === 'number' ? `<${String(schema.exclusiveMaximum)}` : '';
+  // OpenAPI 3.0 writes an exclusive bound as `minimum` with `exclusiveMinimum: true`; 3.1 writes the bound itself.
+  const above = schema.exclusiveMinimum === true ? '(exclusive min)' : typeof schema.exclusiveMinimum === 'number' ? `>${String(schema.exclusiveMinimum)}` : '';
+  const below = schema.exclusiveMaximum === true ? '(exclusive max)' : typeof schema.exclusiveMaximum === 'number' ? `<${String(schema.exclusiveMaximum)}` : '';
   const pattern = schema.pattern === undefined ? '' : `/${schema.pattern}/`;
-  const fallback = schema.default === undefined ? '' : `=${JSON.stringify(schema.default)}`;
-  return `${schema.type ?? 'any'}${format}${bound(schema.minLength ?? schema.minimum, schema.maxLength ?? schema.maximum)}${above}${below}${pattern}${nullable}${fallback}`;
+  return `${schema.type ?? 'any'}${format}${bound(schema.minLength ?? schema.minimum, schema.maxLength ?? schema.maximum)}${above}${below}${pattern}${nullable}`;
 }
 const name = (schema: Schema | undefined): string => (schema === undefined ? '-' : shape(schema));
 const jsonSchema = (content: Readonly<Record<string, { readonly schema?: Schema }>> | undefined): string => name(content?.['application/json']?.schema);

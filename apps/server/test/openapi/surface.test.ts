@@ -93,6 +93,19 @@ describe('the API surface file', () => {
     expect(surfaceDiff(text, surface(doc(100, false)))).toHaveLength(2);
   });
 
+  it('shows the boolean exclusive bounds of OpenAPI 3.0, and the default of an enum, an array or an object', () => {
+    const doc = (min: object, fallback: string) => ({
+      paths: { '/e': { get: { operationId: 'e', 'x-grimoire-policy': { kind: 'admin' }, parameters: [{ name: 'mode', in: 'query', schema: { type: 'string', enum: ['a', 'b'], default: fallback } }] } } },
+      components: { schemas: { N: { type: 'object', properties: { n: { type: 'number', minimum: 0, ...min }, m: { type: 'number', maximum: 9, exclusiveMaximum: true }, t: { type: 'array', items: { type: 'string' }, default: [] } } } } },
+    });
+    const text = surface(doc({}, 'a'));
+    expect(text).toContain('query:mode?:a|b="a"');
+    expect(text).toContain('schema N = {m?:number(..9)(exclusive max),n?:number(0..),t?:string[]=[]}');
+    expect(surfaceDiff(text, surface(doc({ exclusiveMinimum: true }, 'a')))).toHaveLength(2);
+    expect(surface(doc({ exclusiveMinimum: true }, 'a'))).toContain('n?:number(0..)(exclusive min)');
+    expect(surfaceDiff(text, surface(doc({}, 'b')))).toHaveLength(2);
+  });
+
   it('gives every operation an operationId and a policy, and the document is the same on every build', () => {
     const document = buildDocument() as { paths: Record<string, Record<string, Record<string, unknown>>> };
     const operations = Object.values(document.paths).flatMap((item) => Object.values(item));
