@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 import { PAGE } from '../host/support.js';
 import { connect, eventually, startLive } from '../host/live-support.js';
 import type { Client, Live } from '../host/live-support.js';
@@ -22,6 +23,14 @@ const open = (l: Live, token: string, stateless: string[] = []): Client => {
   const c = connect(l, PAGE, token, { onStateless: (p: string) => { stateless.push(p); } });
   clients.push(c);
   return c;
+};
+
+const withTombstones = (): Uint8Array => {
+  const d = new Y.Doc();
+  const t = d.getText('prosemirror');
+  t.insert(0, 'abc');
+  t.delete(1, 1);
+  return Y.encodeStateAsUpdate(d);
 };
 
 describe('connect-time handshake over real sockets', () => {
@@ -79,6 +88,17 @@ describe('connect-time handshake over real sockets', () => {
     c.text.insert(0, 'later edits are not inspected');
     const reader = open(l, wrap({ e: 2 }));
     await eventually(() => reader.text.toString() === 'later edits are not inspected', 3000, 'edit arrives');
+    expect(c.failures).toEqual([]);
+  });
+
+  it('a first connect to a page that has deleted text is not refused: the page\'s own deletions offered back carry no new content', async () => {
+    const l = await live(); setEpoch(l, 2); l.t.pages.seed(PAGE, withTombstones());
+    const c = open(l, wrap({}));
+    await eventually(() => c.provider.synced, 3000, 'synced');
+    expect(c.text.toString()).toBe('ac');
+    c.text.insert(2, '!');
+    const reader = open(l, wrap({ e: 2 }));
+    await eventually(() => reader.text.toString() === 'ac!', 3000, 'edit arrives');
     expect(c.failures).toEqual([]);
   });
 });

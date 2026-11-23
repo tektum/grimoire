@@ -81,11 +81,9 @@ class StaleEpoch extends Error {
   constructor() { super(''); }
 }
 
-const EMPTY_UPDATE = Y.encodeStateAsUpdate(new Y.Doc());
-
 /**
  * The belt: a wrapper client that did not know the epoch must open with an empty document, because the editor mounts only after `synced`.
- * Its first sync step 2 or update is diffed against the loaded document; anything beyond the empty update on a page past epoch 0 is old
+ * Its first sync step 2 or update is diffed against the loaded document; any struct the page does not already have, on a page past epoch 0 is old
  * state from before a reset, and is refused before it is applied. The flag is cleared by that first message, so later edits are not inspected.
  */
 export function createHandshakeExtension(): Extension {
@@ -100,7 +98,9 @@ export function createHandshakeExtension(): Extension {
       if ((c.epoch ?? 0) === 0) return;
       let diff: Uint8Array;
       try { diff = Y.diffUpdate(data.payload, Y.encodeStateVector(data.document)); } catch { return; } // malformed bytes are the limits extension's refusal
-      if (diff.byteLength === EMPTY_UPDATE.byteLength && diff.every((b, i) => b === EMPTY_UPDATE[i])) return;
+      // Only structs the document does not have count: the diff keeps the whole delete set, and a fresh client that has just applied this page
+      // (tombstones included) offers the page's own deletions back.
+      if (Y.decodeUpdate(diff).structs.length === 0) return;
       try { data.connection.sendStateless(JSON.stringify({ grimoire: 1, kind: 'refusal', code: 'stale-epoch' })); } catch { /* a closing socket cannot be told */ }
       throw new StaleEpoch();
     },
