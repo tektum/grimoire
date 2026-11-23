@@ -23,8 +23,8 @@ export interface ConverterOptions extends Partial<ConverterLimits> {
   reseedTimeoutMs?: number;
   /**
    * The most a call waits for a free worker before it answers `queue-timeout`. Default: a quarter of the call's total limit. The run then gets
-   * the rest of the total, so queue wait plus run never exceeds it. Only a run that started at once, with the full total, can answer `timeout`;
-   * a run that waited first and ran out of time answers `queue-timeout` (the page may have fitted with the full allowance).
+   * the rest of the total, so queue wait plus run never exceeds it. Only a run that kept at least 90% of the total can answer `timeout`;
+   * a run whose allowance the wait cut below that, and that ran out of time, answers `queue-timeout` (the page may have fitted with the full allowance).
    */
   queueWaitMs?: number;
   /** `resourceLimits.maxOldGenerationSizeMb` of each worker. */
@@ -141,6 +141,8 @@ function asSeedResult(value: unknown): SeedResult | undefined {
 }
 
 /** Piscina's own message for a full queue: it has no error class or code for it. */
+/** A run that kept at least this share of the call's total limit had its full allowance: running out of time then is the page's doing (`timeout`). */
+const FULL_ALLOWANCE = 0.9;
 const QUEUE_FULL = /queue is at limit|No task queue available/;
 
 /** Pool errors to typed failures. The detail is fixed text: an error message could carry page content. */
@@ -171,7 +173,8 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     maxThreads: poolSize,
     maxQueue: queueLimit,
     resourceLimits: { maxOldGenerationSizeMb: heapMb },
-    closeTimeout: closeDeadlineMs,
+    // The deadline is kept by `close()` below (waiting and running calls together); piscina only finishes the job after it.
+    closeTimeout: 1,
     // The worker needs nothing from the server's environment (secrets live there) and nothing of its flags.
     env: {},
     execArgv: [],
@@ -215,22 +218,23 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     const waitSignal = AbortSignal.timeout(waitLimitMs);
     let signal: AbortSignal | undefined;
     let slot = false;
-    let waited = false;
+    let fullAllowance = true;
     try {
-      // A job that started at once had its FULL allowance (the total). One that waited had it cut by the wait.
-      waited = running >= poolSize;
-      slot = await acquire(waitSignal);
+            slot = await acquire(waitSignal);
       if (!slot) {
         if (closing !== undefined) return closedFailure;
         return fail('queue-timeout', `no worker was free within ${waitLimitMs} ms`, 'The converter is busy with other pages. Try again in a moment.');
       }
-      signal = AbortSignal.timeout(Math.max(1, limitMs - Math.round(performance.now() - admitted)));
+      const budgetMs = Math.max(1, limitMs - Math.round(performance.now() - admitted));
+      // Full allowance: at least FULL_ALLOWANCE of the total is left for the run.
+      fullAllowance = budgetMs >= limitMs * FULL_ALLOWANCE;
+      signal = AbortSignal.timeout(budgetMs);
       // piscina's TransferList type resolves to the structured-clone options object when only Node's types are loaded; at run time it is an array.
       const reply = await pool.run(request, { signal, transferList: transferList as never });
       return accept(reply) ?? fail('internal', 'worker-bad-reply');
     } catch (error: unknown) {
       // Out of time after a shortened run says nothing about the page: it may have fitted with the full allowance. Only a run that had it all is `timeout`.
-      if (waited && signal?.aborted === true && closing === undefined) return fail('queue-timeout', 'the run was cut short by the wait for a worker', 'The converter is busy with other pages. Try again in a moment.');
+      if (!fullAllowance && signal?.aborted === true && closing === undefined) return fail('queue-timeout', 'the run was cut short by the wait for a worker', 'The converter is busy with other pages. Try again in a moment.');
       return mapPoolError(error, signal ?? AbortSignal.abort(), closing !== undefined, timedOut);
     } finally {
       if (slot) release();
@@ -283,8 +287,12 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     close() {
       // piscina's close waits for running and queued work up to closeTimeout, then terminates the workers.
       // Calls waiting for a worker are ours, not piscina's: let them finish (up to the deadline) before piscina closes.
+      // One deadline in total: calls waiting for a worker (ours, not piscina's) and running ones get `closeDeadlineMs` together; what is still
+      // running after that is terminated at once (`force`), so close() never takes a second deadline on top of the first.
       closing ??= (async () => {
-        if (pending > 0) await Promise.race([new Promise<void>((r) => drained.push(r)), new Promise<void>((r) => setTimeout(r, closeDeadlineMs).unref())]);
+        let timer: NodeJS.Timeout | undefined;
+        if (pending > 0) await Promise.race([new Promise<void>((r) => drained.push(r)), new Promise<void>((r) => { timer = setTimeout(r, closeDeadlineMs); })]);
+        clearTimeout(timer);
         await pool.close().catch(() => undefined);
       })();
       return closing;

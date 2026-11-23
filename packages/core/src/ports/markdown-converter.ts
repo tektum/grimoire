@@ -8,8 +8,8 @@
  * own refusals it is a stable code such as `one-at-a-time`, `no-key`, `queue-full`, `closed`). `message`, when present, is a plain sentence a person
  * can be shown; the pool sets it on every refusal it makes itself. Neither field ever holds page content.
  *
- * `timeout` means a worker ran the job and it used up its time. `queue-timeout` means no worker became free in time: the job never started,
- * so it says nothing about the content and may be retried.
+ * `timeout` means a worker ran the job and it used up its time. `queue-timeout` means no worker became free in time, or the wait left the run less than its full allowance and it ran out: the page
+ * is not shown to be at fault, so it may be retried.
  */
 export type ConvertFailure =
   | 'invalid-state'
