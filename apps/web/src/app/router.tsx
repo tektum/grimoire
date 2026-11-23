@@ -15,9 +15,8 @@ const screens: Record<string, ReturnType<typeof lazy>> = {
   notfound: lazy(() => import('../screens/notfound')),
 };
 
-const SamplePage = lazy(() => import('../ui/SamplePage'));
-/** The sample content page exists in development and test builds only; `__GRIMOIRE_DEV_SIGNIN__` is false in production, so the page is not in any production chunk. */
-const withSample = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__;
+/** The sample content page exists in development and test builds only. `__GRIMOIRE_DEV_SIGNIN__` is replaced by a constant at build time, so in a production build the `import()` below is dead code and the page is not emitted. */
+const SamplePage = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__ ? lazy(() => import('../ui/SamplePage')) : null;
 
 export function routeObjects(): RouteObject[] {
   const children = ROUTES.map<RouteObject>((r) => {

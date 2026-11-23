@@ -26,6 +26,8 @@ export function checkBuild(dist) {
       if (text(file).toLowerCase().includes(word)) problems.push(`assets/${file}, loaded by index.html, contains "${word}" (the sign-in libraries load on the sign-in page only)`);
 
   for (const file of assets)
+    if (text(file).includes('grimoire-design-sample')) problems.push(`assets/${file} contains the marker grimoire-design-sample (the design sample page is not in a production build)`);
+  for (const file of assets)
     if (text(file).includes('grimoire-dev-signin')) problems.push(`assets/${file} contains the marker grimoire-dev-signin (the development sign-in is not in a production build)`);
 
   for (const [name, source] of [['index.html', html], ...assets.map((f) => [`assets/${f}`, text(f)])])

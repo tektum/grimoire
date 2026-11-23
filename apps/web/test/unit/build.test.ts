@@ -45,6 +45,9 @@ describe('check-build', () => {
   it('fails on the development sign-in marker in any chunk', () => {
     expect(checkBuild(fakeBuild({ 'assets/login.js': 'grimoire-dev-signin' })).join('\n')).toContain('grimoire-dev-signin');
   });
+  it('fails on the design sample marker in any chunk', () => {
+    expect(checkBuild(fakeBuild({ 'assets/SamplePage.js': 'grimoire-design-sample' })).join('\n')).toContain('grimoire-design-sample');
+  });
   it('fails on an absolute /assets/ path in index.html or in a chunk', () => {
     const html = fakeBuild({ 'index.html': '<script type="module" src="/assets/index.js"></script>' });
     expect(checkBuild(html).join('\n')).toContain('index.html has an absolute /assets/ path');

@@ -12,7 +12,7 @@
 | Serve the build (port 4173, deep links work) | `bun run --cwd apps/web serve` |
 | Unit tests | `bun run test` (the `web` project runs under happy-dom) |
 
-`check:build` fails when a chunk the entry document loads contains the sign-in libraries, when any chunk holds the development sign-in marker, when an asset path is absolute, or when `config.json` is missing.
+`check:build` fails when a chunk the entry document loads contains the sign-in libraries, when any chunk holds the development sign-in marker or the design sample marker, when an asset path is absolute, or when `config.json` is missing.
 
 ## Configuration
 

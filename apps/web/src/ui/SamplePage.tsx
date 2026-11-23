@@ -14,10 +14,13 @@ function Cursor({ index, name }: { index: number; name: string }) {
   );
 }
 
+/** Marker checked by `check:build`: a production build must not contain it. */
+export const SAMPLE_MARKER = 'grimoire-design-sample';
+
 /** A page of sample content for judging the look and feel (shown in development and test builds only). */
 export default function SamplePage() {
   return (
-    <div className="sample-grid">
+    <div className="sample-grid" data-sample={SAMPLE_MARKER}>
       <article className="page-text" aria-labelledby="sample-title">
         <h1 id="sample-title">Planning the autumn release</h1>
         <p>
