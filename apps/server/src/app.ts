@@ -8,6 +8,7 @@ import { ApiError, errorResponse } from './http/error.js';
 import type { AppEnv } from './http/env.js';
 import { createRouter } from './http/factory.js';
 import { corsMiddleware } from './http/cors.js';
+import { addressLimiter, userLimiter } from './http/rate-limit.js';
 import { authenticate } from './http/auth.js';
 import { clientVersionGate } from './http/client-version.js';
 import { routers } from './routes/registry.js';
@@ -59,10 +60,13 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   // CORS covers the API paths and comes before the body limit, so a 413 can be read from an allowed origin. The health routes stay plain.
   app.use('/v1/*', corsMiddleware(ctx.config.allowedOrigins));
+  // Before the body limit, which answers an oversized request without calling `next()`: every request counts against the address limits.
+  app.use(addressLimiter(ctx.config.http, ctx.config.trustedProxies, ctx.log));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
   app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http));
+  app.use('/v1/*', userLimiter(app, ctx.config.http, ctx.log));
   for (const router of routers) app.route('/', router);
   return app;
 }
