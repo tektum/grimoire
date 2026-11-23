@@ -58,6 +58,9 @@ describe('grimoire migrate installs pg-boss', () => {
       `select p.proname as name, has_function_privilege('grimoire_app', p.oid, 'execute') as allowed
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'pgboss' order by 1`);
     const byName = new Map(rows.map((r) => [r.name, r.allowed]));
+    // The migration role owns the functions, so revoking PUBLIC cut nobody who needs them.
+    const migrator = await sqlAdmin<{ allowed: boolean }>(DB, "select has_function_privilege('grimoire_migrator', 'pgboss.create_queue(text, jsonb)', 'execute') as allowed");
+    expect(migrator[0]?.allowed).toBe(true);
     for (const name of ['create_queue', 'delete_queue', 'job_table_format', 'job_table_run', 'job_table_run_async']) expect(byName.get(name), name).toBe(false);
     console.log(`runtime role may execute: ${rows.filter((r) => r.allowed).map((r) => r.name).join(', ')}`);
   }, 120_000);
