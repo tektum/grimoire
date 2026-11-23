@@ -136,11 +136,19 @@ describe('the files-setup purpose', () => {
   it('succeeds with the endpoint, bucket, admin keys and allowed origins only (no database, no runtime keys, no local mode)', () => {
     const config = loadConfig(setupEnv, { purpose: 'files-setup' });
     expect(config.filesSetup).toEqual({
-      endpoint: 'http://seaweedfs:8333', bucket: 'grimoire', region: 'us-east-1', addressing: 'path', corsMode: 'api',
+      endpoint: 'http://seaweedfs:8333', bucket: 'grimoire', region: 'us-east-1', addressing: 'path', corsMode: 'api', createOnlyHeader: 'if-none-match',
       accessKey: setupEnv.GRIMOIRE_S3_ADMIN_ACCESS_KEY, secretKey: setupEnv.GRIMOIRE_S3_ADMIN_SECRET_KEY,
     });
     expect(config.allowedOrigins).toEqual(['http://127.0.0.1:8080']);
     expect(config.files).toBeUndefined();
+  });
+
+  it('carries the create-only header of the setting, which the CORS rule and the external check need', () => {
+    for (const header of ['if-none-match', 'x-goog-if-generation-match']) {
+      const config = loadConfig({ ...setupEnv, GRIMOIRE_S3_CREATE_ONLY_HEADER: header }, { purpose: 'files-setup' });
+      expect(config.filesSetup?.createOnlyHeader).toBe(header);
+    }
+    expect(issuesFor({ ...setupEnv, GRIMOIRE_S3_CREATE_ONLY_HEADER: 'x-other' }).join('\n')).toContain('GRIMOIRE_S3_CREATE_ONLY_HEADER');
   });
 
   it.each(['GRIMOIRE_ALLOWED_ORIGINS', 'GRIMOIRE_S3_ENDPOINT', 'GRIMOIRE_S3_BUCKET', 'GRIMOIRE_S3_ADMIN_ACCESS_KEY', 'GRIMOIRE_S3_ADMIN_SECRET_KEY'])(

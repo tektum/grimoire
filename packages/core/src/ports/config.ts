@@ -86,6 +86,8 @@ export interface FilesSetupConfig {
   readonly region: string;
   readonly addressing: 'path' | 'virtual';
   readonly corsMode: 'api' | 'external';
+  /** The header a signed upload carries to be create-only: the CORS rule has to allow it. */
+  readonly createOnlyHeader: 'if-none-match' | 'x-goog-if-generation-match';
   readonly accessKey: string;
   readonly secretKey: string;
 }
