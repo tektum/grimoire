@@ -81,6 +81,18 @@ class StaleEpoch extends Error {
   constructor() { super(''); }
 }
 
+/** True when every deleted range of `offered` lies inside a range `held` already deletes (both are sorted and merged per client). */
+interface Deleted { readonly clients: ReadonlyMap<number, readonly { readonly clock: number; readonly len: number }[]> }
+function deletesNothingNew(offered: Deleted, held: Deleted): boolean {
+  for (const [client, items] of offered.clients) {
+    const have = held.clients.get(client) ?? [];
+    for (const { clock, len } of items) {
+      if (!have.some((h) => h.clock <= clock && clock + len <= h.clock + h.len)) return false;
+    }
+  }
+  return true;
+}
+
 /**
  * The belt: a wrapper client that did not know the epoch must open with an empty document, because the editor mounts only after `synced`.
  * Its first sync step 2 or update is diffed against the loaded document; any struct the page does not already have, on a page past epoch 0 is old
@@ -98,9 +110,10 @@ export function createHandshakeExtension(): Extension {
       if ((c.epoch ?? 0) === 0) return;
       let diff: Uint8Array;
       try { diff = Y.diffUpdate(data.payload, Y.encodeStateVector(data.document)); } catch { return; } // malformed bytes are the limits extension's refusal
-      // Only structs the document does not have count: the diff keeps the whole delete set, and a fresh client that has just applied this page
-      // (tombstones included) offers the page's own deletions back.
-      if (Y.decodeUpdate(diff).structs.length === 0) return;
+      // Only content the page lacks counts: structs it does not have, and deletions it has not already made. The diff keeps the whole delete
+      // set, and a fresh client that has just applied this page (tombstones included) offers the page's own deletions back.
+      const offered = Y.decodeUpdate(diff);
+      if (offered.structs.length === 0 && deletesNothingNew(offered.ds, Y.createDeleteSetFromStructStore(data.document.store))) return;
       try { data.connection.sendStateless(JSON.stringify({ grimoire: 1, kind: 'refusal', code: 'stale-epoch' })); } catch { /* a closing socket cannot be told */ }
       throw new StaleEpoch();
     },

@@ -38,6 +38,16 @@ describe('the first-sync belt', () => {
     expect(server.getText('prosemirror').toString()).toBe('ac');
   });
 
+  it('refuses a delete-only update that deletes text the page still has, and applies nothing', async () => {
+    const server = pageWithDeletion();
+    const client = new Y.Doc();
+    Y.applyUpdate(client, Y.encodeStateAsUpdate(server));
+    client.getText('prosemirror').delete(0, 1); // offline, on content that is live on the page
+    const r = run(server, Y.encodeStateAsUpdate(client, Y.encodeStateVector(server)));
+    await expect(r.result).rejects.toMatchObject({ code: 4409, reason: 'stale-epoch' });
+    expect(server.getText('prosemirror').toString()).toBe('ac');
+  });
+
   it('inspects only the first message, and nothing on a page at epoch 0 or for a client that knew its epoch', async () => {
     const old = new Y.Doc();
     old.getText('prosemirror').insert(0, 'old-edit');
