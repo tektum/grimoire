@@ -28,7 +28,7 @@ export interface HttpDeps {
   readonly provisioner: ReturnType<typeof createProvisioner>;
   /** Routes may only seed. The rebuild from stored Markdown belongs to the collaboration host. */
   readonly converter: MarkdownConverter;
-  /** Until the ordering task lands every call throws `OrderingNotAvailable` (503 `unavailable`). */
+  /** Sibling ordering on fractional keys. */
   readonly ordering: Ordering;
   readonly idempotency: IdempotencyStore;
   readonly collections: CollectionRepo;
