@@ -35,7 +35,7 @@ export interface MigrateOptions {
 export async function migratePgBoss(options: MigrateOptions): Promise<readonly string[]> {
   await requireSchemaAccess(options.database);
   const make = options.make ?? ((o: ConstructorOptions) => new PgBoss(o));
-  const boss = make({ connectionString: options.connectionString, schema: PGBOSS_SCHEMA, migrate: true, supervise: false, schedule: false, registerInstance: false });
+  const boss = make({ connectionString: options.connectionString, schema: PGBOSS_SCHEMA, migrate: true, createSchema: false, supervise: false, schedule: false, registerInstance: false });
   let failure: Error | undefined;
   boss.on('error', (e: Error) => { failure = e; });
   await boss.start();
@@ -45,19 +45,25 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
 }
 
 /**
- * The migration role must own the pgboss schema (or be able to create it) before the library runs; otherwise the
- * library fails with a bare "permission denied". Fails early with the statement that fixes it.
+ * The schema must exist and belong to the migration role before the library runs. The library is told not to create
+ * it (`createSchema: false`): the schema is pre-created for the migration role (db/init/roles.psql), which therefore
+ * needs no CREATE on the database. A role that does have that privilege (a database it owns) creates the schema here.
+ * Anything else fails early with the statement that fixes it, instead of a bare "permission denied".
  */
 export async function requireSchemaAccess(db: Queryable, schema: string = PGBOSS_SCHEMA): Promise<void> {
   const [row] = await db.query<{ me: string; can_create: boolean; owns: boolean | null }>(
-    `select current_user::text as me,
-            has_database_privilege(current_user, current_database(), 'create') as can_create,
+    `select current_user::text as me, has_database_privilege(current_user, current_database(), 'create') as can_create,
             (select pg_has_role(current_user, nspowner, 'usage') from pg_namespace where nspname = $1) as owns`,
     [schema],
   );
-  if (row && (row.owns === true || (row.owns === null && row.can_create))) return;
+  if (row?.owns === true) return;
+  if (row?.owns === null && row.can_create) {
+    await db.query(`create schema if not exists ${ident(schema)}`);
+    return;
+  }
   const who = row?.me ?? 'the migration role';
-  throw new Error(`the migration role cannot manage the "${schema}" schema: run once, as a role that may: create schema ${schema} authorization ${who};`);
+  const fix = row?.owns === false ? `alter schema ${schema} owner to ${who};` : `create schema ${schema} authorization ${who};`;
+  throw new Error(`the "${schema}" schema must exist and be owned by the migration role: run once, as a role that may: ${fix}`);
 }
 
 export async function grantRuntimeRole(db: Queryable, role: string, schema: string = PGBOSS_SCHEMA): Promise<readonly string[]> {
