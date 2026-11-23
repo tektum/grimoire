@@ -66,10 +66,14 @@ export class FakeRevisionRepo implements RevisionRepo {
     const hash = markdownHash(page.title, page.markdown);
     const latest = this.rows.filter((r) => r.pageId === request.pageId).sort((a, b) => b.micros - a.micros)[0];
     if (latest !== undefined && latest.hash.equals(hash)) return Promise.resolve({ kind: 'unchanged' });
-    const authors = request.authorIds.map((id) => ({ id, name: id }));
+    // As the database does: a save newer than the caller's snapshot sets the date and the last editor.
+    const later = page.lastEditedAt !== undefined && page.lastEditedAt !== null && page.lastEditedAt > request.at;
+    const savedBy = later ? (page.lastEditedBy ?? null) : null;
+    const ids = savedBy !== null && !request.authorIds.includes(savedBy) ? [...request.authorIds, savedBy] : request.authorIds;
+    const lastId = savedBy ?? request.lastAuthorId;
     const created = this.seed({
-      pageId: request.pageId, createdAt: request.at, title: page.title, markdown: page.markdown, authors,
-      lastAuthor: request.lastAuthorId === null ? null : { id: request.lastAuthorId, name: request.lastAuthorId }, reason: request.reason,
+      pageId: request.pageId, createdAt: later ? (page.lastEditedAt as number) : request.at, title: page.title, markdown: page.markdown, authors: ids.map((id) => ({ id, name: id })),
+      lastAuthor: lastId === null ? null : { id: lastId, name: lastId }, reason: request.reason,
     });
     return Promise.resolve({ kind: 'created', id: created.id });
   }

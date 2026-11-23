@@ -137,8 +137,10 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
         });
         outcome(pageId, reason, state, seen, result);
       } catch (error) {
-        // The edits stay owed: the next trigger tries again.
         o.report.failed(pageId, error instanceof Error ? error.name : 'unknown');
+        // The edits stay owed, and the idle rule must not die with this attempt: try again after another quiet period (an edit that arrived
+        // meanwhile has armed its own timer already).
+        if (!stopped && state.timer === undefined && pending.get(pageId) === state) state.timer = timers.setTimeout(() => { void attempt(pageId, 'idle'); }, idleMs);
       }
     });
 
@@ -187,7 +189,12 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
         }
         // Pages saved less than 5 minutes before the restart had no timer in this process: one more pass, when they have been quiet that long.
         if (stopped) return;
-        catchUpTimer = timers.setTimeout(() => { void track(run().then(() => undefined)); }, idleMs);
+        catchUpTimer = timers.setTimeout(() => {
+          void track(run().then((ok) => {
+            // A failed second pass is retried like a failed first one: at a later page open, after a pause.
+            if (!ok && !stopped) { caughtUp = false; retryAfter = o.clock.now() + CATCH_UP_RETRY_MS; }
+          }));
+        }, idleMs);
       })());
     },
     whenIdle: async () => { while (inFlight.size > 0) await Promise.all([...inFlight]); },

@@ -159,6 +159,34 @@ describe('RevisionRepo.createFromPage', () => {
   });
 });
 
+describe('RevisionRepo.createFromPage, concurrently and with ids that are not UUIDs', () => {
+  it('makes exactly one revision when two calls for one page run at once', async () => {
+    const id = await savedPage({ title: 'Race', markdown: 'raced' });
+    const repo = createRevisions(t.app);
+    const ask = () => repo.createFromPage({ pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_500_000 });
+    const results = await Promise.all([ask(), ask(), ask(), ask()]);
+    expect(results.map((r) => r.kind).sort()).toEqual(['created', 'unchanged', 'unchanged', 'unchanged']);
+    expect(await revisionsOf(id)).toHaveLength(1);
+  });
+
+  it('dates the revision at a save newer than the caller\'s snapshot and names that save\'s editor as the last author', async () => {
+    const id = await savedPage({ title: 'Later', markdown: 'saved after the snapshot', editedMs: 1_700_000_800_000, editedBy: bob });
+    const made = await createRevisions(t.app).createFromPage({ pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
+    expect(made.kind).toBe('created');
+    expect(await revisionsOf(id)).toEqual([{ reason: 'idle', title: 'Later', markdown: 'saved after the snapshot', ms: '1700000800000', author_ids: [ana, bob], last_author_id: bob }]);
+    const older = await savedPage({ title: 'Older', markdown: 'saved before', editedMs: 1_700_000_600_000, editedBy: bob });
+    await createRevisions(t.app).createFromPage({ pageId: older, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
+    expect((await revisionsOf(older))[0]).toMatchObject({ ms: '1700000700000', author_ids: [ana], last_author_id: ana });
+  });
+
+  it('drops author ids that are not UUIDs before they reach the database, instead of failing', async () => {
+    const id = await savedPage({ title: 'Names', markdown: 'dev tokens' });
+    const made = await createRevisions(t.app).createFromPage({ pageId: id, reason: 'idle', authorIds: ['dev-user', ana, 'not-a-uuid'], lastAuthorId: 'dev-user', at: 1_700_000_600_000 });
+    expect(made.kind).toBe('created');
+    expect((await revisionsOf(id))[0]).toMatchObject({ author_ids: [ana], last_author_id: null });
+  });
+});
+
 describe('RevisionRepo.catchUp', () => {
   const NOW = 1_700_000_900_000;
   const rows = () => t.admin.query<{ id: string }>(`select id from revisions`);

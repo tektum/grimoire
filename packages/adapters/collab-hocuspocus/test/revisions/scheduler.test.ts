@@ -137,6 +137,17 @@ describe('an edit that arrives while a revision is being made', () => {
   });
 });
 
+describe('a save that lands while the revision is being made', () => {
+  it('dates the revision at that save and names its editor, so the new Markdown is not credited to an earlier edit', async () => {
+    const b = build();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'with the later save', lastEditedAt: b.clock.now() + 5 * MINUTE + 10, lastEditedBy: BOB });
+    b.scheduler.changed(PAGE, ANA);
+    b.timers.advance(5 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ createdAt: b.clock.now() + 10, authors: [ANA, BOB], lastAuthorId: BOB })]);
+  });
+});
+
 describe('the last editor leaving', () => {
   it('makes a revision with reason last_editor_left at once, and cancels the timer', async () => {
     const b = build();
@@ -215,6 +226,56 @@ describe('what each revision logs', () => {
   });
 });
 
+describe('a failed attempt', () => {
+  it('is tried again after another quiet period, so the idle rule does not die with it', async () => {
+    const b = build();
+    saved(b, 'text');
+    b.scheduler.changed(PAGE, ANA);
+    b.repo.failNext = new Error('database down');
+    b.timers.advance(5 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([]);
+    expect(b.timers.pending).toBe(1);
+    b.timers.advance(5 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle', authors: [ANA] })]);
+    expect(b.timers.pending).toBe(0);
+  });
+
+  it('arms no second timer when an edit already armed one, and none after the shutdown began', async () => {
+    const b = build();
+    saved(b, 'text');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let entered = 0;
+    b.repo.createFromPage = async () => { entered += 1; await gate; throw new Error('database down'); };
+    b.scheduler.changed(PAGE, ANA);
+    b.timers.advance(5 * MINUTE);
+    await vi.waitFor(() => { expect(entered).toBe(1); });
+    b.scheduler.changed(PAGE, BOB);
+    expect(b.timers.pending).toBe(1);
+    release();
+    await b.scheduler.whenIdle();
+    expect(b.timers.pending).toBe(1);
+    b.scheduler.stop();
+    expect(b.timers.pending).toBe(0);
+
+    const stopping = build();
+    stopping.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
+    let open!: () => void;
+    const hold = new Promise<void>((resolve) => { open = resolve; });
+    let inside = 0;
+    stopping.repo.createFromPage = async () => { inside += 1; await hold; throw new Error('database down'); };
+    stopping.scheduler.changed(PAGE, ANA);
+    stopping.timers.advance(5 * MINUTE);
+    await vi.waitFor(() => { expect(inside).toBe(1); });
+    stopping.scheduler.stop();
+    open();
+    await stopping.scheduler.whenIdle();
+    expect(stopping.timers.pending).toBe(0);
+  });
+});
+
 describe('the catch-up after a restart (R9.3)', () => {
   it('does no database work until a page is opened', async () => {
     const b = build();
@@ -282,6 +343,25 @@ describe('the catch-up after a restart (R9.3)', () => {
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([]);
     expect(b.repo.made(done)).toHaveLength(1);
+  });
+
+  it('retries a failed second pass at a later page open, after a pause', async () => {
+    const b = build();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'saved just before the restart', lastEditedAt: b.clock.now() - 3 * MINUTE, lastEditedBy: ANA });
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    b.repo.failNext = new Error('database down');
+    b.timers.advance(5 * MINUTE); // the second pass runs and fails
+    await b.scheduler.whenIdle();
+    expect(b.events('collab.revision_failed')).toHaveLength(1);
+    expect(b.repo.made(PAGE)).toEqual([]);
+    b.scheduler.opened(); // inside the pause: nothing
+    await b.scheduler.whenIdle();
+    expect(b.repo.calls).toEqual(['catchUp', 'catchUp']);
+    b.timers.advance(60_000);
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle' })]);
   });
 
   it('works through more pages than one batch holds, and logs a failure without giving up the server', async () => {

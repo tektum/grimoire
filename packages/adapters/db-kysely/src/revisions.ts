@@ -7,6 +7,11 @@ interface Row {
   authors: RevisionAuthor[]; markdown?: string;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** One revision of one page is made at a time: a second call waits, then sees the first one's revision and finds its content unchanged. Does not block page saves. */
+const lockPage = (tx: { query(sql: string, params?: readonly unknown[]): Promise<readonly unknown[]> }, pageId: string): Promise<readonly unknown[]> =>
+  tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.revisions.page.' || $1::text, 0))`, [pageId]);
+
 /** The time as whole milliseconds for the API. */
 const MS = `(extract(epoch from date_trunc('milliseconds', r.created_at)) * 1000)::bigint`;
 /** The exact position for the cursor: whole microseconds, so a stored time finer than a millisecond still pages without a gap or a repeat. */
@@ -48,12 +53,24 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       return row === undefined ? undefined : { ...summary(row), markdown: row.markdown as string } satisfies Revision;
     },
     createFromPage(request) {
+      // A user id that is not a UUID (a development token's name) is no author: dropped here, before any cast.
+      const authorIds = request.authorIds.filter((id) => UUID.test(id));
+      const lastAuthorId = request.lastAuthorId !== null && UUID.test(request.lastAuthorId) ? request.lastAuthorId : null;
       return db.transaction(async (tx): Promise<PageRevisionResult> => {
-        const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean }>(
-          `select title, markdown, markdown_stale_since is not null as stale from pages where id = $1 and deleted_at is null for share`, [request.pageId],
+        await lockPage(tx, request.pageId);
+        const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean; edited_ms: string | null; editor: string | null }>(
+          `select title, markdown, markdown_stale_since is not null as stale, (extract(epoch from last_edited_at) * 1000)::bigint::text as edited_ms, last_edited_by as editor
+             from pages where id = $1 and deleted_at is null for share`, [request.pageId],
         ))[0];
         if (page === undefined) return { kind: 'no-page' };
         if (page.stale) return { kind: 'stale' };
+        // An edit may have been saved between the scheduler's snapshot and this read: the row says who made the last saved change and when, and the
+        // revision says the same, so the Markdown it copies is never dated or attributed to an earlier edit than the one it holds.
+        const savedLater = page.edited_ms !== null && Number(page.edited_ms) > request.at;
+        const at = savedLater ? Number(page.edited_ms) : request.at;
+        const savedBy = savedLater && page.editor !== null ? page.editor : null;
+        const authors = savedBy !== null && !authorIds.includes(savedBy) ? [...authorIds, savedBy] : authorIds;
+        const last = savedBy ?? lastAuthorId;
         if (page.markdown === null) return { kind: 'no-markdown' };
         const hash = markdownHash(page.title, page.markdown);
         const latest = (await tx.query<{ h: Buffer }>(`select markdown_hash as h from revisions where page_id = $1 order by created_at desc, id limit 1`, [request.pageId]))[0];
@@ -64,7 +81,7 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
            values ($1, $2, $3, $4,
              (select coalesce(array_agg(t.id order by t.ord), '{}') from unnest($5::uuid[]) with ordinality as t(id, ord) where exists (select 1 from users u where u.id = t.id)),
              (select id from users where id = $6::uuid), $7, timestamptz 'epoch' + $8::bigint * interval '1 millisecond') returning id`,
-          [request.pageId, page.title, page.markdown, hash, [...request.authorIds], request.lastAuthorId, request.reason, request.at],
+          [request.pageId, page.title, page.markdown, hash, authors, last, request.reason, at],
         );
         return { kind: 'created', id: (rows[0] as { id: string }).id };
       });
