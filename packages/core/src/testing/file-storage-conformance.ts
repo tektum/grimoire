@@ -211,38 +211,43 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       });
       // A percent-encoded dot segment is either refused (invalid-key) or kept as a literal name; whichever it does,
       // it must never reach the plain key, on a write, a read or a delete.
-      const plain = `${prefix}/x`;
-      const seeded = patternBytes(7);
-      await store.put(plain, seeded, { size: 7, contentType: binary });
-      for (const dots of ['%2e', '%2e%2e', '%2E']) {
-        const escaped = `${prefix}/${dots}/x`;
-        const refused = async (action: Promise<unknown>, what: string): Promise<boolean> => {
-          try {
-            await action;
-            return false;
-          } catch (error) {
-            assert.ok(error instanceof FileStorageError, `${what}: ${String(error)}`);
-            assert.ok(error.kind === 'invalid-key' || error.kind === 'not-found', `${what}: got ${error.kind}`);
-            return true;
-          }
-        };
-        await refused(store.put(escaped, patternBytes(9), { size: 9, contentType: binary }), `put ${dots}`);
-        await refused(store.head(escaped), `head ${dots}`);
-        const read = await store.get(escaped).then(
-          async (got) => readAll(got.body),
-          (error: unknown) => {
-            assert.ok(
-              error instanceof FileStorageError && ['invalid-key', 'not-found'].includes(error.kind),
-              `get ${dots}`,
-            );
-            return null;
-          },
-        );
-        assert.notDeepEqual(read, seeded, `get ${dots} must not read the plain key`);
-        await store.delete(escaped).catch((error: unknown) => {
-          assert.ok(error instanceof FileStorageError && error.kind === 'invalid-key', `delete ${dots}`);
+      const variants = [
+        { escaped: `${prefix}/%2e/x`, target: `${prefix}/x` },
+        { escaped: `${prefix}/%2E/x`, target: `${prefix}/x` },
+        { escaped: `${prefix}/p/q/%2e%2e/x`, target: `${prefix}/p/x` },
+      ];
+      const refusal = (what: string) => (error: unknown) => {
+        assert.ok(error instanceof FileStorageError, `${what}: ${String(error)}`);
+        assert.ok(['invalid-key', 'not-found'].includes(error.kind), `${what}: got ${error.kind}`);
+        return null;
+      };
+      for (const { escaped, target } of variants) {
+        const seeded = patternBytes(7);
+        await store.put(target, seeded, { size: 7, contentType: binary });
+        // A write either succeeds as a literal name or is refused with invalid-key; nothing else.
+        await store.put(escaped, patternBytes(9), { size: 9, contentType: binary }).catch((error: unknown) => {
+          assert.ok(
+            error instanceof FileStorageError && error.kind === 'invalid-key',
+            `put ${escaped}: ${String(error)}`,
+          );
         });
-        assert.deepEqual(await readAll((await store.get(plain)).body), seeded, `${dots} must not touch the plain key`);
+        assert.deepEqual(
+          await readAll((await store.get(target)).body),
+          seeded,
+          `put ${escaped} must not reach ${target}`,
+        );
+        const head = await store.head(escaped).catch(refusal(`head ${escaped}`));
+        if (head !== null) assert.equal(head.size, 9, `head ${escaped} must not describe ${target}`);
+        const read = await store.get(escaped).then((got) => readAll(got.body), refusal(`get ${escaped}`));
+        assert.notDeepEqual(read, seeded, `get ${escaped} must not read ${target}`);
+        await store.delete(escaped).catch((error: unknown) => {
+          assert.ok(error instanceof FileStorageError && error.kind === 'invalid-key', `delete ${escaped}`);
+        });
+        assert.deepEqual(
+          await readAll((await store.get(target)).body),
+          seeded,
+          `delete ${escaped} must not touch ${target}`,
+        );
       }
     },
   },
