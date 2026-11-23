@@ -3,7 +3,7 @@ import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAccessStore } from '../../src/permissions.js';
 import { createCollections } from '../../src/collections.js';
-import { addUser, createTestDatabase } from './support.js';
+import { addGroup, addUser, createTestDatabase } from './support.js';
 import type { TestDatabase } from './support.js';
 
 let t: TestDatabase;
@@ -75,5 +75,53 @@ describe('the PostgreSQL CollectionRepo', () => {
     await repo.update(c.id, { defaultPermission: null }, admin);
     expect(await ask()).toBe('none');
     expect((await authorizer.visibleCollections(member)).some((v) => v.collectionId === c.id)).toBe(false);
+  });
+});
+
+describe('collection access entries', () => {
+  it('upserts one entry per principal (the id stays), names it, and lists oldest first', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Writers');
+    const first = await repo.upsertAccess(c.id, { principalType: 'user', principalId: member, permission: 'read' }, admin);
+    const again = await repo.upsertAccess(c.id, { principalType: 'user', principalId: member, permission: 'read_write' }, admin);
+    await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (first.kind !== 'saved' || again.kind !== 'saved') throw new Error('not saved');
+    expect(again.entry).toEqual({ ...first.entry, permission: 'read_write' });
+    expect(first.entry.name).toBe('max');
+    const list = await repo.listAccess(c.id);
+    expect(list?.entries.map((e) => [e.principalType, e.name, e.permission])).toEqual([['user', 'max', 'read_write'], ['group', 'Writers', 'read']]);
+  });
+
+  it('an entry gives access and its removal takes it away, for a user and through a group', async () => {
+    const repo = createCollections(t.app);
+    const authorizer = createAuthorizer(createAccessStore(t.app));
+    const c = await repo.append({ name: 'acl2', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Readers');
+    await t.app.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, member]);
+    const ask = async () => (await authorizer.checkCollection({ userId: member, collectionId: c.id })).access;
+    expect(await ask()).toBe('none');
+    const saved = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (saved.kind !== 'saved') throw new Error('not saved');
+    expect(await ask()).toBe('read-only');
+    expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(true);
+    expect(await ask()).toBe('none');
+    expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(false);
+  });
+
+  it('refuses an unknown principal, a deleted collection, and an entry of another collection', async () => {
+    const repo = createCollections(t.app);
+    const a = await repo.append({ name: 'acl3', createdBy: admin }, after);
+    const b = await repo.append({ name: 'acl4', createdBy: admin }, after);
+    const none = '00000000-0000-4000-8000-000000000000';
+    expect(await repo.upsertAccess(a.id, { principalType: 'user', principalId: none, permission: 'read' }, admin)).toEqual({ kind: 'no-principal' });
+    expect(await repo.upsertAccess(none, { principalType: 'user', principalId: member, permission: 'read' }, admin)).toEqual({ kind: 'not-found' });
+    const saved = await repo.upsertAccess(a.id, { principalType: 'user', principalId: member, permission: 'read' }, admin);
+    if (saved.kind !== 'saved') throw new Error('not saved');
+    expect(await repo.removeAccess(b.id, saved.entry.id, admin)).toBe(false);
+    await t.admin.query(`update collections set deleted_at = now() where id = $1`, [a.id]);
+    expect(await repo.listAccess(a.id)).toBeUndefined();
+    expect(await repo.upsertAccess(a.id, { principalType: 'user', principalId: member, permission: 'read_write' }, admin)).toEqual({ kind: 'not-found' });
+    expect(await repo.removeAccess(a.id, saved.entry.id, admin)).toBe(false);
   });
 });

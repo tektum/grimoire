@@ -1,8 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAudit } from '../../src/audit.js';
 import { createCollections } from '../../src/collections.js';
-import { addUser, createTestDatabase } from '../collections/support.js';
+import { addGroup, addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
 let t: TestDatabase;
@@ -55,6 +55,63 @@ describe('the audit row of a collection change', () => {
     const shared = await repo.append({ name: 'shared', defaultPermission: 'read', createdBy: admin }, after);
     expect(await events(plain.id)).toEqual([]);
     expect(await events(shared.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: shared.id, actor_id: admin }]);
+  });
+
+  it('an access upsert and an access removal each write exactly one row', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-audit', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Audited');
+    const saved = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (saved.kind !== 'saved') throw new Error('not saved');
+    expect(await events(c.id)).toEqual([{ action: 'collection.access_upserted', target_type: 'collection', target_id: c.id, actor_id: admin }]);
+    await repo.removeAccess(c.id, saved.entry.id, admin);
+    expect((await events(c.id)).map((e) => e.action)).toEqual(['collection.access_upserted', 'collection.access_removed']);
+    expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(false);
+    expect(await events(c.id)).toHaveLength(2);
+    const again = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read_write' }, admin);
+    const changed = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (again.kind !== 'saved' || changed.kind !== 'saved') throw new Error('not saved');
+    const details = await t.admin.query<{ detail: unknown }>(`select detail from audit_events where target_id = $1 and action = 'collection.access_upserted' order by id`, [c.id]);
+    expect(details.map((d) => d.detail)).toEqual([
+      { principalType: 'group', principalId: group, permission: 'read', entryId: saved.entry.id, previousPermission: null },
+      { principalType: 'group', principalId: group, permission: 'read_write', entryId: again.entry.id, previousPermission: null },
+      { principalType: 'group', principalId: group, permission: 'read', entryId: again.entry.id, previousPermission: 'read_write' },
+    ]);
+  });
+
+  it('first grants to one principal wait for each other on the collection, so only the first records a previous permission of null', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-race', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Racers');
+    // Another transaction holds the collection; the grants are started while it does, and must queue behind it (a lock that is missing fails the wait).
+    let release!: () => void;
+    let held!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    const holder = t.app.transaction(async (tx) => {
+      await tx.query(`select 1 from collections where id = $1 for update`, [c.id]);
+      held();
+      await gate;
+    });
+    await locked;
+    const grants = Promise.all(['read', 'read_write', 'read', 'read_write'].map((permission) =>
+      repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: permission as 'read' }, admin)));
+    await vi.waitFor(async () => {
+      const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+      expect(Number(waiting[0]?.n)).toBe(4);
+    });
+    release();
+    await Promise.all([holder, grants]);
+    const rows = await t.admin.query<{ detail: { previousPermission: string | null } }>(`select detail from audit_events where target_id = $1 order by id`, [c.id]);
+    expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r.detail.previousPermission).filter((p) => p === null)).toHaveLength(1);
+  });
+
+  it('a failed upsert leaves no audit row', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-fail', createdBy: admin }, after);
+    expect(await repo.upsertAccess(c.id, { principalType: 'user', principalId: '00000000-0000-4000-8000-000000000000', permission: 'read' }, admin)).toEqual({ kind: 'no-principal' });
+    expect(await events(c.id)).toEqual([]);
   });
 
   it('a change that fails leaves no audit row and no change: both are one transaction', async () => {

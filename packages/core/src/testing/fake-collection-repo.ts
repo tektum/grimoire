@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult } from '../ports/collection-repo.js';
+import type { AccessEntry, AccessGrant, AccessList, CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult, UpsertAccessResult } from '../ports/collection-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 import { FakeAuditLog } from './fake-audit-log.js';
+
+const visible = (e: AccessEntry & { collectionId: string }): AccessEntry => ({ id: e.id, principalType: e.principalType, principalId: e.principalId, name: e.name, permission: e.permission });
 
 /**
  * In-memory CollectionRepo for tests. The permission facts live in the `World` the fake access store reads, so a change made here is what
@@ -10,6 +12,13 @@ import { FakeAuditLog } from './fake-audit-log.js';
  */
 export class FakeCollectionRepo implements CollectionRepo {
   private readonly rows = new Map<string, CollectionRecord>();
+  private readonly entries: (AccessEntry & { collectionId: string })[] = [];
+  /** Test setup: display names of users and groups (the id is the name otherwise). */
+  private mirrored: World['access'] = [];
+  /** Principals whose entry was just removed: a row for them in the world goes too, as the one row of the table does. */
+  private changed: World['access'] = [];
+  private written = new Set<World['access'][number]>();
+  readonly names = new Map<string, string>();
 
   constructor(readonly world: World = emptyWorld(), readonly audit: FakeAuditLog = new FakeAuditLog()) {}
 
@@ -71,6 +80,50 @@ export class FakeCollectionRepo implements CollectionRepo {
       });
     }
     return Promise.resolve({ kind: 'updated', collection: next });
+  }
+
+  listAccess(collectionId: string): Promise<AccessList | undefined> {
+    const c = this.rows.get(collectionId);
+    if (c === undefined) return Promise.resolve(undefined);
+    return Promise.resolve({ defaultPermission: c.defaultPermission, entries: this.entries.filter((e) => e.collectionId === collectionId).map(visible) });
+  }
+
+  upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult> {
+    if (!this.rows.has(collectionId)) return Promise.resolve({ kind: 'not-found' });
+    const known = grant.principalType === 'user' ? this.world.users : this.world.groups;
+    if (!known.some((p) => p.id === grant.principalId)) return Promise.resolve({ kind: 'no-principal' });
+    const previous = this.entries.find((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId)?.permission ?? null;
+    const at = this.entries.findIndex((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId);
+    const entry = { id: at < 0 ? randomUUID() : (this.entries[at] as AccessEntry).id, collectionId, ...grant, name: this.names.get(grant.principalId) ?? grant.principalId };
+    if (at < 0) this.entries.push(entry);
+    else this.entries[at] = entry;
+    this.changed = [];
+    this.mirrorEntries();
+    this.audit.events.push({ actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant, entryId: entry.id, previousPermission: previous } });
+    return Promise.resolve({ kind: 'saved', entry: visible(entry) });
+  }
+
+  removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean> {
+    const at = this.entries.findIndex((e) => e.id === entryId && e.collectionId === collectionId);
+    const entry = this.entries[at];
+    if (entry === undefined || !this.rows.has(collectionId)) return Promise.resolve(false);
+    this.entries.splice(at, 1);
+    this.changed = [{ collectionId, permission: entry.permission, ...(entry.principalType === 'user' ? { userId: entry.principalId } : { groupId: entry.principalId }) }];
+    this.mirrorEntries();
+    this.audit.events.push({
+      actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
+      detail: { entryId: entry.id, principalType: entry.principalType, principalId: entry.principalId, permission: entry.permission },
+    });
+    return Promise.resolve(true);
+  }
+
+  /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
+  private mirrorEntries(): void {
+    this.mirrored = this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) }));
+    const same = (a: World['access'][number], b: World['access'][number]): boolean => a.collectionId === b.collectionId && a.userId === b.userId && a.groupId === b.groupId;
+    const touched = [...this.mirrored, ...this.changed];
+    this.world.access = [...this.world.access.filter((a) => !this.written.has(a) && !touched.some((m) => same(a, m))), ...this.mirrored];
+    this.written = new Set(this.mirrored);
   }
 
   private live(): CollectionRecord[] {

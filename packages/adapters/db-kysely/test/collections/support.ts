@@ -50,3 +50,9 @@ export async function addUser(db: KyselyDatabase, name: string, role: 'admin' | 
   );
   return (rows[0] as { id: string }).id;
 }
+
+/** A group row; returns its id. */
+export async function addGroup(db: KyselyDatabase, name: string): Promise<string> {
+  const rows = await db.query<{ id: string }>(`insert into groups (name) values ($1) returning id`, [name]);
+  return (rows[0] as { id: string }).id;
+}

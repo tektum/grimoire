@@ -92,6 +92,68 @@
         ],
         "type": "object"
       },
+      "CollectionAccess": {
+        "properties": {
+          "defaultPermission": {
+            "enum": [
+              "read",
+              "read_write",
+              null
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionAccessEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "defaultPermission",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "CollectionAccessEntry": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the user or the group",
+            "type": "string"
+          },
+          "permission": {
+            "enum": [
+              "read",
+              "read_write"
+            ],
+            "type": "string"
+          },
+          "principalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "principalType": {
+            "enum": [
+              "user",
+              "group"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "principalType",
+          "principalId",
+          "name",
+          "permission"
+        ],
+        "type": "object"
+      },
       "CreateCollection": {
         "additionalProperties": false,
         "properties": {
@@ -145,6 +207,35 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "GrantCollectionAccess": {
+        "additionalProperties": false,
+        "properties": {
+          "permission": {
+            "enum": [
+              "read",
+              "read_write"
+            ],
+            "type": "string"
+          },
+          "principalId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "principalType": {
+            "enum": [
+              "user",
+              "group"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "principalType",
+          "principalId",
+          "permission"
         ],
         "type": "object"
       },
@@ -664,6 +755,322 @@
           }
         ],
         "summary": "Change a collection (administrators)",
+        "tags": [
+          "collections"
+        ],
+        "x-grimoire-policy": {
+          "kind": "collection",
+          "need": "admin",
+          "param": "id"
+        }
+      }
+    },
+    "/v1/collections/{id}/access": {
+      "get": {
+        "operationId": "listCollectionAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionAccess"
+                }
+              }
+            },
+            "description": "The default permission and the entries"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Who has access to a collection (administrators)",
+        "tags": [
+          "collections"
+        ],
+        "x-grimoire-policy": {
+          "kind": "collection",
+          "need": "admin",
+          "param": "id"
+        }
+      },
+      "put": {
+        "operationId": "putCollectionAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCollectionAccess"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionAccessEntry"
+                }
+              }
+            },
+            "description": "The entry; the same entry id for the same principal"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Give a user or a group access, or change it (administrators)",
+        "tags": [
+          "collections"
+        ],
+        "x-grimoire-policy": {
+          "kind": "collection",
+          "need": "admin",
+          "param": "id"
+        }
+      }
+    },
+    "/v1/collections/{id}/access/{entryId}": {
+      "delete": {
+        "operationId": "deleteCollectionAccess",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entryId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The entry is gone"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Take an entry away (administrators)",
         "tags": [
           "collections"
         ],
