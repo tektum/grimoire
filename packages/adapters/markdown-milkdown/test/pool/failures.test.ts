@@ -34,11 +34,31 @@ describe('timeout', () => {
     expect(performance.now() - next).toBeLessThan(2000);
     expect(converter.stats().threads).toBe(1);
   });
-  it('covers the wait in the queue as well as the run', async () => {
+  it('a call that waits longer than the wait limit answers queue-timeout and never starts', async () => {
     const converter = fixture({ timeoutMs: 500 });
     const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
     expect(first).toMatchObject(OK);
+    expect(second).toMatchObject({ ok: false, reason: 'queue-timeout' });
+    expect(converter.stats().threads).toBe(1);
+  });
+  it('wait plus run never exceeds the total: a call that waited and then ran out of time is a plain timeout', async () => {
+    const converter = fixture({ timeoutMs: 500, queueWaitMs: 400 });
+    const started = performance.now();
+    const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
+    expect(first).toMatchObject(OK);
     expect(second).toMatchObject({ ok: false, reason: 'timeout' });
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+  it('a call that waited within the wait limit and finished within the total succeeds', async () => {
+    const converter = fixture({ timeoutMs: 2000, queueWaitMs: 1000 });
+    const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
+    expect([first.ok, second.ok]).toEqual([true, true]);
+  });
+  it('queue-timeout is an unknown-content refusal: the same page converts once a worker is free', async () => {
+    const converter = fixture({ timeoutMs: 500 });
+    const [, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('echo', key())]);
+    expect(second).toMatchObject({ ok: false, reason: 'queue-timeout' });
+    expect(await converter.seed('echo', key())).toMatchObject(OK);
   });
 });
 

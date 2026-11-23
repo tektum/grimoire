@@ -21,8 +21,13 @@ describe('seedRefusalToHttp', () => {
     });
   });
 
-  it('answers 503 with Retry-After for a seed timeout: the wait for a worker counts against it', () => {
-    expect(seedRefusalToHttp(seed('timeout', 'x'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
+  it('answers 422 too complex, without Retry-After, when the conversion ran out of time', () => {
+    expect(seedRefusalToHttp(seed('timeout', 'x'))).toEqual({ code: 'invalid', message: 'the Markdown is too complex to convert in the time allowed' });
+  });
+
+  it('answers 503 with Retry-After when no worker was free in time', () => {
+    expect(seedRefusalToHttp(seed('queue-timeout', 'x'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
+    expect(seedRefusalToHttp(back('queue-timeout'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
   });
 
   it('answers 429 rate_limited with Retry-After 2 for a second seed by one user', () => {
@@ -59,7 +64,7 @@ describe('seedRefusalToHttp', () => {
     expect(seedRefusalToHttp(back('content-lost'))).toEqual({ code: 'invalid', message: 'The Markdown cannot be converted.' });
   });
 
-  it('answers 503 when the conversion back times out', () => {
-    expect(seedRefusalToHttp(back('timeout'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
+  it('answers 422 too complex when the conversion back runs out of time', () => {
+    expect(seedRefusalToHttp(back('timeout'))).toEqual({ code: 'invalid', message: 'the Markdown is too complex to convert in the time allowed' });
   });
 });

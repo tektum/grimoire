@@ -15,12 +15,17 @@ import type { WorkerRequest } from './worker.js';
 export interface ConverterOptions extends Partial<ConverterLimits> {
   /** Worker threads; 2 so that one document that runs to the time limit does not stop every other one. */
   poolSize?: number;
-  /** Per `toMarkdown` call, queue wait plus run. */
+  /** Per `toMarkdown` call, queue wait plus run: the total a caller can wait. */
   timeoutMs?: number;
-  /** Per `seed` call, queue wait plus run: the bound on hostile Markdown, which the pre-check cannot make predictable. */
+  /** Per `seed` call, queue wait plus run (the total a caller can wait): the bound on hostile Markdown, which the pre-check cannot make predictable. */
   seedTimeoutMs?: number;
   /** Per `reseed` call (the system rebuilding a page from Markdown its own serialiser stored): longer than a seed, because the Markdown may be four times larger and is not capped by lines. */
   reseedTimeoutMs?: number;
+  /**
+   * The most a call waits for a free worker before it answers `queue-timeout`. Default: a quarter of the call's total limit. The run then gets
+   * the rest of the total (never less than three quarters of it by default), so queue wait plus run never exceeds the total.
+   */
+  queueWaitMs?: number;
   /** `resourceLimits.maxOldGenerationSizeMb` of each worker. */
   heapMb?: number;
   /** Calls that may wait for a free worker; one more is refused at once. Not in the contracts (see docs/proof/m2-pool.md). */
@@ -42,6 +47,7 @@ export interface ResolvedConverterOptions extends ConverterLimits {
   timeoutMs: number;
   seedTimeoutMs: number;
   reseedTimeoutMs: number;
+  queueWaitMs: number | undefined;
   heapMb: number;
   queueLimit: number;
   closeDeadlineMs: number;
@@ -81,6 +87,7 @@ export function resolveOptions(options: ConverterOptions = {}): ResolvedConverte
     timeoutMs: bounded('timeoutMs', options.timeoutMs ?? 10_000),
     seedTimeoutMs: bounded('seedTimeoutMs', options.seedTimeoutMs ?? 10_000),
     reseedTimeoutMs: bounded('reseedTimeoutMs', options.reseedTimeoutMs ?? 30_000),
+    queueWaitMs: options.queueWaitMs === undefined ? undefined : bounded('queueWaitMs', options.queueWaitMs),
     heapMb: positive('heapMb', options.heapMb ?? 512),
     queueLimit: positive('queueLimit', options.queueLimit ?? 32),
     closeDeadlineMs: positive('closeDeadlineMs', options.closeDeadlineMs ?? 5_000),
@@ -102,8 +109,8 @@ const refuse = (code: keyof typeof REFUSAL_MESSAGES): Failure => fail('internal'
 const seconds = (ms: number): string => `${Math.round(ms / 100) / 10} seconds`;
 const closedFailure = refuse('closed');
 
-const CONVERT_REASONS: readonly string[] = ['invalid-state', 'too-large', 'too-deep', 'content-lost', 'timeout', 'out-of-memory', 'internal'];
-const SEED_REASONS: readonly string[] = ['invalid-markdown', 'too-large', 'timeout', 'out-of-memory', 'internal'];
+const CONVERT_REASONS: readonly string[] = ['invalid-state', 'too-large', 'too-deep', 'content-lost', 'timeout', 'queue-timeout', 'out-of-memory', 'internal'];
+const SEED_REASONS: readonly string[] = ['invalid-markdown', 'too-large', 'timeout', 'queue-timeout', 'out-of-memory', 'internal'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -154,7 +161,7 @@ function mapPoolError(error: unknown, signal: AbortSignal, closing: boolean, tim
  */
 export function createMarkdownConverter(options?: ConverterOptions): PooledMarkdownConverter {
   const resolved = resolveOptions(options);
-  const { poolSize, timeoutMs, seedTimeoutMs, reseedTimeoutMs, heapMb, queueLimit, closeDeadlineMs, workerPath, ...limits } = resolved;
+  const { poolSize, timeoutMs, seedTimeoutMs, reseedTimeoutMs, queueWaitMs, heapMb, queueLimit, closeDeadlineMs, workerPath, ...limits } = resolved;
   const testSlow = options?.testSlow;
   if (testSlow && (testSlow.marker === '' || !Number.isInteger(testSlow.ms) || testSlow.ms < 1)) throw new RangeError('testSlow needs a marker and a positive integer ms');
   const pool = new Piscina<WorkerRequest, unknown>({
@@ -201,18 +208,50 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     if (closing !== undefined) return closedFailure;
     if (pending >= poolSize + queueLimit) return refuse('queue-full');
     pending += 1;
-    // Created now, so the limit covers the wait in the queue as well as the run.
+    // Two clocks. The wait for a worker ends at `queueLimit`; the run starts with a worker and ends at the total, so wait plus run never exceeds `limitMs`.
+    const admitted = performance.now();
+    const waitLimitMs = Math.max(1, Math.min(queueWaitMs ?? Math.floor(limitMs / 4), limitMs - 1));
+    const waitSignal = AbortSignal.timeout(waitLimitMs);
     let signal: AbortSignal | undefined;
+    let slot = false;
     try {
-      signal = AbortSignal.timeout(limitMs);
+      slot = await acquire(waitSignal);
+      if (!slot) {
+        if (closing !== undefined) return closedFailure;
+        return fail('queue-timeout', `no worker was free within ${waitLimitMs} ms`, 'The converter is busy with other pages. Try again in a moment.');
+      }
+      signal = AbortSignal.timeout(Math.max(1, limitMs - Math.round(performance.now() - admitted)));
       // piscina's TransferList type resolves to the structured-clone options object when only Node's types are loaded; at run time it is an array.
       const reply = await pool.run(request, { signal, transferList: transferList as never });
       return accept(reply) ?? fail('internal', 'worker-bad-reply');
     } catch (error: unknown) {
       return mapPoolError(error, signal ?? AbortSignal.abort(), closing !== undefined, timedOut);
     } finally {
+      if (slot) release();
       pending -= 1;
+      if (pending === 0) for (const done of drained.splice(0)) done();
     }
+  }
+
+  // At most `poolSize` jobs are inside piscina at once, so piscina never queues one: the wait for a worker is ours, and so is its clock.
+  let running = 0;
+  const waiters: { grant: () => void; leave: () => void }[] = [];
+  const drained: (() => void)[] = [];
+  function acquire(signal: AbortSignal): Promise<boolean> {
+    if (running < poolSize) { running += 1; return Promise.resolve(true); }
+    return new Promise<boolean>((resolve) => {
+      const waiter = {
+        grant: () => { signal.removeEventListener('abort', waiter.leave); resolve(true); },
+        leave: () => { waiters.splice(waiters.indexOf(waiter), 1); resolve(false); },
+      };
+      signal.addEventListener('abort', waiter.leave, { once: true });
+      waiters.push(waiter);
+    });
+  }
+  function release(): void {
+    const next = waiters.shift();
+    if (next) next.grant(); // the slot passes on: `running` stays
+    else running -= 1;
   }
 
   return {
@@ -237,7 +276,11 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     reseed: (markdown, key) => seedAs('reseed', 'system:', markdown, key, reseedTimeoutMs),
     close() {
       // piscina's close waits for running and queued work up to closeTimeout, then terminates the workers.
-      closing ??= pool.close().catch(() => undefined);
+      // Calls waiting for a worker are ours, not piscina's: let them finish (up to the deadline) before piscina closes.
+      closing ??= (async () => {
+        if (pending > 0) await Promise.race([new Promise<void>((r) => drained.push(r)), new Promise<void>((r) => setTimeout(r, closeDeadlineMs).unref())]);
+        await pool.close().catch(() => undefined);
+      })();
       return closing;
     },
     stats: () => ({ threads: pool.threads.length, queued: Math.max(0, pending - poolSize) }),

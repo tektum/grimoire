@@ -4,7 +4,7 @@ import { createConversionGate, isBusy, WAITING_DETAIL } from '../../src/save.js'
 
 describe('isBusy', () => {
   it.each([
-    ['internal', 'queue-full', true], ['internal', 'closed', true], ['internal', 'one-at-a-time', true], ['timeout', WAITING_DETAIL, true],
+    ['internal', 'queue-full', true], ['internal', 'closed', true], ['internal', 'one-at-a-time', true], ['timeout', WAITING_DETAIL, true], ['queue-timeout', 'no worker was free within 125 ms', true], ['timeout', 'the conversion exceeded its time limit', false],
     ['timeout', 'the conversion exceeded its time limit', false], ['internal', 'worker-failed', false], ['internal', 'worker-exited', false],
     ['out-of-memory', 'x', false], ['invalid-state', 'x', false], ['too-large', 'x', false], ['too-deep', 'x', false], ['content-lost', 'x', false],
   ] as const)('%s / %s -> busy %s', (reason, detail, busy) => { expect(isBusy(reason, detail)).toBe(busy); });

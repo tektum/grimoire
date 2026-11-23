@@ -8,6 +8,7 @@ export interface HttpRefusal {
 }
 
 const BUSY = 'The converter is busy with other pages. Try again in a moment.';
+const TOO_COMPLEX = 'the Markdown is too complex to convert in the time allowed';
 const BUSY_HEADERS = { 'retry-after': '5' };
 
 /**
@@ -20,6 +21,7 @@ export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'det
     if (r.reason === 'content-lost' || r.reason === 'too-large' || r.reason === 'too-deep' || r.reason === 'invalid-state') {
       return { code: 'invalid', message: r.message ?? 'The Markdown cannot be converted.' };
     }
+    if (r.reason === 'timeout') return { code: 'invalid', message: TOO_COMPLEX };
     return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
   }
   switch (r.reason) {
@@ -29,7 +31,10 @@ export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'det
       // The real pool puts the limit sentence (counts only, never text) in `detail` for a seed over a limit.
       return { code: 'invalid', message: r.message ?? r.detail };
     case 'timeout':
-      // The pool's time limit also covers the wait for a worker, so a timeout does not show the page is at fault: retryable.
+      // A worker ran the job and it used up its time: the same page will do so again, so it is not retryable.
+      return { code: 'invalid', message: TOO_COMPLEX };
+    case 'queue-timeout':
+      // No worker was free in time: the job never started, so this says nothing about the page.
       return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
     default:
       if (r.detail === 'one-at-a-time') {
