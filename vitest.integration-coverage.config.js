@@ -14,6 +14,7 @@ const fileFloors = {
   "packages/adapters/db-kysely/src/page-state.ts": { statements: 99, branches: 99, functions: 99, lines: 99 },
   "packages/adapters/db-kysely/src/trash.ts": { statements: 95, branches: 89, functions: 99, lines: 99 },
   "packages/adapters/db-kysely/src/revisions.ts": { statements: 99, branches: 99, functions: 99, lines: 99 }, // M4-T08: 100 on every metric in its first run
+  "packages/adapters/db-kysely/src/attachments.ts": { statements: 90, branches: 80, functions: 95, lines: 90 }, // first estimate: set from the first CI reading in a follow-up commit
 };
 
 export default {
