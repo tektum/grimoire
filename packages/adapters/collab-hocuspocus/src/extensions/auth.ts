@@ -7,6 +7,7 @@ import type { CollabLog } from '../events.js';
 import { readContext } from '../context.js';
 import type { ConnectionContext } from '../context.js';
 import type { PeerRegistry } from '../peers.js';
+import { readHandshake } from '../handshake.js';
 import { Refusal } from '../refusal.js';
 import type { UpgradeGuard } from '../upgrade-guard.js';
 
@@ -96,12 +97,13 @@ export function createAuthExtension(o: AuthOptions): Extension {
      * (1). The context keeps ids, level, expiry and epoch; the token is not kept (R4.8).
      */
     async onAuthenticate(data: HookPayloadByName['onAuthenticate']): Promise<Partial<ConnectionContext>> {
-      const v = await verify(deps, data.token);
+      const hs = readHandshake(data.token, deps.config);
+      const v = await verify(deps, hs.token);
       if (v.kind === 'unavailable') throw unavailable(data.context, 'verifier');
       if (v.kind !== 'ok') throw new Refusal('invalid-token');
       let r: Resolved;
       try {
-        r = await bounded(resolve(deps, data.token, v, data.documentName), AUTH_DATABASE_TIMEOUT_MS);
+        r = await bounded(resolve(deps, hs.token, v, data.documentName), AUTH_DATABASE_TIMEOUT_MS);
       } catch {
         throw unavailable(data.context, 'database');
       }

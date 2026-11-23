@@ -20,6 +20,10 @@ export const REFUSAL_CLOSE_CODES: RefusalTable = {
   // Not retryable: the stored Markdown cannot become a document. The web client (the web client, planned) must NOT reconnect automatically on 4501; the refusal repeats until the Markdown changes.
   'seed-failed': 4501,
   'internal-error': 4500,
+  // The client's recorded state epoch differs from the page's (a reset or a restore): it must reload the page, not merge.
+  'stale-epoch': 4409,
+  // The client is older than the minimum, or sent no handshake while one is required: it must update.
+  'client-too-old': 4426,
 };
 /** In-session closes of the re-check (contracts section 7): the document connection is closed, the socket and its other documents stay. */
 export const SESSION_CLOSES = { 'access-changed': 4205, 'session-expired': 4401 } as const;
