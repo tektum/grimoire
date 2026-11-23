@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { bodyLimit } from 'hono/body-limit';
 import { secureHeaders } from 'hono/secure-headers';
 import { routePath } from 'hono/route';
@@ -25,14 +26,16 @@ export interface AppOptions {
 export const DEFAULT_BODY_LIMIT_BYTES = 1_048_576;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/** The validator refuses a malformed JSON body with 400 and a wrong content type with 415: the client's mistake, not an outage. */
+const isBodyRefusal = (err: unknown): boolean => err instanceof HTTPException && (err.status === 400 || err.status === 415);
+
 /** Routes take everything from the context, never from globals. */
 export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<AppEnv> {
   const app = createRouter();
   // Hono prints the error, message and stack to stderr as free text by default. Log the class, method and route pattern only.
-  // Only an error raised on purpose (`fail`) keeps its answer; anything else is an unexpected failure and answers 503 with a fixed sentence.
+  // Only an error raised on purpose (`fail`) keeps its answer, and a refused request body answers 422; anything else is an unexpected failure and answers 503 with a fixed sentence.
   const handle = (err: unknown, c: Context): Response => {
-    const own = err instanceof ApiError;
-    const response = own ? err.getResponse() : errorResponse('unavailable');
+    const response = err instanceof ApiError ? err.getResponse() : isBodyRefusal(err) ? errorResponse('invalid') : errorResponse('unavailable');
     const fields = { errorName: errorName(err), method: c.req.method, route: routePath(c), status: response.status };
     if (response.status >= 500) ctx.log.error('http.handler_error', fields);
     else ctx.log.warn('http.handler_rejected', fields);

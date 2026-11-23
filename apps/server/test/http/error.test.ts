@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
+import { z } from '@hono/zod-openapi';
 import { createApp } from '../../src/app.js';
 import { ERROR_STATUS, fail } from '../../src/http/error.js';
+import { defineRoute } from '../../src/http/factory.js';
 import type { ErrorCode } from '../../src/http/error.js';
 import { makeContext } from '../server/support/context.js';
 
@@ -93,5 +95,24 @@ describe('error envelope', () => {
       const res = await app.request(path);
       expect(res.headers.get('content-type'), path).toContain('text/plain');
     }
+  });
+
+  it.each([
+    ['a malformed JSON body', 'application/json', '{bad'],
+    ['a body of the wrong content type', 'text/plain', 'x'],
+  ])('answers %s with 422 invalid and a warning, not an outage', async (_name, contentType, payload) => {
+    const { app, logger } = build();
+    app.openapi(
+      defineRoute({
+        method: 'post', path: '/typed', summary: 's', tags: ['t'], policy: { kind: 'public' },
+        request: { body: { content: { 'application/json': { schema: z.object({ a: z.string() }) } }, required: true } },
+        responses: { 200: { description: 'ok' } },
+      }),
+      (c) => c.body(null, 200),
+    );
+    const res = await app.request('/typed', { method: 'POST', headers: { 'content-type': contentType }, body: payload });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('invalid');
+    expect(logger.entries.map((e) => [e.level, e.event])).toEqual([['warn', 'http.handler_rejected']]);
   });
 });
