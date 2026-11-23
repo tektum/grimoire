@@ -4,12 +4,7 @@
  */
 
 export type FileStorageErrorKind =
-  | 'not-found'
-  | 'range-not-satisfiable'
-  | 'unavailable'
-  | 'invalid-key'
-  | 'unsupported'
-  | 'already-exists';
+  'not-found' | 'range-not-satisfiable' | 'unavailable' | 'invalid-key' | 'unsupported' | 'already-exists';
 
 export class FileStorageError extends Error {
   constructor(
@@ -60,17 +55,26 @@ export interface FileStorage {
 }
 
 export const MAX_KEY_BYTES = 512;
+/** The store we ship cannot hold a longer path segment, so the contract refuses one for every adapter. */
+export const MAX_SEGMENT_BYTES = 255;
 export const LIST_LIMIT_MAX = 1000;
 
 /**
- * A key is 1 to 512 UTF-8 bytes, with no leading or trailing slash, no empty segment, no `.` or `..`
- * segment, no backslash and no control character (C0, DEL and C1) and no lone surrogate.
+ * A key is 1 to 512 UTF-8 bytes, with no leading or trailing slash, no empty segment, no `.` or `..` segment, no
+ * backslash, no control character (C0, DEL and C1) and no lone surrogate. No segment (the text between slashes) is
+ * longer than 255 UTF-8 bytes: a long key is made of several segments. Keys the product builds are short.
  */
 export function isValidKey(key: string): boolean {
   if (key.length === 0) return false;
-  if (new TextEncoder().encode(key).length > MAX_KEY_BYTES) return false;
+  const encoder = new TextEncoder();
+  if (encoder.encode(key).length > MAX_KEY_BYTES) return false;
   if (/[\\\p{Cc}\p{Cs}]/u.test(key)) return false;
-  return key.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+  return key
+    .split('/')
+    .every(
+      (segment) =>
+        segment !== '' && segment !== '.' && segment !== '..' && encoder.encode(segment).length <= MAX_SEGMENT_BYTES,
+    );
 }
 
 /** Throws `invalid-key` for a key that `isValidKey` refuses. */

@@ -18,6 +18,9 @@ const invalid: [string, string][] = [
   ['lone low surrogate', 'a\udc00b'],
   ['513 bytes', 'a'.repeat(513)],
   ['513 bytes from multi-byte characters', 'é'.repeat(257)],
+  ['a 256-byte segment', 'a'.repeat(256)],
+  ['a 256-byte segment after a slash', `x/${'a'.repeat(256)}`],
+  ['a 256-byte segment from multi-byte characters', `x/${'é'.repeat(128)}`],
 ];
 
 describe('isValidKey', () => {
@@ -35,8 +38,10 @@ describe('isValidKey', () => {
     ['an attachment key', `attachments/${'0123abcd-0123-4abc-8abc-0123456789ab'}`],
     ['a single segment', 'x'],
     ['a dot inside a name', 'a/b.c/..d'],
-    ['512 bytes', 'a'.repeat(512)],
-    ['512 bytes from multi-byte characters', 'é'.repeat(256)],
+    ['a 255-byte segment', 'a'.repeat(255)],
+    ['a 254-byte multi-byte segment', 'é'.repeat(127)],
+    ['512 bytes in segments of at most 200', `${'a'.repeat(200)}/${'a'.repeat(200)}/${'a'.repeat(110)}`],
+    ['512 bytes from multi-byte characters in segments', `${'é'.repeat(100)}/${'é'.repeat(100)}/${'é'.repeat(55)}`],
     ['a valid surrogate pair', 'a/\u{1f600}'],
     ['a percent sign, which is kept literally', 'a/%2e/b'],
   ])('accepts %s', (_name, key) => {

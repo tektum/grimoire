@@ -53,6 +53,13 @@ export interface FileStorageHarness {
   send(request: SignedRequest): Promise<SignedResponse>;
   /** Lets `seconds` pass for signed URLs: the fake moves its clock, a real store waits. */
   advance(seconds: number): Promise<void>;
+  /** An origin the store's CORS rule allows (the browser's side of `cors-preflight`); a made-up one when unset. */
+  readonly corsOrigin?: string;
+  /**
+   * Runs a garbage collection when the runtime can. The memory case calls it while streaming, so that buffers that
+   * are only waiting to be collected are not mistaken for buffers the store holds on to.
+   */
+  collectGarbage?(): void;
   /** A URL to the object without any signature. */
   unsignedUrl(key: string): string;
 }
@@ -228,6 +235,7 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         `${prefix}/a\udc00b`,
         `${prefix}/..`,
         `${prefix}/${'a'.repeat(513)}`,
+        `${prefix}/${'a'.repeat(256)}`, // one segment over 255 bytes
         `${prefix}/${'\u00e9'.repeat(300)}`, // over 512 UTF-8 bytes, under 512 UTF-16 units
       ];
       for (const key of bad) {
@@ -241,10 +249,14 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
           `put ${shown}`,
         );
       }
-      await store.put(`${prefix}/${'a'.repeat(512 - prefix.length - 1)}`, patternBytes(1), {
-        size: 1,
-        contentType: binary,
-      });
+      // A key of 512 bytes is valid when no segment passes 200 bytes; a single segment of 256 bytes is not.
+      const segments: string[] = [];
+      for (let left = 512 - prefix.length - 1; left > 0; left -= 201) segments.push('a'.repeat(Math.min(200, left)));
+      const longest = `${prefix}/${segments.join('/')}`;
+      assert.equal(new TextEncoder().encode(longest).length, 512, 'the key under test is 512 bytes');
+      await store.put(longest, patternBytes(1), { size: 1, contentType: binary });
+      assert.equal((await store.head(longest)).size, 1);
+      await store.delete(longest);
       // A percent-encoded dot segment is either refused (invalid-key) or kept as a literal name; whichever it does,
       // it must never reach the plain key, on a write, a read or a delete.
       const variants = [
@@ -489,10 +501,10 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
   {
     name: 'cors-preflight',
     requires: 'cors',
-    async run({ store, send }) {
+    async run({ store, send, corsOrigin }) {
       const key = `${freshPrefix()}/a`;
       const signed = await store.signUpload(key, { size: 5, contentType: binary, ttlSeconds: 60, ifNoneMatch: true });
-      const origin = 'https://app.example.test';
+      const origin = corsOrigin ?? 'https://app.example.test';
       const answer = await send({
         method: 'OPTIONS',
         url: signed.url,
@@ -511,7 +523,7 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
   {
     name: 'stream-200mb-flat-memory',
     requires: 'flatMemory',
-    async run({ store }) {
+    async run({ store, collectGarbage }) {
       const key = `${freshPrefix()}/big`;
       const size = 1024 * 1024;
       const chunks = 200;
@@ -523,7 +535,10 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       for (let i = 0; i < chunks; i++) expected.update(chunkAt(i));
       const before = process.memoryUsage().rss;
       let peak = before;
+      let samples = 0;
       const sample = () => {
+        // Garbage that has not been collected yet is not memory the store keeps: collect now and then.
+        if (++samples % 20 === 0) collectGarbage?.();
         peak = Math.max(peak, process.memoryUsage().rss);
       };
       // The OS keeps the process's peak RSS, so a transient 200 MB join inside the store shows up without any timer;
