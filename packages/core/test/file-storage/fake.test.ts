@@ -285,4 +285,18 @@ describe('FakeFileStorage signed URLs', () => {
     expect(store.signed[1]).not.toHaveProperty('fileName');
     expect(bare.url).not.toBe(url);
   });
+  it('serves a signed download until it expires and refuses an unknown signature or an absent object', async () => {
+    const clock = new FakeClock(0);
+    const store = new FakeFileStorage({ clock });
+    await store.put('k', bytes('0123456789'), png);
+    const { url } = await store.signDownload('k', { ttlSeconds: 10, disposition: 'inline' });
+    const served = await store.receiveSignedDownload(url);
+    expect(served.headers).toEqual({ 'content-type': 'image/png', 'content-disposition': 'inline' });
+    expect(new TextDecoder().decode(served.body)).toBe('0123456789');
+    expect(await kindOf(store.receiveSignedDownload('https://fake.invalid/k?sig=forged'))).toBe('unavailable');
+    const gone = await store.signDownload('absent', { ttlSeconds: 10, disposition: 'inline' });
+    expect(await kindOf(store.receiveSignedDownload(gone.url))).toBe('not-found');
+    clock.advance(10_000);
+    expect(await kindOf(store.receiveSignedDownload(url))).toBe('unavailable');
+  });
 });
