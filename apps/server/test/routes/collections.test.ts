@@ -307,3 +307,65 @@ describe('collection access routes', () => {
     expect((await call('admin', 'PUT', `/v1/collections/${open.id}/access`, grant(rows[3]?.id as string))).status).toBe(404);
   });
 });
+
+describe('GET /v1/collections/{id}/tree', () => {
+  it('returns the live pages flat with id, urlId, parentId, position, title and icon, to any reader', async () => {
+    const { call, collections, open } = build();
+    const root = collections.seedPage({ collectionId: open.id, title: 'Root', position: 'a', icon: '*' });
+    const child = collections.seedPage({ collectionId: open.id, title: 'Child', position: 'b', parentId: root.id });
+    const res = await call('viewer', 'GET', `/v1/collections/${open.id}/tree`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ pages: [
+      { id: root.id, urlId: root.urlId, parentId: null, position: 'a', title: 'Root', icon: '*' },
+      { id: child.id, urlId: child.urlId, parentId: root.id, position: 'b', title: 'Child', icon: null },
+    ] });
+  });
+
+  it('is 404 to a user without access', async () => {
+    const { call, collections, closed } = build();
+    collections.seedPage({ collectionId: closed.id });
+    expect((await call('outsider', 'GET', `/v1/collections/${closed.id}/tree`)).status).toBe(404);
+  });
+
+  it('answers 404 when the collection disappears between the check and the read', async () => {
+    const { call, collections, open } = build();
+    collections.tree = () => Promise.resolve(undefined);
+    expect((await call('admin', 'GET', `/v1/collections/${open.id}/tree`)).status).toBe(404);
+  });
+});
+
+describe('DELETE /v1/collections/{id}', () => {
+  it('is 403 to a reader who is not an administrator and 404 to one who cannot read', async () => {
+    const { call, open, closed } = build();
+    const reader = await call('member', 'DELETE', `/v1/collections/${open.id}`);
+    expect([reader.status, await code(reader)]).toEqual([403, 'forbidden']);
+    const outsider = await call('outsider', 'DELETE', `/v1/collections/${closed.id}`);
+    expect([outsider.status, await code(outsider)]).toEqual([404, 'not_found']);
+  });
+
+  it('sends the collection and every live page to the trash as one batch and keeps an earlier batch', async () => {
+    const { call, collections, open, closed, rows } = build();
+    const a = collections.seedPage({ collectionId: closed.id });
+    const b = collections.seedPage({ collectionId: closed.id });
+    const other = collections.seedPage({ collectionId: open.id });
+    const res = await call('admin', 'DELETE', `/v1/collections/${closed.id}`);
+    expect(res.status).toBe(204);
+    const batch = collections.batchOf(a.id);
+    expect(batch).toEqual(expect.any(String));
+    expect(collections.batchOf(b.id)).toBe(batch);
+    expect(collections.batchOf(other.id)).toBeNull();
+    expect(collections.audit.events).toEqual([
+      { actorId: rows[0]?.id, action: 'collection.deleted', targetType: 'collection', targetId: closed.id, detail: { batch, pages: 2 } },
+    ]);
+    for (const path of ['', '/tree', '/access']) expect((await call('admin', 'GET', `/v1/collections/${closed.id}${path}`)).status).toBe(404);
+    const list = (await (await call('admin', 'GET', '/v1/collections')).json()) as { items: { id: string }[] };
+    expect(list.items.map((i) => i.id)).toEqual([open.id]);
+    expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}`)).status).toBe(404);
+  });
+
+  it('answers 404 when the collection disappears between the check and the delete', async () => {
+    const { call, collections, open } = build();
+    collections.softDelete = () => Promise.resolve(undefined);
+    expect((await call('admin', 'DELETE', `/v1/collections/${open.id}`)).status).toBe(404);
+  });
+});

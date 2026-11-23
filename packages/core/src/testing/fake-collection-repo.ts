@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AccessEntry, AccessGrant, AccessList, CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult, UpsertAccessResult } from '../ports/collection-repo.js';
+import type { AccessEntry, TreePage, AccessGrant, AccessList, CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult, UpsertAccessResult } from '../ports/collection-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 import { FakeAuditLog } from './fake-audit-log.js';
@@ -14,6 +14,7 @@ export class FakeCollectionRepo implements CollectionRepo {
   private readonly rows = new Map<string, CollectionRecord>();
   private readonly entries: (AccessEntry & { collectionId: string })[] = [];
   /** Test setup: display names of users and groups (the id is the name otherwise). */
+  private readonly pageRows: (TreePage & { collectionId: string; deleted: boolean; batch: string | null })[] = [];
   private mirrored: World['access'] = [];
   /** Principals whose entry was just removed: a row for them in the world goes too, as the one row of the table does. */
   private changed: World['access'] = [];
@@ -27,6 +28,20 @@ export class FakeCollectionRepo implements CollectionRepo {
     const record: CollectionRecord = { ...row, id: row.id ?? randomUUID() };
     this.store(record);
     return record;
+  }
+
+  /** Test setup: a live page of a collection, also as a fact of the world. */
+  seedPage(row: Partial<TreePage> & { collectionId: string }): TreePage {
+    const id = row.id ?? randomUUID();
+    const page = { id, urlId: row.urlId ?? id.slice(0, 8), parentId: row.parentId ?? null, position: row.position ?? `p${String(this.pageRows.length).padStart(4, '0')}`, title: row.title ?? 'Page', icon: row.icon ?? null };
+    this.pageRows.push({ ...page, collectionId: row.collectionId, deleted: false, batch: null });
+    this.world.pages.push({ id, collectionId: row.collectionId, deleted: false, epoch: 0 });
+    return page;
+  }
+
+  /** Test setup: the batch a page was deleted in (null for a live page). */
+  batchOf(pageId: string): string | null | undefined {
+    return this.pageRows.find((p) => p.id === pageId)?.batch;
   }
 
   /** Test setup: the collection is deleted (the world still knows it, as deleted). */
@@ -118,6 +133,27 @@ export class FakeCollectionRepo implements CollectionRepo {
   }
 
   /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
+  tree(collectionId: string): Promise<readonly TreePage[] | undefined> {
+    if (!this.rows.has(collectionId)) return Promise.resolve(undefined);
+    const pages = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
+    return Promise.resolve(pages.map(({ id, urlId, parentId, position, title, icon }) => ({ id, urlId, parentId, position, title, icon })));
+  }
+
+  softDelete(collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined> {
+    if (!this.rows.has(collectionId)) return Promise.resolve(undefined);
+    const batch = randomUUID();
+    const live = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted);
+    for (const page of live) {
+      page.deleted = true;
+      page.batch = batch;
+      const fact = this.world.pages.find((w) => w.id === page.id);
+      if (fact !== undefined) fact.deleted = true;
+    }
+    this.markDeleted(collectionId);
+    this.audit.events.push({ actorId, action: 'collection.deleted', targetType: 'collection', targetId: collectionId, detail: { batch, pages: live.length } });
+    return Promise.resolve({ batch, pages: live.length });
+  }
+
   private mirrorEntries(): void {
     this.mirrored = this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) }));
     const same = (a: World['access'][number], b: World['access'][number]): boolean => a.collectionId === b.collectionId && a.userId === b.userId && a.groupId === b.groupId;

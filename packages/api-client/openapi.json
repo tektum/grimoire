@@ -154,6 +154,41 @@
         ],
         "type": "object"
       },
+      "CollectionTreePage": {
+        "properties": {
+          "icon": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "parentId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "position": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "urlId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "urlId",
+          "parentId",
+          "position",
+          "title",
+          "icon"
+        ],
+        "type": "object"
+      },
       "CreateCollection": {
         "additionalProperties": false,
         "properties": {
@@ -524,6 +559,99 @@
       }
     },
     "/v1/collections/{id}": {
+      "delete": {
+        "operationId": "deleteCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The collection and its pages are in the trash"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delete a collection and every page in it as one trash batch (administrators)",
+        "tags": [
+          "collections"
+        ],
+        "x-grimoire-policy": {
+          "kind": "collection",
+          "need": "admin",
+          "param": "id"
+        }
+      },
       "get": {
         "operationId": "getCollection",
         "parameters": [
@@ -1077,6 +1205,119 @@
         "x-grimoire-policy": {
           "kind": "collection",
           "need": "admin",
+          "param": "id"
+        }
+      }
+    },
+    "/v1/collections/{id}/tree": {
+      "get": {
+        "operationId": "getCollectionTree",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "pages": {
+                      "items": {
+                        "$ref": "#/components/schemas/CollectionTreePage"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pages"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Id, urlId, parentId, position, title and icon of every live page"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The live pages of a collection, flat",
+        "tags": [
+          "collections"
+        ],
+        "x-grimoire-policy": {
+          "kind": "collection",
+          "need": "read",
           "param": "id"
         }
       }

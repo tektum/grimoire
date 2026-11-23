@@ -79,6 +79,22 @@ export const patchCollection = defineRoute({
   responses: { 200: json(CollectionSchema, 'The collection after the change'), 409: json(z.object({ error: z.object({ code: z.string(), message: z.string() }) }), 'The position is already used') },
 });
 
+const TreePageSchema = z
+  .object({ id: z.string().uuid(), urlId: z.string(), parentId: z.string().uuid().nullable(), position: z.string(), title: z.string(), icon: z.string().nullable() })
+  .openapi('CollectionTreePage');
+
+export const deleteCollection = defineRoute({
+  method: 'delete', path: '/v1/collections/{id}', operationId: 'deleteCollection', summary: 'Delete a collection and every page in it as one trash batch (administrators)', tags: ['collections'],
+  policy: { kind: 'collection', param: 'id', need: 'admin' }, request: { params: IdParam },
+  responses: { 204: { description: 'The collection and its pages are in the trash' } },
+});
+
+export const getCollectionTree = defineRoute({
+  method: 'get', path: '/v1/collections/{id}/tree', operationId: 'getCollectionTree', summary: 'The live pages of a collection, flat', tags: ['collections'],
+  policy: { kind: 'collection', param: 'id', need: 'read' }, request: { params: IdParam },
+  responses: { 200: json(z.object({ pages: z.array(TreePageSchema) }), 'Id, urlId, parentId, position, title and icon of every live page') },
+});
+
 /** The one place a stored collection becomes the API's: `myPermission` is the authoriser's answer, never a stored spelling. */
 export function present(row: CollectionRecord, mine: Level): z.infer<typeof CollectionSchema> {
   return { ...row, myPermission: mine };
@@ -119,6 +135,19 @@ router.openapi(patchCollection, async (c) => {
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'position-taken') return fail('conflict');
   return c.json(present(result.collection, mine), 200);
+});
+
+router.openapi(deleteCollection, async (c) => {
+  const { id } = c.req.valid('param');
+  await guardCollection(c, id, 'admin');
+  return (await c.get('deps').collections.softDelete(id, caller(c).id)) === undefined ? fail('not_found') : c.body(null, 204);
+});
+
+router.openapi(getCollectionTree, async (c) => {
+  const { id } = c.req.valid('param');
+  await guardCollection(c, id, 'read');
+  const pages = await c.get('deps').collections.tree(id);
+  return pages === undefined ? fail('not_found') : c.json({ pages: [...pages] }, 200);
 });
 
 export default router;

@@ -54,6 +54,16 @@ export type UpsertAccessResult =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'no-principal' };
 
+/** One live page of a collection, as the flat tree sends it. */
+export interface TreePage {
+  readonly id: string;
+  readonly urlId: string;
+  readonly parentId: string | null;
+  readonly position: string;
+  readonly title: string;
+  readonly icon: string | null;
+}
+
 /** Collections and their access entries. Every change that can take access away also writes its audit row in the same transaction. */
 export interface CollectionRepo {
   /** The live collections among `ids`, in `position` order. */
@@ -73,4 +83,11 @@ export interface CollectionRepo {
   upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult>;
   /** Removes an entry of this collection. Writes the audit row `collection.access_removed`. False when the collection has no such entry. */
   removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean>;
+  /** The live pages of a live collection, flat, in `position` order; undefined when the collection is not live. */
+  tree(collectionId: string): Promise<readonly TreePage[] | undefined>;
+  /**
+   * Soft-deletes a live collection and every live page in it as one batch: one fresh batch id on all of them, no row removed. Pages that
+   * were already deleted keep their own batch. Writes the audit row `collection.deleted`. Undefined when the collection is not live.
+   */
+  softDelete(collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined>;
 }
