@@ -358,3 +358,39 @@ describe('sign-in provisioning', () => {
     expect(output).not.toContain('private-signed-token');
   });
 });
+
+describe('recheck (the returning-user rule on a row already read)', () => {
+  const stored = (email: string): UserRecord => ({ id: 'u1', descopeUserId: 's1', email, name: 'Person', role: 'member', suspended: false });
+
+  it('accepts a stored address in an allowed domain, whatever its case, and changes nothing', async () => {
+    const users = new FakeUserStore();
+    const { provisioner } = fixture({}, users);
+    const row = stored('Person@Example.TEST');
+    expect(provisioner.recheck({ identity: identity(), user: row })).toEqual({ kind: 'ok', user: row, created: false });
+    expect(users.all()).toEqual([]);
+  });
+
+  it('refuses a stored address whose domain is no longer allowed, and logs the refusal once', () => {
+    const { provisioner, logger } = fixture();
+    expect(provisioner.recheck({ identity: identity(), user: stored('person@removed.test') })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+    expect(logger.entries.filter((e) => e.event === 'users.refused')).toHaveLength(1);
+  });
+
+  it('refuses when the claims carry a profile outside the allowed domains or unverified', () => {
+    const { provisioner } = fixture();
+    expect(provisioner.recheck({ identity: identity(profile('person@removed.test')), user: stored('person@example.test') }).kind).toBe('refused');
+    expect(provisioner.recheck({ identity: identity(profile('person@example.test', false)), user: stored('person@example.test') }).kind).toBe('refused');
+    expect(provisioner.recheck({ identity: identity(profile()), user: stored('person@example.test') }).kind).toBe('ok');
+  });
+
+  it('refuses the migration identity and a stored address that is not a valid address', () => {
+    const { provisioner } = fixture();
+    expect(provisioner.recheck({ identity: identity(undefined, 'system:migration'), user: stored('person@example.test') }).kind).toBe('refused');
+    expect(provisioner.recheck({ identity: identity(), user: stored('not-an-address') }).kind).toBe('refused');
+  });
+
+  it('follows the local-mode rule when no domains are listed', () => {
+    expect(fixture({ allowedEmailDomains: [], allowDevRole: true }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('ok');
+    expect(fixture({ allowedEmailDomains: [], allowDevRole: false }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('refused');
+  });
+});

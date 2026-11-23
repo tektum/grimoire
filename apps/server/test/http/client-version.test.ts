@@ -14,7 +14,7 @@ function build() {
 }
 
 const get = (app: ReturnType<typeof build>['app'], path: string, version?: string) =>
-  app.request(path, { headers: version === undefined ? {} : { [HEADER]: version, authorization: 'Bearer x' } });
+  app.request(path, { headers: version === undefined ? {} : { [HEADER]: version } });
 
 describe('client version gate', () => {
   it('refuses a version below the minimum in the envelope, before any token work', async () => {
@@ -25,16 +25,17 @@ describe('client version gate', () => {
     expect(t.logger.entries.some((e) => JSON.stringify(e).includes('http.auth_rejected'))).toBe(false);
   });
 
-  it.each(['1.2.0', '2.0.0', '1.10.0'])('lets %s through', async (version) => {
+  // No credentials are sent, so a request that passes the gate is stopped by authentication (401), never by the gate (426).
+  it.each(['1.2.0', '2.0.0', '1.10.0'])('lets %s through to authentication', async (version) => {
     const { app } = build();
-    expect((await get(app, '/v1/me', version)).status).toBe(200);
+    expect((await get(app, '/v1/me', version)).status).toBe(401);
   });
 
   it('lets a missing or malformed header through', async () => {
     const { app } = build();
-    expect((await get(app, '/v1/me')).status).toBe(200);
-    expect((await get(app, '/v1/me', 'abc')).status).toBe(200);
-    expect((await get(app, '/v1/me', '1.1')).status).toBe(200);
+    expect((await get(app, '/v1/me')).status).toBe(401);
+    expect((await get(app, '/v1/me', 'abc')).status).toBe(401);
+    expect((await get(app, '/v1/me', '1.1')).status).toBe(401);
   });
 
   it('never refuses the config and health routes', async () => {

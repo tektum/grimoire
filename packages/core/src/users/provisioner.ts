@@ -53,21 +53,32 @@ function newCredentials(profile: Profile, policy: SignInPolicy): { email: string
  */
 export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier; policy: SignInPolicy; logger?: Logger }): {
   signIn(i: { identity: { userId: string; profile?: Profile }; devRole?: Role }): Promise<SignInResult>;
+  /** The returning-user rule alone, for a row the caller has already read: it never reads, creates or changes a user. */
+  recheck(i: { identity: { userId: string; profile?: Profile }; user: UserRecord }): SignInResult;
 } {
   const refuse = (reason: Extract<SignInResult, { kind: 'refused' }>['reason']): SignInResult => {
     d.logger?.warn('users.refused', { reason });
     return { kind: 'refused', reason };
   };
 
+  /** The stored address decides, as at every sign-in: its domain must still be allowed. */
+  const storedDomainAllowed = (user: UserRecord): boolean => {
+    const domain = emailDomain(user.email.toLowerCase());
+    const domains = d.policy.allowedEmailDomains;
+    return domain !== undefined && (domains.length === 0 ? d.policy.allowDevRole : domains.some((a) => a.toLowerCase() === domain));
+  };
+
   return {
+    recheck(i) {
+      if (i.identity.userId === 'system:migration') return refuse('domain-not-allowed');
+      if (i.identity.profile && !newCredentials(i.identity.profile, d.policy)) return refuse('domain-not-allowed');
+      return storedDomainAllowed(i.user) ? { kind: 'ok', user: i.user, created: false } : refuse('domain-not-allowed');
+    },
     /** `ok` is not authorization: callers MUST deny a session when the returned user is suspended. */
     async signIn(i) {
       // Only fixed refusal strings cross the public API: no personal data or detailed IdP errors.
       const finishExisting = async (user: UserRecord): Promise<SignInResult> => {
-        const email = user.email.toLowerCase();
-        const domain = emailDomain(email);
-        const domains = d.policy.allowedEmailDomains;
-        if (domain === undefined || (domains.length === 0 ? !d.policy.allowDevRole : !domains.some((a) => a.toLowerCase() === domain))) return refuse('domain-not-allowed');
+        if (!storedDomainAllowed(user)) return refuse('domain-not-allowed');
         // Domain eligibility never changes a stored role. Explicit devRole is the sole local-mode role update, section 4.
         if (d.policy.allowDevRole && i.devRole !== undefined && i.devRole !== user.role) {
           const updated = await d.users.updateRole(user.id, i.devRole);
