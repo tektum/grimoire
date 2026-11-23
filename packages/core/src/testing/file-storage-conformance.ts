@@ -92,6 +92,7 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       await store.put(key, bytes, { size: bytes.length, contentType: binary });
       const got = await store.get(key, { range: { start: 0, end: 511 } });
       assert.deepEqual(await readAll(got.body), bytes.slice(0, 512));
+      assert.equal(got.size, 512, 'size is the length of the returned body');
     },
   },
   {
@@ -102,6 +103,7 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       await store.put(key, bytes, { size: bytes.length, contentType: binary });
       const got = await store.get(key, { range: { start: 1000, end: 1999 } });
       assert.deepEqual(await readAll(got.body), bytes.slice(1000, 2000), 'the end of a range is inclusive');
+      assert.equal(got.size, 1000, 'size is the length of the returned body');
     },
   },
   {
@@ -183,6 +185,12 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         `${prefix}/`,
         `${prefix}\\b`,
         `${prefix}/\u0000b`,
+        `${prefix}/a\nb`,
+        `${prefix}/a\u007fb`,
+        `${prefix}/a\u0085b`,
+        `${prefix}/a\ud800b`,
+        `${prefix}/a\udc00b`,
+        `${prefix}/..`,
         `${prefix}/${'a'.repeat(513)}`,
         `${prefix}/${'\u00e9'.repeat(300)}`, // over 512 UTF-8 bytes, under 512 UTF-16 units
       ];
