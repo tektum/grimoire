@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { insertPage as insertPageRow, runToEnd } from '@tektum/grimoire-test-support';
+import { runToEnd } from '@tektum/grimoire-test-support';
+import { insertPage as insertPageRow } from '@tektum/grimoire-test-support/database';
 import { createDatabase } from '../src/index.js';
 import type { KyselyDatabase } from '../src/index.js';
 import { declaredColumns } from '../src/schema.js';

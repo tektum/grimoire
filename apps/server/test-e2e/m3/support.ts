@@ -115,7 +115,7 @@ export async function userId(sub: string): Promise<string> { return scalar(`sele
 /** A collection; `defaultPermission` null makes it CLOSED (only users with an entry, and administrators, reach it). */
 export async function createCollection(name: string, defaultPermission: 'read' | 'read_write' | null): Promise<string> {
   const id = randomUUID();
-  await psql(`insert into collections (id, name, position, default_permission, created_by) values ('${id}', ${lit(name)}, 'b0', ${defaultPermission === null ? 'null' : lit(defaultPermission)}, '${SYSTEM_USER}')`);
+  await psql(`insert into collections (id, name, position, default_permission, created_by) values ('${id}', ${lit(name)}, 'b${randomUUID().replaceAll('-', '')}', ${defaultPermission === null ? 'null' : lit(defaultPermission)}, '${SYSTEM_USER}')`);
   return id;
 }
 export async function createPageIn(collection: string): Promise<string> {

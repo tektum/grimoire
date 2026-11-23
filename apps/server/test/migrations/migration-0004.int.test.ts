@@ -96,7 +96,7 @@ describe('migration 0004 (permissions)', () => {
       await app.query("delete from groups where name = 'H'");
       // Only id and a null Markdown are given: collection_id, created_by and position come from the column defaults.
       await app.query("insert into pages (id, markdown) values ('b1111111-3c1d-4a53-9a62-5d1c2a7e8f10', null)");
-      expect(await app.query("select collection_id, created_by, position from pages where id = 'b1111111-3c1d-4a53-9a62-5d1c2a7e8f10'")).toEqual([{ collection_id: UNFILED, created_by: SYSTEM, position: 'a0' }]);
+      expect(await app.query("select collection_id, created_by, position from pages where id = 'b1111111-3c1d-4a53-9a62-5d1c2a7e8f10'")).toEqual([{ collection_id: UNFILED, created_by: SYSTEM, position: expect.stringMatching(/^a0\d{7}1$/) as string }]);
       expect(await app.query("select grimoire_url_id() ~ '^[0-9A-Za-z]{10}$' as t")).toEqual([{ t: true }]);
     } finally {
       await app.close();

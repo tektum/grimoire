@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import { insertCollection, insertPage, SYSTEM_USER_ID, UNFILED_COLLECTION_ID } from '@tektum/grimoire-test-support';
+import { insertCollection, insertPage, SYSTEM_USER_ID, UNFILED_COLLECTION_ID } from '@tektum/grimoire-test-support/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { appUrl, createTestDatabase, dropTestDatabase, migratorUrl, repoRoot, requireBuild, runToEnd, serverDir, sqlAdmin } from '../../server/support/harness.js';
 
@@ -36,7 +36,7 @@ describe('migrations 0005 and 0006', () => {
     expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 6 }]);
     const second = await migrate(EMPTY);
     expect(second.code, second.output).toBe(0);
-    expect(second.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 0 });
+    expect(second.output).toContain('migrate.nothing_pending');
   });
 
   it('renumber the sibling positions of a database at 0004 that holds rows', async () => {
@@ -56,7 +56,7 @@ describe('migrations 0005 and 0006', () => {
     expect(new Set(collections.map((r) => r.position)).size).toBe(3);
     expect(collections.find((r) => r.id === UNFILED_COLLECTION_ID)).toBeDefined();
     const again = await migrate(AT_0004);
-    expect(again.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 0 });
+    expect(again.output).toContain('migrate.nothing_pending');
   });
 
   it('keep two siblings from sharing a position, top-level pages included, but allow it once a page is deleted', async () => {

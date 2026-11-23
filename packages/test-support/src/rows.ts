@@ -50,11 +50,11 @@ export function insertUser(run: RunSql, overrides: Columns = {}): Promise<string
   });
 }
 
-/** Inserts a collection created by the system user unless told otherwise and returns its id. */
+/** Inserts a collection with its own position, created by the system user unless told otherwise and returns its id. */
 export function insertCollection(run: RunSql, overrides: Columns = {}): Promise<string> {
   return insertRow(run, 'collections', {
     name: `Collection ${randomUUID()}`,
-    position: 'a0',
+    position: `b${randomUUID().replaceAll('-', '')}`, // unique: collection positions are unique since migration 0006
     created_by: SYSTEM_USER_ID,
     ...overrides,
   });
