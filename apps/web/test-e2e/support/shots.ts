@@ -10,7 +10,8 @@ export const shotsDir = (task: string): string => path.join(process.env['E2E_SHO
 
 /** The file of one screenshot: `<name>-<light|dark>.png`. Names are plain words, so a name cannot leave the folder. */
 export function shotPath(task: string, name: string, theme: (typeof THEMES)[number]): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(task) || !/^[A-Za-z0-9._-]+$/.test(name) || name.startsWith('.')) throw new Error('A screenshot task and name are letters, digits, . _ and - only.');
+  if (!/^[A-Za-z0-9._-]+$/.test(task) || !/^[A-Za-z0-9._-]+$/.test(name) || task.startsWith('.') || name.startsWith('.'))
+    throw new Error('A screenshot task and name are letters, digits, . _ and - only.');
   return path.join(shotsDir(task), `${name}-${theme}.png`);
 }
 
@@ -31,6 +32,7 @@ export async function shots(page: Page, task: string, name: string, options: { w
       written.push(file);
     }
   } finally {
+    await page.emulateMedia({ colorScheme: null });
     if (previous !== null) await page.setViewportSize(previous);
   }
   return written;

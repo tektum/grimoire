@@ -126,7 +126,11 @@ test.describe('shots', () => {
     );
     await page.goto('/form.html');
     await page.fill('#p', 'hunter2hunter2');
+    const dark = () => page.evaluate(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const before = await dark();
     const files = await shots(page, 'm6-t01a', 'form');
+    // The page is left as it was found: the dark picture does not leave dark mode on for what the test does next.
+    expect(await dark()).toBe(before);
     expect(files.map((f) => path.relative(shotsDir, f))).toEqual(['m6-t01a/form-light.png', 'm6-t01a/form-dark.png']);
     for (const file of files) {
       const png = readFileSync(file);
@@ -153,5 +157,6 @@ test.describe('shots', () => {
     expect(() => shotPath('m6-t01a', '../x', 'light')).toThrow('letters, digits');
     expect(() => shotPath('a/b', 'x', 'light')).toThrow('letters, digits');
     expect(() => shotPath('m6-t01a', '.hidden', 'dark')).toThrow('letters, digits');
+    for (const task of ['..', '.', '.hidden']) expect(() => shotPath(task, 'x', 'light')).toThrow('letters, digits');
   });
 });

@@ -20,13 +20,20 @@ function appEnvironment(files: string[]): Record<string, string> {
 describe('compose.yaml with compose.m6.yaml', () => {
   it('renders, with the two 4173 origins and the defaults of the plain stack', () => {
     const env = appEnvironment(['compose.yaml', 'compose.m6.yaml']);
-    expect(env['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:4173,http://localhost:4173');
+    expect(env['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:4173,http://localhost:4173');
     expect([env['GRIMOIRE_MIN_CLIENT_VERSION'], env['GRIMOIRE_REQUIRE_HANDSHAKE'], env['GRIMOIRE_COLLAB_RECHECK_SECONDS'], env['GRIMOIRE_COLLAB_MAX_CONNECTIONS_PER_PAGE']]).toEqual([
       '0.0.0',
       '0',
       '60',
       '100',
     ]);
+  });
+
+  it('keeps the origins of the plain stack, and adds the two of the static server', () => {
+    const plain = appEnvironment(['compose.yaml'])['GRIMOIRE_ALLOWED_ORIGINS'] ?? '';
+    const withOverlay = (appEnvironment(['compose.yaml', 'compose.m6.yaml'])['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',');
+    for (const origin of plain.split(',')) expect(withOverlay).toContain(origin);
+    expect(withOverlay).toEqual(expect.arrayContaining(['http://127.0.0.1:4173', 'http://localhost:4173']));
   });
 
   it('changes nothing else of the app environment', () => {

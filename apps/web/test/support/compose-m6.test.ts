@@ -12,8 +12,8 @@ const lines = overlay.split('\n').filter((l) => !l.trimStart().startsWith('#'));
 const environment = Object.fromEntries(lines.flatMap((l) => (l.match(/^\s{6}(\w+): "(.*)"$/) ? [[l.trim().split(':')[0]!, l.match(/"(.*)"$/)![1]!]] : [])));
 
 describe('compose.m6.yaml', () => {
-  it('allows the two origins of the static server on port 4173, and only the app service is touched', () => {
-    expect(environment['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:4173,http://localhost:4173');
+  it("allows the two origins of the static server on port 4173 as well as the plain stack's own, and only the app service is touched", () => {
+    expect(environment['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:4173,http://localhost:4173');
     expect(lines.filter((l) => /^ {2}\w/.test(l)).map((l) => l.trim())).toEqual(['app:']);
     expect(lines.some((l) => /^services:/.test(l))).toBe(true);
   });

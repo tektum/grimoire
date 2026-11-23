@@ -20,7 +20,8 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${WEB_PORT}`,
     headless: true,
     viewport: { width: 1280, height: 800 },
-    trace: 'retain-on-failure',
+    // A trace records the development token that signInAs stores, and CI uploads test-results on failure: so CI keeps no traces. Locally a failing test keeps one.
+    trace: process.env['CI'] === undefined ? 'retain-on-failure' : 'off',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
