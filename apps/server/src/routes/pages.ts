@@ -185,7 +185,7 @@ router.openapi(movePage, async (c) => {
   if (body.collectionId !== undefined && body.collectionId !== current.collectionId) await guardCollection(c, body.collectionId, 'write');
   const result = await pages.move(
     id,
-    { collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null },
+    { expectedCollectionId: current.collectionId, collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null },
     PAGE_LIMITS,
     (before, after) => ordering.between(before, after),
   );

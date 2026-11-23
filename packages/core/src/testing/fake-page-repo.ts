@@ -74,6 +74,7 @@ export class FakePageRepo implements PageRepo {
   move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult> {
     const row = this.livePage(id);
     if (row === undefined) return Promise.resolve({ kind: 'not-found' });
+    if (row.collectionId !== to.expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     const target = to.collectionId ?? row.collectionId;
     const collection = this.world.collections.find((c) => c.id === target);
     if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });

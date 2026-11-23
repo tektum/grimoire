@@ -484,6 +484,22 @@ describe('POST /v1/pages/{id}/move', () => {
     }
   });
 
+  it('hands the repository the collection it was checked against, and a page that left it is a 409', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const seen: string[] = [];
+    const original = b.pages.move.bind(b.pages);
+    b.pages.move = (id, to, limits, position) => { seen.push(to.expectedCollectionId); return original(id, to, limits, position); };
+    expect((await move(b, page.id, { parentId: null })).status).toBe(200);
+    expect(seen).toEqual([b.shared.id]);
+    // Another user moves the page to another collection after the caller's check and before the move runs.
+    const get = b.pages.get.bind(b.pages);
+    b.pages.get = async (id) => { const found = await get(id); await original(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm'); return found; };
+    const raced = await move(b, page.id, { parentId: null });
+    expect([raced.status, await code(raced)]).toEqual([409, 'conflict']);
+    expect(((await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.shared2.id);
+  });
+
   it('answers what the repository found when things change between the check and the move', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.shared.id });

@@ -19,8 +19,8 @@ const make = async (collectionId: string, parentId: string | null = null): Promi
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 };
-const move = (id: string, to: { collectionId?: string; parentId?: string | null; afterId?: string | null }, l: PageLimits = limits, repo = pages()): Promise<MovePageResult> =>
-  repo.move(id, { collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null }, l, between);
+const move = async (id: string, to: { collectionId?: string; parentId?: string | null; afterId?: string | null; expected?: string }, l: PageLimits = limits, repo = pages()): Promise<MovePageResult> =>
+  repo.move(id, { expectedCollectionId: to.expected ?? (await row(id))?.collection_id ?? '00000000-0000-4000-8000-000000000000', collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null }, l, between);
 const row = async (id: string) => (await t.admin.query<{ collection_id: string; parent_id: string | null; position: string; deleted_at: Date | null }>(
   `select collection_id, parent_id, position, deleted_at from pages where id = $1`, [id]))[0];
 /** A database whose transactions are aborted the first `failures` times, as serialization failures are. */
@@ -105,6 +105,18 @@ describe('the PostgreSQL PageRepo move', () => {
       `select count(*) as n from pages c join pages p on p.id = c.parent_id where p.collection_id <> c.collection_id`);
     expect(Number(links[0]?.n)).toBe(0);
     expect((await row(gone))?.deleted_at).not.toBeNull();
+  });
+
+  it('moves nothing when the page left the collection the caller was checked against', async () => {
+    const s = await newCollection('was');
+    const other = await newCollection('now');
+    const third = await newCollection('third');
+    const page = await make(s);
+    await move(page, { collectionId: other });
+    expect(await move(page, { expected: s, collectionId: third })).toEqual({ kind: 'conflict' });
+    expect(await move(page, { expected: s })).toEqual({ kind: 'conflict' });
+    expect((await row(page))?.collection_id).toBe(other);
+    expect((await move(page, { expected: other, collectionId: third })).kind).toBe('moved');
   });
 
   it('refuses a move into a deleted collection, and a page of a deleted collection', async () => {

@@ -142,6 +142,8 @@ export function createPages(db: KyselyDatabase): PageRepo {
             await tx.query(`set transaction isolation level serializable`);
             const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
             if (page === undefined) return { kind: 'not-found' };
+            // Access was checked against this collection; a page that left it since is not moved on that check.
+            if (page.collection_id !== to.expectedCollectionId) return { kind: 'conflict' };
             const target = to.collectionId ?? page.collection_id;
             // The collections first, in id order, as `create` takes them: moves, creates and deletes of a collection run one at a time.
             const locked = await tx.query<{ id: string; deleted_at: Date | null }>(

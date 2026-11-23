@@ -59,6 +59,8 @@ export type CreatePageResult =
 
 /** Where a page goes (R6.25). `collectionId` null: it stays in its collection. `afterId` null: last among the new siblings. */
 export interface PageMove {
+  /** The collection the caller's access check was made against. If the page is elsewhere by the time the move runs, nothing moves (`conflict`). */
+  readonly expectedCollectionId: string;
   readonly collectionId: string | null;
   readonly parentId: string | null;
   readonly afterId: string | null;
@@ -74,7 +76,7 @@ export type MovePageResult =
   | { readonly kind: 'would-create-cycle' }
   | { readonly kind: 'too-deep' }
   | { readonly kind: 'collection-full' }
-  /** Concurrent changes kept the transaction from committing after its retries. */
+  /** The page changed collection after the caller was checked, or concurrent changes kept the transaction from committing after its retries. */
   | { readonly kind: 'conflict' };
 
 /** Pages and the page tree. */
