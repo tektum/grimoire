@@ -117,7 +117,8 @@ export class SerializerState extends Stack<MarkdownNode, SerializerStackElement>
         const { children: prevChildren, ...prevRest } = last;
         if (child.type === last.type && currChildren && prevChildren && JSON.stringify(currRest) === JSON.stringify(prevRest)) {
           if (made.has(last)) {
-            prevChildren.push(...currChildren);
+            // A loop, not `push(...currChildren)`: a spread passes every child as an argument, and V8 refuses a call with a few hundred thousand of them.
+            for (const grandchild of currChildren) prevChildren.push(grandchild);
           } else {
             const combined: Marked = { ...prevRest, children: [...prevChildren, ...currChildren] };
             made.add(combined);

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createHeadless } from '../../src/headless.js';
-import { COPIED_FROM } from '../../src/serializer.js';
+import { COPIED_FROM, SerializerState } from '../../src/serializer.js';
 import { loadCorpus } from '../../src/testing/corpus.js';
 import { SHAPES } from '../../src/testing/hostile-shapes.js';
 import { normaliseForMarkdown } from '@tektum/grimoire-editor-schema';
@@ -35,5 +35,17 @@ describe('the copy of the Milkdown serializer', () => {
         expect(copy.serialize(doc), `${shape.name} ${String(size)}`).toBe(upstream.serialize(doc));
       }
     }
+  });
+
+  it('merges adjacent equal marks whatever the number of their children (no call with that many arguments)', async () => {
+    const { schema } = await createHeadless(undefined, 'copy');
+    const mark = (n: number) => ({ type: 'emphasis', isMark: true, children: Array.from({ length: n }, () => ({ type: 'text', value: 'a' })) });
+    const state = new SerializerState(schema);
+    state.openNode('root');
+    state.addNode('paragraph', [mark(1), mark(1), mark(300_000), mark(2)]);
+    const tree = state.build();
+    const paragraph = tree.children?.[0];
+    expect(paragraph?.children).toHaveLength(1);
+    expect(paragraph?.children?.[0]?.children).toHaveLength(1 + 1 + 300_000 + 2);
   });
 });
