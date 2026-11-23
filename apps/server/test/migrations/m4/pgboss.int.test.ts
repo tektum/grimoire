@@ -18,6 +18,15 @@ async function sqlAsApp<T extends pg.QueryResultRow>(text: string): Promise<T[]>
   }
 }
 
+/** The PostgreSQL error code of an error, looking through `cause` in case pg-boss wraps it. */
+function sqlState(error: unknown): string | undefined {
+  for (let e: unknown = error, depth = 0; e && typeof e === 'object' && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
+}
+
 const privileges = () => sqlAdmin<{ name: string; sel: boolean; ins: boolean; upd: boolean; del: boolean }>(DB,
   `select c.relname as name,
           has_table_privilege('grimoire_app', c.oid, 'select') as sel, has_table_privilege('grimoire_app', c.oid, 'insert') as ins,
@@ -70,7 +79,9 @@ describe('grimoire migrate installs pg-boss', () => {
   it('does not let the runtime role create a queue: that is DDL and belongs to the migration role', async () => {
     const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined });
     try {
-      await expect(queue.ensureQueue('m4-runtime-made')).rejects.toThrow();
+      const failure: unknown = await queue.ensureQueue('m4-runtime-made').then(() => undefined, (e: unknown) => e);
+      expect(failure, 'creating a queue as the runtime role must fail').toBeInstanceOf(Error);
+      expect(sqlState(failure)).toBe('42501'); // insufficient_privilege, not a connection error or a typo
     } finally {
       await queue.stop({ graceMs: 0 });
     }
