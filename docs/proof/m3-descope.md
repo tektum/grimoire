@@ -12,7 +12,7 @@ Versions checked from registry metadata and a scratch install: `@descope/node-sd
 - **Decision 96:** the web client uses `@descope/web-component` with `@descope/web-js-sdk`.
 - **Server (decision 152):** the proof was built with `jose` alone. Since decision 152 the adapter uses the official Descope Node SDK, with Grimoire's own token policy and failure mapping on top and a guarded `fetch`; the web client uses the web SDK. A finding of the proof stays true and is kept here: the Node SDK cannot separate a token with an unknown key id from an unreachable key service by its error alone (both read "failed to fetch matching key"; a forged token with a known key id has its own error text) (see the section on valid, expired and forged tokens), which is why the adapter classifies the SDK's error shapes.
 
-### Claims in a session token
+### Q1 Claims in a session token
 
 status: docs
 
@@ -22,14 +22,14 @@ status: docs
 - Node SDK reads: `sub`, `exp` from the verified payload; roles helpers read `roles`, `permissions`, `tenants[tid]` (`lib/index.ts`, `validateTenantRoles`, about line 493 onward).
 - Real token from the dev project: could not observe (no sign-in was made).
 
-### Lifetimes of session and refresh tokens
+### Q2 Lifetimes of session and refresh tokens
 
 status: docs
 
 - Refresh token: "typically valid for 1 month"; maximum 6 months (3 years on Enterprise). Session token: at least 3 minutes and never longer than the refresh token (docs.descope.com/management/project-settings, /security-best-practices/refresh-token-storage).
 - The configured and default values of the dev project are not stated in the documentation and need the console: could not observe. Plan for 10 minutes (documentation example) until the live target records the real value.
 
-### Refresh and rotation
+### Q3 Refresh and rotation
 
 status: measured
 
@@ -37,7 +37,7 @@ status: measured
 - Browser side, `web-js-sdk src/constants.ts`: `REFRESH_THRESHOLD = 20 * 1000`; `src/enhancers/withAutoRefresh/index.ts` refreshes by timer 20 s before `exp` and on `visibilitychange` when the tab becomes visible past expiry (about lines 67 to 78). A hidden tab can therefore hold an expired session token; the WebSocket `token()` function must refresh before returning.
 - Refresh token rotation (a new refresh token on each refresh) is a project setting and a Pro tier feature per docs.descope.com/management/project-settings; whether the dev project enables it: could not observe.
 
-### Valid, expired, forged, unknown-key, malformed and unreachable key service
+### Q4 Valid, expired, forged, unknown-key, malformed and unreachable key service
 
 status: measured
 
@@ -62,7 +62,7 @@ Method: local RSA key pair (`jose` `generateKeyPair('RS256')`), a local HTTP ser
 - Adapter mapping measured with the proof's own `jose` harness of 36 lines (before the Node SDK was adopted, decision 152): valid gives `ok`; expired, unknown kid, garbage give `invalid-token`; cold cache with the key server down gives `service-unavailable`; warm cache with it down gives `ok`. Rule used: not a `JOSEError`, or code `ERR_JOSE_GENERIC`, `ERR_JWKS_TIMEOUT`, `ERR_JWKS_INVALID` means `service-unavailable`; every other jose error means `invalid-token`. The shipped adapter does not use that rule: `classifySdkError` in `packages/adapters/auth-descope/src/index.ts` sorts the SDK's error shapes into `token` (a `jose` error code starting `ERR_J`, or a token without a key id), `no-key` ("failed to fetch matching key", which is the same for an unknown key id and for an outage) and `unrecognised` (refused and logged); the adapter's own key-fetch flag then chooses `invalid-token` (the last key fetch worked) or `service-unavailable` (it failed). The contract tests drive the real SDK through each case.
 - Real Descope key service behaviour (rate limit on the key URL, outage): could not observe; the mapping for the real service needs a real project to check.
 
-### Where the browser SDK keeps tokens, and what it needs from the page origin
+### Q5 Where the browser SDK keeps tokens, and what it needs from the page origin
 
 status: measured
 
@@ -72,13 +72,13 @@ status: measured
 - HttpOnly cookies set by Descope itself require the project setting "manage in cookies" plus a custom domain (docs.descope.com/security-best-practices/session-token-storage, /refresh-token-storage; status docs). They cannot be read by script, so they cannot supply the WebSocket token, and they do not fit wrappers (decision 74).
 - Page origin requirements: the SDK needs a secure context only for cookie mode; for `localStorage` mode none was found in source. Whether the dev project's approved-domains setting blocks `http://localhost` origins: could not observe. Behaviour inside Tauri and Capacitor webviews: could not observe.
 
-### Origins and content-security-policy entries for the Flows UI
+### Q6 Origins and content-security-policy entries for the Flows UI
 
 status: docs
 
 From docs.descope.com/security-best-practices/content-security-policy (no custom domain): `connect-src 'self' api.descope.com static.descope.com`; `script-src 'self' descopecdn.com static.descope.com cdn.jsdelivr.net` (plus a nonce through the component's `nonce` property); `style-src 'self' 'unsafe-inline' fonts.googleapis.com`; `font-src fonts.gstatic.com descopecdn.com data:`; `img-src 'self' static.descope.com data:`. With a custom domain the CNAME host replaces `api.descope.com` and `static.descope.com` in `connect-src` and `img-src`. Host strings found in a production bundle of `@descope/react-sdk` (built in a scratch project): `static.descope.com/pages`, `static2.descope.com/pages`, `api.descope.com`, `descopecdn.com/npm/oidc-client-ts`, `cdn.jsdelivr.net/npm/oidc-client-ts` (lazy OIDC library), `accounts.google.com/gsi/client` (Google One Tap): these host names are `measured` in the bundle, but whether the Flows screens actually load each of them at run time: could not observe. Bundle weights (esbuild, minified): web-js-sdk 57 KB raw / 19 KB gzip; web-component 201 / 61 KB; React plus the Descope component 354 / 111 KB (React alone 142 / 46 KB).
 
-### Whether email and name need a second call
+### Q7 Whether email and name need a second call
 
 status: docs
 
@@ -86,7 +86,7 @@ status: docs
 - `GET /v1/auth/me` (`sdk.me(refreshToken)`, `core-js-sdk src/sdk/index.ts` and `src/sdk/types.ts` `UserResponse`: `loginIds`, `userId`, `verifiedEmail`, name, email) works but needs the **refresh token**, which the server does not hold. The client must not send a profile for the server to trust.
 - Whether the real `loadByUserId` returns what the types promise: could not observe (needs a management key; not used).
 
-### Revocation latency for a disable, a sign-out and a role change
+### Q8 Revocation latency for a disable, a sign-out and a role change
 
 status: docs
 
@@ -96,7 +96,7 @@ status: docs
 - Hocuspocus 4.8 mechanism for live connections, `measured` locally with a generated key pair: a server calls `connection.requestToken()`, the provider's `token()` function is called and its result reaches the `onTokenSync` hook; a hook that throws closes that document connection; assigning `connection.readOnly` takes effect on the next update (`@hocuspocus/server` `src/MessageReceiver.ts` lines 176 to 178 and 234, `src/Connection.ts` line 197).
 - Actual latency of a disable in the dev project: could not observe (needs the real project and a management key).
 
-### Key-set URL, rotation and cache rules
+### Q9 Key-set URL, rotation and cache rules
 
 status: measured
 
