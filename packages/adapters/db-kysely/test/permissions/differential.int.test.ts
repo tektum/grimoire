@@ -29,7 +29,7 @@ function prng(seed: number): () => number {
   };
 }
 
-function randomWorld(rand: () => number): World {
+function randomWorld(rand: () => number, unfiledPosition: string): World {
   const int = (n: number): number => Math.floor(rand() * n);
   const chance = (p: number): boolean => rand() < p;
   const w = emptyWorld();
@@ -40,7 +40,7 @@ function randomWorld(rand: () => number): World {
   for (const g of w.groups) for (const u of w.users) if (chance(0.3)) w.members.push({ groupId: g.id, userId: u.id });
   const perms: (Permission | null)[] = [null, null, 'read', 'read_write'];
   // The migration's own "Unfiled" collection (no default permission) is part of every world; the loader does not insert it again.
-  w.collections.push({ id: UNFILED, deleted: false, defaultPermission: null, position: 'a0' });
+  w.collections.push({ id: UNFILED, deleted: false, defaultPermission: null, position: unfiledPosition });
   for (let i = 0; i < collectionCount; i++) {
     w.collections.push({ id: uuidOf('collection', i + 1), deleted: chance(0.15), defaultPermission: perms[int(perms.length)] ?? null, position: `a${String(i).padStart(4, '0')}` });
   }
@@ -53,12 +53,18 @@ function randomWorld(rand: () => number): World {
     const c = w.collections[int(w.collections.length)];
     if (c) w.pages.push({ id: uuidOf('page', i + 1), collectionId: c.id, deleted: chance(0.15), epoch: int(50) });
   }
+  // The store lists collections by position (byte order, collate "C"): so does the model.
+  w.collections.sort((a, b) => ((a.position ?? '') < (b.position ?? '') ? -1 : (a.position ?? '') > (b.position ?? '') ? 1 : 0));
   return w;
 }
 
 let db: KyselyDatabase;
+/** The stored position of "Unfiled": the model reads it after migrating, so a later renumbering cannot desynchronise it. */
+let unfiledPosition = '';
 beforeAll(async () => {
   await createMigratedDatabase(DB);
+  unfiledPosition = (await sqlAs<{ position: string }>(urlFor('grimoire_admin', DB), 'select position from collections where id = $1', [UNFILED]))[0]?.position ?? '';
+  expect(unfiledPosition).not.toBe('');
   db = createDatabase(urlFor('grimoire_app', DB));
 }, 180_000);
 afterAll(async () => {
@@ -80,7 +86,7 @@ describe(`SQL form against the pure decision (seed ${String(SEED)})`, () => {
     let triples = 0;
     for (let n = 0; n < WORLDS; n++) {
       await clear();
-      const world = randomWorld(rand);
+      const world = randomWorld(rand, unfiledPosition);
       await loadWorld(DB, world);
       const fakeAuth = createAuthorizer(createFakeAccessStore(world));
       const absentUser = uuidOf('absent', 1), absentPage = uuidOf('absent', 2), absentCollection = uuidOf('absent', 3);

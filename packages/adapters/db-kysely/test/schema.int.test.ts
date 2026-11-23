@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runToEnd } from '@tektum/grimoire-test-support';
+import { insertPage as insertPageRow } from '@tektum/grimoire-test-support/database';
 import { createDatabase } from '../src/index.js';
 import type { KyselyDatabase } from '../src/index.js';
 import { declaredColumns } from '../src/schema.js';
@@ -80,7 +81,7 @@ describe('migration 0005 tables: grants of the runtime role', () => {
 });
 
 describe('migration 0005 tables: constraints and delete behaviour', () => {
-  const insertPage = async (): Promise<string> => (await db.query<{ id: string }>('insert into pages default values returning id'))[0]!.id;
+  const insertPage = (): Promise<string> => insertPageRow((statement) => db.query(statement));
   const hash = "decode(repeat('ab', 32), 'hex')";
 
   it('rejects a revision with a short hash or an unknown reason', async () => {

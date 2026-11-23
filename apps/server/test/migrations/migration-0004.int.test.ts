@@ -12,6 +12,8 @@ const AT_0002 = 'grimoire_m3t03_mig_0002';
 const AT_0003 = 'grimoire_m3t03_mig_0003';
 const upTo0002 = path.join(repoRoot, 'test-results', 'm3t03-migrations-0002');
 const upTo0003 = path.join(repoRoot, 'test-results', 'm3t03-migrations-0003');
+// 0005 and 0006 change `pages` (positions, search columns); this file asserts what 0004 did, so it stops there. The whole chain is tested in m4/0005.int.test.ts.
+const upTo0004 = path.join(repoRoot, 'test-results', 'm3t03-migrations-0004');
 const SYSTEM = '00000000-0000-4000-8000-000000000001';
 const UNFILED = '00000000-0000-4000-8000-000000000002';
 const ROWS = ['a1111111-3c1d-4a53-9a62-5d1c2a7e8f10', 'a2222222-3c1d-4a53-9a62-5d1c2a7e8f10', 'a3333333-3c1d-4a53-9a62-5d1c2a7e8f10'];
@@ -30,11 +32,13 @@ beforeAll(async () => {
   requireBuild();
   copyMigrations(upTo0002, ['0001_pages.ts', '0002_page_markdown.ts']);
   copyMigrations(upTo0003, ['0001_pages.ts', '0002_page_markdown.ts', '0003_schema_version.ts']);
+  copyMigrations(upTo0004, ['0001_pages.ts', '0002_page_markdown.ts', '0003_schema_version.ts', '0004_permissions.ts']);
   for (const db of [EMPTY, AT_0002, AT_0003]) await createTestDatabase(db, false);
 }, 60_000);
 afterAll(async () => {
   rmSync(upTo0002, { recursive: true, force: true });
   rmSync(upTo0003, { recursive: true, force: true });
+  rmSync(upTo0004, { recursive: true, force: true });
   for (const db of [EMPTY, AT_0002, AT_0003]) await dropTestDatabase(db);
 });
 
@@ -42,7 +46,7 @@ describe('migration 0004 (permissions)', () => {
   it('on a database at 0002 with three bare page rows it keeps the rows and fills the new columns', async () => {
     expect((await migrate(AT_0002, upTo0002)).code).toBe(0);
     await sqlAdmin(AT_0002, `insert into pages (id, markdown_hash, last_edited_by) values ('${ROWS[0]}', decode(repeat('ab', 32), 'hex'), '${RANDOM_USER}'), ('${ROWS[1]}', null, null), ('${ROWS[2]}', decode(repeat('cd', 32), 'hex'), null)`);
-    expect((await migrate(AT_0002)).code).toBe(0);
+    expect((await migrate(AT_0002, upTo0004)).code).toBe(0);
     const rows = await sqlAdmin<{ id: string; url_id: string; collection_id: string; created_by: string; position: string; last_edited_by: string | null; markdown_hash: Buffer | null; title: string; deleted_at: Date | null }>(
       AT_0002, 'select id, url_id, collection_id, created_by, position, last_edited_by, markdown_hash, title, deleted_at from pages order by id');
     expect(rows.map((r) => r.id)).toEqual(ROWS);
@@ -62,16 +66,16 @@ describe('migration 0004 (permissions)', () => {
 
   it('a second run is a no-op', async () => {
     const before = await migrationCount(AT_0002);
-    const again = await migrate(AT_0002);
+    const again = await migrate(AT_0002, upTo0004);
     expect(again.code).toBe(0);
     expect(again.output).toContain('migrate.nothing_pending');
     expect(await migrationCount(AT_0002)).toBe(before);
     expect(Number((await sqlAdmin<{ n: string }>(AT_0002, 'select count(*) as n from users'))[0]?.n)).toBe(1);
   });
 
-  it('on an empty database the full chain applies', async () => {
-    expect((await migrate(EMPTY)).code).toBe(0);
-    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0005_history_files_imports_audit' }]);
+  it('on an empty database the chain up to 0004 applies', async () => {
+    expect((await migrate(EMPTY, upTo0004)).code).toBe(0);
+    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0004_permissions' }]);
     const tables = await sqlAdmin<{ table_name: string }>(EMPTY, "select table_name from information_schema.tables where table_schema = 'public'");
     expect(tables.map((t) => t.table_name)).toEqual(expect.arrayContaining(TABLES));
   });
