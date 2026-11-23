@@ -1,4 +1,4 @@
-import type { AdminRepo, AdminUser, PatchUserResult } from '@tektum/grimoire-core/ports/admin-repo';
+import type { AdminGroup, AdminRepo, AdminUser, GroupSaveResult, PatchUserResult } from '@tektum/grimoire-core/ports/admin-repo';
 import type { Role } from '@tektum/grimoire-core/ports/user-store';
 import { insertAuditEvent } from './audit.js';
 import type { KyselyDatabase } from './index.js';
@@ -6,6 +6,9 @@ import type { KyselyDatabase } from './index.js';
 interface UserRow { id: string; email: string; name: string; role: Role; suspended: boolean }
 const USER_COLUMNS = 'id, email::text as email, name, role, suspended_at is not null as suspended';
 const likePattern = (q: string): string => `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+
+const isUniqueViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23505';
+const GROUP_SELECT = `select g.id, g.name::text as name, (select count(*)::int from group_members m where m.group_id = g.id) as "memberCount" from groups g`;
 
 /** The PostgreSQL AdminRepo. */
 export function createAdmin(db: KyselyDatabase): AdminRepo {
@@ -52,6 +55,71 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
     },
     userNames(ids) {
       return db.query<{ id: string; name: string }>(`select id, name from users where id = any($1::uuid[])`, [ids]);
+    },
+    listGroups() {
+      return db.query<AdminGroup>(`${GROUP_SELECT} order by g.name, g.id`);
+    },
+    async createGroup(name, actorId) {
+      try {
+        return await db.transaction(async (tx): Promise<GroupSaveResult> => {
+          const made = await tx.query<{ id: string }>(`insert into groups (name) values ($1) returning id`, [name]);
+          const groupId = (made[0] as { id: string }).id;
+          await insertAuditEvent(tx, { actorId, action: 'group.created', targetType: 'group', targetId: groupId });
+          return { kind: 'saved', group: (await tx.query<AdminGroup>(`${GROUP_SELECT} where g.id = $1`, [groupId]))[0] as AdminGroup };
+        });
+      } catch (e) {
+        if (isUniqueViolation(e)) return { kind: 'name-taken' };
+        throw e;
+      }
+    },
+    async renameGroup(groupId, name, actorId) {
+      try {
+        return await db.transaction(async (tx): Promise<GroupSaveResult> => {
+          const found = await tx.query(`select 1 from groups where id = $1 for update`, [groupId]);
+          if (found.length === 0) return { kind: 'not-found' };
+          await tx.query(`update groups set name = $2, updated_at = now() where id = $1`, [groupId, name]);
+          await insertAuditEvent(tx, { actorId, action: 'group.renamed', targetType: 'group', targetId: groupId });
+          return { kind: 'saved', group: (await tx.query<AdminGroup>(`${GROUP_SELECT} where g.id = $1`, [groupId]))[0] as AdminGroup };
+        });
+      } catch (e) {
+        if (isUniqueViolation(e)) return { kind: 'name-taken' };
+        throw e;
+      }
+    },
+    deleteGroup(groupId, actorId) {
+      return db.transaction(async (tx) => {
+        // The members and the collection access entries of the group go with it (foreign keys on delete cascade).
+        const removed = await tx.query(`delete from groups where id = $1 returning id`, [groupId]);
+        if (removed.length === 0) return false;
+        await insertAuditEvent(tx, { actorId, action: 'group.deleted', targetType: 'group', targetId: groupId });
+        return true;
+      });
+    },
+    async listMembers(groupId) {
+      const found = await db.query(`select 1 from groups where id = $1`, [groupId]);
+      if (found.length === 0) return undefined;
+      return db.query<AdminUser>(
+        `select u.id, u.email::text as email, u.name, u.role, u.suspended_at is not null as suspended
+         from group_members m join users u on u.id = m.user_id where m.group_id = $1 order by u.email, u.id`, [groupId],
+      );
+    },
+    addMember(groupId, userId, actorId) {
+      return db.transaction(async (tx) => {
+        if ((await tx.query(`select 1 from groups where id = $1 for share`, [groupId])).length === 0) return 'no-group' as const;
+        if ((await tx.query(`select 1 from users where id = $1`, [userId])).length === 0) return 'no-user' as const;
+        const added = await tx.query(`insert into group_members (group_id, user_id) values ($1, $2) on conflict do nothing returning user_id`, [groupId, userId]);
+        if (added.length === 0) return 'already-member' as const;
+        await insertAuditEvent(tx, { actorId, action: 'group.member_added', targetType: 'group', targetId: groupId, detail: { userId } });
+        return 'added' as const;
+      });
+    },
+    removeMember(groupId, userId, actorId) {
+      return db.transaction(async (tx) => {
+        const removed = await tx.query(`delete from group_members where group_id = $1 and user_id = $2 returning user_id`, [groupId, userId]);
+        if (removed.length === 0) return false;
+        await insertAuditEvent(tx, { actorId, action: 'group.member_removed', targetType: 'group', targetId: groupId, detail: { userId } });
+        return true;
+      });
     },
   };
 }

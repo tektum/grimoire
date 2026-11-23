@@ -23,6 +23,11 @@ export interface UserListQuery {
   readonly after?: readonly [string, string];
 }
 
+export interface AdminGroup { readonly id: string; readonly name: string; readonly memberCount: number }
+
+export type GroupSaveResult = { kind: 'saved'; group: AdminGroup } | { kind: 'name-taken' } | { kind: 'not-found' };
+export type MemberAddResult = 'added' | 'already-member' | 'no-group' | 'no-user';
+
 /** Users and groups for administrators. Every change writes its audit row in the same transaction. */
 export interface AdminRepo {
   /** Up to `limit` rows in `(email, id)` order; the caller asks for one more than it shows. */
@@ -31,4 +36,16 @@ export interface AdminRepo {
   patchUser(id: string, patch: UserPatch, actorId: string): Promise<PatchUserResult>;
   /** Display names of the ids that exist; unknown ids are left out. */
   userNames(ids: readonly string[]): Promise<readonly { id: string; name: string }[]>;
+  /** Every group in name order (case-insensitive). */
+  listGroups(): Promise<readonly AdminGroup[]>;
+  /** `name-taken` when a group of that name exists, whatever the case. */
+  createGroup(name: string, actorId: string): Promise<GroupSaveResult>;
+  renameGroup(id: string, name: string, actorId: string): Promise<GroupSaveResult>;
+  /** Removes the group, its members and its collection access entries together. False when there is no such group. */
+  deleteGroup(id: string, actorId: string): Promise<boolean>;
+  /** Members in `(email, id)` order; undefined when there is no such group. */
+  listMembers(groupId: string): Promise<readonly AdminUser[] | undefined>;
+  /** Adding a member who is in already changes nothing and writes no audit row. */
+  addMember(groupId: string, userId: string, actorId: string): Promise<MemberAddResult>;
+  removeMember(groupId: string, userId: string, actorId: string): Promise<boolean>;
 }

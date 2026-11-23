@@ -42,7 +42,7 @@ export const userNames = defineRoute({
 const router = createRouter();
 
 /** The `admin` policy: the role of the signed-in user, read by the authentication step. */
-const requireAdmin = (c: Parameters<typeof caller>[0]): void => {
+export const requireAdmin = (c: Parameters<typeof caller>[0]): void => {
   if (caller(c).role !== 'admin') fail('forbidden');
 };
 
