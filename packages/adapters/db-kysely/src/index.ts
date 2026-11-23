@@ -2,30 +2,22 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { CompiledQuery, Kysely, PostgresDialect } from 'kysely';
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
-import type { Generated } from 'kysely';
 import pg from 'pg';
+import type { GrimoireTables } from './schema.js';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 export * from './permissions.js';
 export * from './users.js';
 export * from './page-store.js';
-
-/** Typed shape of the tables that exist today (migration 0001); later migrations extend it. */
-export interface PagesTable {
-  title: string;
-  id: Generated<string>;
-  ydoc: Buffer | null;
-  ydoc_size: number | null;
-  state_epoch: Generated<number>;
-  markdown: string | null;
-  text_content: string | null;
-  markdown_hash: Buffer | null;
-  last_edited_by: string | null;
-  last_edited_at: Date | null;
-  created_at: Generated<Date>;
-  updated_at: Generated<Date>;
-  markdown_stale_since: Date | null;
-}
-export interface GrimoireTables { pages: PagesTable }
+export * from './schema.js';
+export * from './idempotency.js';
+export * from './collections.js';
+export * from './audit.js';
+export * from './pages.js';
+export * from './trash.js';
+export * from './revisions.js';
+export * from './admin.js';
+export * from './page-state.js';
+export * from './attachments.js';
 
 /** The port plus the Kysely handle, which only this package and the migration command use. */
 export interface KyselyDatabase extends Database { readonly kysely: Kysely<GrimoireTables> }
