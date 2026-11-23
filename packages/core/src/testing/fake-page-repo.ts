@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
-import type { CreatePageResult, NewPage, PageDetail, PageLimits, PageMeta, PageMetaPatch, PageRepo } from '../ports/page-repo.js';
+import { checkMove, forestOf } from '../tree/move.js';
+import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -68,6 +69,53 @@ export class FakePageRepo implements PageRepo {
     const row = this.rows.find((r) => r.id === page.id) as Row;
     this.rows[this.rows.indexOf(row)] = { ...row, markdown: input.content?.markdown ?? null, state: input.content?.state ?? null, hash: input.content?.hash ?? null };
     return Promise.resolve({ kind: 'created', page });
+  }
+
+  move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult> {
+    const row = this.livePage(id);
+    if (row === undefined) return Promise.resolve({ kind: 'not-found' });
+    if (row.collectionId !== to.expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
+    const target = to.collectionId ?? row.collectionId;
+    const collection = this.world.collections.find((c) => c.id === target);
+    if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });
+    const inTarget = this.rows.filter((r) => !r.deleted && r.collectionId === target);
+    const parent = to.parentId === null ? undefined : inTarget.find((r) => r.id === to.parentId);
+    if (to.parentId !== null && parent === undefined) return Promise.resolve({ kind: 'no-parent' });
+    // The forest of this collection and the moved page's own, so the rules see exactly what the subtree brings along.
+    const live = this.rows.filter((r) => !r.deleted && (r.collectionId === target || r.collectionId === row.collectionId));
+    const check = checkMove(forestOf(live), { id, newParent: to.parentId, maxDepth: limits.maxDepth });
+    if (check === 'would-create-cycle') return Promise.resolve({ kind: 'would-create-cycle' });
+    if (check === 'too-deep') return Promise.resolve({ kind: 'too-deep' });
+    const subtree = this.subtree(id);
+    const liveSubtree = subtree.filter((r) => !r.deleted);
+    if (target !== row.collectionId && inTarget.length + liveSubtree.length > limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
+    const siblings = inTarget.filter((r) => r.parentId === to.parentId && r.id !== id).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
+    const after = to.afterId === null ? undefined : siblings.find((r) => r.id === to.afterId);
+    if (to.afterId !== null && after === undefined) return Promise.resolve({ kind: 'no-after' });
+    const before = after === undefined ? (siblings.at(-1)?.position ?? null) : after.position;
+    const next = after === undefined ? null : (siblings[siblings.indexOf(after) + 1]?.position ?? null);
+    const moved: Row = { ...row, collectionId: target, parentId: to.parentId, position: position(before, next) };
+    for (const r of subtree) {
+      const at = this.rows.indexOf(r);
+      this.rows[at] = r.id === id ? moved : { ...r, collectionId: target };
+      const fact = this.world.pages.find((w) => w.id === r.id);
+      if (fact !== undefined) fact.collectionId = target;
+    }
+    return Promise.resolve({ kind: 'moved', page: this.meta(moved) });
+  }
+
+  /** The page and every descendant, deleted ones included. */
+  private subtree(id: string): Row[] {
+    const out: Row[] = [];
+    const queue = [id];
+    for (let at = queue.shift(); at !== undefined; at = queue.shift()) {
+      const row = this.rows.find((r) => r.id === at);
+      if (row !== undefined && !out.includes(row)) {
+        out.push(row);
+        queue.push(...this.rows.filter((r) => r.parentId === at).map((r) => r.id));
+      }
+    }
+    return out;
   }
 
   private livePage(id: string): Row | undefined {

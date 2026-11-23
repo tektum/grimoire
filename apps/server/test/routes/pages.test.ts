@@ -31,6 +31,7 @@ function build() {
   const collections = new FakeCollectionRepo(world);
   const open = collections.seed({ name: 'Open', description: null, icon: null, color: null, position: 'a1', defaultPermission: 'read' });
   const shared = collections.seed({ name: 'Shared', description: null, icon: null, color: null, position: 'a2', defaultPermission: 'read_write' });
+  const shared2 = collections.seed({ name: 'Shared two', description: null, icon: null, color: null, position: 'a4', defaultPermission: 'read_write' });
   const closed = collections.seed({ name: 'Closed', description: null, icon: null, color: null, position: 'a3', defaultPermission: null });
   const pages = new FakePageRepo(world);
   const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
@@ -50,7 +51,7 @@ function build() {
       headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, pages, collections, converter, world, open, shared, closed, rows, access };
+  return { call, pages, collections, converter, world, open, shared, shared2, closed, rows, access };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -383,5 +384,146 @@ describe('PATCH /v1/pages/{id}', () => {
     const page = b.pages.seed({ collectionId: b.shared.id });
     b.pages.updateMeta = () => Promise.resolve(undefined);
     expect((await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { title: 'X' })).status).toBe(404);
+  });
+});
+
+describe('POST /v1/pages/{id}/move', () => {
+  const move = (b: ReturnType<typeof build>, id: string, body: unknown, who = 'member') => b.call(who, 'POST', `/v1/pages/${id}/move`, body);
+
+  it('puts a page under a parent, after a sibling, or at the top level, in position order', async () => {
+    const b = build();
+    const p = b.pages.seed({ collectionId: b.shared.id, position: 'a' });
+    const q = b.pages.seed({ collectionId: b.shared.id, position: 'b' });
+    const r = b.pages.seed({ collectionId: b.shared.id, position: 'c' });
+    const under = await meta(await move(b, r.id, { parentId: p.id }));
+    expect([under.parentId, under.collectionId]).toEqual([p.id, b.shared.id]);
+    const after = await meta(await move(b, r.id, { parentId: null, afterId: p.id }));
+    expect(after.parentId).toBeNull();
+    expect(after.position > 'a' && after.position < 'b').toBe(true);
+    const last = await meta(await move(b, p.id, { parentId: null }));
+    expect(last.position > q.position && last.position > after.position).toBe(true);
+  });
+
+  it('refuses a page under itself or under one of its descendants with 409 would_create_cycle', async () => {
+    const b = build();
+    const a = b.pages.seed({ collectionId: b.shared.id });
+    const child = b.pages.seed({ collectionId: b.shared.id, parentId: a.id });
+    const leaf = b.pages.seed({ collectionId: b.shared.id, parentId: child.id });
+    for (const target of [a.id, child.id, leaf.id]) {
+      const res = await move(b, a.id, { parentId: target });
+      expect([res.status, await code(res)]).toEqual([409, 'would_create_cycle']);
+    }
+  });
+
+  it('counts the moved subtree against the depth: a chain of 31 takes a leaf but not a page with a child', async () => {
+    const b = build();
+    let parent: string | undefined;
+    for (let level = 1; level <= 31; level += 1) parent = b.pages.seed({ collectionId: b.shared.id, ...(parent === undefined ? {} : { parentId: parent }) }).id;
+    const leaf = b.pages.seed({ collectionId: b.shared.id });
+    const branch = b.pages.seed({ collectionId: b.shared.id });
+    b.pages.seed({ collectionId: b.shared.id, parentId: branch.id });
+    expect((await move(b, leaf.id, { parentId: parent as string })).status).toBe(200);
+    const deep = await move(b, branch.id, { parentId: parent as string });
+    expect([deep.status, await code(deep)]).toEqual([409, 'too_deep']);
+  });
+
+  it('moves the subtree to another collection when the caller may write in both', async () => {
+    const b = build();
+    const top = b.pages.seed({ collectionId: b.shared.id });
+    const kid = b.pages.seed({ collectionId: b.shared.id, parentId: top.id });
+    const res = await meta(await move(b, top.id, { collectionId: b.shared2.id, parentId: null }));
+    expect(res.collectionId).toBe(b.shared2.id);
+    expect(((await (await b.call('member', 'GET', `/v1/pages/${kid.id}`)).json()) as Detail).collectionId).toBe(b.shared2.id);
+  });
+
+  it('needs write on the target collection: 403 where the caller only reads, 404 where they cannot read', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const reader = await move(b, page.id, { collectionId: b.open.id, parentId: null });
+    expect([reader.status, await code(reader)]).toEqual([403, 'forbidden']);
+    const hidden = await move(b, page.id, { collectionId: b.closed.id, parentId: null });
+    expect([hidden.status, await code(hidden)]).toEqual([404, 'not_found']);
+  });
+
+  it('needs write on the page: 403 to a reader, 404 to a user who cannot read', async () => {
+    const b = build();
+    const open = b.pages.seed({ collectionId: b.open.id });
+    const hidden = b.pages.seed({ collectionId: b.closed.id });
+    expect((await move(b, open.id, { parentId: null })).status).toBe(403);
+    expect((await move(b, hidden.id, { parentId: null }, 'outsider')).status).toBe(404);
+  });
+
+  it('refuses a parent that is not in the target collection with 404 and a sibling that is not under the new parent with 422', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const elsewhere = b.pages.seed({ collectionId: b.shared2.id });
+    expect((await move(b, page.id, { parentId: elsewhere.id })).status).toBe(404);
+    const sibling = b.pages.seed({ collectionId: b.shared.id });
+    const nested = b.pages.seed({ collectionId: b.shared.id, parentId: sibling.id });
+    for (const afterId of [nested.id, page.id, '00000000-0000-4000-8000-000000000999']) {
+      const res = await move(b, page.id, { parentId: null, afterId });
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+  });
+
+  it('refuses a move that would take the target collection above 10,000 pages with 409 collection_full', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    for (let n = 0; n < 10_000; n += 1) b.pages.seed({ collectionId: b.shared2.id });
+    const res = await move(b, page.id, { collectionId: b.shared2.id, parentId: null });
+    expect([res.status, await code(res)]).toEqual([409, 'collection_full']);
+    expect((await move(b, page.id, { parentId: null })).status).toBe(200);
+  });
+
+  it('refuses a bad body with 422: parentId missing, unknown fields, a bad id', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    for (const body of [{}, { parentId: null, surprise: 1 }, { parentId: 'nope' }, { parentId: null, collectionId: 'nope' }]) {
+      const res = await move(b, page.id, body);
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+  });
+
+  it('hands the repository the collection it was checked against, and a page that left it is a 409', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const seen: string[] = [];
+    const original = b.pages.move.bind(b.pages);
+    b.pages.move = (id, to, limits, position) => { seen.push(to.expectedCollectionId); return original(id, to, limits, position); };
+    expect((await move(b, page.id, { parentId: null })).status).toBe(200);
+    expect(seen).toEqual([b.shared.id]);
+    // Another user moves the page to another collection after the caller's check and before the move runs.
+    const get = b.pages.get.bind(b.pages);
+    b.pages.get = async (id) => { const found = await get(id); await original(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm'); return found; };
+    const raced = await move(b, page.id, { parentId: null });
+    expect([raced.status, await code(raced)]).toEqual([409, 'conflict']);
+    expect(((await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.shared2.id);
+  });
+
+  it('checks write access on the collection the page is in when the move starts, not the one it was in at the page check', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const get = b.pages.get.bind(b.pages);
+    const original = b.pages.move.bind(b.pages);
+    // After the page check another user moves the page into a collection the caller can only read.
+    b.pages.get = async (id) => {
+      await original(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(id);
+    };
+    const res = await move(b, page.id, { parentId: null });
+    expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
+    expect(((await (await b.call('admin', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.open.id);
+  });
+
+  it('answers what the repository found when things change between the check and the move', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    for (const [kind, status, name] of [['not-found', 404, 'not_found'], ['collection-deleted', 409, 'collection_deleted'], ['conflict', 409, 'conflict']] as const) {
+      b.pages.move = () => Promise.resolve({ kind });
+      const res = await move(b, page.id, { parentId: null });
+      expect([res.status, await code(res)]).toEqual([status, name]);
+    }
+    b.pages.get = () => Promise.resolve(undefined);
+    expect((await move(b, page.id, { parentId: null })).status).toBe(404);
   });
 });

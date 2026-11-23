@@ -1,5 +1,6 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
-import type { CreatePageResult, PageDetail, PageMeta, PageRepo } from '@tektum/grimoire-core/ports/page-repo';
+import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { CreatePageResult, MovePageResult, PageDetail, PageMeta, PageRepo } from '@tektum/grimoire-core/ports/page-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -16,6 +17,22 @@ export const meta = (r: Row): PageMeta => ({
   createdBy: r.created_by, lastEditedBy: r.last_edited_by, lastEditedAt: r.last_edited_ms === null ? null : Number(r.last_edited_ms),
   savedAt: Number(r.saved_ms), stateEpoch: r.state_epoch,
 });
+
+const MOVE_ATTEMPTS = 3;
+const isSerializationFailure = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && (e.code === '40001' || e.code === '40P01');
+
+/** Positions of the live siblings around the new place: after `afterId`, or last. Undefined when `afterId` is not a sibling. */
+async function neighbours(tx: Queryable, collectionId: string, parentId: string | null, afterId: string | null, selfId: string): Promise<{ before: string | null; after: string | null } | undefined> {
+  const siblings = `collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null and id <> $3`;
+  if (afterId === null) {
+    const last = await tx.query<{ position: string }>(`select position from pages where ${siblings} order by position desc limit 1`, [collectionId, parentId, selfId]);
+    return { before: last[0]?.position ?? null, after: null };
+  }
+  const anchor = (await tx.query<{ position: string }>(`select position from pages where ${siblings} and id = $4`, [collectionId, parentId, selfId, afterId]))[0];
+  if (anchor === undefined) return undefined;
+  const next = await tx.query<{ position: string }>(`select position from pages where ${siblings} and position > $4 order by position limit 1`, [collectionId, parentId, selfId, anchor.position]);
+  return { before: anchor.position, after: next[0]?.position ?? null };
+}
 
 /** The PostgreSQL PageRepo over `pages`. */
 export function createPages(db: KyselyDatabase): PageRepo {
@@ -117,6 +134,67 @@ export function createPages(db: KyselyDatabase): PageRepo {
         const rows = await tx.query<Row>(`update pages set ${sets.join(', ')} where id = $1 returning ${META_COLUMNS}`, params);
         return meta(rows[0] as Row);
       });
+    },
+    async move(id, to, limits, position) {
+      for (let attempt = 1; attempt <= MOVE_ATTEMPTS; attempt += 1) {
+        try {
+          return await db.transaction(async (tx): Promise<MovePageResult> => {
+            await tx.query(`set transaction isolation level serializable`);
+            const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
+            if (page === undefined) return { kind: 'not-found' };
+            // Access was checked against this collection; a page that left it since is not moved on that check.
+            if (page.collection_id !== to.expectedCollectionId) return { kind: 'conflict' };
+            const target = to.collectionId ?? page.collection_id;
+            // The collections first, in id order, as `create` takes them: moves, creates and deletes of a collection run one at a time.
+            const locked = await tx.query<{ id: string; deleted_at: Date | null }>(
+              `select id, deleted_at from collections where id = any($1::uuid[]) order by id for no key update`, [[...new Set([page.collection_id, target])]],
+            );
+            if (locked.find((c) => c.id === page.collection_id)?.deleted_at !== null) return { kind: 'not-found' };
+            if (locked.find((c) => c.id === target)?.deleted_at !== null) return { kind: 'collection-deleted' };
+            const row = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null for update`, [id, page.collection_id]);
+            if (row.length === 0) return { kind: 'not-found' };
+
+            let parentDepth = 0;
+            if (to.parentId !== null) {
+              const parent = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null`, [to.parentId, target]);
+              if (parent.length === 0) return { kind: 'no-parent' };
+              // The ancestors of the new parent, itself included: the page among them means the target is the page or lies inside its subtree.
+              const up = await tx.query<{ id: string; d: number }>(
+                `with recursive up as (select id, parent_id, 1 as d from pages where id = $1
+                   union all select p.id, p.parent_id, up.d + 1 from pages p join up on p.id = up.parent_id) select id, d from up`, [to.parentId],
+              );
+              if (up.some((r) => r.id === id)) return { kind: 'would-create-cycle' };
+              parentDepth = Math.max(...up.map((r) => Number(r.d)));
+            }
+            const live = await tx.query<{ height: number; size: string }>(
+              `with recursive down as (select id, 1 as d from pages where id = $1
+                 union all select p.id, down.d + 1 from pages p join down on p.parent_id = down.id where p.deleted_at is null)
+               select max(d) as height, count(*) as size from down`, [id],
+            );
+            if (parentDepth + Number(live[0]?.height) > limits.maxDepth) return { kind: 'too-deep' };
+            if (target !== page.collection_id) {
+              const count = await tx.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1 and deleted_at is null`, [target]);
+              if (Number(count[0]?.n) + Number(live[0]?.size) > limits.maxPages) return { kind: 'collection-full' };
+            }
+            const around = await neighbours(tx, target, to.parentId, to.afterId, id);
+            if (around === undefined) return { kind: 'no-after' };
+
+            // One statement for the page and every descendant, deleted ones too: the composite foreign key (parent, collection) is checked when it commits.
+            await tx.query(
+              `with recursive down as (select id from pages where id = $1 union all select p.id from pages p join down on p.parent_id = down.id)
+               update pages set collection_id = $2, parent_id = case when id = $1 then $3::uuid else parent_id end,
+                 position = case when id = $1 then $4 else position end, updated_at = case when id = $1 then now() else updated_at end
+               where id in (select id from down)`,
+              [id, target, to.parentId, position(around.before, around.after)],
+            );
+            const rows = await tx.query<Row>(`select ${META_COLUMNS} from pages where id = $1`, [id]);
+            return { kind: 'moved', page: meta(rows[0] as Row) };
+          });
+        } catch (e) {
+          if (!isSerializationFailure(e)) throw e;
+        }
+      }
+      return { kind: 'conflict' };
     },
   };
 }
