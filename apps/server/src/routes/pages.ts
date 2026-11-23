@@ -57,8 +57,7 @@ export const createPage = defineRoute({
  * collection is checked again, so access taken away (or a collection deleted) since the first answer is refused now, not replayed.
  */
 export const replayCreatePage: ReplayRebuild = async (stored, c) => {
-  const collectionId = (stored.body as { collectionId?: unknown } | null)?.collectionId;
-  if (typeof collectionId === 'string') await guardCollection(c, collectionId, 'write');
+  await guardCollection(c, (stored.body as { collectionId: string }).collectionId, 'write');
   return Response.json(stored.body, { status: stored.status });
 };
 

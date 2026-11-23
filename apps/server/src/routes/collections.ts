@@ -103,8 +103,7 @@ export function present(row: CollectionRecord, mine: Level): z.infer<typeof Coll
 
 /** A retry of a create replays the stored collection only while the caller is still an administrator and the collection is still there. */
 export const replayCreateCollection: ReplayRebuild = async (stored, c) => {
-  const id = (stored.body as { id?: unknown } | null)?.id;
-  if (typeof id === 'string') await guardCollection(c, id, 'admin');
+  await guardCollection(c, (stored.body as { id: string }).id, 'admin');
   return Response.json(stored.body, { status: stored.status });
 };
 
