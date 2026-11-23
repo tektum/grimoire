@@ -127,8 +127,8 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
       await h.repo.markReady(third.row.id, t - 1500); // completed before it expired: a ready row is never listed
       const listed = (await h.repo.expiredPending(t, 100)).filter((r) => [first, second, third, live].some((x) => x.kind === 'created' && x.row.id === r.id));
       assert.deepEqual(listed.map((r) => r.id), [first.row.id, second.row.id]);
-      const limited = (await h.repo.expiredPending(t - 2500, 1)).filter((r) => r.id === first.row.id);
-      assert.deepEqual(limited.map((r) => r.id), [first.row.id]);
+      // The limit holds (other rows of the same database may sort first, so only the count is asserted).
+      assert.equal((await h.repo.expiredPending(t, 1)).length, 1);
     },
   },
   {
