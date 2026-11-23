@@ -26,7 +26,7 @@ const rules: { api: string; code: string[]; allowed: string[]; refused: string[]
   },
   { api: 'sessionStorage', code: ['sessionStorage.clear();', 'self.sessionStorage.clear();'], allowed: ['storage', 'auth'], refused: ['ui', 'api'] },
   { api: 'indexedDB', code: ["indexedDB.open('db');", "window.indexedDB.open('db');"], allowed: ['storage', 'auth'], refused: ['ui', 'gate'] },
-  { api: 'document.cookie', code: ["document.cookie = 'a=b';", "const c = document['cookie'];"], allowed: ['storage', 'auth'], refused: ['ui', 'api', 'logging'] },
+  { api: 'document.cookie', code: ["document.cookie = 'a=b';", "const c = document['cookie'];", "window.document.cookie = 'a=b';", "globalThis.document['cookie'];"], allowed: ['storage', 'auth'], refused: ['ui', 'api', 'logging'] },
   {
     api: 'fetch',
     code: ["void fetch('/v1/me');", "void window.fetch('/v1/me');", "void globalThis['fetch']('/v1/me');"],

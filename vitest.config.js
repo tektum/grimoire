@@ -88,7 +88,7 @@ export default defineConfig({
           name: "web",
           environment: "happy-dom",
           include: ["apps/web/{src,test}/**/*.test.{ts,tsx}"],
-          exclude: [...exclude, "apps/web/test-e2e/**"],
+          exclude: [...exclude, ...slow, ...benchmark, "apps/web/test-e2e/**"],
         },
       },
       {

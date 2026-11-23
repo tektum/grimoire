@@ -148,6 +148,8 @@ const webApis = {
       `MemberExpression[object.name=${webWindowObject}][computed=true][property.value=/^(?:localStorage|sessionStorage|indexedDB)$/]`,
       "MemberExpression[object.name='document'][property.name='cookie']",
       "MemberExpression[object.name='document'][computed=true][property.value='cookie']",
+      `MemberExpression[object.type='MemberExpression'][object.object.name=${webWindowObject}][object.property.name='document'][property.name='cookie']`,
+      `MemberExpression[object.type='MemberExpression'][object.object.name=${webWindowObject}][object.property.name='document'][computed=true][property.value='cookie']`,
     ],
   },
   fetch: {

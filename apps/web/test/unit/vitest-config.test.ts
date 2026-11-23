@@ -22,6 +22,7 @@ describe('vitest.config.js for the web client', () => {
     expect(web?.test.environment).toBe('happy-dom');
     expect(web?.test.include).toEqual(['apps/web/{src,test}/**/*.test.{ts,tsx}']);
     expect(web?.test.exclude).toContain('apps/web/test-e2e/**');
+    for (const pattern of ['**/*.int.test.ts', '**/*.container.test.ts']) expect([pattern, web?.test.exclude.some((e) => e.includes(pattern.slice(3)))]).toEqual([pattern, true]);
     expect(unit?.test.exclude).toContain('apps/web/**');
   });
 
