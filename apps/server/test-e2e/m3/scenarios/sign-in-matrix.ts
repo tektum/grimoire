@@ -1,4 +1,4 @@
-import { PROJECT_ID, attempt, closeDb, createUser, eventually, freshSub, newPage, scalar, scenario, storedText, tokenFor, userRows, waitStack } from '../support.ts';
+import { MUTATION, PROJECT_ID, attempt, closeDb, createUser, eventually, freshSub, newPage, scalar, scenario, setSuspended, storedText, tokenFor, userRows, waitStack } from '../support.ts';
 import type { Variant } from '../support.ts';
 
 // Through the real Descope adapter and the local key server: a good token for a known user with write access edits a page and the edit is stored; every defective
@@ -13,6 +13,7 @@ await scenario('sign-in-matrix', 120_000, async (t) => {
   const suspended = freshSub('susp');
   await createUser({ sub: suspended, suspended: true });
   t.equal(await scalar(`select count(*) from users where descope_user_id = '${suspended}' and suspended_at is not null`), '1', 'the suspended user exists with suspended_at set');
+  if (MUTATION === 'unsuspend') await setSuspended(suspended, false); // proof run: the user is no longer suspended (set after the fixture, which would overwrite it)
   const stranger = freshSub('nobody');
   const page = await newPage();
   t.metric('projectId', PROJECT_ID); t.metric('page', page);
