@@ -30,6 +30,7 @@ export const EXPECTED_OPERATIONS: readonly string[] = [
   'POST /v1/pages',
   'POST /v1/pages/{id}/move',
   'POST /v1/pages/{id}/reset-state',
+  'POST /v1/pages/{id}/revisions/{rid}/restore',
   'POST /v1/trash/{id}/restore',
   'POST /v1/users/names',
   'PUT /v1/collections/{id}/access',

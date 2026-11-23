@@ -58,6 +58,8 @@ export async function buildWorld() {
   const hiddenTrashed = trash.seedDeleted({ collectionId: closed.id, title: 'Closed deleted' });
   const revisions = new FakeRevisionRepo();
   const revision = revisions.seed({ pageId: page.id, createdAt: 10_000, title: 'T', markdown: 'M' });
+  // What the restore route copies before it answers: the saved text of the page.
+  revisions.setPage(page.id, { title: 'Open page', markdown: 'text' });
   const pageState = new FakePageStateRepo();
   pageState.track(page.id, { markdown: 'text' });
   pageState.track(hidden.id, { markdown: 'secret' });
