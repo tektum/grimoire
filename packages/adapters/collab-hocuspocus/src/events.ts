@@ -27,6 +27,12 @@ export interface CollabEvents {
   'collab.saved': { level: 'info'; fields: { pageId: string; stateBytes: number; markdownBytes: number; convertMs: number; writeMs: number } };
   'collab.save_skipped': { level: 'debug'; fields: { pageId: string } };
   /** `kind` tells an operator busy from broken: `busy` = the converter had no room (queue full, waited too long, closing): the state was stored, the page is converted on a later save, no alarm; `broken` = a refusal or a real failure: counts toward `collab.convert_alarm`. */
+  /** A revision was made from a page's saved state (R9.2); `reason` is the rule that made it. Counts only: no title, no Markdown. The only declaration of this event. */
+  'collab.revision_created': { level: 'info'; fields: { pageId: string; reason: 'idle' | 'last_editor_left' } };
+  /** A revision was held back because the page's saved Markdown is older than its editor state; it is made at the next save that clears the flag. One per deferral. */
+  'collab.revision_deferred': { level: 'info'; fields: { pageId: string } };
+  /** The repository could not make a revision; the edits stay owed. `pageId` is `catch-up` for the restart catch-up. */
+  'collab.revision_failed': { level: 'warn'; fields: { pageId: string; errorName: string } };
   'collab.convert_failed': { level: 'warn'; fields: { pageId: string; kind: 'busy' | 'broken'; reason: string; detail: string } };
   'collab.convert_alarm': { level: 'error'; fields: { pageId: string; reason: string } };
   /** Alarm: a page's conversions keep timing out or running out of memory; they stop for `backoffMs` (the state is still stored every time). */
@@ -80,6 +86,9 @@ const LEVELS: { [E in keyof CollabEvents]: CollabEvents[E]['level'] } = {
   'collab.seed_failed': 'error',
   'collab.saved': 'info',
   'collab.save_skipped': 'debug',
+  'collab.revision_created': 'info',
+  'collab.revision_deferred': 'info',
+  'collab.revision_failed': 'warn',
   'collab.convert_failed': 'warn',
   'collab.convert_alarm': 'error',
   'collab.convert_breaker_open': 'error',

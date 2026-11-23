@@ -135,7 +135,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       : (_token, identity) => users.findByDescopeId(identity.userId);
     collab = {
       host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
-      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: http.revisions, pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
   const shutdownHooks: ShutdownHook[] = [

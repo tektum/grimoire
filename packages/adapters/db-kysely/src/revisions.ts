@@ -1,10 +1,16 @@
-import type { ListedRevision, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
+import type { CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
   id: string; created_ms: string; sort_key?: string; title: string; reason: RevisionReason; last_author_id: string | null; last_author_name: string | null;
   authors: RevisionAuthor[]; markdown?: string;
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** One revision of one page is made at a time: a second call waits, then sees the first one's revision and finds its content unchanged. Does not block page saves. */
+const lockPage = (tx: { query(sql: string, params?: readonly unknown[]): Promise<readonly unknown[]> }, pageId: string): Promise<readonly unknown[]> =>
+  tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.revisions.page.' || $1::text, 0))`, [pageId]);
 
 /** The time as whole milliseconds for the API. */
 const MS = `(extract(epoch from date_trunc('milliseconds', r.created_at)) * 1000)::bigint`;
@@ -45,6 +51,66 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       const rows = await db.query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2`, [pageId, revisionId]);
       const row = rows[0];
       return row === undefined ? undefined : { ...summary(row), markdown: row.markdown as string } satisfies Revision;
+    },
+    createFromPage(request) {
+      // A user id that is not a UUID (a development token's name) is no author: dropped here, before any cast.
+      const authorIds = request.authorIds.filter((id) => UUID.test(id));
+      const lastAuthorId = request.lastAuthorId !== null && UUID.test(request.lastAuthorId) ? request.lastAuthorId : null;
+      return db.transaction(async (tx): Promise<PageRevisionResult> => {
+        await lockPage(tx, request.pageId);
+        const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean; edited_ms: string | null; editor: string | null }>(
+          `select title, markdown, markdown_stale_since is not null as stale, (extract(epoch from last_edited_at) * 1000)::bigint::text as edited_ms, last_edited_by as editor
+             from pages where id = $1 and deleted_at is null for share`, [request.pageId],
+        ))[0];
+        if (page === undefined) return { kind: 'no-page' };
+        if (page.stale) return { kind: 'stale' };
+        // An edit may have been saved between the scheduler's snapshot and this read: the row says who made the last saved change and when, and the
+        // revision says the same, so the Markdown it copies is never dated or attributed to an earlier edit than the one it holds.
+        const savedLater = page.edited_ms !== null && Number(page.edited_ms) > request.at;
+        const at = savedLater ? Number(page.edited_ms) : request.at;
+        const savedBy = savedLater && page.editor !== null ? page.editor : null;
+        const authors = savedBy !== null && !authorIds.includes(savedBy) ? [...authorIds, savedBy] : authorIds;
+        const last = savedBy ?? lastAuthorId;
+        if (page.markdown === null) return { kind: 'no-markdown' };
+        const hash = markdownHash(page.title, page.markdown);
+        const latest = (await tx.query<{ h: Buffer }>(`select markdown_hash as h from revisions where page_id = $1 order by created_at desc, id limit 1`, [request.pageId]))[0];
+        if (latest !== undefined && Buffer.from(latest.h).equals(hash)) return { kind: 'unchanged' };
+        // Authors that are not user rows are dropped (a development token's name is not a user), in the order they were given.
+        const rows = await tx.query<{ id: string }>(
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+           values ($1, $2, $3, $4,
+             (select coalesce(array_agg(t.id order by t.ord), '{}') from unnest($5::uuid[]) with ordinality as t(id, ord) where exists (select 1 from users u where u.id = t.id)),
+             (select id from users where id = $6::uuid), $7, timestamptz 'epoch' + $8::bigint * interval '1 millisecond') returning id`,
+          [request.pageId, page.title, page.markdown, hash, authors, last, request.reason, at],
+        );
+        return { kind: 'created', id: (rows[0] as { id: string }).id };
+      });
+    },
+    catchUp(editedBefore, limit) {
+      return db.transaction(async (tx): Promise<readonly CaughtUpRevision[]> => {
+        // One instance at a time: a second one waits, then finds the first one's revisions and has nothing left to make.
+        await tx.query(`select pg_advisory_xact_lock(hashtext('grimoire.revisions.catch_up'))`);
+        const due = `p.deleted_at is null and p.markdown is not null and p.markdown_hash is not null and p.markdown_stale_since is null
+              and p.last_edited_at is not null and p.last_edited_at < timestamptz 'epoch' + $1::bigint * interval '1 millisecond'
+              and p.markdown_hash is distinct from (select r.markdown_hash from revisions r where r.page_id = p.id order by r.created_at desc, r.id limit 1)`;
+        const candidates = await tx.query<{ id: string }>(`select p.id from pages p where ${due} order by p.last_edited_at, p.id limit $2`, [editedBefore, limit]);
+        const made: CaughtUpRevision[] = [];
+        // Page by page, under the page's own lock (the one `createFromPage` takes): the check against the latest revision and the insert
+        // cannot interleave with another revision of the same page. The check is made again under the lock, as the page may have changed.
+        for (const { id } of candidates) {
+          await lockPage(tx, id);
+          const rows = await tx.query<{ page_id: string; id: string }>(
+            `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+             select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', p.last_edited_at
+               from pages p left join users u on u.id = p.last_edited_by
+              where p.id = $2 and ${due}
+             returning page_id, id`,
+            [editedBefore, id],
+          );
+          for (const r of rows) made.push({ pageId: r.page_id, revisionId: r.id });
+        }
+        return made;
+      });
     },
   };
 }

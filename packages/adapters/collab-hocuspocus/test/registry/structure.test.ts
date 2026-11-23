@@ -14,7 +14,7 @@ describe('the extensions of the collaboration server', () => {
 
   it('are one per concern, named, each with a priority of its own', () => {
     expect(byPriority.map((e) => e.extensionName)).toEqual([
-      'grimoire-auth', 'grimoire-handshake', 'grimoire-recheck', 'grimoire-limits', 'grimoire-presence', 'grimoire-persistence', 'grimoire-lifecycle',
+      'grimoire-auth', 'grimoire-handshake', 'grimoire-recheck', 'grimoire-limits', 'grimoire-presence', 'grimoire-persistence', 'grimoire-lifecycle', 'grimoire-revisions',
     ]);
     const priorities = byPriority.map((e) => e.priority);
     expect(priorities.every((p) => typeof p === 'number')).toBe(true);
@@ -29,6 +29,7 @@ describe('the extensions of the collaboration server', () => {
     expect(priority('grimoire-limits')).toBeGreaterThan(priority('grimoire-presence'));
     expect(priority('grimoire-presence')).toBeGreaterThan(priority('grimoire-persistence'));
     expect(priority('grimoire-persistence')).toBeGreaterThan(priority('grimoire-lifecycle'));
+    expect(priority('grimoire-lifecycle')).toBeGreaterThan(priority('grimoire-revisions')); // revisions run last: after a save, never before it
   });
 
   it('give each concern its own hooks: only the persistence extension stores documents and only the auth extension authenticates', () => {
@@ -36,5 +37,7 @@ describe('the extensions of the collaboration server', () => {
     expect(stores).toEqual(['grimoire-persistence']);
     const authenticates = byPriority.filter((e) => e.onAuthenticate !== undefined).map((e) => e.extensionName);
     expect(authenticates).toEqual(['grimoire-auth']);
+    const revising = byPriority.filter((e) => e.afterUnloadDocument !== undefined && e.extensionName === 'grimoire-revisions').map((e) => e.extensionName);
+    expect(revising).toEqual(['grimoire-revisions']);
   });
 });
