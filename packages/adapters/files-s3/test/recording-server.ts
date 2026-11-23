@@ -43,8 +43,9 @@ export function useRecordingServer(): void {
           headers: req.headers,
           body: Buffer.concat(parts),
         });
-        res.writeHead(recorder.reply.status, recorder.reply.headers);
-        res.end(req.method === 'HEAD' ? undefined : recorder.reply.body);
+        const reply = recorder.respond?.(recorder.seen[recorder.seen.length - 1] as Seen) ?? recorder.reply;
+        res.writeHead(reply.status, reply.headers);
+        res.end(req.method === 'HEAD' ? undefined : reply.body);
       });
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -54,6 +55,7 @@ export function useRecordingServer(): void {
   beforeEach(() => {
     recorder.seen.length = 0;
     recorder.reply = { status: 200 };
+    delete recorder.respond;
   });
 }
 

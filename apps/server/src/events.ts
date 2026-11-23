@@ -6,7 +6,10 @@ import type { Logger } from '@tektum/grimoire-core/ports/logger';
  * free-form text. A test fails if any file calls the logger with an event name that is not a string literal.
  */
 /** A configuration problem: the setting's name and the rule it broke; never its value. */
-export interface ConfigProblem { readonly setting: string; readonly rule: string }
+export interface ConfigProblem {
+  readonly setting: string;
+  readonly rule: string;
+}
 export type ShutdownPhaseName = 'stop-accepting' | 'stop-timers' | 'save-pages' | 'release-jobs' | 'close-database';
 export type ShutdownReason = 'SIGTERM' | 'SIGINT' | 'uncaughtException' | 'unhandledRejection';
 
@@ -46,6 +49,8 @@ export interface InfoEvents {
   'migrate.done': { applied: number };
   'migrate.jobs_schema': { tables: number };
   'seed.done': Record<string, never>;
+  /** The store set-up finished: the bucket, the origins its CORS rule lists (or was checked for) and who set the rule. */
+  'files_setup.done': { bucket: string; origins: readonly string[]; cors: 'api' | 'external' };
 }
 
 export interface WarnEvents {
@@ -76,6 +81,11 @@ export interface ErrorEvents {
   'seed.config_invalid': { settings: readonly ConfigProblem[] };
   'seed.refused': { settings: readonly ConfigProblem[] };
   'seed.failed': { error: string };
+  'files_setup.config_invalid': { settings: readonly ConfigProblem[] };
+  /** Adapter-authored text of a store refusal (never a key, a URL or a response body), or the class name of anything else. */
+  'files_setup.failed': { reason: string };
+  /** `external` CORS mode: the first origin, method or header the store's own rule does not allow. */
+  'files_setup.cors_refused': { problem: string };
 }
 
 /** The only logger the server code uses. The one non-literal event name in the code base is in this file. */

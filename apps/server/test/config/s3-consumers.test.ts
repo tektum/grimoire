@@ -9,6 +9,12 @@ import { describe, expect, it } from 'vitest';
 // so the list only shrinks.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const schemaFile = path.join(root, 'packages/adapters/config-env/src/schema.ts');
+/**
+ * The admin key is read nowhere but by the files-setup command, whose composition hands the whole `Config.filesSetup`
+ * (with both keys) to the store set-up; `composition.ts` is its one allowed reader.
+ */
+const adminKeyReader = path.join(root, 'apps/server/src/composition.ts');
+const adminKeys = ['GRIMOIRE_S3_ADMIN_ACCESS_KEY', 'GRIMOIRE_S3_ADMIN_SECRET_KEY'];
 const readerDirs = [path.join(root, 'apps/server/src'), path.join(root, 'packages/adapters/files-s3/src')];
 
 /** The `Config.files` field each setting fills. */
@@ -29,19 +35,16 @@ const fieldOf: Record<string, string> = {
   GRIMOIRE_FILES_PENDING_MAX_PER_USER: 'pendingMaxPerUser',
 };
 
-/** Settings read by a piece of work that has not landed: the admin key is read through `Config.filesSetup`. */
+/** Settings read by a piece of work that has not landed. */
 const notReadYet: Record<string, string> = {
-  GRIMOIRE_S3_CORS_MODE: 'the files-setup command',
-  GRIMOIRE_S3_ADMIN_ACCESS_KEY: 'the files-setup command',
-  GRIMOIRE_S3_ADMIN_SECRET_KEY: 'the files-setup command',
   GRIMOIRE_FILES_MAX_BYTES: 'the upload routes',
   GRIMOIRE_FILES_ALLOWED_TYPES: 'the upload routes',
   GRIMOIRE_FILES_PENDING_MAX_PER_USER: 'the upload routes',
 };
 
-/** Whether some source reads `field` from a files configuration (`config.field`, `config.files.field`, `files?.field`). */
+/** Whether some source reads `field` from a files configuration (`config.field`, `config.files.field`, `files?.field`, `setup.field`). */
 export function hasReader(sources: readonly string[], field: string): boolean {
-  const read = new RegExp(`\\b(?:config|files)\\??\\.(?:files\\??\\.)?${field}\\b`);
+  const read = new RegExp(`\\b(?:config|files|setup)\\??\\.(?:files\\??\\.)?${field}\\b`);
   return sources.some((source) => read.test(source));
 }
 
@@ -69,8 +72,19 @@ describe('the store settings and their readers', () => {
     expect(Object.keys(fieldOf).filter((name) => !settings.includes(name))).toEqual([]);
   });
 
-  it.each(settings.filter((name) => notReadYet[name] === undefined))('%s has a reader', (name) => {
-    expect(hasReader(sources, fieldOf[name] as string)).toBe(true);
+  it.each(settings.filter((name) => notReadYet[name] === undefined && !adminKeys.includes(name)))(
+    '%s has a reader',
+    (name) => {
+      expect(hasReader(sources, fieldOf[name] as string)).toBe(true);
+    },
+  );
+
+  it.each(adminKeys)('%s is read by the files-setup composition, and by nothing else', (name) => {
+    expect(settings).toContain(name);
+    const composition = readFileSync(adminKeyReader, 'utf8');
+    expect(composition).toMatch(/\.\.\.setup\b/);
+    expect(composition).not.toContain(name); // through Config.filesSetup, never by name
+    for (const other of readerDirs.flatMap(sourcesUnder)) expect(other).not.toContain(name);
   });
 
   it.each(Object.keys(notReadYet))('%s is still waiting for its reader, which the list must then drop', (name) => {

@@ -8,4 +8,14 @@ export { mapError } from './errors.js';
 export function createFileStorage(config: FilesConfig, options?: FileStorageOptions): S3FileStorage {
   return new S3FileStorage(config, options);
 }
-export { createBucket, ensureBucket, putBucketCors, type EnsureBucketOptions } from './setup.js';
+export {
+  checkCors,
+  corsProbeUrl,
+  createBucket,
+  deleteBucket,
+  ensureBucket,
+  putBucketCors,
+  readBucketCors,
+  type CorsCheck,
+  type EnsureBucketOptions,
+} from './setup.js';

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createBucket, ensureBucket, putBucketCors, type EnsureBucketOptions } from '../src/index.js';
+import {
+  createBucket,
+  deleteBucket,
+  ensureBucket,
+  putBucketCors,
+  readBucketCors,
+  type EnsureBucketOptions,
+} from '../src/index.js';
 import { bucket, config, recorder, useRecordingServer } from './recording-server.js';
 
 useRecordingServer();
@@ -88,5 +95,32 @@ describe('ensureBucket', () => {
     recorder.reply = { status: 403, headers: xmlHeaders, body: '<Error><Code>AccessDenied</Code></Error>' };
     await expect(ensureBucket(options())).rejects.toMatchObject({ kind: 'unavailable' });
     expect(recorder.seen).toHaveLength(1);
+  });
+});
+
+describe('readBucketCors and deleteBucket', () => {
+  it('reads the rules back, or none', async () => {
+    recorder.reply = {
+      status: 200,
+      headers: xmlHeaders,
+      body: '<CORSConfiguration><CORSRule><AllowedOrigin>https://one.example.test</AllowedOrigin><AllowedMethod>GET</AllowedMethod></CORSRule></CORSConfiguration>',
+    };
+    const rules = await readBucketCors(options());
+    expect(recorder.seen[0]?.query.has('cors')).toBe(true);
+    expect(rules).toEqual([{ AllowedOrigins: ['https://one.example.test'], AllowedMethods: ['GET'] }]);
+    recorder.reply = { status: 200, headers: xmlHeaders, body: '<CORSConfiguration></CORSConfiguration>' };
+    expect(await readBucketCors(options())).toEqual([]);
+  });
+
+  it('is unavailable for a bucket that is not there, and refused calls are unavailable too', async () => {
+    recorder.reply = { status: 404, headers: xmlHeaders, body: '<Error><Code>NoSuchBucket</Code></Error>' };
+    await expect(readBucketCors(options())).rejects.toMatchObject({ kind: 'unavailable' });
+    await expect(deleteBucket(options())).rejects.toMatchObject({ kind: 'unavailable' });
+  });
+
+  it('deletes the bucket', async () => {
+    recorder.reply = { status: 204 };
+    await deleteBucket(options());
+    expect(recorder.seen[0]).toMatchObject({ method: 'DELETE', path: `/${bucket}/` });
   });
 });
