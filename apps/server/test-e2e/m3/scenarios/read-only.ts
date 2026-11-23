@@ -1,4 +1,4 @@
-import { closeDb, createCollection, createPageIn, createUser, eventually, freshSub, grant, newPage, scenario, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
+import { MUTATION, closeDb, createCollection, createPageIn, createUser, eventually, freshSub, grant, newPage, scenario, setRole, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
 
 // Read-only access through the real adapter, by three roads: a person with the viewer role in an open collection, a member of a collection whose default is `read`, and the same
 // member with a `read_write` entry (granted at connect time, so it edits). A read-only client sees what the writers type; what it types reaches nobody and is never stored.
@@ -8,6 +8,7 @@ await scenario('read-only', 120_000, async (t) => {
   const viewer = freshSub('rov'); const member = freshSub('rom'); const editor = freshSub('roe'); const writer = freshSub('row');
   await createUser({ sub: viewer, role: 'viewer' });
   for (const sub of [member, editor, writer]) await createUser({ sub });
+  if (MUTATION === 'viewer-as-member') await setRole(viewer, 'member'); // proof run: the viewer role is gone
   const open: { destroy(): void }[] = [];
   t.onDone(() => { open.forEach((p) => { p.destroy(); }); });
 

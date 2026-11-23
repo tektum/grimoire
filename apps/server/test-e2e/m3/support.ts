@@ -84,6 +84,10 @@ export async function attempt(page: string, label: string, token: string, text?:
   return { peer: p, outcome };
 }
 
+/** The mutation the proof run asks for (`make test-m3-mutation`): a scenario breaks one protection from outside, at the marked place, and must then FAIL. Empty in a normal run. */
+export const MUTATION = process.env['M3_MUTATION'] ?? '';
+export async function setDefaultPermission(collection: string, permission: 'read' | 'read_write' | null): Promise<void> { await psql(`update collections set default_permission = ${permission === null ? 'null' : lit(permission)} where id = '${collection}'`); }
+
 /** What the refused or closed client saw first: the code and the reason string of its first close. */
 export const firstClose = (p: Peer, timeoutMs: number, what: string): Promise<{ readonly code: number; readonly reason: string }> =>
   eventually(() => p.closed[0], timeoutMs, what);

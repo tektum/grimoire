@@ -1,4 +1,4 @@
-import { attempt, closeDb, createCollection, createPageIn, createUser, eventually, firstClose, freshSub, grant, scenario, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
+import { attempt, closeDb, createCollection, createPageIn, MUTATION, createUser, eventually, firstClose, freshSub, grant, scenario, setDefaultPermission, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
 
 // A CLOSED collection (no default permission) through the real Descope adapter: a person with no entry is refused `not-found` (close 4404, the page is not even said to exist),
 // a person with a `read` entry is granted the read-only scope and sees the writer's edits, and what the reader types never reaches the writer or the stored page.
@@ -12,6 +12,7 @@ await scenario('closed-collection', 120_000, async (t) => {
   const page = await createPageIn(collection);
   await grant(collection, writer, 'read_write');
   await grant(collection, reader, 'read');
+  if (MUTATION === 'open-closed-collection') await setDefaultPermission(collection, 'read_write'); // proof run: the collection is no longer closed
   const peers: { destroy(): void }[] = [];
   t.onDone(() => { peers.forEach((p) => { p.destroy(); }); });
 

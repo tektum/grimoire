@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3
+.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -109,3 +109,14 @@ test-m3: dev-secret
 	$(M3_COMPOSE) $(MAKE) up
 	rm -f test-results/m3/*.json
 	$(M3_COMPOSE) node apps/server/test-e2e/m3/run.ts
+
+# The mutation proofs of the sign-in end-to-end test: each protection is broken on purpose from outside the code (a setting of the recreated app, or a database row a scenario
+# sets at its marked place) and its scenario must FAIL with exactly the expected line; exits 0 only if every mutation was detected. Same stack as test-m3; recreates the app per setting.
+test-m3-mutation: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	sh tools/m3-keyserver/pki.sh test-results/m3/pki
+	$(M3_COMPOSE) $(MAKE) up
+	rm -f test-results/m3-mutation/*.json
+	$(M3_COMPOSE) node apps/server/test-e2e/m3/mutation.ts
