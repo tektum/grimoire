@@ -135,6 +135,38 @@ describe('POST /v1/pages', () => {
   });
 });
 
+describe('a retry with the same Idempotency-Key', () => {
+  const first = (b: ReturnType<typeof build>) => b.call('member', 'POST', '/v1/pages', { collectionId: b.shared.id }, { 'idempotency-key': 'k' });
+  const retry = (b: ReturnType<typeof build>) => b.call('member', 'POST', '/v1/pages', { collectionId: b.shared.id }, { 'idempotency-key': 'k' });
+
+  it('is refused 403 when write access was taken away since the first answer, and creates nothing new', async () => {
+    const b = build();
+    expect((await first(b)).status).toBe(201);
+    await b.collections.update(b.shared.id, { defaultPermission: 'read' }, b.rows[0]?.id as string);
+    const res = await retry(b);
+    expect([res.status, await code(res), b.pages.count()]).toEqual([403, 'forbidden', 1]);
+  });
+
+  it('is refused 404 when read access was taken away or the collection was deleted', async () => {
+    const gone = build();
+    await first(gone);
+    await gone.collections.update(gone.shared.id, { defaultPermission: null }, gone.rows[0]?.id as string);
+    expect((await retry(gone)).status).toBe(404);
+    const deleted = build();
+    await first(deleted);
+    await deleted.collections.softDelete(deleted.shared.id, deleted.rows[0]?.id as string);
+    expect((await retry(deleted)).status).toBe(404);
+  });
+
+  it('still replays the stored answer while access holds', async () => {
+    const b = build();
+    const a = await first(b);
+    const again = await retry(b);
+    expect([again.status, again.headers.get('idempotent-replay')]).toEqual([201, 'true']);
+    expect(await again.json()).toEqual(await a.json());
+  });
+});
+
 describe('POST /v1/pages with Markdown', () => {
   it('seeds with the user id as the key and stores the canonical Markdown with its state', async () => {
     const b = build();
@@ -207,5 +239,14 @@ describe('POST /v1/pages with Markdown', () => {
     release();
     expect([(await first).status, (await other).status]).toEqual([201, 201]);
     expect(b.pages.count()).toBe(2);
+    // The slot is free again once the work is done: the same user converts once more.
+    expect((await make(b, { collectionId: b.shared.id, markdown: 'four' })).status).toBe(201);
+  });
+
+  it('frees the slot after a refused conversion too', async () => {
+    const b = build();
+    b.converter.enqueueSeed({ ok: false, reason: 'invalid-markdown', detail: 'x' });
+    expect((await make(b, { collectionId: b.shared.id, markdown: 'bad' })).status).toBe(422);
+    expect((await make(b, { collectionId: b.shared.id, markdown: 'good' })).status).toBe(201);
   });
 });

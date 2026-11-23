@@ -3,6 +3,7 @@ import type { PageMeta } from '@tektum/grimoire-core/ports/page-repo';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
+import type { ReplayRebuild } from '../http/idempotency.js';
 import { caller, guardCollection } from '../http/collection-guard.js';
 import { seedRefusalToHttp } from '../http/seed-errors.js';
 
@@ -50,6 +51,16 @@ export const createPage = defineRoute({
     409: json(ErrorBody, 'Too deep, the collection is full or deleted'),
   },
 });
+
+/**
+ * A retry of a create with the same Idempotency-Key replays the stored answer; before it does, the caller's right to write in that
+ * collection is checked again, so access taken away (or a collection deleted) since the first answer is refused now, not replayed.
+ */
+export const replayCreatePage: ReplayRebuild = async (stored, c) => {
+  const collectionId = (stored.body as { collectionId?: unknown } | null)?.collectionId;
+  if (typeof collectionId === 'string') await guardCollection(c, collectionId, 'write');
+  return Response.json(stored.body, { status: stored.status });
+};
 
 const router = createRouter();
 
