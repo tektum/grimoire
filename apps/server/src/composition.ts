@@ -57,7 +57,6 @@ export interface CompositionOverrides {
 }
 
 const systemClock: Clock = { now: () => Date.now() };
-export const CONVERT_TIMEOUT_MS = 10_000;
 /** Per-query limit of the authentication pool: below the host's 2 s bound on the database part of sign-in, so a hung query frees its connection. */
 export const AUTH_QUERY_TIMEOUT_MS = 1500;
 
@@ -101,7 +100,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const collabRole = config.role !== 'api';
   const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
   const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
-  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: CONVERT_TIMEOUT_MS, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
+  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
   let collab: AppContext['collab'];
   if (pageDb && authDb && converter) {
     const users = createUserStore(authDb);

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createMarkdownConverter, DEFAULT_LIMITS, seedInProcess } from '../../src/index.js';
 import { ensureBuilt } from '../pool/support.js';
 
-// The SEED direction: parser CPU time of realistic dense documents at four sizes (192, 128, 96 and 64 KiB, or the 8,000-line cap where that binds first), with the
-// margin under the 5 s seed limit AND under 10 s; the realistic variant of each slow shape next to its worst case; and the cost against paragraph length at a fixed
+// The SEED direction: parser CPU time of realistic dense documents at three sizes (128 KiB, the seed cap, 96 and 64 KiB, or the 8,000-line cap where that binds first), with the
+// margin under the 10 s seed limit (the 5 s column is the former limit, kept for comparison); the realistic variant of each slow shape next to its worst case; and the cost against paragraph length at a fixed
 // total size. INFORMATIONAL like the other timings (they depend on the machine): printed, flagged `UNDER 2x`, never failed on time. What fails is only what does
 // not depend on the machine: a valid document within the caps that does not seed, or a hostile shape that ends any other way than a timeout or a size refusal.
 const cpu = (): number => { const u = process.cpuUsage(); return (u.user + u.system) / 1000; };
@@ -30,7 +30,7 @@ async function timedRuns(markdown: string): Promise<{ ms: number; least: number;
   const median = times.length % 2 === 1 ? (times[mid] ?? 0) : ((times[mid - 1] ?? 0) + (times[mid] ?? 0)) / 2; // an even count averages the two middle runs (a series ends early after a run over 3 s)
   return { ms: median, least: times[0] ?? 0, result };
 }
-const SIZES_KIB = [64, 96, 128, 192] as const;
+const SIZES_KIB = [64, 96, 128] as const;
 const SKIP_AFTER_MS = 8_000; // a shape that already took this long at a smaller size is not run at the larger ones (it only costs time)
 
 /** The most repeats of `unit` (between `head` and `tail`) that fit `bytes` and the line cap; also which of the two bound it. */
@@ -59,7 +59,7 @@ const SHAPES: readonly Shape[] = [
   { name: 'short lines (one word each)', note: 'per document', build: (b) => fill('a\n\n', b) },
 ];
 
-describe('seed direction: parser CPU at four sizes, margin under 5 s and 10 s (informational)', () => {
+describe('seed direction: parser CPU at three sizes, margin under the 10 s seed limit (informational)', () => {
   it('prints one row per shape and size', async () => {
     await seedInProcess('# warm up\n');
     const rows: string[] = [];
@@ -71,7 +71,7 @@ describe('seed direction: parser CPU at four sizes, margin under 5 s and 10 s (i
         if (slow) { rows.push(`${shape.name.padEnd(48)} ${String(kib).padStart(3)} KiB  not run: a smaller size already took more than ${SKIP_AFTER_MS} ms`); continue; }
         const { ms, least, result } = await timedRuns(text);
         if (ms > SKIP_AFTER_MS) slow = true;
-        rows.push(`${shape.name.padEnd(48)} ${String(kib).padStart(3)} KiB (${String(Buffer.byteLength(text)).padStart(6)} B, ${String(lines).padStart(5)} lines, bound: ${bound}) ${String(Math.round(ms)).padStart(6)} ms (least ${String(Math.round(least)).padStart(5)})  margin 5 s ${m(ms, 5_000).padStart(6)}  10 s ${m(ms, 10_000).padStart(6)}  [${shape.note}] ${result.ok ? 'ok' : result.reason}`);
+        rows.push(`${shape.name.padEnd(48)} ${String(kib).padStart(3)} KiB (${String(Buffer.byteLength(text)).padStart(6)} B, ${String(lines).padStart(5)} lines, bound: ${bound}) ${String(Math.round(ms)).padStart(6)} ms (least ${String(Math.round(least)).padStart(5)})  margin 10 s (limit) ${m(ms, 10_000).padStart(6)}  5 s ${m(ms, 5_000).padStart(6)}  [${shape.note}] ${result.ok ? 'ok' : result.reason}`);
         expect(result.ok, `${shape.name} at ${String(kib)} KiB is a valid document at the caps and must seed: ${result.ok ? '' : result.reason}`).toBe(true);
       }
     }
@@ -103,15 +103,15 @@ describe('seed direction: parser CPU at four sizes, margin under 5 s and 10 s (i
 });
 
 describe('seed through the pool at the production limits: the hostile shapes are stopped by the limit', () => {
-  it('prints the wall time of the two hostile shapes at 192 KiB', async () => {
+  it('prints the wall time of the two hostile shapes at 128 KiB', async () => {
     ensureBuilt();
     const pool = createMarkdownConverter({ poolSize: 1 });
     try {
       for (const [name, unit] of [['unmatched emphasis runs', '*a_ '], ['closing brackets', ']']] as const) {
-        const { text } = fill(unit, 192 * KIB);
+        const { text } = fill(unit, 128 * KIB);
         const started = performance.now();
         const result = await pool.seed(text, 'bench');
-        process.stdout.write(`\nhostile ${name}, 192 KiB, pool: ${Math.round(performance.now() - started)} ms (limit 5000 ms) ${result.ok ? 'ok' : result.reason}\n`);
+        process.stdout.write(`\nhostile ${name}, 128 KiB, pool: ${Math.round(performance.now() - started)} ms (limit ${String(DEFAULT_LIMITS.maxSeedMarkdownBytes)} bytes, 10000 ms) ${result.ok ? 'ok' : result.reason}\n`);
         expect(result.ok || result.reason === 'timeout' || result.reason === 'too-large', name).toBe(true);
       }
     } finally { await pool.close(); }

@@ -7,13 +7,13 @@ const L = DEFAULT_LIMITS;
 const problem = (md: string) => seedMarkdownProblem(md, L);
 
 describe('the seed pre-check: three cheap limits, nothing else', () => {
-  it('defaults: 192 KiB, 8,000 lines, 50 markers per line', () => {
-    expect(L).toMatchObject({ maxSeedMarkdownBytes: 196_608, maxSeedLines: 8_000, maxSeedLineMarkers: 50 });
+  it('defaults: 128 KiB, 8,000 lines, 50 markers per line', () => {
+    expect(L).toMatchObject({ maxSeedMarkdownBytes: 131_072, maxSeedLines: 8_000, maxSeedLineMarkers: 50 });
   });
 
   it('size: counted in bytes, the message names the limit and both values', () => {
-    expect(problem('x'.repeat(196_608))).toBeUndefined();
-    expect(problem('x'.repeat(196_609))).toEqual({ limit: 'bytes', message: 'the Markdown is 196609 bytes; the limit is 196608 bytes' });
+    expect(problem('x'.repeat(131_072))).toBeUndefined();
+    expect(problem('x'.repeat(131_073))).toEqual({ limit: 'bytes', message: 'the Markdown is 131073 bytes; the limit is 131072 bytes' });
     expect(seedMarkdownProblem('\u00e9'.repeat(51), { ...L, maxSeedMarkdownBytes: 100 })?.limit).toBe('bytes');
   });
 
@@ -103,9 +103,9 @@ describe('the seed pre-check: three cheap limits, nothing else', () => {
     expect(problem(']'.repeat(100_000))).toBeUndefined();
   });
 
-  it('is linear: 192 KiB of the worst line shapes is checked in well under a second of CPU', () => {
+  it('is linear: 128 KiB of the worst line shapes is checked in well under a second of CPU', () => {
     const t = process.cpuUsage();
-    for (const md of ['>'.repeat(196_608), ' >-'.repeat(87_000), 'a\n'.repeat(130_000), '- '.repeat(130_000)]) problem(md);
+    for (const md of ['>'.repeat(131_072), ' >-'.repeat(43_000), 'a\n'.repeat(65_000), '- '.repeat(65_000)]) problem(md);
     const used = process.cpuUsage(t);
     expect((used.user + used.system) / 1000).toBeLessThan(1_000);
   });
@@ -116,8 +116,8 @@ describe('inputs of the earlier reviews end in a named pre-check refusal', () =>
     ['nested quote and list markers, 36 KB', ' >-'.repeat(12_000), 'markers'],
     ['list and quote markers, 24 KB', '- >'.repeat(8_000), 'markers'],
     ['budget-edge mixture, 80 KB', ']a&1\n-&!'.repeat(10_000), 'lines'],
-    ['block-dense text, 180 KB', '&1\n-&'.repeat(36_000), 'lines'],
-    ['one over the size cap', 'a'.repeat(196_609), 'bytes'],
+    ['block-dense text, 125 KB', '&1\n-&'.repeat(25_000), 'lines'],
+    ['one over the size cap', 'a'.repeat(131_073), 'bytes'],
   ];
   it.each(refused)('%s', async (_name, md, limit) => {
     expect(problem(md)?.limit).toBe(limit);
@@ -131,8 +131,8 @@ describe('shapes the old guard refused are accepted and converted', () => {
     ['python listing, snake_case', '```python\n' + 'def foo_bar_baz(a_b, c_d):\n    return a_b * c_d_e\n'.repeat(2_000) + '```\n'],
     ['code with * and []', '```c\n' + 'for (i = 0; i < n; i++) { *p++ = a[i] * b[i]; }\n'.repeat(1_700) + '```\n'],
     ['pretty JSON', '```json\n' + '  {"a_b": [1, 2, {"c": "d_e"}], "f": "*g*"},\n'.repeat(2_500) + '```\n'],
-    ['GFM task list', '- [ ] task *a* done_x\n'.repeat(5_100)],
-    ['link table, 6 links a row', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(900)],
+    ['GFM task list', '- [ ] task *a* done_x\n'.repeat(3_500)],
+    ['link table, 6 links a row', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(800)],
     ['numbered references', Array.from({ length: 5_000 }, (_, i) => `See [${i}] text`).join('\n')],
     ['bold and italic lines', '- **bold** and _italic_ words\n'.repeat(1_700)],
   ];
@@ -161,7 +161,7 @@ describe('the system rebuild (reseed) has its own limits; the user seed cannot r
     expect((await seedInProcess(lines(5_000)))).toMatchObject({ ok: false, reason: 'too-large' });
     expect((await reseedInProcess(lines(5_000))).ok).toBe(true);
     expect((await seedInProcess('x'.repeat(200_000)))).toMatchObject({ ok: false, reason: 'too-large' });
-    expect((await reseedInProcess('x'.repeat(1_048_576))).ok).toBe(true);
+    expect((await reseedInProcess('x'.repeat(900_000))).ok).toBe(true); // a longer text would pass the Markdown cap but not the state cap: one character is about one byte of state
     expect((await seedInProcess('>'.repeat(60) + ' x'))).toMatchObject({ ok: false, reason: 'too-large' });
     expect((await reseedInProcess('>'.repeat(100) + ' x', { maxDepth: 1_000 })).ok).toBe(true);
   }, 60_000);
@@ -171,7 +171,7 @@ describe('the system rebuild (reseed) has its own limits; the user seed cannot r
   });
   it('the user seed ignores the lenient limits whatever the caller passes', async () => {
     const lenient = { maxReseedMarkdownBytes: 1 << 30, maxReseedLineMarkers: 1 << 20 };
-    expect(await seedInProcess('x'.repeat(196_609), lenient)).toMatchObject({ ok: false, reason: 'too-large' });
+    expect(await seedInProcess('x'.repeat(131_073), lenient)).toMatchObject({ ok: false, reason: 'too-large' });
     expect(await seedInProcess('>'.repeat(51) + ' x', lenient)).toMatchObject({ ok: false, reason: 'too-large' });
     expect(await seedInProcess(lines(4_001), lenient)).toMatchObject({ ok: false, reason: 'too-large' });
   });

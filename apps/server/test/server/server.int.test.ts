@@ -188,7 +188,7 @@ describe('shutdown of the real entry point', () => {
   });
 
   it('the overall deadline forces exit code 3 when a hook outlasts it', async () => {
-    const s = await start({ entry: hooksEntry, env: withDb(MIGRATED, { T07_HOOKS: 'hang-forever', GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '1000', GRIMOIRE_COLLAB_STORE_TIMEOUT_MS: '500' }) });
+    const s = await start({ entry: hooksEntry, env: withDb(MIGRATED, { T07_HOOKS: 'hang-forever', GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '1000', GRIMOIRE_COLLAB_STORE_TIMEOUT_MS: '500', GRIMOIRE_SAVE_TIMEOUT_MS: '100' }) });
     const t = Date.now();
     s.signal('SIGTERM');
     const exit = await s.exited;

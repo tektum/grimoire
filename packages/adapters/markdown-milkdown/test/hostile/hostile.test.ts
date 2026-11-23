@@ -83,7 +83,7 @@ describe('hostile input fails closed', () => {
   });
 
   it('the production default: 50,000 blocks are accepted by the block guard, 50,001 are refused', async () => {
-    // maxStateBytes is raised so that only the block limit decides (the default state cap is about 1.5 MB).
+    // maxStateBytes is raised so that only the block limit decides (the default state cap is 1 MB).
     const big = { maxStateBytes: 2 ** 31 };
     expect(failure(await convertInProcess(manyParagraphsState(50_000), big))).toBe('ok');
     expect(failure(await convertInProcess(manyParagraphsState(50_001), big))).toBe('too-large');

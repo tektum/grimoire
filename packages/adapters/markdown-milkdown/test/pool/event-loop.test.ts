@@ -5,6 +5,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, expect, it } from 'vitest';
 import { createMarkdownConverter } from '../../src/index.js';
+import { DEFAULT_LIMITS } from '../../src/limits.js';
 import { generateMarkdown } from '../../src/testing/generate.js';
 import { stateFromMarkdown } from '../../src/testing/states.js';
 import { ensureBuilt } from './support.js';
@@ -13,8 +14,8 @@ beforeAll(ensureBuilt);
 
 const RESULT = fileURLToPath(new URL('../../../../../test-results/m2/pool-1mb.json', import.meta.url));
 
-it('a cap-sized conversion (0.9 MB of Markdown, a 1.5 MB state: the largest page the server accepts) in the pool leaves the main thread answering: GET /ping within 500 ms (median under 100 ms), event-loop delay under 500 ms', async () => {
-  const state = await stateFromMarkdown(generateMarkdown('prose', 880_000));
+it('a cap-sized conversion (about 0.57 MB of Markdown, a state at the state cap: the largest page the server accepts) in the pool leaves the main thread answering: GET /ping within 500 ms (median under 100 ms), event-loop delay under 500 ms', async () => {
+  const state = await stateFromMarkdown(generateMarkdown('prose', 575_000));
   const converter = createMarkdownConverter({ timeoutMs: 10_000 });
   const server = createServer((_request, response) => response.end('pong'));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -45,6 +46,8 @@ it('a cap-sized conversion (0.9 MB of Markdown, a 1.5 MB state: the largest page
     const maxLoopDelayMs = delay.max / 1e6;
     mkdirSync(fileURLToPath(new URL('.', `file://${RESULT}`)), { recursive: true });
     writeFileSync(RESULT, `${JSON.stringify({ stateBytes: state.byteLength, ok: result.ok, elapsedMs: Math.round(elapsedMs), pings: pings.length, maxPingMs: Math.round(maxPingMs), maxLoopDelayMs: Math.round(maxLoopDelayMs) }, null, 2)}\n`);
+    expect(state.byteLength, 'the fixture is at the state cap').toBeGreaterThan(DEFAULT_LIMITS.maxStateBytes * 0.9);
+    expect(state.byteLength).toBeLessThanOrEqual(DEFAULT_LIMITS.maxStateBytes);
     expect(result.ok).toBe(true);
     expect(elapsedMs).toBeLessThan(10_000);
     expect(pings.length).toBeGreaterThan(3);

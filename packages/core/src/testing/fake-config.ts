@@ -2,10 +2,11 @@ import type { CollabConfig, Config } from '../ports/config.js';
 
 export const defaultCollabConfig: CollabConfig = {
   maxPayloadBytes: 1048576,
-  maxStateBytes: 1536000,
-  seedMaxMarkdownBytes: 196608,
-  seedTimeoutMs: 5000,
+  maxStateBytes: 1_000_000,
+  seedMaxMarkdownBytes: 131_072,
+  seedTimeoutMs: 10_000,
   reseedTimeoutMs: 30000,
+  saveTimeoutMs: 10000,
   convertPoolSize: 2,
   stateWarnPercent: 80,
   messagesPerWindow: 300,

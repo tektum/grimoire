@@ -105,10 +105,11 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_TRUSTED_PROXY: field(list(ipOrCidr, ipRule), undefined, true).default([]),
   GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field(int(1, MAX_INT)).default(45000),
   GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES: field(int(1, MAX_INT)).default(1048576),
-  GRIMOIRE_COLLAB_MAX_STATE_BYTES: field(int(1, MAX_INT)).default(1536000),
-  GRIMOIRE_SEED_MAX_MARKDOWN_BYTES: field(int(1, 16_777_216)).default(196608),
-  GRIMOIRE_SEED_TIMEOUT_MS: field(int(100, 60_000)).default(5000),
+  GRIMOIRE_COLLAB_MAX_STATE_BYTES: field(int(1, MAX_INT)).default(1_000_000),
+  GRIMOIRE_SEED_MAX_MARKDOWN_BYTES: field(int(1, 16_777_216)).default(131_072),
+  GRIMOIRE_SEED_TIMEOUT_MS: field(int(100, 60_000)).default(10_000),
   GRIMOIRE_RESEED_TIMEOUT_MS: field(int(1000, 600_000)).default(30000),
+  GRIMOIRE_SAVE_TIMEOUT_MS: field(int(100, 120_000)).default(10000),
   GRIMOIRE_CONVERT_POOL_SIZE: field(int(1, 16)).default(2),
   GRIMOIRE_COLLAB_STATE_WARN_PERCENT: field(int(1, 99)).default(80),
   GRIMOIRE_COLLAB_MESSAGES_PER_WINDOW: field(int(1, MAX_INT)).default(300),
@@ -232,6 +233,14 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       const d: unknown = v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS;
       return !valid(t, 1, MAX_INT) || !valid(d, 1, MAX_INT) || t < d;
     }, { path: ['GRIMOIRE_COLLAB_STORE_TIMEOUT_MS'], when: always, error: () => `must be smaller than ${P}SHUTDOWN_SAVE_DEADLINE_MS` })
+    .refine((v) => {
+      // A save is a conversion followed by a store: one that is running when the server stops has to end inside the shutdown save deadline, both parts at their limits.
+      // (When the store timeout alone is already not below the deadline, that rule reports it; this one stays quiet so one cause gives one message.)
+      const t: unknown = v.GRIMOIRE_SAVE_TIMEOUT_MS;
+      const s: unknown = v.GRIMOIRE_COLLAB_STORE_TIMEOUT_MS;
+      const d: unknown = v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS;
+      return !valid(t, 100, 120_000) || !valid(s, 1, MAX_INT) || !valid(d, 1, MAX_INT) || s >= d || t + s < d;
+    }, { path: ['GRIMOIRE_SAVE_TIMEOUT_MS'], when: always, error: () => `plus ${P}COLLAB_STORE_TIMEOUT_MS must be smaller than ${P}SHUTDOWN_SAVE_DEADLINE_MS` })
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ENDPOINT'), s3Missing('ENDPOINT'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_BUCKET'), s3Missing('BUCKET'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ACCESS_KEY'), s3Missing('ACCESS_KEY'))
@@ -266,7 +275,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   shutdownSaveDeadlineMs: v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS,
   collab: {
     maxPayloadBytes: v.GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES, maxStateBytes: v.GRIMOIRE_COLLAB_MAX_STATE_BYTES,
-    seedMaxMarkdownBytes: v.GRIMOIRE_SEED_MAX_MARKDOWN_BYTES, seedTimeoutMs: v.GRIMOIRE_SEED_TIMEOUT_MS, reseedTimeoutMs: v.GRIMOIRE_RESEED_TIMEOUT_MS, convertPoolSize: v.GRIMOIRE_CONVERT_POOL_SIZE,
+    seedMaxMarkdownBytes: v.GRIMOIRE_SEED_MAX_MARKDOWN_BYTES, seedTimeoutMs: v.GRIMOIRE_SEED_TIMEOUT_MS, reseedTimeoutMs: v.GRIMOIRE_RESEED_TIMEOUT_MS, saveTimeoutMs: v.GRIMOIRE_SAVE_TIMEOUT_MS, convertPoolSize: v.GRIMOIRE_CONVERT_POOL_SIZE,
     stateWarnPercent: v.GRIMOIRE_COLLAB_STATE_WARN_PERCENT, messagesPerWindow: v.GRIMOIRE_COLLAB_MESSAGES_PER_WINDOW,
     rateWindowSeconds: v.GRIMOIRE_COLLAB_RATE_WINDOW_SECONDS, maxConnectionsPerPage: v.GRIMOIRE_COLLAB_MAX_CONNECTIONS_PER_PAGE,
     maxConnections: v.GRIMOIRE_COLLAB_MAX_CONNECTIONS, maxOpenDocuments: v.GRIMOIRE_COLLAB_MAX_OPEN_DOCUMENTS,

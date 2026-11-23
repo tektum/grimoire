@@ -4,7 +4,8 @@ import { appEvents, eventually, newPage, scenario } from '../../support.ts';
 import { FRAGMENT, Pinger, closeM2Db, docPeer, insertSeededPage, peerSynced, rowOf, stateOfMarkdown } from '../support.ts';
 import { devToken } from '../../support.ts';
 
-const LOW = 1_100_000; const HIGH = 1_200_000;
+// 72 to 78 percent of the default state cap (1,000,000 bytes): a large page that is still storable.
+const LOW = 720_000; const HIGH = 780_000;
 
 /** One tile of prose with some formatting and a short list; tiles differ, so the state does not shrink by repetition. */
 const tile = (i: number): string => [
@@ -14,8 +15,8 @@ const tile = (i: number): string => [
 ].join('\n');
 const tiled = (n: number): string => Array.from({ length: n }, (_, i) => tile(i)).join('\n');
 
-// A row whose Markdown, tiled, seeds to a Yjs state of 1.1 to 1.2 MB; one edit; the save lands while a second client keeps asking the server
-// for an answer. The live state cap (1,536,000 bytes) makes a 1 MB Markdown page impossible (R7.12).
+// A row whose Markdown, tiled, seeds to a Yjs state of 0.72 to 0.78 MB; one edit; the save lands while a second client keeps asking the server
+// for an answer. The live state cap (1,000,000 bytes by default) makes a 1 MB Markdown page impossible (R7.12).
 await scenario('live-size', 240_000, async (t) => {
   const since = new Date();
   t.onDone(closeM2Db);
@@ -72,7 +73,7 @@ await scenario('live-size', 240_000, async (t) => {
   t.metric('saveMs', saveMs); t.metric('maxPingDuringSaveMs', Math.round(duringSave.max * 10) / 10); t.metric('pingSamplesDuringSave', duringSave.count);
   t.metric('maxPingMs', Math.round(duringSave.max * 10) / 10);
   t.check(duringSave.max < 100, 'a second client\'s ping during the save is answered within 100 ms');
-  // The seed window is only recorded: the client that receives the 1.1 MB state applies it in this same process and stalls this loop too.
+  // The seed window is only recorded: the client that receives the 0.75 MB state applies it in this same process and stalls this loop too.
   t.metric('savedMarkdownBytes', Buffer.byteLength(saved.markdown ?? ''));
   const events = await appEvents(since);
   const savedEvent = events.filter((e) => e.event === 'collab.saved' && e['pageId'] === page).at(-1);

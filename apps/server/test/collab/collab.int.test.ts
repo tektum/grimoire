@@ -215,7 +215,7 @@ describe('store failures', () => {
   }, 40_000);
 
   it('failures continuing at SIGTERM: exit 1 within the deadline, collab.store_abandoned per page', async () => {
-    const s = await start({ ...retry, GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '2000', GRIMOIRE_COLLAB_STORE_TIMEOUT_MS: '1500' });
+    const s = await start({ ...retry, GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '2000', GRIMOIRE_COLLAB_STORE_TIMEOUT_MS: '1500', GRIMOIRE_SAVE_TIMEOUT_MS: '100' });
     const page = newPage(); await seedPage(DB, page);
     const c = client(s, page); await synced(c);
     await sqlAdmin(DB, 'revoke update on pages from grimoire_app');

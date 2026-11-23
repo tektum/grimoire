@@ -47,6 +47,7 @@ paths = [
   '''^packages/adapters/config\-env/test/hardening\.test\.ts$''',
   '''^packages/adapters/config\-env/test/m3\-hardening\.test\.ts$''',
   '''^packages/adapters/config\-env/test/store\-timeout\-deadline\.test\.ts$''',
+  '''^packages/adapters/config\-env/test/save\-timeout\.test\.ts$''',
   '''^packages/adapters/config\-env/test/store\-timeout\.test\.ts$''',
 ]
 regexes = [

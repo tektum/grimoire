@@ -16,7 +16,7 @@ const shapes: [string, string][] = [
   ['python listing, 2,500 lines', '```python\n' + 'def foo_bar_baz(a_b, c_d):\n    return a_b * c_d_e\n'.repeat(1_250) + '```\n'],
   ['pretty JSON, 150 KB', '```json\n' + '  {"a_b": [1, 2, {"c": "d_e"}], "f": "*g*"},\n'.repeat(3_300) + '```\n'],
   ['task list, 3,000 items', '- [ ] task *a* done_x\n'.repeat(3_000)],
-  ['table, 1,000 rows with links', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(1_000)],
+  ['table, 800 rows with links', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(800)],
 ];
 
 describe('saving through the gate and the saver with the real converter', () => {

@@ -79,7 +79,7 @@ export function resolveOptions(options: ConverterOptions = {}): ResolvedConverte
     ...resolveLimits(options),
     poolSize: positive('poolSize', options.poolSize ?? 2),
     timeoutMs: bounded('timeoutMs', options.timeoutMs ?? 10_000),
-    seedTimeoutMs: bounded('seedTimeoutMs', options.seedTimeoutMs ?? 5_000),
+    seedTimeoutMs: bounded('seedTimeoutMs', options.seedTimeoutMs ?? 10_000),
     reseedTimeoutMs: bounded('reseedTimeoutMs', options.reseedTimeoutMs ?? 30_000),
     heapMb: positive('heapMb', options.heapMb ?? 512),
     queueLimit: positive('queueLimit', options.queueLimit ?? 32),

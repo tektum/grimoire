@@ -4,6 +4,7 @@ import { arch, cpus, release, tmpdir, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_LIMITS } from '../../src/limits.js';
 
 /**
  * Benchmark (project `benchmark`; `bun run bench:convert` or `bun run test:benchmark`; never part of `bun run test`).
@@ -48,9 +49,11 @@ describe('conversion benchmark', () => {
         return { shape, ...measured };
       });
     }
-    // At the state cap (1,536,000 bytes): the Markdown size that gives about that state for each shape (state/Markdown
-    // ratios of docs/proof/m2-schema-fixes.md), which is the largest page that can be live.
-    const CAP_BYTES: Record<string, number> = { prose: 880_000, lists: 140_000, tables: 105_000, code: 1_400_000, mixed: 300_000 };
+    // At the state cap (DEFAULT_LIMITS.maxStateBytes): the Markdown size that gives about that state for each shape (state/Markdown
+    // ratios of docs/proof/m2-schema-fixes.md, measured at a cap of 1,536,000 bytes and scaled), which is the largest page that can be live.
+    const SCALE = DEFAULT_LIMITS.maxStateBytes / 1_536_000;
+    const AT_OLD_CAP: Record<string, number> = { prose: 880_000, lists: 140_000, tables: 105_000, code: 1_400_000, mixed: 300_000 };
+    const CAP_BYTES: Record<string, number> = Object.fromEntries(Object.entries(AT_OLD_CAP).map(([k, v]) => [k, Math.round(v * SCALE)]));
     results['state-cap'] = SHAPES.map((shape) => ({ shape, ...measure(shape, CAP_BYTES[shape] ?? 100_000) }));
     results['50000-blocks'] = [{ shape: 'blocks', ...measure('blocks', 50_000) }];
     const shrink = run(['shrink', String(100 * 1024)]);
