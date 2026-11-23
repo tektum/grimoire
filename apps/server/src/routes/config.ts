@@ -22,12 +22,18 @@ export const getConfig = defineRoute({
   responses: { 200: { description: 'The client configuration', content: { 'application/json': { schema: ClientConfigSchema } } } },
 });
 
+/** A bind address is not always one a browser can dial: the unspecified addresses become loopback, and an IPv6 literal is bracketed. */
+function browserHost(host: string): string {
+  if (host === '0.0.0.0' || host === '::' || host === '[::]') return '127.0.0.1';
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
 const router = createRouter();
 
 router.openapi(getConfig, (c) => {
   const { config, log } = c.get('deps');
   // Local mode may derive the address from where the server listens; any other mode must be told.
-  const collabUrl = config.publicCollabUrl ?? (config.local ? `ws://${config.host}:${String(config.collabPort ?? config.port)}/collab` : undefined);
+  const collabUrl = config.publicCollabUrl ?? (config.local ? `ws://${browserHost(config.host)}:${String(config.collabPort ?? config.port)}/collab` : undefined);
   if (collabUrl === undefined) {
     log.warn('config.collab_url_missing', {});
     return errorResponse('unavailable') as never;

@@ -55,6 +55,15 @@ describe('GET /v1/config', () => {
     expect(((await (await app.request('/v1/config')).json()) as { collabUrl: string }).collabUrl).toBe('ws://127.0.0.1:8124/collab');
   });
 
+  it.each([
+    ['0.0.0.0', 'ws://127.0.0.1:8123/collab'],
+    ['::', 'ws://127.0.0.1:8123/collab'],
+    ['::1', 'ws://[::1]:8123/collab'],
+  ])('builds a dialable local collaboration address from the bind host %s', async (host, expected) => {
+    const { app } = build({ local: true, host, port: 8123 });
+    expect(((await (await app.request('/v1/config')).json()) as { collabUrl: string }).collabUrl).toBe(expected);
+  });
+
   it('answers 503 unavailable with one log line outside local mode when the collaboration address is not set', async () => {
     const { app, t } = build({ local: false });
     const res = await app.request('/v1/config');
