@@ -184,6 +184,7 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         `${prefix}\\b`,
         `${prefix}/\u0000b`,
         `${prefix}/${'a'.repeat(513)}`,
+        `${prefix}/${'\u00e9'.repeat(300)}`, // over 512 UTF-8 bytes, under 512 UTF-16 units
       ];
       for (const key of bad) {
         const shown = JSON.stringify(key.slice(-20));
@@ -200,19 +201,41 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         size: 1,
         contentType: binary,
       });
-      // A percent-encoded dot segment is either refused or kept as a literal name; it must never reach `x`.
-      const escaped = `${prefix}/%2e/x`;
-      try {
-        await store.put(escaped, patternBytes(1), { size: 1, contentType: binary });
-      } catch (error) {
-        assert.ok(
-          error instanceof FileStorageError && error.kind === 'invalid-key',
-          'a refused %2e key is invalid-key',
+      // A percent-encoded dot segment is either refused (invalid-key) or kept as a literal name; whichever it does,
+      // it must never reach the plain key, on a write, a read or a delete.
+      const plain = `${prefix}/x`;
+      const seeded = patternBytes(7);
+      await store.put(plain, seeded, { size: 7, contentType: binary });
+      for (const dots of ['%2e', '%2e%2e', '%2E']) {
+        const escaped = `${prefix}/${dots}/x`;
+        const refused = async (action: Promise<unknown>, what: string): Promise<boolean> => {
+          try {
+            await action;
+            return false;
+          } catch (error) {
+            assert.ok(error instanceof FileStorageError, `${what}: ${String(error)}`);
+            assert.ok(error.kind === 'invalid-key' || error.kind === 'not-found', `${what}: got ${error.kind}`);
+            return true;
+          }
+        };
+        await refused(store.put(escaped, patternBytes(9), { size: 9, contentType: binary }), `put ${dots}`);
+        await refused(store.head(escaped), `head ${dots}`);
+        const read = await store.get(escaped).then(
+          async (got) => readAll(got.body),
+          (error: unknown) => {
+            assert.ok(
+              error instanceof FileStorageError && ['invalid-key', 'not-found'].includes(error.kind),
+              `get ${dots}`,
+            );
+            return null;
+          },
         );
-        return;
+        assert.notDeepEqual(read, seeded, `get ${dots} must not read the plain key`);
+        await store.delete(escaped).catch((error: unknown) => {
+          assert.ok(error instanceof FileStorageError && error.kind === 'invalid-key', `delete ${dots}`);
+        });
+        assert.deepEqual(await readAll((await store.get(plain)).body), seeded, `${dots} must not touch the plain key`);
       }
-      await expectKind('not-found', store.head(`${prefix}/x`), 'a %2e segment must not alias a plain key');
-      await store.delete(escaped);
     },
   },
   {
