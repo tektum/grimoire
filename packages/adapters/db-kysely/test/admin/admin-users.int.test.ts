@@ -64,7 +64,7 @@ describe('the PostgreSQL AdminRepo: users', () => {
     });
     await locked;
     const both = Promise.all([repo.patchUser(a, { role: 'member' }, b), repo.patchUser(b, { role: 'member' }, a)]);
-    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks where not granted`))[0]?.n ?? 0) >= 2, 10_000, 'both changes waiting on the administrator rows');
+    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 2, 10_000, 'both changes waiting on the administrator rows');
     release();
     await holder;
     const results = await both;
