@@ -13,12 +13,14 @@ const admin = { id: env.GRIMOIRE_DEV_S3_ACCESS_KEY ?? '', secret: env.GRIMOIRE_D
 const app = { id: env.GRIMOIRE_DEV_S3_APP_ACCESS_KEY ?? '', secret: env.GRIMOIRE_DEV_S3_APP_SECRET_KEY ?? '' };
 const HOST = '127.0.0.1:8333';
 const BUCKET = 'grimoire';
+const CORS = '<CORSConfiguration><CORSRule><AllowedOrigin>http://localhost</AllowedOrigin><AllowedMethod>GET</AllowedMethod></CORSRule></CORSConfiguration>';
 
 const sha = (d: string | Buffer): string => createHash('sha256').update(d).digest('hex');
 const hmac = (k: string | Buffer, d: string): Buffer => createHmac('sha256', k).update(d).digest();
 
-/** AWS Signature Version 4, path-style, no query string beyond the one given (already in canonical order). */
-async function call(key: { id: string; secret: string } | null, method: string, p: string, query = '', body = ''): Promise<{ status: number; text: string }> {
+/** AWS Signature Version 4, path-style. The query is given in canonical order; a parameter without a value (`cors`) is signed and sent as `cors=`. */
+async function call(key: { id: string; secret: string } | null, method: string, p: string, rawQuery = '', body = ''): Promise<{ status: number; text: string }> {
+  const query = rawQuery.split('&').filter(Boolean).map((q) => (q.includes('=') ? q : `${q}=`)).join('&');
   const headers: Record<string, string> = {};
   if (key) {
     const now = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
@@ -70,10 +72,20 @@ describe('Compose file store identities', () => {
     expect((await call(app, 'GET', `/${other}`, 'list-type=2')).status).toBe(403);
     expect((await call(app, 'PUT', `/${other}`)).status).toBe(403);
     expect((await call(app, 'DELETE', `/${BUCKET}`)).status).toBe(403);
-    expect((await call(app, 'PUT', `/${BUCKET}`, 'cors', '<CORSConfiguration/>')).status).toBe(403);
+    expect((await call(app, 'PUT', `/${BUCKET}`, 'cors', CORS)).status).toBe(403);
     expect((await call(app, 'GET', '/')).status).toBe(403);
     // The refused bucket creation really did nothing.
     expect((await call(admin, 'HEAD', `/${other}`)).status).toBe(404);
+  });
+
+  it('the CORS request used above is well formed: the admin pair is accepted for it on a scratch bucket (control)', async () => {
+    const scratch = `scratch-${randomBytes(4).toString('hex')}`;
+    expect((await call(admin, 'PUT', `/${scratch}`)).status).toBe(200);
+    try {
+      expect((await call(admin, 'PUT', `/${scratch}`, 'cors', CORS)).status).toBe(200);
+    } finally {
+      await call(admin, 'DELETE', `/${scratch}`);
+    }
   });
 
   it('a request without a signature and one with a wrong secret are refused', async () => {
