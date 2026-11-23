@@ -40,6 +40,16 @@ describe("core scan", () => {
     ]);
   });
 
+  it("reports an alias that starts or ends with a dollar sign (an identifier character the word boundary does not see)", () => {
+    for (const alias of ["$p", "p$", "$"]) {
+      expect(scanSource(`import * as ${alias} from "node:process";\nconst x = ${alias}.env.X;\n`), alias).toEqual([`reads env through the process module import ${alias}`]);
+    }
+  });
+
+  it("does not report a longer identifier that merely ends with the alias", () => {
+    expect(scanSource('import * as p from "node:process";\nconst x = np.env.X;\n')).toEqual([]);
+  });
+
   it("reports destructuring env from process", () => {
     expect(scanSource(fixture("env-destructure.ts.txt"))).toEqual(["destructures env from process"]);
   });

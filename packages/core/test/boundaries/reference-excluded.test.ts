@@ -20,7 +20,8 @@ function compiles(dir: string, config: TsConfig, probe: string): boolean {
   const rel = path.relative(dir, path.join(repoRoot, probe)).split(path.sep).join("/");
   const matches = (glob: string) => path.matchesGlob(rel, glob) || path.matchesGlob(rel, `${glob.replace(/\/$/, "")}/**`);
   const excluded = (config.exclude ?? []).some(matches);
-  return !excluded && ((config.files ?? []).some((f) => path.resolve(dir, f) === path.join(repoRoot, probe)) || (config.include ?? []).some(matches));
+  // `exclude` filters only what `include` matches; a file listed in `files` is always compiled.
+  return (config.files ?? []).some((f) => path.resolve(dir, f) === path.join(repoRoot, probe)) || (!excluded && (config.include ?? []).some(matches));
 }
 
 function tsconfigFiles(dir: string): string[] {
@@ -33,6 +34,15 @@ function tsconfigFiles(dir: string): string[] {
   }
   return out;
 }
+
+describe("compiles(): what a tsconfig compiles, as TypeScript decides it", () => {
+  it("`exclude` filters only what `include` matches: a file listed in `files` is compiled whatever `exclude` says", () => {
+    const dir = path.join(repoRoot, "packages/x");
+    expect(compiles(dir, { files: ["../../reference/relay/src/index.ts"], exclude: ["../../reference"] }, "reference/relay/src/index.ts")).toBe(true);
+    expect(compiles(dir, { include: ["../../reference/**/*.ts"], exclude: ["../../reference"] }, "reference/relay/src/index.ts")).toBe(false);
+    expect(compiles(dir, { include: ["src"], files: [] }, "reference/relay/src/index.ts")).toBe(false);
+  });
+});
 
 describe("reference/ is excluded", () => {
   it("is ignored by the ESLint config", async () => {

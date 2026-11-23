@@ -152,7 +152,12 @@ function toInterval(range) {
 export function versionsOverlap(a, b) {
   const x = toInterval(a);
   const y = toInterval(b);
-  if (!x || !y) return true;
+  if (!x || !y) {
+    // A prerelease has no interval here. Two exact version strings, one of them such a prerelease, overlap only when they are the same string; anything else unparseable counts as overlapping.
+    const exact = (r) => /^=?\s*\d[^\s<>=*]*$/.test(String(r).trim());
+    const [ea, eb] = [a, b].map((r) => String(r).trim().replace(/^=\s*/, ""));
+    return exact(a) && exact(b) ? ea === eb : true;
+  }
   const lo = cmp(x.lo, y.lo) >= 0 ? x : y;
   const hi = cmp(x.hi, y.hi) <= 0 ? x : y;
   const c = cmp(lo.lo, hi.hi);
@@ -341,6 +346,11 @@ export function checkLock(lock, { readMeta, exceptions = [], pending = [] }) {
     // bun.lock keeps its packages as tuples under bare names: reading it as an npm-style map would drop every package and pass
     if (Array.isArray(v)) throw new Error(`lock is not the npm-style map (key "${k}" is a tuple): convert bun.lock with bunLockToPackages`);
   }
+  // A real lock always has the root entry and at least one package below it: an empty or missing map is a failed conversion, never a pass.
+  const keys = Object.keys(lock.packages ?? {});
+  if (keys.length === 0) throw new Error("lock has no packages: refusing to pass an empty dependency graph");
+  if (!keys.includes("")) throw new Error('lock has no root entry (key ""): refusing to pass a graph that cannot be classified');
+  if (!keys.some((k) => k.startsWith("node_modules/"))) throw new Error("lock has no packages below the workspaces: refusing to pass an empty dependency graph");
   const classes = classifyGraph(lock);
   const out = [];
   const violations = [];

@@ -22,7 +22,7 @@ const importSpecifier = /\b(?:from|import|require)\s*\(?\s*(["'])([^"']+)\1/g;
 const envRead = /\bprocess\s*(?:\.\s*env\b|\[\s*["']env["']\s*\])/;
 const envDestructure = /\{[^}]*\benv\b[^}]*\}\s*=\s*(?:globalThis\s*\.\s*)?process\b/;
 const processNamedEnvImport = /\bimport\s*(?:[\w$]+\s*,\s*)?\{[^}]*\benv\b[^}]*\}\s*from\s*["'](?:node:)?process["']/;
-const processAliasImport = /\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\b[^;"']*from\s*["'](?:node:)?process["']/g;
+const processAliasImport = /\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)(?![\w$])[^;"']*from\s*["'](?:node:)?process["']/g;
 
 /** Returns one message per forbidden import or environment read found in the source text. */
 export function scanSource(text: string): string[] {
@@ -40,7 +40,7 @@ export function scanSource(text: string): string[] {
   if (processNamedEnvImport.test(text)) found.push("imports env from the process module");
   for (const match of text.matchAll(processAliasImport)) {
     const alias = match[1] ?? "";
-    if (new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\.\\s*env\\b`).test(text)) {
+    if (new RegExp(`(?<![\\w$])${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\.\\s*env\\b`).test(text)) {
       found.push(`reads env through the process module import ${alias}`);
     }
   }

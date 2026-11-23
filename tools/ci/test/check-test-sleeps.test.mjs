@@ -106,3 +106,27 @@ test('an allow-list entry for a missing file, or one that no longer matches a sl
   assert.equal(staleEntries(base, ['pkg'], [ok, { file, line: 'await sleep(301);', reason: 'r' }]).length, 1);
   assert.equal(staleEntries(base, ['pkg'], [{ file: 'pkg/test/ok.test.ts', line: 'await sleep(250);', reason: 'r' }]).length, 1);
 });
+
+test('an allow-list entry covers the whole call: a wrapped call is exempt only with the delay it was approved with, and a changed delay makes the entry stale', () => {
+  const wrapped = (ms) => `await new Promise((resolve) => setTimeout(\n  resolve,\n  ${ms},\n));\n`;
+  const first = findSleeps('w.test.ts', wrapped(5000));
+  assert.equal(first.length, 1);
+  assert.match(first[0].text, /5000/, 'the text of the violation holds the delay, not only the line the call starts on');
+  const entry = (line) => ({ file: 'w.test.ts', line, reason: 'a wait the product itself defines' });
+  // An entry that names only the first line does not exempt the call.
+  assert.equal(applyAllow(first, [entry('await new Promise((resolve) => setTimeout(')]).length, 1);
+  // An entry that names the whole call does, with its delay.
+  const whole = first[0].text;
+  assert.equal(applyAllow(first, [entry(whole)]).length, 0);
+  // Raising the delay: no longer exempt, and the entry is reported stale.
+  const raised = findSleeps('w.test.ts', wrapped(50000));
+  assert.equal(applyAllow(raised, [entry(whole)]).length, 1);
+  // On disk: the entry that matched the 5,000 ms call is stale once the file holds 50,000 ms.
+  fixture('wrapped.test.ts', wrapped(5000));
+  const onDisk = { file: 'pkg/test/wrapped.test.ts', line: whole, reason: 'r' };
+  assert.deepEqual(run([onDisk]).filter((v) => v.startsWith('wrapped')), []);
+  assert.deepEqual(staleEntries(base, ['pkg'], [onDisk]), []);
+  fixture('wrapped.test.ts', wrapped(50000));
+  assert.equal(staleEntries(base, ['pkg'], [onDisk]).length, 1);
+  assert.deepEqual(run([onDisk]).filter((v) => v.startsWith('wrapped')), ['wrapped.test.ts:50000']);
+});
