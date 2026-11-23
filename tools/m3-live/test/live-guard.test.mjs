@@ -31,5 +31,7 @@ test('the only management request is the one-time code of the test user', async 
     const mgmt = fake.requests.filter((q) => q.path.startsWith('/v1/mgmt/'));
     assert.deepEqual(mgmt.map((q) => `${q.method} ${q.path}`), ['POST /v1/mgmt/tests/generate/otp']);
     assert.deepEqual(fake.requests.filter((q) => !q.path.startsWith('/v1/mgmt/')).map((q) => q.method), ['POST', 'GET']);
+    for (const q of fake.requests.filter((q) => !q.path.startsWith('/v1/mgmt/'))) assert.doesNotMatch(q.auth, /mgmt-secret/, `${q.path} must not carry the management key`);
+    assert.match(fake.requests.find((q) => q.path.startsWith('/v1/mgmt/')).auth, /:mgmt-secret$/);
   } finally { await fake.close(); }
 });

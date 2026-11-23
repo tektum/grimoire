@@ -5,7 +5,7 @@ import { generateKeyPairSync, createSign } from 'node:crypto';
 export const PROJECT_ID = `P${'a'.repeat(27)}`;
 const b64 = (v) => Buffer.from(typeof v === 'string' ? v : JSON.stringify(v)).toString('base64url');
 
-export async function startFake(claimsOverride = {}, headerOverride = {}) {
+export async function startFake(claimsOverride = {}, headerOverride = {}, { wrongSignature = false } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const kid = 'k1';
   const requests = [];
@@ -19,7 +19,7 @@ export async function startFake(claimsOverride = {}, headerOverride = {}) {
         const header = { alg: 'RS256', typ: 'JWT', kid, ...headerOverride };
         const payload = { iss: PROJECT_ID, sub: 'U1', drn: 'DS', exp: Math.floor(Date.now() / 1000) + 600, ...claimsOverride };
         const signing = `${b64(header)}.${b64(payload)}`;
-        const sig = createSign('RSA-SHA256').update(signing).sign(privateKey).toString('base64url');
+        const sig = createSign('RSA-SHA256').update(signing).sign(wrongSignature ? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey : privateKey).toString('base64url');
         return res.end(JSON.stringify({ sessionJwt: `${signing}.${sig}` }));
       }
       if (req.url === `/v2/keys/${PROJECT_ID}`) return res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256' }] }));

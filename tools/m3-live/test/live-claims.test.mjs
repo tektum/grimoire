@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { startFake, PROJECT_ID } from './fake-provider.mjs';
 import { runCheck, goodEnv } from './helpers.mjs';
 
-async function run(claims, header) {
-  const fake = await startFake(claims, header);
+async function run(claims, header, flags) {
+  const fake = await startFake(claims, header, flags);
   try { return await runCheck(goodEnv(fake.url)); } finally { await fake.close(); }
 }
 
@@ -33,5 +33,12 @@ test('a token whose key id is not in the key set fails the key and signature che
   const r = await run({}, { kid: 'other' });
   assert.equal(r.status, 1);
   assert.match(r.stdout, /FAIL the public key set has an RS256 key/);
+  assert.match(r.stdout, /FAIL the signature verifies/);
+});
+
+test('a token whose key id matches but whose signature is wrong fails the signature check only', async () => {
+  const r = await run({}, {}, { wrongSignature: true });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /ok the public key set has an RS256 key/);
   assert.match(r.stdout, /FAIL the signature verifies/);
 });
