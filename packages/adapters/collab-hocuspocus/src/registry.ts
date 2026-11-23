@@ -45,13 +45,17 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
     persistence,
     ...(o.extra ?? []),
   ].map((e) => guardConnectHooks(e, { ...o, onFailed: (d) => { limits.connectFailed(d); } }));
+  assertUniqueExtensionNames(extensions);
+  return { extensions, persistence, recheck };
+}
+
+/** Two extensions with one name would be indistinguishable in logs and in any rule keyed by name: a configuration error, found at construction. Run on the FINAL list the library gets. */
+export function assertUniqueExtensionNames(extensions: readonly Extension[]): void {
   const names = new Set<string>();
   for (const e of extensions) {
     const name = e.extensionName;
     if (name === undefined) continue;
-    // Two extensions with one name would be indistinguishable in logs and in any rule keyed by name: a configuration error, found at construction.
     if (names.has(name)) throw new Error(`duplicate extension name: ${name}`);
     names.add(name);
   }
-  return { extensions, persistence, recheck };
 }
