@@ -203,6 +203,24 @@ describe('re-check on the real server and database (1 s interval)', () => {
     expect(steady.client.provider.isAuthenticated).toBe(true);
   }, 30_000);
 
+  it('a session that expires releases its documents: the per-user document slot is free again (cap 1) after session-expired', async () => {
+    const r = await rig({ collab: { maxDocumentsPerUser: 1 } });
+    await user('T7release');
+    const first = await page(); const second = await page();
+    const exp = nowSec() + 8; // headroom: the point is the release, not the expiry timing (the test above covers that)
+    const expiring = open(r, first, await issuer.token('T7release', { exp, iat: exp - 9 }));
+    await authed(expiring);
+    // While the session lives its one document slot is taken: the same user on another page is refused for the cap.
+    const blocked = open(r, second, await issuer.token('T7release'));
+    expect(await closedBy(blocked)).toBe('full-for-you');
+    expect(Date.now(), 'the refusal was checked while the first session was still alive').toBeLessThan(exp * 1000);
+    expect(await eventually(() => expiring.reasons[0], 15_000, 'closed session-expired')).toBe('session-expired'); // the expiry is 8 s out plus up to one re-check tick: more than closedBy's 8 s from here
+    // After the expiry the slot is released: the same user now gets the other page.
+    const after = open(r, second, await issuer.token('T7release'));
+    await authed(after);
+    expect(after.reasons).toEqual([]);
+  }, 30_000);
+
   it('a session renewed on the open connection (a fresh token for the same user) is kept past its first expiry', async () => {
     const r = await rig();
     await user('T7renew');
