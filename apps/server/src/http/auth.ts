@@ -3,6 +3,7 @@ import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
+import type { Logger } from '@tektum/grimoire-core/ports/logger';
 import { fail } from './error.js';
 import type { AppEnv, HttpDeps } from './env.js';
 
@@ -12,6 +13,16 @@ const isPublic = (method: string, path: string): boolean => method === 'GET' && 
 const isProvisioning = (method: string, path: string): boolean => method === 'GET' && path === '/v1/me';
 
 const BEARER = /^Bearer ([^\s]+)$/i;
+
+/**
+ * The provisioner reports through the plain logger port (its `users.refused` line, a short reason only). The event log forwards every
+ * call to the same logger, so this hands it the app's log and an operator still sees one `users.refused` for a domain refusal.
+ */
+const providerLogger = (log: HttpDeps['log']): Logger => {
+  const forward = (level: 'debug' | 'info' | 'warn' | 'error') => (event: string, fields?: Record<string, unknown>): void => (log[level] as (e: string, f?: Record<string, unknown>) => void)(event, fields);
+  const logger: Logger = { debug: forward('debug'), info: forward('info'), warn: forward('warn'), error: forward('error'), child: () => logger };
+  return logger;
+};
 
 /** A store that answers the one row already read, so the rule runs on it without a second query. */
 const readOnce = (users: UserStore, row: UserRecord): UserStore => ({
@@ -26,6 +37,7 @@ const readOnce = (users: UserStore, row: UserRecord): UserStore => ({
  * row on every route, so a user whose domain was removed stops working at once. A suspended user is refused everywhere.
  */
 export function authenticate(verifier: AuthVerifier, policy: SignInPolicy, deps: Pick<HttpDeps, 'users' | 'log'>): MiddlewareHandler<AppEnv> {
+  const logger = providerLogger(deps.log);
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
@@ -60,7 +72,7 @@ export function authenticate(verifier: AuthVerifier, policy: SignInPolicy, deps:
       return next();
     }
 
-    const checked = await createProvisioner({ users: readOnce(deps.users, stored), verifier, policy }).signIn({ identity });
+    const checked = await createProvisioner({ users: readOnce(deps.users, stored), verifier, policy, logger }).signIn({ identity });
     if (checked.kind === 'refused') return fail('not_allowed');
     if (checked.user.suspended) {
       deps.log.warn('http.auth_rejected', { reason: 'suspended' });

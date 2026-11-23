@@ -126,6 +126,14 @@ describe('suspended and returning users', () => {
     expect(await code(res)).toBe('not_allowed');
   });
 
+  it('logs the provisioner refusal once, as before', async () => {
+    const { app, t } = build({ rows: [row({ email: 'ann@removed.example' })] });
+    await get(app, '/v1/things', `Bearer ${TOKEN}`);
+    const refused = t.logger.entries.filter((e) => e.event === 'users.refused');
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({ level: 'warn', fields: { reason: 'domain-not-allowed' } });
+  });
+
   it('refuses a returning user whose claims carry a profile outside the allowed domains', async () => {
     const outside = { ...PROFILE, email: 'ann@removed.example' };
     const { app } = build({ result: { kind: 'ok', userId: 'd1', expiresAt: 9e12, profile: outside } });
