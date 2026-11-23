@@ -40,4 +40,4 @@ if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLTo
   mkdirSync(path.dirname(out), { recursive: true });
   writeFileSync(out, render(buildDocument()));
 }
-/* v8 ignore stop */
+/* v8 ignore stop -- end of the entry point */
