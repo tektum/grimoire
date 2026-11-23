@@ -526,34 +526,32 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       const sample = () => {
         peak = Math.max(peak, process.memoryUsage().rss);
       };
-      // Sampled on a timer for the whole of put and get (an adapter that joins the parts after the last chunk shows
-      // up while it holds them), and again at every chunk and when each call returns.
-      const timer = setInterval(sample, 5);
+      // The OS keeps the process's peak RSS, so a transient 200 MB join inside the store shows up without any timer;
+      // it counts only where it passes the peak reached earlier in the process. RSS is also read at every chunk and
+      // when each call returns.
+      const peakBefore = process.resourceUsage().maxRSS * 1024;
       const actual = createHash('sha256');
       let length = 0;
-      try {
-        const generated = (async function* () {
-          for (let i = 0; i < chunks; i++) {
-            sample();
-            yield chunkAt(i);
-          }
-        })();
-        await store.put(key, generated, { size: size * chunks, contentType: binary });
-        sample();
-        const got = await store.get(key);
-        for await (const part of got.body) {
-          actual.update(part);
-          length += part.length;
+      const generated = (async function* () {
+        for (let i = 0; i < chunks; i++) {
           sample();
+          yield chunkAt(i);
         }
+      })();
+      await store.put(key, generated, { size: size * chunks, contentType: binary });
+      sample();
+      const got = await store.get(key);
+      for await (const part of got.body) {
+        actual.update(part);
+        length += part.length;
         sample();
-      } finally {
-        clearInterval(timer);
       }
+      sample();
       await store.delete(key);
       assert.equal(length, size * chunks);
       assert.equal(actual.digest('hex'), expected.digest('hex'), 'the bytes read back are the bytes written');
-      assert.ok(peak - before < 50 * 1024 * 1024, `RSS grew by ${Math.round((peak - before) / 1048576)} MB`);
+      const grown = Math.max(peak - before, process.resourceUsage().maxRSS * 1024 - Math.max(peakBefore, before));
+      assert.ok(grown < 50 * 1024 * 1024, `RSS grew by ${Math.round(grown / 1048576)} MB`);
     },
   },
 ];
