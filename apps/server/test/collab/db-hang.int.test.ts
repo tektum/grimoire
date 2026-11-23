@@ -23,9 +23,9 @@ async function start(env: Record<string, string> = {}): Promise<ServerProcess> {
 const client = (s: ServerProcess, name: string): Client => { const c = connect(wsUrl(s.port), name); clients.push(c); return c; };
 const events = (s: ServerProcess, name: string) => s.events.filter((e) => e['event'] === name);
 /** What the server logged after the signal, in order, with the measured time: a failed shutdown assertion says which phase ran long instead of only the number. */
-function explainShutdown(after: readonly Record<string, unknown>[], ms: number, exit: unknown): void {
+function explainShutdown(after: readonly Record<string, unknown>[], ms: number, exit: { readonly code: number | null; readonly signal: string | null }): void {
   const lines = after.map((e) => JSON.stringify(e).slice(0, 400));
-  console.error(`db-hang: shutdown took ${String(ms)} ms, exit ${JSON.stringify(exit)}; the server logged ${String(lines.length)} lines after the signal:\n${lines.join('\n')}`);
+  console.error(`db-hang: shutdown took ${String(ms)} ms, exit code ${String(exit.code)}, signal ${String(exit.signal)}; the server logged ${String(lines.length)} lines after the signal:\n${lines.join('\n')}`);
 }
 
 beforeAll(async () => {
