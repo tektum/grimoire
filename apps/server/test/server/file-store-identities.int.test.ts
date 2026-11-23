@@ -77,6 +77,20 @@ describe('Compose file store identities', () => {
     expect((await call(admin, 'HEAD', `/${other}`)).status).toBe(404);
   });
 
+  it('ListBuckets answered to the runtime pair names only the bucket it may use, never another bucket', async () => {
+    const scratch = `scratch-${randomBytes(4).toString('hex')}`;
+    expect((await call(admin, 'PUT', `/${scratch}`)).status).toBe(200);
+    try {
+      const r = await call(app, 'GET', '/');
+      expect(r.status).toBe(200);
+      const names = [...r.text.matchAll(/<Name>([^<]*)<\/Name>/g)].map((m) => m[1]);
+      expect(names).toContain(BUCKET);
+      expect(names.filter((n) => n !== BUCKET)).toEqual([]);
+    } finally {
+      await call(admin, 'DELETE', `/${scratch}`);
+    }
+  });
+
   it('the CORS request used above is well formed: the admin pair is accepted for it on a scratch bucket (control)', async () => {
     const scratch = `scratch-${randomBytes(4).toString('hex')}`;
     expect((await call(admin, 'PUT', `/${scratch}`)).status).toBe(200);

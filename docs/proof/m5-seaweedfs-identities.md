@@ -22,4 +22,4 @@ The measurement is the Compose integration check in CI: it signs requests with t
 ## Measured in CI
 
 - The runtime pair is refused (403) for another bucket, bucket creation, bucket deletion and CORS; the admin pair is accepted for the same CORS request on a scratch bucket.
-- ListBuckets (`GET /`) is answered 200 for the runtime pair (the store does not treat it as an admin operation). It grants no access to any bucket's objects, so it is not asserted as refused.
+- ListBuckets (`GET /`) is answered 200 for the runtime pair (the store does not treat it as an admin operation). The integration test pins which bucket names that answer contains (only the runtime bucket) so a change is noticed.
