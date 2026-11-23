@@ -47,10 +47,12 @@ describe('the system rebuild through the pool', () => {
 
 describe('saving is bounded by its time limit, not by a delimiter budget', () => {
   it('a state whose Markdown the parser cannot verify in time ends as a timeout, the worker is replaced, the next save works', async () => {
-    const shape = SHAPES.find((s) => s.name === 'closing brackets');
+    // 20,000 runs under nested marks: about 2 MB of state and a verifying parse of seconds, growing with the square of the runs. (Runs of brackets were used
+    // before the serialiser began to escape them.)
+    const shape = SHAPES.find((s) => s.name === 'alternating nested marks');
     if (!shape) throw new Error('shape');
-    const state = await stateFromDocJson(shape.build(60_000));
-    const c = createMarkdownConverter({ poolSize: 1, timeoutMs: LIMIT_MS });
+    const state = await stateFromDocJson(shape.build(20_000));
+    const c = createMarkdownConverter({ poolSize: 1, timeoutMs: LIMIT_MS, maxStateBytes: 8_000_000 });
     try {
       expect(await c.toMarkdown(state)).toEqual({ ok: false, reason: 'timeout', detail: 'the conversion exceeded its time limit', message: `This page took longer than ${LIMIT_MS / 1000} seconds to convert to Markdown. Your edit is kept; the Markdown copy was not updated.` });
       const small = await c.seed('# hi\n', 'k');

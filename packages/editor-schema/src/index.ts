@@ -18,6 +18,7 @@ import {
 import { extendListItemSchemaForTask, gfm, tableCellSchema, tableHeaderSchema } from "@milkdown/preset-gfm";
 import { commandsCtx, remarkStringifyOptionsCtx } from "@milkdown/core";
 import { InputRule } from "@milkdown/prose/inputrules";
+import { createSlice } from "@milkdown/ctx";
 import type { Ctx, MilkdownPlugin } from "@milkdown/ctx";
 import type { Command, EditorState, Transaction } from "@milkdown/prose/state";
 import type { NodeType, ResolvedPos } from "@milkdown/prose/model";
@@ -657,7 +658,44 @@ const offsetOf = (node: Node, index: number): number => {
 const withoutAttentionHandlers = <T extends object>(handlers: T | null | undefined): Partial<T> =>
   Object.fromEntries(Object.entries(handlers ?? {}).filter(([name]) => name !== "emphasis" && name !== "strong")) as Partial<T>;
 
+/**
+ * A text with more than this many `]` (in the whole document, outside code) has them all written as `\\]`. Normal text keeps its `]` as the serialiser
+ * writes it (a `]` with no `[` before it is plain text), but the Markdown parser's footnote tokenizer walks back over every earlier event for each such `]`,
+ * so thousands of them in one block cost time with the square of their number (the verifying parse of a save is where it shows). `\\]` is a character
+ * escape: it reads back as the same text and costs nothing. The count is per document, so splitting the brackets over many text nodes, marks or blocks
+ * does not get round it, and the limit is high enough that no ordinary page reaches it.
+ */
+export const CLOSING_BRACKET_LIMIT = 2000;
+
+/** Whether the document has more than `CLOSING_BRACKET_LIMIT` `]` in text that is not code. Stops counting once it knows. */
+export function hasTooManyClosingBrackets(doc: Node): boolean {
+  let count = 0;
+  doc.descendants((node, _pos, parent) => {
+    if (count > CLOSING_BRACKET_LIMIT) return false;
+    if (node.isText && parent?.type.name !== "code_block" && !isCode(node)) {
+      for (const char of node.text ?? "") if (char === "]") count += 1;
+    }
+    return true;
+  });
+  return count > CLOSING_BRACKET_LIMIT;
+}
+
+/** Set by the converter before it serialises a document for which `hasTooManyClosingBrackets` is true. */
+export const escapeClosingBracketsCtx = createSlice(false, "grimoireEscapeClosingBrackets");
+
+/** `]` not already escaped, written `\\]`. A backslash run of odd length before it escapes it already. */
+function escapeUnescapedClosers(value: string): string {
+  let out = "";
+  let backslashes = 0;
+  for (const char of value) {
+    out += char === "]" && backslashes % 2 === 0 ? "\\]" : char;
+    backslashes = char === "\\" ? backslashes + 1 : 0;
+  }
+  return out;
+}
+
 export const escapingTextWriter: MilkdownPlugin = (ctx) => {
+  ctx.inject(escapeClosingBracketsCtx);
   // In the synchronous part: the options are read when `init` builds the remark processor, which comes later.
   ctx.update(remarkStringifyOptionsCtx, (options) => ({
     ...options,
@@ -667,7 +705,8 @@ export const escapingTextWriter: MilkdownPlugin = (ctx) => {
         const value = node.value;
         const trailing = value.slice(value.length - trailingBlanks(value));
         const body = value.slice(0, value.length - trailing.length);
-        return state.safe(body, { ...info, encode: [], after: trailing === "" ? info.after : trailing.charAt(0) }) + trailing;
+        const safe = state.safe(body, { ...info, encode: [], after: trailing === "" ? info.after : trailing.charAt(0) });
+        return (ctx.get(escapeClosingBracketsCtx) ? escapeUnescapedClosers(safe) : safe) + trailing;
       },
     },
   }));

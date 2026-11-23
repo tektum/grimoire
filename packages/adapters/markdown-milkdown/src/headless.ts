@@ -12,14 +12,21 @@ import {
   serializerCtx,
 } from '@milkdown/core';
 import { Clock, Container, Ctx } from '@milkdown/ctx';
-import { grimoireEditorPlugins } from '@tektum/grimoire-editor-schema';
+import { escapeClosingBracketsCtx, grimoireEditorPlugins, hasTooManyClosingBrackets } from '@tektum/grimoire-editor-schema';
 import { installEventGlobals } from './polyfill.js';
 
-const readHeadless = (ctx: Ctx) => ({
-  schema: ctx.get(schemaCtx),
-  parse: ctx.get(parserCtx),
-  serialize: ctx.get(serializerCtx),
-});
+const readHeadless = (ctx: Ctx) => {
+  const serialize = ctx.get(serializerCtx);
+  return {
+    schema: ctx.get(schemaCtx),
+    parse: ctx.get(parserCtx),
+    // Synchronous, so the flag cannot be seen by another document: a document with thousands of `]` has them escaped (see CLOSING_BRACKET_LIMIT).
+    serialize: (doc: Parameters<typeof serialize>[0]): string => {
+      ctx.set(escapeClosingBracketsCtx, hasTooManyClosingBrackets(doc));
+      return serialize(doc);
+    },
+  };
+};
 
 export type Headless = ReturnType<typeof readHeadless>;
 
