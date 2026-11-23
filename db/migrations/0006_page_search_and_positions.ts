@@ -54,6 +54,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       from (select id, row_number() over (order by position, created_at, id) as rank from collections) r
       where c.id = r.id`.execute(db);
 
+  // The updates above queue the deferred parent foreign-key checks of 0004; PostgreSQL refuses ALTER TABLE and CREATE INDEX on `pages` while events are pending.
+  await sql`set constraints all immediate`.execute(db);
+
   // Bare inserts (fixtures) stay unique: seven digits, so a default never equals a renumbered six-digit position. The API always passes a position.
   await sql`create sequence pages_position_seq`.execute(db);
   await sql`
