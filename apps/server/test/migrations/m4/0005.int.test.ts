@@ -75,7 +75,7 @@ describe('migrations 0005 and 0006', () => {
   it('leave the parent foreign key deferred for a migration that runs after 0006 in the same run', async () => {
     const result = await migrate(PROBE, withProbe);
     expect(result.code, result.output).toBe(0);
-    expect(await sqlAdmin(PROBE, `select count(*)::int as n from pages where id like 'd_000000-%'`)).toEqual([{ n: 2 }]);
+    expect(await sqlAdmin(PROBE, `select count(*)::int as n from pages where id in ('d1000000-3c1d-4a53-9a62-5d1c2a7e8f10', 'd2000000-3c1d-4a53-9a62-5d1c2a7e8f10')`)).toEqual([{ n: 2 }]);
   });
 
   it('keep two siblings from sharing a position, top-level pages included, but allow it once a page is deleted', async () => {
