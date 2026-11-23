@@ -114,3 +114,50 @@ describe('admin keys', () => {
     expect(issuesOf({ GRIMOIRE_S3_ADMIN_SECRET_KEY: key() }).join('\n')).toContain('GRIMOIRE_S3_ADMIN_ACCESS_KEY');
   });
 });
+
+describe('the files-setup purpose', () => {
+  const setupEnv = {
+    GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+    GRIMOIRE_S3_ENDPOINT: 'http://seaweedfs:8333',
+    GRIMOIRE_S3_BUCKET: 'grimoire',
+    GRIMOIRE_S3_ADMIN_ACCESS_KEY: key(),
+    GRIMOIRE_S3_ADMIN_SECRET_KEY: key(),
+  };
+  const issuesFor = (env: Record<string, string>): string[] => {
+    try {
+      loadConfig(env, { purpose: 'files-setup' });
+    } catch (e) {
+      if (e instanceof ConfigError) return e.issues;
+      throw e;
+    }
+    return [];
+  };
+
+  it('succeeds with the endpoint, bucket, admin keys and allowed origins only (no database, no runtime keys, no local mode)', () => {
+    const config = loadConfig(setupEnv, { purpose: 'files-setup' });
+    expect(config.filesSetup).toEqual({
+      endpoint: 'http://seaweedfs:8333', bucket: 'grimoire', region: 'us-east-1', addressing: 'path', corsMode: 'api',
+      accessKey: setupEnv.GRIMOIRE_S3_ADMIN_ACCESS_KEY, secretKey: setupEnv.GRIMOIRE_S3_ADMIN_SECRET_KEY,
+    });
+    expect(config.allowedOrigins).toEqual(['http://127.0.0.1:8080']);
+    expect(config.files).toBeUndefined();
+  });
+
+  it.each(['GRIMOIRE_ALLOWED_ORIGINS', 'GRIMOIRE_S3_ENDPOINT', 'GRIMOIRE_S3_BUCKET', 'GRIMOIRE_S3_ADMIN_ACCESS_KEY', 'GRIMOIRE_S3_ADMIN_SECRET_KEY'])(
+    'fails without %s, naming it',
+    (name) => {
+      const rest: Record<string, string> = { ...setupEnv };
+      delete rest[name];
+      expect(issuesFor(rest).join('\n')).toContain(name);
+    },
+  );
+
+  it('does not need the runtime keys, and the server purpose still does not accept the admin key outside local mode', () => {
+    expect(issuesFor(setupEnv)).toEqual([]);
+    expect(issuesOf({ GRIMOIRE_S3_ADMIN_ACCESS_KEY: key(), GRIMOIRE_S3_ADMIN_SECRET_KEY: key() }, false).join('\n')).toContain('GRIMOIRE_S3_ADMIN_ACCESS_KEY');
+  });
+
+  it('does not build Config.filesSetup for the server purpose', () => {
+    expect(load({ GRIMOIRE_S3_ADMIN_ACCESS_KEY: key(), GRIMOIRE_S3_ADMIN_SECRET_KEY: key() }).filesSetup).toBeUndefined();
+  });
+});

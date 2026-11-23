@@ -3,7 +3,7 @@ import type { Config } from '@tektum/grimoire-core/ports/config';
 import { parseEnv } from './schema.js';
 
 export type Env = Readonly<Record<string, string | undefined>>;
-export interface LoadOptions { readonly purpose?: 'server' | 'migrate' }
+export interface LoadOptions { readonly purpose?: 'server' | 'migrate' | 'files-setup' }
 
 /** Lists every bad variable. Messages name the variable and the rule, never a value. */
 export interface ConfigProblem { readonly setting: string; readonly rule: string }

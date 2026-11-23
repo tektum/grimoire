@@ -79,6 +79,17 @@ export interface FilesConfig {
   readonly pendingMaxPerUser: number;
 }
 
+/** What `grimoire files-setup` needs: the store and the admin identity (never part of the server's `files`). */
+export interface FilesSetupConfig {
+  readonly endpoint: string;
+  readonly bucket: string;
+  readonly region: string;
+  readonly addressing: 'path' | 'virtual';
+  readonly corsMode: 'api' | 'external';
+  readonly accessKey: string;
+  readonly secretKey: string;
+}
+
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
   readonly database: { readonly url?: string; readonly migrationUrl?: string };
@@ -98,6 +109,8 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   readonly localAllowNonLoopback: boolean;
   readonly collab: CollabConfig;
   readonly files?: FilesConfig;
+  /** Only for the files-setup purpose. */
+  readonly filesSetup?: FilesSetupConfig;
   readonly http: HttpConfig;
   /** The address browsers use for live editing (GRIMOIRE_PUBLIC_COLLAB_URL); absent when unset. */
   readonly publicCollabUrl?: string;
