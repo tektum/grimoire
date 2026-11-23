@@ -49,4 +49,9 @@ services:
       GRIMOIRE_DESCOPE_BASE_URL: https://keyserver:8443
       GRIMOIRE_ALLOWED_EMAIL_DOMAINS: example.test
       GRIMOIRE_COLLAB_RECHECK_SECONDS: "${M3_RECHECK_SECONDS:-5}"
+      # Small per-user caps so the caps scenario needs three sockets and four documents, not twenty and fifty; the per-address connection-attempt limit is raised so the
+      # scenarios, which all connect from one address, are not themselves banned (that limit is proved by the milestone 1 test, not by this one).
+      GRIMOIRE_COLLAB_MAX_SOCKETS_PER_USER: "${M3_MAX_SOCKETS_PER_USER:-3}"
+      GRIMOIRE_COLLAB_MAX_DOCUMENTS_PER_USER: "${M3_MAX_DOCUMENTS_PER_USER:-4}"
+      GRIMOIRE_COLLAB_CONNECT_ATTEMPTS_PER_WINDOW: "${M3_CONNECT_ATTEMPTS_PER_WINDOW:-500}"
       NODE_EXTRA_CA_CERTS: /pki/ca.pem
