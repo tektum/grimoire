@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+html { background: var(--paper); color: var(--ink); font-family: var(--font-ui); line-height: 1.5; }
+body { margin: 0; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+h1 { font-size: 1.6rem; font-weight: 700; line-height: 1.25; margin: 0 0 var(--space-3); }
+h2 { font-size: 1.25rem; font-weight: 700; margin: var(--space-4) 0 var(--space-2); }
+p { margin: 0 0 var(--space-3); }
+a { color: var(--accent); text-underline-offset: 0.15em; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.skip-link { position: absolute; left: var(--space-2); top: -4rem; background: var(--paper-raised); padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); z-index: 10; }
+.skip-link:focus { top: var(--space-2); }
+
+.shell { display: flex; flex-direction: column; min-height: 100vh; }
+.shell-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border); background: var(--paper-raised); }
+.shell-header a { font-weight: 600; text-decoration: none; color: var(--ink); }
+.shell-header nav { display: flex; gap: var(--space-4); }
+.shell-header nav a { font-weight: 400; color: var(--muted); }
+.shell-body { display: flex; flex: 1; min-height: 0; }
+.shell-contents { width: 18rem; padding: var(--space-4) var(--space-5); border-right: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
+.shell-main { flex: 1; padding: var(--space-6) var(--space-5); }
+.error-boundary { max-width: 30rem; margin: var(--space-6) auto; padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-2); background: var(--paper-raised); }
+.error-boundary h1 { margin-top: 0; font-size: 1.4rem; }
+.error-boundary button + button { margin-left: var(--space-2); }
+
+button, .button { font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); cursor: pointer; transition: background var(--transition), border-color var(--transition); }
+button:hover { border-color: var(--muted); }
+button[data-variant='primary'] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* Page text: the reading column (R11.17). */
+.page-text { max-width: var(--measure); font-family: var(--font-page); font-size: 1.125rem; line-height: 1.7; }
+.page-text h1 { font-size: 2rem; font-weight: 700; line-height: 1.25; margin: 0 0 var(--space-4); }
+.page-text h2 { font-size: 1.35rem; font-weight: 700; margin: var(--space-4) 0 var(--space-2); }
+.page-text p, .page-text ul, .page-text ol { margin: 0 0 var(--space-4); }
+.page-text ul { list-style: disc; padding-left: var(--space-5); }
+.page-text ol { list-style: decimal; padding-left: var(--space-5); }
+.page-text p { line-height: 1.9; }
+.page-text a { text-decoration: underline; }
+.page-text table { border-collapse: collapse; width: 100%; margin: 0 0 var(--space-4); font-family: var(--font-ui); font-size: 0.95rem; }
+.page-text th, .page-text td { border: 1px solid var(--border); padding: var(--space-1) var(--space-3); text-align: left; }
+.page-text th { background: var(--code-bg); }
+.page-text code { font-family: var(--font-code); font-size: 0.9em; background: var(--code-bg); padding: 0.1em 0.3em; border-radius: var(--radius-1); }
+.page-text pre { font-family: var(--font-code); font-size: 0.9rem; background: var(--code-bg); padding: var(--space-4); border-radius: var(--radius-2); overflow-x: auto; margin: 0 0 var(--space-4); }
+.page-text pre code { background: none; padding: 0; }
+.page-text blockquote { margin: 0 0 var(--space-4); padding-left: var(--space-4); border-left: 3px solid var(--border); color: var(--muted); }
+
+/* A collaborator's cursor: a caret and a name label. */
+.cursor { position: relative; border-left: 2px solid var(--cursor); margin-left: -1px; }
+.cursor-label { position: absolute; bottom: 100%; left: -2px; padding: 0 var(--space-1); font: 600 0.7rem/1.4 var(--font-ui); white-space: nowrap; background: var(--cursor); color: var(--cursor-text); border-radius: var(--radius-1) var(--radius-1) var(--radius-1) 0; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-3); list-style: none; padding: 0; font-family: var(--font-ui); }
+.swatch { padding: var(--space-3); border-radius: var(--radius-2); font-weight: 600; font-size: 0.9rem; }
+.token-row { display: flex; flex-wrap: wrap; gap: var(--space-3); font-family: var(--font-ui); font-size: 0.85rem; margin: 0 0 var(--space-4); padding: 0; list-style: none; }
+.token-chip { display: flex; align-items: center; gap: var(--space-2); }
+.token-chip i { width: 1.4rem; height: 1.4rem; border: 1px solid var(--border); border-radius: var(--radius-1); display: inline-block; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+.overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.4); }
+.modal { position: fixed; top: 20vh; left: 50%; transform: translateX(-50%); width: min(32rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-2); }
+.menu { min-width: 10rem; padding: var(--space-1); background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-2); }
+.menu-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; outline: none; }
+.menu-item[data-highlighted], [cmdk-item][data-selected='true'] { background: var(--code-bg); }
+.tooltip { padding: var(--space-1) var(--space-2); background: var(--ink); color: var(--paper); border-radius: var(--radius-1); font-size: 0.8rem; }
+.palette [cmdk-input] { width: 100%; font: inherit; padding: var(--space-2); border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; }
+[cmdk-item] { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; }
+
+.sample-grid { display: grid; grid-template-columns: minmax(0, var(--measure)) minmax(14rem, 1fr); gap: var(--space-6); align-items: start; }
+.sample-grid aside h2 { font-family: var(--font-ui); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 var(--space-3); }
+.swatches { grid-template-columns: 1fr 1fr; }
+.token-row { flex-direction: column; }

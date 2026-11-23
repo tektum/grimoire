@@ -1,0 +1,5 @@
+# Response headers of the web client, in the format of a `_headers` file read by a static host.
+# More headers (the content-security-policy) are added here as they are decided; every line is applied to every path.
+/*
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff

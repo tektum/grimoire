@@ -1,0 +1,61 @@
+/* Design tokens (docs/design.md; the values are proposals until the owner chooses). Light is the default; dark follows the system
+   (`prefers-color-scheme`) unless `data-theme` on <html> says otherwise. One accent: links, caret and selection. */
+:root {
+  --paper: #fbf8f1;
+  --paper-raised: #ffffff;
+  --ink: #1b1a17;
+  --muted: #5f5b52;
+  --border: #ded8c9;
+  --accent: #0b5cad;
+  --focus: #b45309;
+  --code-bg: #f1ece0;
+  --measure: 70ch;
+  --font-page: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Liberation Sans', 'DejaVu Sans', sans-serif;
+  --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2.5rem;
+  --radius-1: 4px;
+  --radius-2: 8px;
+  --transition: 120ms ease;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #161512;
+    --paper-raised: #1f1d19;
+    --ink: #ece8de;
+    --muted: #a39d8f;
+    --border: #35322b;
+    --accent: #7db4f0;
+    --focus: #f5a524;
+    --code-bg: #24211c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --paper: #161512;
+  --paper-raised: #1f1d19;
+  --ink: #ece8de;
+  --muted: #a39d8f;
+  --border: #35322b;
+  --accent: #7db4f0;
+  --focus: #f5a524;
+  --code-bg: #24211c;
+  color-scheme: dark;
+}
+/* Collaborator colours: eight fixed values, distinguishable under the common colour-blind types (contracts section 9). */
+:root {
+  --collab-0: #0072b2;
+  --collab-1: #d55e00;
+  --collab-2: #009e73;
+  --collab-3: #cc79a7;
+  --collab-4: #56b4e9;
+  --collab-5: #e69f00;
+  --collab-6: #882255;
+  --collab-7: #44aa99;
+}

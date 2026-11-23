@@ -6,6 +6,9 @@ export function Shell() {
   const { pathname } = useLocation();
   return (
     <div className="shell">
+      <a className="skip-link" href="#main">
+        Skip to the page
+      </a>
       <header className="shell-header">
         <Link to="/">Grimoire</Link>
         <nav aria-label="Main">
@@ -16,7 +19,7 @@ export function Shell() {
         <aside className="shell-contents" aria-label="Contents">
           <p>Contents</p>
         </aside>
-        <main className="shell-main">
+        <main className="shell-main" id="main" tabIndex={-1}>
           <ErrorBoundary key={pathname}>
             <Outlet />
           </ErrorBoundary>

@@ -1,0 +1,143 @@
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import * as Dialog from '@radix-ui/react-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { Command } from 'cmdk';
+import { type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Toaster as SonnerToaster, toast } from 'sonner';
+
+/** The primitives screens build on: Radix for behaviour and focus handling, tokens for looks. Every control needs an accessible name. */
+export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' }) {
+  return <button type="button" data-variant={variant} {...rest} />;
+}
+
+export function Modal({ title, open, onOpenChange, children }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode }) {
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="overlay" />
+        <Dialog.Content className="modal" aria-describedby={undefined}>
+          <Dialog.Title>{title}</Dialog.Title>
+          {children}
+          <Dialog.Close asChild>
+            <Button>Close</Button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+/** A confirmation that cannot be dismissed by accident: for destructive actions (delete, purge). */
+export function Confirm({
+  title,
+  description,
+  confirmLabel,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="overlay" />
+        <AlertDialog.Content className="modal">
+          <AlertDialog.Title>{title}</AlertDialog.Title>
+          <AlertDialog.Description>{description}</AlertDialog.Description>
+          <AlertDialog.Cancel asChild>
+            <Button>Cancel</Button>
+          </AlertDialog.Cancel>
+          <AlertDialog.Action asChild>
+            <Button variant="primary" onClick={onConfirm}>
+              {confirmLabel}
+            </Button>
+          </AlertDialog.Action>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
+export interface MenuItem {
+  readonly label: string;
+  readonly onSelect: () => void;
+}
+export function Menu({ label, items }: { label: string; items: readonly MenuItem[] }) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button aria-label={label}>…</Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu" align="end">
+          {items.map((item) => (
+            <DropdownMenu.Item key={item.label} className="menu-item" onSelect={item.onSelect}>
+              {item.label}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+export function Hint({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <Tooltip.Provider delayDuration={400}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content className="tooltip">{text}</Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
+export interface PaletteItem {
+  readonly id: string;
+  readonly label: string;
+  readonly onSelect: () => void;
+}
+/** One shortcut opens search, navigation and actions together (docs/design.md). */
+export function CommandPalette({ open, onOpenChange, items }: { open: boolean; onOpenChange: (open: boolean) => void; items: readonly PaletteItem[] }) {
+  return (
+    <Command.Dialog open={open} onOpenChange={onOpenChange} label="Command palette" className="modal palette">
+      <VisuallyHidden>
+        <Dialog.Title>Command palette</Dialog.Title>
+      </VisuallyHidden>
+      <Command.Input placeholder="Search, go to, or do" />
+      <Command.List>
+        <Command.Empty>No results</Command.Empty>
+        {items.map((item) => (
+          <Command.Item
+            key={item.id}
+            value={item.label}
+            onSelect={() => {
+              item.onSelect();
+              onOpenChange(false);
+            }}
+          >
+            {item.label}
+          </Command.Item>
+        ))}
+      </Command.List>
+    </Command.Dialog>
+  );
+}
+
+/** Mount once, near the root. The wrapper's notices go through `notify`. */
+export function Toaster() {
+  return <SonnerToaster position="bottom-right" closeButton />;
+}
+export const notify = (text: string): void => {
+  toast(text);
+};
