@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { composeSeed } from './composition.js';
 import { composeMigrate } from './lifecycle/compose-migrate.js';
 import { seedLocal } from './seed/index.js';
@@ -21,6 +22,9 @@ async function migrate(args: string[]): Promise<number> {
   const { db, log } = composed.ctx;
   try {
     const { applied } = await composed.migrate(values.dir ?? defaultDir);
+    // Then pg-boss's own schema, with the same migration role, and the runtime role's grants on it (the role name is fixed by the migrations).
+    const granted = await migratePgBoss({ connectionString: process.env.GRIMOIRE_DATABASE_MIGRATION_URL ?? '', database: db, runtimeRole: 'grimoire_app' });
+    log.info('migrate.applied', { migration: `pgboss (grants on ${String(granted.length)} tables)` });
     if (applied.length === 0) log.info('migrate.nothing_pending', {});
     for (const name of applied) log.info('migrate.applied', { migration: name });
     log.info('migrate.done', { applied: applied.length });

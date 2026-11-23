@@ -100,3 +100,5 @@ export async function createJobQueue(
   await boss.start();
   return new PgBossJobQueue(boss, options.stopGraceMs);
 }
+
+export { grantRuntimeRole, migratePgBoss, type MigrateOptions } from './migrate.js';
