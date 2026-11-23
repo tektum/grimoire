@@ -1,5 +1,6 @@
 import { replayCreateCollection } from '../routes/collections.js';
 import { replayCreateGroup } from '../routes/groups.js';
+import { replayResetState } from '../routes/reset-state.js';
 import { replayCreatePage } from '../routes/pages.js';
 import type { ReplayRebuild } from './idempotency.js';
 
@@ -7,5 +8,6 @@ import type { ReplayRebuild } from './idempotency.js';
 export const routeReplays: Readonly<Record<string, ReplayRebuild>> = {
   'POST /v1/collections': replayCreateCollection,
   'POST /v1/groups': replayCreateGroup,
+  'POST /v1/pages/:id/reset-state': replayResetState,
   'POST /v1/pages': replayCreatePage,
 };

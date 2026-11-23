@@ -52,13 +52,13 @@ function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c)
       access: createPageAccess(store), authorizer: createAuthorizer(store),
     },
   });
-  const call = (who: string | undefined, id: string, body?: unknown) =>
+  const call = (who: string | undefined, id: string, body?: unknown, headers: Record<string, string> = {}) =>
     app.request(`/v1/pages/${id}/reset-state`, {
       method: 'POST',
-      headers: { ...(who === undefined ? {} : { authorization: `Bearer ${who}` }), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: { ...(who === undefined ? {} : { authorization: `Bearer ${who}` }), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, page, hidden, pageState, fake, ghost, untracked, adminId: rows[0]?.id as string };
+  return { call, page, hidden, pageState, fake, ghost, untracked, users, world, adminId: rows[0]?.id as string };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -168,5 +168,35 @@ describe('a reset with supplied Markdown', () => {
     expect(pageState.stored(page.id)).toMatchObject({ epoch: 4 });
     release();
     expect((await first).status).toBe(200);
+  });
+});
+
+describe('a retry of a reset with the same Idempotency-Key', () => {
+  const key = { 'idempotency-key': 'reset-1' };
+
+  it('replays the answer without a second reset: the epoch, the state and the audit rows stay as the first call left them', async () => {
+    const { call, page, pageState } = build();
+    const first = await call('admin', page.id, { markdown: '# once' }, key);
+    expect(await first.json()).toEqual({ stateEpoch: 5, markdownStale: false });
+    // Edits made after the first answer are not wiped by the retry.
+    pageState.track(page.id, { markdown: 'edited since', epoch: 5 });
+    const retry = await call('admin', page.id, { markdown: '# once' }, key);
+    expect([retry.status, retry.headers.get('idempotent-replay'), await retry.json()]).toEqual([200, 'true', { stateEpoch: 5, markdownStale: false }]);
+    expect(pageState.stored(page.id)).toMatchObject({ epoch: 5, markdown: 'edited since' });
+    expect(pageState.stored(page.id)?.state).not.toBeNull();
+    expect(pageState.audit).toHaveLength(1);
+  });
+
+  it('is refused when the caller is no longer an administrator or can no longer read the page, and the epoch does not move', async () => {
+    const demoted = build();
+    await demoted.call('admin', demoted.page.id, undefined, key);
+    await demoted.users.updateRole(demoted.adminId, 'member');
+    expect((await demoted.call('admin', demoted.page.id, undefined, key)).status).toBe(403);
+    expect(demoted.pageState.stored(demoted.page.id)).toMatchObject({ epoch: 5 });
+    const removed = build();
+    await removed.call('admin', removed.page.id, undefined, key);
+    (removed.world.pages.find((p) => p.id === removed.page.id) as { deleted: boolean }).deleted = true;
+    expect((await removed.call('admin', removed.page.id, undefined, key)).status).toBe(404);
+    expect(removed.pageState.audit).toHaveLength(1);
   });
 });

@@ -2,6 +2,7 @@ import { z } from '@hono/zod-openapi';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import { caller } from '../http/collection-guard.js';
 import { fail } from '../http/error.js';
+import type { ReplayRebuild } from '../http/idempotency.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { guardPage } from '../http/page-guard.js';
 import { seedRefusalToHttp } from '../http/seed-errors.js';
@@ -19,13 +20,21 @@ const Reset = z
   .object({ stateEpoch: z.number().int(), markdownStale: z.boolean().describe('The kept Markdown was older than the state that was dropped') })
   .openapi('PageStateReset');
 
-// Not `idempotent`: a retry would reset again and bump the epoch again, which is what the caller asked for; there is no stored answer to replay.
+// Idempotent: a retry after a lost answer must not reset a second time and wipe the edits made since.
 export const resetPageState = defineRoute({
   method: 'post', path: '/v1/pages/{id}/reset-state', operationId: 'resetPageState', summary: 'Drop the editor state of a page and rebuild it from Markdown (administrators)', tags: ['pages'],
-  policy: { kind: 'admin' }, rateLimit: { max: 5, windowSeconds: 60 },
+  policy: { kind: 'admin' }, rateLimit: { max: 5, windowSeconds: 60 }, idempotent: true,
   request: { params: IdParam, body: { required: false, content: { 'application/json': { schema: Body } } } },
   responses: { 200: { description: 'The new epoch', content: { 'application/json': { schema: Reset } } }, 409: { description: 'The saved Markdown is older than the state: send `confirmStale`, or supply Markdown', content: { 'application/json': { schema: z.object({ error: z.object({ code: z.string(), message: z.string() }) }) } } } },
 });
+
+/** A retry replays the stored answer only while the caller can still read the page and is still an administrator. */
+export const replayResetState: ReplayRebuild = async (stored, c) => {
+  // The idempotency step runs before the route matches, so the id is read from the path (`/v1/pages/{id}/reset-state`).
+  await guardPage(c, c.req.path.split('/')[3] as string, 'read');
+  requireAdmin(c);
+  return Response.json(stored.body, { status: stored.status });
+};
 
 const router = createRouter();
 
