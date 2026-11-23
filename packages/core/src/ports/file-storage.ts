@@ -1,2 +1,79 @@
-/** Stored files. A skeleton: the task M5-T01 adds the methods, the fake and the adapter together. */
-export type FileStorage = Record<never, never>;
+/**
+ * Stored files: the port the attachment code talks to (spec R2.18, R2.35, R2.38).
+ * No import and no provider type: adapters convert to and from their own stream types.
+ */
+
+export type FileStorageErrorKind =
+  | 'not-found'
+  | 'range-not-satisfiable'
+  | 'unavailable'
+  | 'invalid-key'
+  | 'unsupported'
+  | 'already-exists';
+
+export class FileStorageError extends Error {
+  constructor(
+    readonly kind: FileStorageErrorKind,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'FileStorageError';
+  }
+}
+
+export type ByteStream = AsyncIterable<Uint8Array>;
+
+export interface FileStorage {
+  head(key: string): Promise<{ size: number; contentType: string; etag: string; modifiedAt: number }>;
+  /** `range.end` is inclusive. */
+  get(
+    key: string,
+    o?: { range?: { start: number; end: number } },
+  ): Promise<{ body: ByteStream; size: number; contentType: string }>;
+  /** With `ifNoneMatch` an existing key is refused with `already-exists`. */
+  put(
+    key: string,
+    body: ByteStream | Uint8Array,
+    o: { size: number; contentType: string; ifNoneMatch?: boolean },
+  ): Promise<{ etag: string }>;
+  /** An absent key is a success. */
+  delete(key: string): Promise<void>;
+  /** Ascending by key; `limit` defaults to and is capped at 1000. */
+  list(
+    prefix: string,
+    o?: { cursor?: string; limit?: number },
+  ): Promise<{ items: { key: string; size: number; modifiedAt: number }[]; nextCursor: string | null }>;
+  signUpload(
+    key: string,
+    o: {
+      size: number;
+      contentType: string;
+      ttlSeconds: number;
+      disposition?: 'attachment';
+      ifNoneMatch?: boolean;
+    },
+  ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }>;
+  signDownload(
+    key: string,
+    o: { ttlSeconds: number; disposition: 'inline' | 'attachment'; fileName?: string; contentType?: string },
+  ): Promise<{ url: string; expiresAt: number }>;
+}
+
+export const MAX_KEY_BYTES = 512;
+export const LIST_LIMIT_MAX = 1000;
+
+/**
+ * A key is 1 to 512 UTF-8 bytes, with no leading or trailing slash, no empty segment, no `.` or `..`
+ * segment, no backslash and no control character (C0, DEL and C1) and no lone surrogate.
+ */
+export function isValidKey(key: string): boolean {
+  if (key.length === 0) return false;
+  if (new TextEncoder().encode(key).length > MAX_KEY_BYTES) return false;
+  if (/[\\\p{Cc}\p{Cs}]/u.test(key)) return false;
+  return key.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
+}
+
+/** Throws `invalid-key` for a key that `isValidKey` refuses. */
+export function assertValidKey(key: string): void {
+  if (!isValidKey(key)) throw new FileStorageError('invalid-key', 'the storage key is not valid');
+}
