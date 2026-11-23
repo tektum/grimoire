@@ -167,24 +167,22 @@ describe("test:conformance script", () => {
 });
 
 describe("file storage dependencies", () => {
-  const expected: [string, string, string][] = [
-    ["packages/adapters/files-s3/package.json", "@aws-sdk/client-s3", "3.1175.0"],
-    ["packages/adapters/files-s3/package.json", "@aws-sdk/s3-request-presigner", "3.1175.0"],
-    ["packages/adapters/files-s3/package.json", "content-disposition", "3.1.0"],
-    ["apps/server/package.json", "file-type", "22.3.0"],
-    ["package.json", "@playwright/test", "1.65.1"],
+  // Versions are not repeated here: Renovate bumps the manifest and the lockfile, and this checks they agree.
+  const expected: [string, string][] = [
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/client-s3"],
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/s3-request-presigner"],
+    ["packages/adapters/files-s3/package.json", "content-disposition"],
+    ["apps/server/package.json", "file-type"],
+    ["package.json", "@playwright/test"],
   ];
   const lock = readFileSync(path.join(repoRoot, "bun.lock"), "utf8");
 
-  it("declares each package in the one manifest that owns it, at the exact version", () => {
-    for (const [file, name, version] of expected) {
+  it("declares each package in the one manifest that owns it, and the lockfile resolves it to the declared version", () => {
+    for (const [file, name] of expected) {
       const manifest = JSON.parse(readFileSync(path.join(repoRoot, file), "utf8")) as Manifest;
-      const found = declared(manifest).find(([, n]) => n === name);
-      expect(found?.[2], `${file} ${name}`).toBe(version);
+      const version = declared(manifest).find(([, n]) => n === name)?.[2];
+      expect(version, `${file} declares ${name}`).toBeDefined();
+      expect(lock, `${name}@${version} in bun.lock`).toContain(`"${name}": ["${name}@${version}"`);
     }
-  });
-
-  it("resolves each package to that exact version in the lockfile", () => {
-    for (const [, name, version] of expected) expect(lock, name).toContain(`"${name}": ["${name}@${version}"`);
   });
 });
