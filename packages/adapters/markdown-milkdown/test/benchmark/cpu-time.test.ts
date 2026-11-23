@@ -20,7 +20,7 @@ import { ensureBuilt } from '../pool/support.js';
  * ends in a `timeout` (the worker replaced, the next save working) or finishes within the limit.
  */
 const SLOWER_THAN_THE_LIMIT = [
-  'closing brackets', 'alternating strong and plain runs', 'alternating emphasis and strong runs',
+  'alternating strong and plain runs', 'alternating emphasis and strong runs',
   'alternating nested marks', 'text with edge spaces around marks', // mildly super-linear (8-10x for 5x the size); 3.7 s at the cap
 ];
 /** The save limit the production converter is given (the pool's default `timeoutMs`). Timing here is INFORMATIONAL: it is machine dependent, so no assertion on it can be both

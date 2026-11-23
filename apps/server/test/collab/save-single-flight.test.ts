@@ -32,11 +32,25 @@ beforeAll(async () => {
   await probe.close();
   const timeoutMs = Math.min(CEILING_MS, Math.max(FLOOR_MS, HEADROOM * coldMs));
   process.stderr.write(`single-flight: cold conversion ${String(coldMs)} ms, hostile limit ${String(timeoutMs)} ms, pool ${String(POOL_SIZE)}\n`);
-  pool = createMarkdownConverter({ poolSize: POOL_SIZE, timeoutMs });
+  pool = createMarkdownConverter({ poolSize: POOL_SIZE, timeoutMs, maxStateBytes: HOSTILE_STATE_LIMIT });
 }, 30_000);
 afterAll(async () => { await pool.close(); });
 
-const HOSTILE = ']'.repeat(100_000);
+/**
+ * A page whose Markdown the parser cannot verify within these limits: 20,000 runs under nested marks (about 2 MB of state), whose verifying parse takes seconds
+ * (7 s on a 32-core machine) and grows with the square of the runs. A run of brackets was used before, until the serialiser began to escape them.
+ */
+const HOSTILE_RUNS = 20_000;
+const HOSTILE_STATE_LIMIT = 8_000_000;
+const NESTED = [{ emphasis: {}, strong: {} }, { strong: {} }, { emphasis: {}, strike_through: {} }];
+const hostileDoc = (): Y.Doc => {
+  const d = new Y.Doc();
+  const p = new Y.XmlElement('paragraph'); const t = new Y.XmlText();
+  for (let i = 0; i < HOSTILE_RUNS; i++) t.insert(t.length, 'a', NESTED[i % 3]);
+  p.insert(0, [t]);
+  d.getXmlFragment('prosemirror').insert(0, [p]);
+  return d;
+};
 const isHostile = (state: Uint8Array): boolean => state.byteLength > 50_000;
 
 /** The real pool, watched: how many conversions of the hostile page are in the pool at once, and which states reached it. */
@@ -55,19 +69,21 @@ function watched() {
 
 describe('one conversion in flight per page (real pool)', () => {
   // Driven by events, not by a clock: the first save is sent, the test waits until its conversion has reached the pool, and then the other 29 saves are sent
-  // at once while it runs (it cannot end before its time limit: the page is a run of brackets the parser cannot finish). Every count below follows from that order.
+  // at once while it runs (it cannot end before its time limit: the page is a run of nested marks the parser cannot finish). Every count below follows from that order.
   it.each([['breaker off (the verifier\'s worst case)', true], ['breaker as in production', false]])('30 saves of one page during one running conversion, %s', async (_n, disabled) => {
     const { seen, inner } = watched();
     const gate = createConversionGate(inner, { concurrency: 2, waitMs: 5_000 });
     const saver = createSaver({ converter: gate, log: createCollabLog(new FakeLogger()), breaker: { disabled } });
-    const doc = paragraph(HOSTILE);
+    const doc = hostileDoc();
     const edit = (i: number): Uint8Array => { doc.getXmlFragment('prosemirror').toArray()[0]!.toArray()[0]!.insert(i, 'x'); return Y.encodeStateAsUpdate(doc); }; // a different state at each save
-    const hostileSaves = [saver.convert('hostile', edit(0))];
+    // Every state is made before the first save is sent: encoding a 2 MB document 30 times inside the window would block this process for longer than the limit.
+    const states = Array.from({ length: 30 }, (_, i) => edit(i));
+    const hostileSaves = [saver.convert('hostile', states[0]!)];
     await vi.waitFor(() => { expect(seen.calls).toBe(1); }, { timeout: 5_000, interval: 5 });
     let firstSettled = false;
     void hostileSaves[0]!.then(() => { firstSettled = true; });
     let lastState = new Uint8Array();
-    for (let i = 1; i < 30; i++) { lastState = edit(i); hostileSaves.push(saver.convert('hostile', lastState)); }
+    for (let i = 1; i < 30; i++) { lastState = states[i]!; hostileSaves.push(saver.convert('hostile', lastState)); }
     const honest = await saver.convert('honest', Y.encodeStateAsUpdate(paragraph('hello *world*')));
     const servedWhileHostileRan = !firstSettled;
     const results = await Promise.all(hostileSaves);
