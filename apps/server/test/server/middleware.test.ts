@@ -19,7 +19,7 @@ describe('Hono built-in middleware', () => {
     }
   });
 
-  it('gives a handler slower than the timeout the middleware default status 504', async () => {
+  it('answers a handler slower than the timeout with 503, not the middleware default 504', async () => {
     vi.useFakeTimers();
     try {
       const app = createApp(makeContext().ctx, { requestTimeoutMs: 100 });
@@ -29,7 +29,7 @@ describe('Hono built-in middleware', () => {
       });
       const pending = app.request('/slow');
       await vi.advanceTimersByTimeAsync(150);
-      expect((await pending).status).toBe(504);
+      expect((await pending).status).toBe(503);
     } finally {
       vi.useRealTimers();
     }

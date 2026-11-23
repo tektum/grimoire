@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { getRequestListener } from '@hono/node-server';
 import type { Hono } from 'hono';
+import type { AppEnv } from '../http/env.js';
 import { createApp } from '../app.js';
 import { rejectUpgrades, startCollab } from '../collab/index.js';
 import type { StartCollabDeps } from '../collab/index.js';
@@ -22,7 +23,7 @@ export const POOL_CLOSE_MS = DERIVED_BUDGETS_MS.poolClose;
 const isLoopback = (host: string): boolean => host === '::1' || host.startsWith('127.') || host.toLowerCase().startsWith('::ffff:127.');
 
 export interface RunOptions {
-  readonly routes?: (app: Hono, ctx: AppContext) => void;
+  readonly routes?: (app: Hono<AppEnv>, ctx: AppContext) => void;
   readonly env?: Parameters<typeof compose>[0];
   readonly compose?: () => Composition;
   readonly source?: SignalSource;

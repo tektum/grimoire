@@ -1,6 +1,7 @@
 // The real run() of dist/main.js plus test routes: one slow, several that fail, one slow stream.
 import { setTimeout as sleep } from 'node:timers/promises';
 import { HTTPException } from 'hono/http-exception';
+import { fail } from '../../../dist/http/error.js';
 import { run } from '../../../dist/lifecycle/run.js';
 
 await run({
@@ -15,6 +16,7 @@ await run({
     app.get('/boom/reject', async () => { await sleep(1); throw new TypeError('async password=hunter2'); });
     app.get('/boom/value', () => { throw 'string password=hunter2'; });
     app.get('/boom/http', () => { throw new HTTPException(418, { message: 'teapot password=hunter2' }); });
+    app.get('/boom/refused', () => fail('forbidden')); // an error raised on purpose: answers 403 and logs http.handler_rejected
     app.get('/stream', () => {
       const body = new ReadableStream({
         async start(controller) {
