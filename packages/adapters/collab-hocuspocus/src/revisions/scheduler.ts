@@ -60,7 +60,7 @@ export interface RevisionScheduler {
   opened(): void;
   /** Resolves when no revision work is running (for tests and shutdown). */
   whenIdle(): Promise<void>;
-  /** Cancels every timer. */
+  /** The shutdown begins: cancels every timer and starts no more work. Final. */
   stop(): void;
 }
 
@@ -76,6 +76,8 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
   const inFlight = new Set<Promise<void>>();
   const tails = new Map<string, Promise<void>>();
   let caughtUp = false;
+  /** Set at the start of the shutdown: no new timer, no new database work. What was owed is made by the catch-up after the restart. */
+  let stopped = false;
   let retryAfter = 0;
   let catchUpTimer: unknown;
 
@@ -118,7 +120,7 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
   const attempt = (pageId: string, reason: Reason): Promise<void> =>
     serial(pageId, async () => {
       const state = pending.get(pageId);
-      if (state === undefined) return;
+      if (state === undefined || stopped) return;
       timers.clearTimeout(state.timer);
       state.timer = undefined;
       const seen = state.version;
@@ -138,6 +140,7 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
 
   return {
     changed(pageId, userId) {
+      if (stopped) return;
       const at = o.clock.now();
       const state = pending.get(pageId) ?? { authors: new Map<string, number>(), latest: undefined, version: 0, lastEditAt: at, timer: undefined, deferred: undefined };
       state.version += 1;
@@ -157,7 +160,7 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
       return pending.has(pageId) ? attempt(pageId, 'last_editor_left') : Promise.resolve();
     },
     opened() {
-      if (caughtUp || o.clock.now() < retryAfter) return;
+      if (stopped || caughtUp || o.clock.now() < retryAfter) return;
       caughtUp = true;
       const run = async (): Promise<boolean> => {
         try {
@@ -179,11 +182,13 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
           return;
         }
         // Pages saved less than 5 minutes before the restart had no timer in this process: one more pass, when they have been quiet that long.
+        if (stopped) return;
         catchUpTimer = timers.setTimeout(() => { void track(run().then(() => undefined)); }, idleMs);
       })());
     },
     whenIdle: async () => { while (inFlight.size > 0) await Promise.all([...inFlight]); },
     stop() {
+      stopped = true;
       for (const state of pending.values()) timers.clearTimeout(state.timer);
       timers.clearTimeout(catchUpTimer);
     },

@@ -324,6 +324,34 @@ describe('a revision owed at shutdown', () => {
   });
 });
 
+describe('after the shutdown began', () => {
+  it('starts no timer, no revision and no catch-up, and a catch-up pass that was running arms no second pass', async () => {
+    const b = build();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
+    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.stop();
+    b.scheduler.changed(PAGE, ANA);
+    expect(b.timers.pending).toBe(0);
+    await b.scheduler.unloaded(PAGE);
+    await b.scheduler.saved(PAGE);
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.repo.calls).toEqual([]);
+
+    const running = build();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const catchUp = running.repo.catchUp.bind(running.repo);
+    running.repo.catchUp = async (before, limit) => { const made = await catchUp(before, limit); await gate; return made; };
+    running.scheduler.opened();
+    await vi.waitFor(() => { expect(running.repo.calls).toEqual(['catchUp']); });
+    running.scheduler.stop();
+    release();
+    await running.scheduler.whenIdle();
+    expect(running.timers.pending).toBe(0);
+  });
+});
+
 describe('stopping', () => {
   it('cancels every timer, the catch-up\'s second pass included', async () => {
     const b = build();

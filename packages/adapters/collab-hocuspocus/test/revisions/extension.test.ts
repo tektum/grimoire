@@ -67,6 +67,19 @@ describe('the revisions extension', () => {
 });
 
 describe('the registry', () => {
+  it('stops revision work when the host begins its shutdown through the persistence extension', async () => {
+    const t = makeDeps();
+    const { extensions, persistence } = buildExtensions({ deps: t.deps, log: t.log, peers: new PeerRegistry(REFUSAL_CLOSE_CODES), guard: {} as never, sleep: () => new Promise(() => undefined) });
+    const revisions = extensions.find((e) => e.extensionName === 'grimoire-revisions') as ReturnType<typeof createRevisionsExtension>;
+    const repo = t.deps.revisions as FakeRevisionRepo;
+    repo.setPage(PAGE, { title: 'T', markdown: 'text' });
+    persistence.beginShutdown();
+    await revisions.onChange?.(payload());
+    await revisions.afterUnloadDocument?.(payload());
+    await revisions.scheduler.whenIdle();
+    expect(repo.calls).toEqual([]);
+  });
+
   it('registers the extension by one line, after the persistence and without changing the order of the others', () => {
     const t = makeDeps();
     const { extensions } = buildExtensions({ deps: t.deps, log: t.log, peers: new PeerRegistry(REFUSAL_CLOSE_CODES), guard: {} as never, sleep: () => new Promise(() => undefined) });

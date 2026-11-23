@@ -42,6 +42,10 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
   const limits = createLimitsExtension({ config: o.deps.config.collab, log: o.log, clock: o.deps.clock, ...(o.memoryUsed ? { memoryUsed: o.memoryUsed } : {}) });
   o.peers.onRemove((peerId) => { limits.abandonSocket(peerId); });
   o.peers.holdsAdmission((peerId) => limits.holdsReservation(peerId));
+  const revisions = createRevisionsExtension({ repo: o.deps.revisions, clock: o.deps.clock, log: o.log });
+  // The host begins its shutdown through the persistence extension: revision work stops there too, so a database that hangs holds up nothing.
+  const beginShutdown = persistence.beginShutdown.bind(persistence);
+  persistence.beginShutdown = () => { beginShutdown(); revisions.scheduler.stop(); };
   const extensions: Extension[] = [
     createAuthExtension({ deps: o.deps, log: o.log, peers: o.peers, guard: o.guard, admit: (data, userId) => { limits.admit(data, userId); } }),
     createHandshakeExtension(),
@@ -49,7 +53,7 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
     createPresenceExtension(),
     recheck.extension,
     persistence,
-    createRevisionsExtension({ repo: o.deps.revisions, clock: o.deps.clock, log: o.log }),
+    revisions,
     ...(o.extra ?? []),
   ].map((e) => guardConnectHooks(e, { ...o, onFailed: (d) => { limits.connectFailed(d); } }));
   assertUniqueExtensionNames(extensions);
