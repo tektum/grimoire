@@ -78,14 +78,16 @@ export function createPages(db: KyselyDatabase): PageRepo {
         }
 
         const c = input.content;
+        // Markdown is stored only with a non-empty editor state, checked in the statement that writes both (R7.13).
         const rows = await tx.query<Row>(
           `insert into pages (collection_id, parent_id, position, title, created_by, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0) returning ${META_COLUMNS}`,
+           select $1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $6::bytea, $7::integer, $8::text, $9::text, $10::bytea, 0 where $6::bytea is null or octet_length($6::bytea) > 0 returning ${META_COLUMNS}`,
           [
             input.collectionId, input.parentId, position(before, after), input.title, input.createdBy,
             c === undefined ? null : Buffer.from(c.state), c === undefined ? null : c.state.length, c?.markdown ?? null, c?.text ?? null, c?.hash ?? null,
           ],
         );
+        if (rows.length === 0) throw new Error('the editor state of a page with Markdown cannot be empty');
         return { kind: 'created', page: meta(rows[0] as Row) };
       });
     },
@@ -195,6 +197,22 @@ export function createPages(db: KyselyDatabase): PageRepo {
         }
       }
       return { kind: 'conflict' };
+    },
+    softDelete(id, deletedBy) {
+      return db.transaction(async (tx) => {
+        const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
+        if (page === undefined) return undefined;
+        // The collection first, as create and move take it: a delete of the collection, a move and a create cannot interleave with this.
+        const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for no key update`, [page.collection_id]);
+        if (live.length === 0) return undefined;
+        const deleted = await tx.query(
+          `with recursive down as (select id from pages where id = $1 and deleted_at is null
+             union all select p.id from pages p join down on p.parent_id = down.id where p.deleted_at is null)
+           update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $1 where id in (select id from down) and deleted_at is null returning 1`,
+          [id, deletedBy],
+        );
+        return deleted.length === 0 ? undefined : deleted.length;
+      });
     },
   };
 }

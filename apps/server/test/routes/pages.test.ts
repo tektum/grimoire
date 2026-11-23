@@ -527,3 +527,48 @@ describe('POST /v1/pages/{id}/move', () => {
     expect((await move(b, page.id, { parentId: null })).status).toBe(404);
   });
 });
+
+describe('DELETE /v1/pages/{id}', () => {
+  it('is 403 to a reader without write and 404 to a user who cannot read', async () => {
+    const b = build();
+    const open = b.pages.seed({ collectionId: b.open.id });
+    const hidden = b.pages.seed({ collectionId: b.closed.id });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${open.id}`)).status).toBe(403);
+    expect((await b.call('outsider', 'DELETE', `/v1/pages/${hidden.id}`)).status).toBe(404);
+    expect(b.pages.batchOf(open.id)).toBeUndefined();
+  });
+
+  it('deletes the page and its live descendants with the page id as the batch, keeps an earlier batch, and the pages are gone', async () => {
+    const b = build();
+    const top = b.pages.seed({ collectionId: b.shared.id });
+    const kid = b.pages.seed({ collectionId: b.shared.id, parentId: top.id });
+    const grandkid = b.pages.seed({ collectionId: b.shared.id, parentId: kid.id });
+    const earlier = b.pages.seed({ collectionId: b.shared.id, parentId: top.id });
+    const sibling = b.pages.seed({ collectionId: b.shared.id });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${earlier.id}`)).status).toBe(204);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${top.id}`)).status).toBe(204);
+    expect([top, kid, grandkid].map((p) => b.pages.batchOf(p.id))).toEqual([top.id, top.id, top.id]);
+    expect(b.pages.batchOf(earlier.id)).toBe(earlier.id);
+    expect(b.pages.batchOf(sibling.id)).toBeUndefined();
+    for (const p of [top, kid, grandkid]) expect((await b.call('admin', 'GET', `/v1/pages/${p.id}`)).status).toBe(404);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${top.id}`)).status).toBe(404);
+    expect(b.pages.count()).toBe(5);
+  });
+
+  it('answers 404 when the page disappears between the check and the delete', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    b.pages.softDelete = () => Promise.resolve(undefined);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(404);
+  });
+});
+
+describe('POST /v1/pages with an empty editor state', () => {
+  it('stores nothing: Markdown never goes in without its state', async () => {
+    const b = build();
+    b.converter.enqueueSeed({ ok: true, state: new Uint8Array(0) });
+    const res = await make(b, { collectionId: b.shared.id, markdown: 'x' });
+    expect(res.status).toBe(503);
+    expect(b.pages.count()).toBe(0);
+  });
+});

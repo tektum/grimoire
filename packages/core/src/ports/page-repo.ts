@@ -104,4 +104,10 @@ export interface PageRepo {
    * counts), and a target collection the subtree would take above `maxPages`.
    */
   move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult>;
+  /**
+   * Soft-deletes a live page and every live descendant in one transaction, all with `deleted_batch` = the page's own id; no row is
+   * removed. Descendants deleted earlier keep their own batch. The collection row is locked first, as create and move do. Returns how
+   * many pages were deleted, or undefined when the page is not live.
+   */
+  softDelete(id: string, deletedBy: string): Promise<number | undefined>;
 }

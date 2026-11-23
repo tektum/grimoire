@@ -64,6 +64,15 @@ describe('the PostgreSQL PageRepo create', () => {
     expect(Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages where markdown is not null and ydoc is null`))[0]?.n)).toBe(0);
   });
 
+  it('refuses Markdown with an empty editor state in the statement itself, and inserts nothing', async () => {
+    const c = await newCollection('empty-state');
+    const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array(0) }, convert: { ok: true, markdown: 'x', text: 'x' } });
+    const seeded = await seedUserMarkdown(converter, user, 'T', 'x');
+    if (isSeedRefusal(seeded)) throw new Error('refused');
+    await expect(createPages(t.app).create({ collectionId: c, parentId: null, afterId: null, title: 'T', createdBy: user, content: seeded }, limits, between)).rejects.toThrow(/cannot be empty/);
+    expect(Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1`, [c]))[0]?.n)).toBe(0);
+  });
+
   it('refuses a missing parent, a parent in another collection or deleted, and the level after the deepest', async () => {
     const c = await newCollection('tree');
     const other = await newCollection('elsewhere');

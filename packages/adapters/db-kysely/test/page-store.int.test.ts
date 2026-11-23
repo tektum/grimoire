@@ -129,6 +129,15 @@ describe('store', () => {
     expect(at[0]?.t).toContain('2026-01-02 03:04:05');
   });
 
+  it('an editor id that is not a UUID leaves last_edited_by as it was (the coalesce on the cast)', async () => {
+    const id = await newRow();
+    const editor = await newUser();
+    const store = createPageStore(db, clock);
+    await store.store(id, converted({ editedBy: editor }));
+    expect(await store.store(id, converted({ markdown: 'M2', editedBy: 'not-a-uuid' }))).toEqual({ written: true });
+    expect(await row(id)).toMatchObject({ markdown: 'M2', last_edited_by: editor });
+  });
+
   it('an equal hash writes nothing: updated_at is identical and no UPDATE statement is sent', async () => {
     const id = await newRow();
     const sent: string[] = [];
