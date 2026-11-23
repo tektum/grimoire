@@ -7,6 +7,7 @@ import type { CollabDeps, CollaborationHost } from '@tektum/grimoire-core/ports/
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import type { DevRoleSource } from '@tektum/grimoire-core/ports/dev-role';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
+import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import type { PageAccessChecker } from '@tektum/grimoire-core/authorize';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
@@ -110,6 +111,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const http: HttpDeps = {
     config, log, clock: systemClock, users: httpUsers,
     access: overrides.access ?? createPageAccess(createAccessStore(db)),
+    authorizer: createAuthorizer(createAccessStore(db)),
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
     ordering: createOrdering(), converter,
     idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
