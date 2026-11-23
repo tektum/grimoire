@@ -1,4 +1,4 @@
-import type { CollabConfig, Config } from '../ports/config.js';
+import type { CollabConfig, Config, HttpConfig } from '../ports/config.js';
 
 export const defaultCollabConfig: CollabConfig = {
   maxPayloadBytes: 1048576,
@@ -30,11 +30,13 @@ export const defaultCollabConfig: CollabConfig = {
   recheckSeconds: 60,
 };
 
+export const defaultHttpConfig: HttpConfig = { userLimitPerMinute: 1000, addressLimitPerMinute: 60, addressCeilingPerMinute: 6000 };
+
 /** A valid local-mode Config for tests, with shallow overrides (collab is merged). */
 export function makeFakeConfig(
-  overrides: Partial<Omit<Config, 'collab'>> & { readonly collab?: Partial<CollabConfig> } = {},
+  overrides: Partial<Omit<Config, 'collab' | 'http'>> & { readonly collab?: Partial<CollabConfig>; readonly http?: Partial<HttpConfig> } = {},
 ): Config {
-  const { collab, ...rest } = overrides;
+  const { collab, http, ...rest } = overrides;
   return {
     local: true,
     role: 'all',
@@ -49,7 +51,10 @@ export function makeFakeConfig(
     localAllowNonLoopback: false,
     shutdownSaveDeadlineMs: 45000,
     descopeMaxTokenLifetimeSeconds: 86400,
+    requireHandshake: false,
+    minClientVersion: '0.0.0',
     ...rest,
     collab: { ...defaultCollabConfig, ...collab },
+    http: { ...defaultHttpConfig, ...http },
   };
 }

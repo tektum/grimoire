@@ -53,6 +53,12 @@ export default defineConfig({
         "packages/adapters/logger-json/src/**": { statements: 99, branches: 97, functions: 96, lines: 98 },
         "packages/adapters/markdown-milkdown/src/**": { statements: 91, branches: 86, functions: 94, lines: 92 },
         // db-kysely is exercised only by the integration project (needs Postgres): its floor is in vitest.integration-coverage.config.js.
+        "apps/server/src/http/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "apps/server/src/routes/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "apps/server/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "packages/adapters/jobs-pgboss/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "packages/core/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "packages/core/src/pages/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/auth-descope/src/index.ts": { statements: 99, branches: 98, functions: 100, lines: 100 },

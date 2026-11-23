@@ -10,7 +10,7 @@
   },
   "include": [
     "src",
-    "test/http",
+    "test/http", "test/events",
     "test/server/support/context.ts"
   ],
   "references": [
