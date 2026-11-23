@@ -71,7 +71,7 @@ await scenario('session', 240_000, async (t) => { // timeout: about 50 requests 
 
   // History: a page nobody edited live has no revisions yet; an unknown revision is not found.
   const history = expectStatus(await bob.GET('/v1/pages/{id}/revisions', { params: { path: { id: root.id } } }), 200, 'bob reads the history of the first page');
-  t.check(Array.isArray(history.items), 'the history is a list');
+  t.equal(history.items.length, 0, 'a page nobody edited live has no revisions');
   const unknown = await bob.GET('/v1/pages/{id}/revisions/{rid}', { params: { path: { id: root.id, rid: '00000000-0000-4000-8000-000000000999' } } });
   t.equal([unknown.response.status, errorCode(unknown)], [404, 'not_found'], 'an unknown revision is not found');
   const viewerRestore = await carol.POST('/v1/pages/{id}/revisions/{rid}/restore', { params: { path: { id: root.id, rid: '00000000-0000-4000-8000-000000000999' } } });
