@@ -1,0 +1,60 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
+import { createAudit } from '../../src/audit.js';
+import { createCollections } from '../../src/collections.js';
+import { addUser, createTestDatabase } from '../collections/support.js';
+import type { TestDatabase } from '../collections/support.js';
+
+let t: TestDatabase;
+let admin: string;
+const ordering = new FakeOrdering();
+const after = (last: string | null): string => ordering.between(last, null);
+const events = (target: string) =>
+  t.admin.query<{ action: string; target_type: string; target_id: string; actor_id: string }>(
+    `select action, target_type, target_id, actor_id from audit_events where target_id = $1 order by id`, [target],
+  );
+
+beforeAll(async () => {
+  t = await createTestDatabase('audit');
+  admin = await addUser(t.app, 'ada', 'admin');
+}, 60_000);
+afterAll(async () => { await t?.drop(); });
+
+describe('the PostgreSQL AuditLog', () => {
+  it('appends a row with its detail, and nothing else about it can be read back by this port', async () => {
+    const target = 'target-1';
+    await createAudit(t.app).append({ actorId: admin, action: 'thing.done', targetType: 'thing', targetId: target, detail: { n: 1 } });
+    await createAudit(t.app).append({ actorId: null, action: 'thing.done_by_nobody', targetType: 'thing', targetId: target });
+    const rows = await t.admin.query<{ actor_id: string | null; detail: unknown }>(`select actor_id, detail from audit_events where target_id = $1 order by id`, [target]);
+    expect(rows).toEqual([{ actor_id: admin, detail: { n: 1 } }, { actor_id: null, detail: null }]);
+  });
+
+  it('the runtime role cannot update or delete an audit row', async () => {
+    await createAudit(t.app).append({ actorId: admin, action: 'thing.kept', targetType: 'thing', targetId: 'target-2' });
+    await expect(t.app.query(`update audit_events set action = 'x' where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
+    await expect(t.app.query(`delete from audit_events where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
+    expect(await events('target-2')).toHaveLength(1);
+  });
+});
+
+describe('the audit row of a collection change', () => {
+  it('a default-permission change writes exactly one row, and a change of other fields writes none', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'audited', createdBy: admin }, after);
+    await repo.update(c.id, { name: 'renamed' }, admin);
+    expect(await events(c.id)).toEqual([]);
+    await repo.update(c.id, { defaultPermission: 'read' }, admin);
+    expect(await events(c.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: c.id, actor_id: admin }]);
+    await repo.update(c.id, { defaultPermission: 'read' }, admin);
+    expect(await events(c.id)).toHaveLength(1);
+  });
+
+  it('a change that fails leaves no audit row and no change: both are one transaction', async () => {
+    const repo = createCollections(t.app);
+    const x = await repo.append({ name: 'tx1', createdBy: admin }, after);
+    const y = await repo.append({ name: 'tx2', createdBy: admin }, after);
+    expect(await repo.update(y.id, { defaultPermission: 'read_write', position: x.position }, admin)).toEqual({ kind: 'position-taken' });
+    expect(await events(y.id)).toEqual([]);
+    expect((await repo.get(y.id))?.defaultPermission).toBeNull();
+  });
+});

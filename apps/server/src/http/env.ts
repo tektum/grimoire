@@ -1,5 +1,6 @@
 import type { Profile } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { PageAccessChecker } from '@tektum/grimoire-core/authorize';
+import type { Authorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -25,6 +26,8 @@ export interface HttpDeps {
   readonly clock: Clock;
   readonly users: UserStore;
   readonly access: PageAccessChecker;
+  /** Collection decisions (`checkCollection`, `visibleCollections`). */
+  readonly authorizer: Authorizer;
   readonly provisioner: ReturnType<typeof createProvisioner>;
   /** Routes may only seed. The rebuild from stored Markdown belongs to the collaboration host. */
   readonly converter: MarkdownConverter;

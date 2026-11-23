@@ -33,6 +33,9 @@ export interface RouteDefinition extends Omit<RouteConfig, 'security' | 'respons
   readonly idempotent?: boolean;
 }
 
+/** The route's own `request`, kept in its literal type so a handler's `c.req.valid` knows the validated shapes. */
+type RequestOf<D> = D extends { readonly request: infer R } ? { request: R } : unknown;
+
 /** `policy` is required, so a route without one does not type-check. */
 export function defineRoute<const D extends RouteDefinition>(def: D) {
   const { policy, rateLimit, idempotent, responses, ...config } = def;
@@ -45,5 +48,5 @@ export function defineRoute<const D extends RouteDefinition>(def: D) {
     'x-grimoire-policy': policy,
     ...(rateLimit === undefined ? {} : { 'x-grimoire-rate-limit': rateLimit }),
     ...(idempotent === true ? { 'x-grimoire-idempotent': true } : {}),
-  } as RouteConfig & { path: D['path'] } & { responses: D['responses'] });
+  } as unknown as Omit<RouteConfig, 'request'> & { path: D['path']; responses: D['responses'] } & RequestOf<D>);
 }

@@ -4,6 +4,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeDatabase } from '@tektum/grimoire-core/testing/fake-database';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
+import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { createFakeAccessStore, emptyWorld } from '@tektum/grimoire-core/testing/fake-access-store';
 import { FakeAdminRepo } from '@tektum/grimoire-core/testing/fake-admin-repo';
@@ -46,6 +47,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
   const users = new FakeUserStore();
   const http: AppContext['http'] = {
     config, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
+    authorizer: createAuthorizer(createFakeAccessStore(emptyWorld())),
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
     ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),

@@ -8,7 +8,7 @@ import type { HttpDeps } from '../../src/http/env.js';
 import { makeContext } from '../server/support/context.js';
 
 const HTTP_KEYS = [
-  'config', 'log', 'clock', 'users', 'access', 'provisioner', 'ordering', 'converter',
+  'config', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter',
   'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState',
 ] as const satisfies readonly (keyof HttpDeps)[];
 
