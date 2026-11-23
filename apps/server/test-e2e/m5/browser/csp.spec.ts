@@ -26,10 +26,14 @@ test.beforeAll(async () => {
   await setCors([page_.origin]);
 });
 test.afterAll(async () => {
-  for (const key of created) await store.delete(key);
-  await setCors(defaultOrigins);
-  await page_.close();
-  await third.close();
+  // The rule goes back to the real origins and the servers close even when a delete fails or the set-up half failed.
+  try {
+    for (const key of created) await store.delete(key).catch(() => undefined);
+  } finally {
+    await setCors(defaultOrigins);
+    await page_?.close();
+    await third?.close();
+  }
 });
 
 const text = (value: string): Uint8Array => new TextEncoder().encode(value);
