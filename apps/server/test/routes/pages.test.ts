@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
@@ -173,13 +174,13 @@ describe('POST /v1/pages with Markdown', () => {
     const page = await meta(await make(b, { collectionId: b.shared.id, title: 'T', markdown: '# raw' }));
     expect(b.converter.seedKeys).toEqual([b.rows[1]?.id]);
     expect(b.converter.seedCalls).toEqual(['# raw']);
-    expect(b.pages.stored(page.id)).toEqual({ markdown: 'canonical', state: new Uint8Array([1, 2, 3]) });
+    expect(b.pages.stored(page.id)).toMatchObject({ markdown: 'canonical', state: new Uint8Array([1, 2, 3]) });
   });
 
   it('stores no Markdown and no state for a page created without it', async () => {
     const b = build();
     const page = await meta(await make(b, { collectionId: b.shared.id }));
-    expect(b.pages.stored(page.id)).toEqual({ markdown: null, state: null });
+    expect(b.pages.stored(page.id)).toEqual({ markdown: null, state: null, hash: null });
     expect(b.converter.seedCalls).toEqual([]);
   });
 
@@ -248,5 +249,126 @@ describe('POST /v1/pages with Markdown', () => {
     b.converter.enqueueSeed({ ok: false, reason: 'invalid-markdown', detail: 'x' });
     expect((await make(b, { collectionId: b.shared.id, markdown: 'bad' })).status).toBe(422);
     expect((await make(b, { collectionId: b.shared.id, markdown: 'good' })).status).toBe(201);
+  });
+});
+
+interface Detail {
+  id: string; urlId: string; collectionId: string; parentId: string | null; title: string; icon: string | null; createdBy: string;
+  lastEditedBy: string | null; lastEditedAt: number | null; savedAt: number; stateEpoch: number; myPermission: string;
+  breadcrumb: { id: string; title: string }[]; markdownStale: boolean; markdownStaleSince: number | null;
+}
+
+describe('GET /v1/pages/{id}', () => {
+  it('returns every field of R6.23, the breadcrumb from the root, and the caller\'s permission', async () => {
+    const b = build();
+    const root = b.pages.seed({ collectionId: b.shared.id, title: 'Root' });
+    const mid = b.pages.seed({ collectionId: b.shared.id, title: 'Mid', parentId: root.id });
+    const leaf = b.pages.seed({ collectionId: b.shared.id, title: 'Leaf', parentId: mid.id, icon: '*' });
+    const res = await b.call('member', 'GET', `/v1/pages/${leaf.id}`);
+    expect(res.status).toBe(200);
+    expect((await res.json()) as Detail).toMatchObject({
+      id: leaf.id, urlId: leaf.urlId, collectionId: b.shared.id, parentId: mid.id, title: 'Leaf', icon: '*', createdBy: leaf.createdBy,
+      lastEditedBy: null, lastEditedAt: null, savedAt: 0, stateEpoch: 0, myPermission: 'read-write',
+      breadcrumb: [{ id: root.id, title: 'Root' }, { id: mid.id, title: 'Mid' }], markdownStale: false, markdownStaleSince: null,
+    });
+    const top = (await (await b.call('member', 'GET', `/v1/pages/${root.id}`)).json()) as Detail;
+    expect(top.breadcrumb).toEqual([]);
+  });
+
+  it('says read-only where the caller can only read', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.open.id });
+    expect(((await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).myPermission).toBe('read-only');
+  });
+
+  it('tells a stale Markdown from a current one, with the time', async () => {
+    const b = build();
+    const stale = b.pages.seed({ collectionId: b.shared.id, markdownStaleSince: 1234 });
+    const fresh = b.pages.seed({ collectionId: b.shared.id });
+    expect(await (await b.call('member', 'GET', `/v1/pages/${stale.id}`)).json()).toMatchObject({ markdownStale: true, markdownStaleSince: 1234 });
+    expect(await (await b.call('member', 'GET', `/v1/pages/${fresh.id}`)).json()).toMatchObject({ markdownStale: false, markdownStaleSince: null });
+  });
+
+  it('is 404, with one answer, for a page the caller cannot read, a deleted one and an unknown id', async () => {
+    const b = build();
+    const hidden = b.pages.seed({ collectionId: b.closed.id });
+    const answers = [
+      await b.call('outsider', 'GET', `/v1/pages/${hidden.id}`),
+      await b.call('member', 'GET', '/v1/pages/00000000-0000-4000-8000-000000000999'),
+    ];
+    const bodies = await Promise.all(answers.map(async (r) => [r.status, await r.json()]));
+    expect(bodies[0]).toEqual([404, { error: { code: 'not_found', message: 'Not found.' } }]);
+    expect(bodies[1]).toEqual(bodies[0]);
+    expect((await b.call('member', 'GET', '/v1/pages/not-an-id')).status).toBe(422);
+    await b.collections.softDelete(b.closed.id, b.rows[0]?.id as string);
+    expect((await b.call('admin', 'GET', `/v1/pages/${hidden.id}`)).status).toBe(404);
+  });
+
+  it('answers 404 when the page disappears between the check and the read', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    b.pages.get = () => Promise.resolve(undefined);
+    expect((await b.call('member', 'GET', `/v1/pages/${page.id}`)).status).toBe(404);
+  });
+});
+
+describe('GET /v1/pages/by-url-id/{urlId}', () => {
+  it('returns the same page as by id, and 404 for an unknown or an unreadable URL id', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id, title: 'Findable', urlId: 'abc123' });
+    const hidden = b.pages.seed({ collectionId: b.closed.id, urlId: 'hidden1' });
+    const byUrl = await b.call('member', 'GET', '/v1/pages/by-url-id/abc123');
+    expect(byUrl.status).toBe(200);
+    expect(await byUrl.json()).toEqual(await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json());
+    const unknown = await b.call('member', 'GET', '/v1/pages/by-url-id/nothing');
+    const unreadable = await b.call('outsider', 'GET', `/v1/pages/by-url-id/${hidden.urlId}`);
+    expect([unknown.status, unreadable.status]).toEqual([404, 404]);
+    expect(await unknown.json()).toEqual(await unreadable.json());
+  });
+});
+
+describe('PATCH /v1/pages/{id}', () => {
+  it('changes the title and the icon and clears the icon with null', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id, title: 'Old', icon: '*' });
+    const res = await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { title: 'New', icon: null });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: page.id, title: 'New', icon: null });
+    expect(await (await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { icon: 'rocket' })).json()).toMatchObject({ title: 'New', icon: 'rocket' });
+  });
+
+  it('moves the stored hash with the title, so a following save with the same Markdown is a skip', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id, title: 'Old', markdown: '# body' });
+    await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { title: 'New' });
+    expect(b.pages.stored(page.id)?.hash?.equals(markdownHash('New', '# body'))).toBe(true);
+    await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { icon: 'x' });
+    expect(b.pages.stored(page.id)?.hash?.equals(markdownHash('New', '# body'))).toBe(true);
+  });
+
+  it('is 403 to a reader without write and 404 to a user who cannot read', async () => {
+    const b = build();
+    const open = b.pages.seed({ collectionId: b.open.id });
+    const hidden = b.pages.seed({ collectionId: b.closed.id });
+    const reader = await b.call('member', 'PATCH', `/v1/pages/${open.id}`, { title: 'X' });
+    expect([reader.status, await code(reader)]).toEqual([403, 'forbidden']);
+    const outsider = await b.call('outsider', 'PATCH', `/v1/pages/${hidden.id}`, { title: 'X' });
+    expect([outsider.status, await code(outsider)]).toEqual([404, 'not_found']);
+  });
+
+  it('refuses any other field, an empty patch, a long or NUL title and a long icon with 422', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    for (const body of [{ markdown: 'x' }, { collectionId: b.open.id }, { parentId: null }, {}, { title: '' }, { title: 'x'.repeat(256) }, { title: 'a\u0000b' }, { icon: 'x'.repeat(65) }]) {
+      const res = await b.call('member', 'PATCH', `/v1/pages/${page.id}`, body);
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+  });
+
+  it('answers 404 when the page disappears between the check and the change', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    b.pages.updateMeta = () => Promise.resolve(undefined);
+    expect((await b.call('member', 'PATCH', `/v1/pages/${page.id}`, { title: 'X' })).status).toBe(404);
   });
 });

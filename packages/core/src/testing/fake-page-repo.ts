@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { CreatePageResult, NewPage, PageLimits, PageMeta, PageRepo } from '../ports/page-repo.js';
+import { markdownHash } from '../pages/hash.js';
+import type { CreatePageResult, NewPage, PageDetail, PageLimits, PageMeta, PageMetaPatch, PageRepo } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -7,6 +8,8 @@ interface Row extends PageMeta {
   readonly deleted: boolean;
   readonly markdown: string | null;
   readonly state: Uint8Array | null;
+  readonly hash: Buffer | null;
+  readonly staleSince: number | null;
 }
 
 /** In-memory PageRepo for tests. Collections are the `World`'s (so a delete there is seen here); pages are mirrored into it. */
@@ -18,9 +21,9 @@ export class FakePageRepo implements PageRepo {
   constructor(readonly world: World = emptyWorld()) {}
 
   /** What was stored for a page (Markdown and state), or undefined. */
-  stored(id: string): { markdown: string | null; state: Uint8Array | null } | undefined {
+  stored(id: string): { markdown: string | null; state: Uint8Array | null; hash: Buffer | null } | undefined {
     const row = this.rows.find((r) => r.id === id);
-    return row === undefined ? undefined : { markdown: row.markdown, state: row.state };
+    return row === undefined ? undefined : { markdown: row.markdown, state: row.state, hash: row.hash };
   }
 
   count(): number {
@@ -28,14 +31,18 @@ export class FakePageRepo implements PageRepo {
   }
 
   /** Test setup: a live page, also a fact of the world. */
-  seed(page: Partial<PageMeta> & { collectionId: string }): PageMeta {
+  seed(page: Partial<PageMeta> & { collectionId: string; markdown?: string; markdownStaleSince?: number }): PageMeta {
     const id = page.id ?? randomUUID();
     const meta: PageMeta = {
       id, urlId: page.urlId ?? id.slice(0, 8), collectionId: page.collectionId, parentId: page.parentId ?? null,
       position: page.position ?? `p${String(this.rows.length).padStart(5, '0')}`, title: page.title ?? '', icon: page.icon ?? null,
       createdBy: page.createdBy ?? randomUUID(), lastEditedBy: null, lastEditedAt: null, savedAt: 0, stateEpoch: 0,
     };
-    this.rows.push({ ...meta, deleted: false, markdown: null, state: null });
+    const title = meta.title;
+    this.rows.push({
+      ...meta, deleted: false, markdown: page.markdown ?? null, state: null,
+      hash: page.markdown === undefined ? null : markdownHash(title, page.markdown), staleSince: page.markdownStaleSince ?? null,
+    });
     this.world.pages.push({ id, collectionId: page.collectionId, deleted: false, epoch: 0 });
     return meta;
   }
@@ -59,7 +66,44 @@ export class FakePageRepo implements PageRepo {
     const next = after === undefined ? null : (siblings[siblings.indexOf(after) + 1]?.position ?? null);
     const page = this.seed({ collectionId: input.collectionId, parentId: input.parentId, title: input.title, createdBy: input.createdBy, position: position(before, next) });
     const row = this.rows.find((r) => r.id === page.id) as Row;
-    this.rows[this.rows.indexOf(row)] = { ...row, markdown: input.content?.markdown ?? null, state: input.content?.state ?? null };
+    this.rows[this.rows.indexOf(row)] = { ...row, markdown: input.content?.markdown ?? null, state: input.content?.state ?? null, hash: input.content?.hash ?? null };
     return Promise.resolve({ kind: 'created', page });
+  }
+
+  private livePage(id: string): Row | undefined {
+    const row = this.rows.find((r) => r.id === id && !r.deleted);
+    const collection = row === undefined ? undefined : this.world.collections.find((c) => c.id === row.collectionId);
+    return collection === undefined || collection.deleted ? undefined : row;
+  }
+
+  get(id: string): Promise<PageDetail | undefined> {
+    const row = this.livePage(id);
+    if (row === undefined) return Promise.resolve(undefined);
+    const breadcrumb: { id: string; title: string }[] = [];
+    for (let up = this.rows.find((r) => r.id === row.parentId); up !== undefined; up = this.rows.find((r) => r.id === up?.parentId)) breadcrumb.unshift({ id: up.id, title: up.title });
+    return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince });
+  }
+
+  idOfUrlId(urlId: string): Promise<string | undefined> {
+    return Promise.resolve(this.rows.find((r) => r.urlId === urlId)?.id);
+  }
+
+  updateMeta(id: string, patch: PageMetaPatch): Promise<PageMeta | undefined> {
+    const row = this.livePage(id);
+    if (row === undefined) return Promise.resolve(undefined);
+    const title = patch.title ?? row.title;
+    const next: Row = {
+      ...row, title, icon: patch.icon === undefined ? row.icon : patch.icon, savedAt: row.savedAt + 1,
+      hash: row.markdown === null ? row.hash : markdownHash(title, row.markdown),
+    };
+    this.rows[this.rows.indexOf(row)] = next;
+    return Promise.resolve(this.meta(next));
+  }
+
+  private meta(row: Row): PageMeta {
+    return {
+      id: row.id, urlId: row.urlId, collectionId: row.collectionId, parentId: row.parentId, position: row.position, title: row.title, icon: row.icon,
+      createdBy: row.createdBy, lastEditedBy: row.lastEditedBy, lastEditedAt: row.lastEditedAt, savedAt: row.savedAt, stateEpoch: row.stateEpoch,
+    };
   }
 }
