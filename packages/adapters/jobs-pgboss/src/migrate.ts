@@ -80,7 +80,18 @@ export async function requireSchemaAccess(db: Queryable, schema: string = PGBOSS
 export async function grantRuntimeRole(db: Queryable, role: string, schema: string = PGBOSS_SCHEMA): Promise<readonly string[]> {
   const s = ident(schema);
   const r = ident(role);
+  // Functions first: they carry EXECUTE for PUBLIC by default, so each is revoked from PUBLIC (and the DDL ones from the runtime
+  // role) before the role is given any access to the schema, and the allowed ones are granted back one by one.
+  const functions = await db.query<{ signature: string; name: string }>(
+    `select p.oid::regprocedure::text as signature, p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = $1 order by 1`,
+    [schema],
+  );
+  for (const f of functions) {
+    await db.query(`revoke execute on function ${f.signature} from public`);
+    if (DDL_FUNCTIONS.has(f.name)) await db.query(`revoke execute on function ${f.signature} from ${r}`);
+  }
   await db.query(`grant usage on schema ${s} to ${r}`);
+  for (const f of functions) if (!DDL_FUNCTIONS.has(f.name)) await db.query(`grant execute on function ${f.signature} to ${r}`);
   const tables = await db.query<{ name: string }>(
     `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = $1 and c.relkind in ('r', 'p') order by c.relname`,
@@ -93,16 +104,9 @@ export async function grantRuntimeRole(db: Queryable, role: string, schema: stri
     granted.push(name);
   }
   await db.query(`grant usage, select on all sequences in schema ${s} to ${r}`);
-  // Functions carry EXECUTE for PUBLIC by default, so every one is revoked from PUBLIC first and then granted back one by one.
-  const functions = await db.query<{ signature: string; name: string }>(
-    `select p.oid::regprocedure::text as signature, p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = $1 order by 1`,
-    [schema],
-  );
-  for (const f of functions) {
-    await db.query(`revoke execute on function ${f.signature} from public`);
-    await db.query(`${DDL_FUNCTIONS.has(f.name) ? 'revoke' : 'grant'} execute on function ${f.signature} ${DDL_FUNCTIONS.has(f.name) ? 'from' : 'to'} ${r}`);
-  }
-  // Tables, sequences and functions the migration role creates later (a queue's partition, made when the queue is created) get the same rights.
+  // Tables and sequences the migration role creates later get the same rights. In practice that is a queue's partition, made when
+  // the migration role creates the queue. Functions get no default: a function added by a later pg-boss version is revoked from
+  // PUBLIC and judged by the loop above the next time this step runs (it runs on every `grimoire migrate`).
   await db.query(`alter default privileges in schema ${s} grant select, insert, update, delete on tables to ${r}`);
   await db.query(`alter default privileges in schema ${s} grant usage, select on sequences to ${r}`);
   return granted;

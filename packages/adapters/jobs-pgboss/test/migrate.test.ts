@@ -43,12 +43,24 @@ describe('grantRuntimeRole', () => {
     await expect(grantRuntimeRole(recorder(['Bad Name']).db, 'grimoire_app')).rejects.toThrow(/not a plain/);
   });
 
-  it('is repeatable: a second run issues the same statements', async () => {
+  it('is repeatable and picks up what appeared since: every statement is an idempotent grant or revoke, and a new table is granted too', async () => {
     const first = recorder(['job']);
-    const second = recorder(['job']);
+    const second = recorder(['job', 'j0a1b2c3']); // a queue partition made between the two runs
     await grantRuntimeRole(first.db, 'grimoire_app');
     await grantRuntimeRole(second.db, 'grimoire_app');
-    expect(second.sql).toEqual(first.sql);
+    const writes = (sql: string[]) => sql.filter((q) => !q.startsWith('select'));
+    for (const q of [...writes(first.sql), ...writes(second.sql)]) expect(q).toMatch(/^(grant|revoke|alter default privileges) /);
+    for (const q of writes(first.sql)) expect(second.sql).toContain(q);
+    expect(second.sql).toContain('grant select, insert, update, delete on table "pgboss"."j0a1b2c3" to "grimoire_app"');
+    expect(first.sql).not.toContain('grant select, insert, update, delete on table "pgboss"."j0a1b2c3" to "grimoire_app"');
+  });
+
+  it('takes execute away before it gives the role access to the schema', async () => {
+    const { db, sql } = recorder(['job']);
+    await grantRuntimeRole(db, 'grimoire_app');
+    const usage = sql.indexOf('grant usage on schema "pgboss" to "grimoire_app"');
+    expect(usage).toBeGreaterThan(sql.indexOf('revoke execute on function pgboss.create_queue(text) from "grimoire_app"'));
+    expect(usage).toBeGreaterThan(sql.indexOf('revoke execute on function pgboss.job_now(text) from public'));
   });
 });
 
