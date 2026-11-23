@@ -10,6 +10,7 @@ import { createPresenceExtension } from './extensions/presence.js';
 import { createRecheck } from './extensions/recheck.js';
 import type { Recheck } from './extensions/recheck.js';
 import { guardConnectHooks } from './guard.js';
+import type { RefusalTable } from './refusal.js';
 import type { BreakerOptions } from './save.js';
 import type { PeerRegistry } from './peers.js';
 import type { UpgradeGuard } from './upgrade-guard.js';
@@ -27,12 +28,14 @@ export interface RegistryOptions {
   readonly memoryUsed?: () => number;
   /** Breaker settings of the save path (the test-only `disabled` switch rides here). */
   readonly breaker?: BreakerOptions;
+  /** The host's merged refusal table, shared with the persistence close. */
+  readonly refusals?: RefusalTable;
 }
 
 /** The ordered extension list; Hocuspocus orders by `priority` (auth 1000, re-check 900, limits 800, presence 600, persistence 100, lifecycle 50). */
 export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; persistence: PersistenceExtension; recheck: Recheck } {
   const persistence = createPersistenceExtension({
-    deps: o.deps, log: o.log, sleep: o.sleep, convertConcurrency: o.deps.config.collab.convertPoolSize, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
+    deps: o.deps, ...(o.refusals ? { refusals: o.refusals } : {}), log: o.log, sleep: o.sleep, convertConcurrency: o.deps.config.collab.convertPoolSize, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
   });
   const recheck = createRecheck({ deps: o.deps, log: o.log });
   const limits = createLimitsExtension({ config: o.deps.config.collab, log: o.log, clock: o.deps.clock, ...(o.memoryUsed ? { memoryUsed: o.memoryUsed } : {}) });

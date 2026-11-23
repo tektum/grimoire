@@ -4,7 +4,7 @@ import { PAGE, setup } from '../persistence/support.js';
 const withInstance = () => {
   const s = setup();
   const closeConnections = vi.fn();
-  const store = () => s.ext.onStoreDocument?.({ document: s.doc, documentName: PAGE, instance: { closeConnections } } as never) ?? Promise.resolve();
+  const store = () => s.ext.onStoreDocument?.({ document: s.doc, documentName: PAGE, instance: { documents: new Map([[PAGE, { getConnections: () => [{ close: closeConnections }] }]]) } } as never) ?? Promise.resolve();
   return { s, closeConnections, store };
 };
 
@@ -19,7 +19,7 @@ describe('epoch-checked saves', () => {
     expect(s.events('collab.store_failed')).toHaveLength(0);
     expect(s.events('collab.save_refused_epoch')).toHaveLength(1);
     expect(s.events('collab.save_refused_epoch')[0]?.fields).toMatchObject({ pageId: PAGE, loaded: 0, reason: 'epoch-mismatch' });
-    expect(closeConnections).toHaveBeenCalledExactlyOnceWith(PAGE);
+    expect(closeConnections).toHaveBeenCalledExactlyOnceWith({ code: 4409, reason: 'stale-epoch' });
   });
 
   it('the store that follows the closing of the connections is not logged or closed again, and unload clears the refusal', async () => {
