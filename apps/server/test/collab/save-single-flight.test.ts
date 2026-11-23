@@ -9,17 +9,33 @@ import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 // Verification finding F1: a page whose text is a very long run of `]` never converts in time. While one conversion of it runs, later saves of the SAME
 // page must not start their own: the saver keeps at most one conversion per page in flight (and one waiting, latest wins). The REAL pool, with short
 // time limits injected so the scenario takes seconds, not the 140 s of the original measurement. No database.
-const POOL_TIMEOUT_MS = 600;
-let pool: PooledMarkdownConverter;
-beforeAll(() => { pool = createMarkdownConverter({ poolSize: 2, timeoutMs: POOL_TIMEOUT_MS }); });
-afterAll(async () => { await pool.close(); });
-
+// The hostile page's time limit is derived, not a literal: the honest page is converted by the OTHER worker while the hostile one runs, and that worker's first
+// conversion starts its editor (about 120 ms idle, 300 to 600 ms on a loaded 2-CPU runner, seen: one 616 ms against a literal 600 ms). The limit is a multiple of the
+// slowest cold conversion measured on a throwaway pool right before, with 600 ms as the floor so the scenario still takes seconds, not minutes.
 const paragraph = (text: string): Y.Doc => {
   const d = new Y.Doc();
   const p = new Y.XmlElement('paragraph'); const t = new Y.XmlText(); t.insert(0, text); p.insert(0, [t]);
   d.getXmlFragment('prosemirror').insert(0, [p]);
   return d;
 };
+const FLOOR_MS = 600;
+const HEADROOM = 5;
+const CEILING_MS = 5_000; // a pathological measurement must not make the limit meaningless (production: 10 s)
+const POOL_SIZE = Number(process.env['SINGLE_FLIGHT_PROBE_POOL_SIZE'] ?? '2'); // 1 only to show that the test fails when both conversions share one worker
+let pool: PooledMarkdownConverter;
+beforeAll(async () => {
+  const probe = createMarkdownConverter({ poolSize: 2 });
+  const honestState = Y.encodeStateAsUpdate(paragraph('hello *world*'));
+  const started = Date.now();
+  await Promise.all([probe.toMarkdown(honestState), probe.toMarkdown(honestState)]); // both workers cold, as in the scenario
+  const coldMs = Date.now() - started;
+  await probe.close();
+  const timeoutMs = Math.min(CEILING_MS, Math.max(FLOOR_MS, HEADROOM * coldMs));
+  process.stderr.write(`single-flight: cold conversion ${String(coldMs)} ms, hostile limit ${String(timeoutMs)} ms, pool ${String(POOL_SIZE)}\n`);
+  pool = createMarkdownConverter({ poolSize: POOL_SIZE, timeoutMs });
+}, 30_000);
+afterAll(async () => { await pool.close(); });
+
 const HOSTILE = ']'.repeat(100_000);
 const isHostile = (state: Uint8Array): boolean => state.byteLength > 50_000;
 
