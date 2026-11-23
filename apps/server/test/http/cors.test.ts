@@ -47,6 +47,14 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe(ALLOWED);
   });
 
+  it('matches a configured origin written in mixed case against the lowercase form a browser sends', async () => {
+    const t = makeContext();
+    const app = createApp({ ...t.ctx, config: { ...t.ctx.config, allowedOrigins: ['HTTPS://App.Example.com'] } });
+    app.get('/v1/probe', (c) => c.json({ ok: true }));
+    const res = await app.request('/v1/probe', { headers: { origin: 'https://app.example.com' } });
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
+  });
+
   it('never allows credentials, for allowed and disallowed origins and preflights', async () => {
     const app = build();
     for (const origin of [ALLOWED, 'https://evil.example']) {
