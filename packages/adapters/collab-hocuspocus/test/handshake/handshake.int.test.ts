@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { PAGE } from '../host/support.js';
+import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
+import { KNOWN_PAGES, PAGE } from '../host/support.js';
 import { connect, eventually, startLive } from '../host/live-support.js';
 import type { Client, Live } from '../host/live-support.js';
 
@@ -100,5 +101,22 @@ describe('connect-time handshake over real sockets', () => {
     const reader = open(l, wrap({ e: 2 }));
     await eventually(() => reader.text.toString() === 'ac!', 3000, 'edit arrives');
     expect(c.failures).toEqual([]);
+  });
+
+  it('order with admission: refusals for stale-epoch and client-too-old take no reservation, so a one-document user can still open two pages in turn', async () => {
+    const l = await startLive('member', {}, (t) => { Object.assign(t.deps, { config: makeFakeConfig({ minClientVersion: '1.2.0', collab: { maxDocumentsPerUser: 1 } }) }); });
+    lives.push(l);
+    const other = KNOWN_PAGES[1] as string;
+    l.t.pages.seed(PAGE); l.t.pages.seed(other); setEpoch(l, 4);
+    for (const token of [wrap({ e: 3 }), wrap({ e: 9 }), wrap({ v: '1.1.9' }), wrap({ e: 3 }), wrap({ e: 9 })]) {
+      const c = open(l, token);
+      await eventually(() => c.failures.length > 0, 3000, 'refusal');
+    }
+    const first = connect(l, PAGE, wrap({ e: 4 })); clients.push(first);
+    await eventually(() => first.provider.synced, 3000, 'the one allowed document opens after five refusals');
+    first.destroy();
+    const second = connect(l, other, wrap({})); clients.push(second);
+    await eventually(() => second.provider.synced, 5000, 'a second page opens once the first is closed');
+    expect(second.failures).toEqual([]);
   });
 });
