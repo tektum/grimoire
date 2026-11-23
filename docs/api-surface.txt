@@ -23,6 +23,7 @@ PATCH /v1/users/{id} | op:patchUser | policy:admin | path:id:string<uuid> | quer
 POST /v1/collections | op:createCollection | policy:admin | path:- | query:- | req:CreateCollection | res:201:Collection | rate:- | idem:yes
 POST /v1/groups | op:createGroup | policy:admin | path:- | query:- | req:GroupName | res:201:Group,409:{error:{code:string,message:string}} | rate:- | idem:yes
 POST /v1/pages | op:createPage | policy:collection-body:collectionId:write | path:- | query:- | req:CreatePage | res:201:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:yes
+POST /v1/pages/{id}/move | op:movePage | policy:page:write:id | path:id:string<uuid> | query:- | req:MovePage | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/users/names | op:userNames | policy:authenticated | path:- | query:- | req:UserNamesRequest | res:200:UserNames | rate:60/60s | idem:no
 PUT /v1/collections/{id}/access | op:putCollectionAccess | policy:collection:admin:id | path:id:string<uuid> | query:- | req:GrantCollectionAccess | res:200:CollectionAccessEntry | rate:- | idem:no
 PUT /v1/groups/{id}/members/{userId} | op:addGroupMember | policy:admin | path:id:string<uuid>,userId:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
@@ -42,6 +43,7 @@ schema GroupList = {items:Group[]}
 schema GroupMembers = {items:AdminUser[]}
 schema GroupName = {name:string(1..100)}!
 schema Me = {email:string,id:string,name:string,role:admin|member|viewer}
+schema MovePage = {afterId?:string<uuid>|null,collectionId?:string<uuid>,parentId:string<uuid>|null}!
 schema Page = PageMeta&{breadcrumb:{id:string<uuid>,title:string}[],markdownStale:boolean,markdownStaleSince:number|null,myPermission:read-write|read-only}
 schema PageMeta = {collectionId:string<uuid>,createdBy:string<uuid>,icon:string|null,id:string<uuid>,lastEditedAt:number|null,lastEditedBy:string<uuid>|null,parentId:string<uuid>|null,position:string,savedAt:number,stateEpoch:integer,title:string,urlId:string}
 schema PatchCollection = {color?:string(..64)|null,defaultPermission?:read|read_write|null|null,description?:string(..2000)|null,icon?:string(..64)|null,name?:string(1..100),position?:string(1..255)}!
