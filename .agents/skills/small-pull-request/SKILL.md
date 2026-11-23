@@ -39,7 +39,7 @@ timeout 60 gh pr merge --auto --squash
 
 The body uses the repository template: What changed, Why, How it was verified, Visuals, Checklist. Put what you did NOT verify first under "How it was verified". For images, see the `pull-request-visuals` skill.
 
-Auto-merge waits for `CI Required`, one approval and resolved threads. Keep CI green and answer review comments (`answer-review` skill).
+Auto-merge waits for `CI Required` and `Stack Guard`, one approval and resolved threads. Keep CI green and answer review comments (`answer-review` skill).
 
 ## Stacked pull requests
 
@@ -47,7 +47,9 @@ Use a stack only when the second change needs the first.
 
 1. Branch the second from the first: `git switch -c <second> <first>`.
 2. Open it with `--base <first>`, not `main`.
-3. Do not enable auto-merge on the second until its base is on `main`.
+3. Link the pull requests into a stack, bottom to top: `gh stack link <first-number> <second-number>`; check that `gh api repos/<owner>/<repo>/pulls/<second-number> --jq .stack` is not null. An unlinked pull request into a branch other than `main` fails `Stack Guard`.
+4. Do not enable auto-merge (`gh pr merge --auto`) on a pull request whose base is not `main`: it would merge into the lower branch outside `gh stack merge`.
+5. Merge a stack only with `gh stack merge <number> --yes --squash` (it merges everything below that pull request first); never merge into a non-`main` base any other way.
 
 After the first is squash-merged, its commits are not on `main`, so a plain rebase replays them. Cut them off instead:
 

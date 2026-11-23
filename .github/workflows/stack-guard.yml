@@ -1,0 +1,41 @@
+name: Stack Guard
+
+# A pull request whose base is not main is only held to the rules of main when it is part of a stack. This light workflow (read-only, no checkout) fails such a pull
+# request until it is linked with `gh stack link`. `edited` is sent when the base branch changes, so a retarget is checked again; the CURRENT base and stack are read
+# from the API, so linking the stack and re-running the job is enough.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: stack-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  stack-guard:
+    name: Stack Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: A pull request into a branch other than main must be part of a stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          base=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.base.ref')
+          stack=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.stack // empty')
+          if [ "$base" = "main" ]; then
+            echo "Base is main: nothing to check."
+            exit 0
+          fi
+          if [ -z "$stack" ]; then
+            echo "::error::This pull request targets '$base', not main, and is not part of a stack. Link it with 'gh stack link' so that it is held to the rules of main, then re-run this job."
+            exit 1
+          fi
+          echo "Part of a stack: ok."
