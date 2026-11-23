@@ -39,7 +39,7 @@ function literalMs(node) {
   return undefined;
 }
 
-/** Violations in one file's text: [{ file, line, text, ms, kind }]; `line` is where the call starts. */
+/** Violations in one file's text: [{ file, line, text, ms, kind }]; `line` is where the call starts; `text` is the whole call when it spans lines. */
 export function findSleeps(file, text) {
   const out = [];
   if (!/sleep|delay|setTimeout|setInterval/.test(text)) return out;
@@ -49,8 +49,12 @@ export function findSleeps(file, text) {
     if (ts.isCallExpression(node)) {
       const name = calleeName(node);
       const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line;
-      const at = { file, line: line + 1, text: (lines[line] ?? '').trim() };
-      if (name === 'setInterval') out.push({ ...at, ms: undefined, kind: 'interval' });
+      // The text is every line of the call (start to end, each trimmed, joined by a space): an allow-list entry names the whole call, delay included.
+      const endLine = source.getLineAndCharacterOfPosition(node.getEnd()).line;
+      const whole = lines.slice(line, endLine + 1).map((l) => l.trim()).join(' ');
+      const at = { file, line: line + 1, text: endLine === line ? (lines[line] ?? '').trim() : whole };
+      // A setInterval has no delay that is checked, so its entry names the line it starts on (its callback can be long).
+      if (name === 'setInterval') out.push({ ...at, text: (lines[line] ?? '').trim(), ms: undefined, kind: 'interval' });
       else if (name !== undefined && TIMER_CALLS.has(name)) {
         const ms = literalMs(node.arguments[name === 'setTimeout' ? 1 : 0]);
         if (ms === undefined) out.push({ ...at, ms, kind: 'non-literal' });

@@ -48,6 +48,18 @@ describe('why the key set could not be used is logged, and the caller sees unava
     ['a keys member that is not an array', { raw: '{"keys":{}}' }, 'invalid'],
     ['a hanging server', 'hang', 'timeout'],
   ];
+  it('a redirect to another server is not followed: that server is never contacted, and the failure is logged as http', async () => {
+    const target = new KeyServer();
+    target.keys = [jwk];
+    await target.start();
+    try {
+      server.behaviour = { status: 302, location: `${target.url}/keys` };
+      const { v, lines } = make();
+      expect(await v.verify(await sign(pair, 'SK1', claims()))).toEqual({ kind: 'service-unavailable' });
+      expect(reasons(lines)).toEqual(['http']);
+      expect(target.requests, 'the redirect target saw no request').toBe(0);
+    } finally { await target.stop(); }
+  });
   it.each(cases)('%s', async (_n, behaviour, reason) => {
     server.behaviour = behaviour;
     const { v, lines } = make({ fetchTimeoutMs: behaviour === 'hang' ? 50 : 3000 });
@@ -250,9 +262,11 @@ describe('management profile lookup', () => {
   });
   it('a user id of 256 characters is looked up and one of 257 is unavailable without a request', async () => {
     expect((await lookup(ann, 'u'.repeat(256))).r.kind).toBe('ok');
+    expect(requests, 'the 256-character id was looked up').toBe(1);
     const { r, lines } = await lookup(ann, 'u'.repeat(257));
     expect(r).toEqual({ kind: 'unavailable' });
     expect(failReasons(lines)).toEqual([]);
+    expect(requests, 'the 257-character id sent no request').toBe(1);
   });
   it('an answer other than 200 is unavailable and logged as http, even when it carries a good user', async () => {
     status = 203;

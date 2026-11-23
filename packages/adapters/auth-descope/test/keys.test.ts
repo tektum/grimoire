@@ -141,6 +141,26 @@ describe('key refresh and the one-hour limit (the SDK refreshes on demand: after
     expect(server.requests).toBe(2);
   });
 
+  it('a key dropped from the set is refused after the next reload (an old key is not kept alongside the new set)', async () => {
+    const clock = new SyncedClock(Date.now());
+    const { v } = make({ clock });
+    const k2 = await makeKey('SK2');
+    server.keys = [jwk, k2.jwk];
+    clock.advance(11 * MIN);
+    expect((await v.verify(await sign(pair, 'SK1'))).kind).toBe('ok'); // reload: both keys are in the set
+    server.keys = [k2.jwk]; // SK1 is revoked
+    clock.advance(11 * MIN);
+    expect((await v.verify(await sign(k2.pair, 'SK2'))).kind).toBe('ok'); // reload: the set is only SK2
+    expect(await v.verify(await sign(pair, 'SK1'))).toEqual({ kind: 'invalid-token' });
+  });
+
+  it.each([0, 1, 500, 999])('a token that lives exactly 24 hours is accepted whatever millisecond the clock starts on (%i): the injected clock is the only clock', async (ms) => {
+    const start = Math.floor(Date.now() / 1000) * 1000 + ms;
+    const clock = new SyncedClock(start);
+    const { v } = make({ clock });
+    expect((await v.verify(await sign(pair, 'SK1', goodClaims({ exp: Math.floor(clock.now() / 1000) + 24 * 3600 })))).kind).toBe('ok');
+  });
+
   it('after the one-hour limit a recovered key server restores service on the next verification', async () => {
     const clock = new SyncedClock(Date.now());
     const { v } = make({ clock });

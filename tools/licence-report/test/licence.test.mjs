@@ -280,3 +280,19 @@ test("a lock that is not the npm-style map (bun.lock tuples as packages) is refu
   const raw = { packages: { "@a/b": ["@a/b@1.0.0", "", {}, "sha512-x"] } };
   assert.throws(() => checkLock(raw, { readMeta: () => null }), /not the npm-style map.*bunLockToPackages/);
 });
+
+test("a lock with no packages, or without the root entry, is refused instead of passing with no rows", () => {
+  for (const lock of [{ packages: {} }, {}, { packages: { "node_modules/a": { version: "1.0.0" } } }, { packages: { "": { dependencies: { a: "1.0.0" } } } }]) {
+    assert.throws(() => checkLock(lock, { readMeta: () => null }), /no packages|root entry/, JSON.stringify(lock));
+  }
+});
+
+test("exceptions for a prerelease and for its release of one package and licence are not overlapping", () => {
+  const rc = { ...goodEx, versions: "1.0.0-rc.1" };
+  const rel = { ...goodEx, versions: "1.0.0" };
+  assert.deepEqual(validateExceptions([rc, rel], "2026-11-20"), []);
+  // versions that read as the same release (1, 1.0, 1.0.0, 1.0.0+build) still overlap: the shortcut is only for a prerelease that has no interval
+  for (const other of ["1.0", "1", "1.0.0+b", "=1.0.0"]) assert.notDeepEqual(validateExceptions([rel, { ...goodEx, versions: other }], "2026-11-20"), [], other);
+  // the same version string twice still is a duplicate
+  assert.notDeepEqual(validateExceptions([rc, { ...rc }], "2026-11-20"), []);
+});
