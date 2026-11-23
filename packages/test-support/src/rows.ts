@@ -32,7 +32,8 @@ export function insertSql(table: string, columns: Columns): string {
 }
 
 async function insertRow(run: RunSql, table: string, columns: Columns): Promise<string> {
-  const id = typeof columns.id === 'string' ? columns.id : randomUUID();
+  if (columns.id !== undefined && typeof columns.id !== 'string') throw new Error('An explicit id must be a string: the helper returns it');
+  const id = columns.id ?? randomUUID();
   await run(insertSql(table, { ...columns, id }));
   return id;
 }

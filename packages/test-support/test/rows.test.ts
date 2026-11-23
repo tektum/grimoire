@@ -41,6 +41,15 @@ describe('insertPage', () => {
   });
 });
 
+describe('an id that is not a string', () => {
+  it('is refused instead of being replaced by a generated one', async () => {
+    const { sql, run } = capture();
+    await expect(insertPage(run, { id: raw('gen_random_uuid()') })).rejects.toThrow('explicit id must be a string');
+    await expect(insertPage(run, { id: null })).rejects.toThrow('explicit id must be a string');
+    expect(sql).toEqual([]);
+  });
+});
+
 describe('insertCollection and insertUser', () => {
   it('give a collection the system user as author and a user a unique identity', async () => {
     const { sql, run } = capture();
