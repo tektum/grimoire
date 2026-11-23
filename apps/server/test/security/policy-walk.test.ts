@@ -117,10 +117,17 @@ describe.each(ops.filter((o) => bodyFields(o).includes('collectionId') && o.poli
   it('is 404 for a member when the destination is a collection the member cannot read, and changes nothing', async () => {
     const w = await buildWorld();
     const body = { ...(exampleBody(op.bodySchema as never, bodyHints(w)) as object), collectionId: w.ids.closedCollection };
-    const before = JSON.stringify(w.pages.stored(w.ids.page));
+    // The content, and where the page is: the collection, the parent and the position (`stored` does not hold them), and the fact the access decisions read.
+    const where = async (): Promise<string> => JSON.stringify({
+      stored: w.pages.stored(w.ids.page),
+      meta: await w.pages.get(w.ids.page),
+      fact: w.world.pages.find((p) => p.id === w.ids.page),
+    });
+    const before = await where();
     const res = await seen(await w.call('member', op.method, pathFor(op, w), body), `${op.key} into the closed collection`);
     expect([res.status, await codeOf(res)]).toEqual([404, 'not_found']);
-    expect(JSON.stringify(w.pages.stored(w.ids.page))).toBe(before);
+    expect(await where()).toBe(before);
+    expect(w.world.pages.find((p) => p.id === w.ids.page)?.collectionId).toBe(w.ids.openCollection);
   });
 });
 
