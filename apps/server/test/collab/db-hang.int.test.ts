@@ -22,6 +22,11 @@ async function start(env: Record<string, string> = {}): Promise<ServerProcess> {
 }
 const client = (s: ServerProcess, name: string): Client => { const c = connect(wsUrl(s.port), name); clients.push(c); return c; };
 const events = (s: ServerProcess, name: string) => s.events.filter((e) => e['event'] === name);
+/** What the server logged after the signal, in order, with the measured time: a failed shutdown assertion says which phase ran long instead of only the number. */
+function explainShutdown(after: readonly Record<string, unknown>[], ms: number, exit: { readonly code: number | null; readonly signal: string | null }): void {
+  const lines = after.map((e) => JSON.stringify(e).slice(0, 400));
+  console.error(`db-hang: shutdown took ${String(ms)} ms, exit code ${String(exit.code)}, signal ${String(exit.signal)}; the server logged ${String(lines.length)} lines after the signal:\n${lines.join('\n')}`);
+}
 
 beforeAll(async () => {
   requireBuild();
@@ -82,14 +87,20 @@ describe('a database that hangs', () => {
     cs[1]?.text.insert(0, 'unsaved one'); cs[2]?.text.insert(0, 'unsaved two');
     // Both stores have been tried and have hung up to their timeout: the retries are pending or in flight when the signal arrives.
     await eventually(() => ([u1, u2].every((p) => events(s, 'collab.store_failed').some((e) => e['pageId'] === p)) ? true : undefined), 5000, 'both stores hung');
+    const seen = s.events.length;
     const t0 = Date.now();
     s.signal('SIGTERM');
     const exit = await s.exited;
     const ms = Date.now() - t0;
-    expect(exit.code).toBe(1);
-    const abandoned = events(s, 'collab.store_abandoned').map((e) => e['pageId']);
-    expect(abandoned.sort()).toEqual([u1, u2].sort());
-    expect(ms).toBeLessThan(3000 + 2000); // deadline + 2 s, the 1 s that keeps /readyz visible before connections close (R2.42) included
+    try {
+      expect(exit.code).toBe(1);
+      const abandoned = events(s, 'collab.store_abandoned').map((e) => e['pageId']);
+      expect(abandoned.sort()).toEqual([u1, u2].sort());
+      expect(ms).toBeLessThan(3000 + 2000); // deadline + 2 s, the 1 s that keeps /readyz visible before connections close (R2.42) included
+    } catch (error) {
+      explainShutdown(s.events.slice(seen), ms, exit);
+      throw error;
+    }
     proxy.release();
     await eventually(async () => {
       const rows = await sqlAdmin<{ n: string }>('postgres', `select count(*) as n from pg_stat_activity where datname = '${DB}' and usename = 'grimoire_app'`);
