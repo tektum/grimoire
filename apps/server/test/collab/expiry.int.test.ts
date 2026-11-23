@@ -80,8 +80,9 @@ const open = (r: Rig, page: string, token: string | (() => string)): Open => {
   return { client, reasons };
 };
 const AUTH_WAIT_MS = 8000;
-// A token that must outlive the whole test body (connect wait, one round, runner slack) is derived from those budgets, not a literal.
-const LONG_LIVED_SEC = Math.ceil((AUTH_WAIT_MS + RECHECK_INTERVAL_SECONDS * 1000 + SLACK_MS) / 1000);
+// The server asks for a fresh token only once the session is within two intervals of expiry (recheck.ts), so the lifetime has two limits: it outlives
+// the connect wait (AUTH_WAIT_MS, else the session expires before the test looks) and it enters that two-interval window soon enough for closedBy's wait.
+const LONG_LIVED_SEC = AUTH_WAIT_MS / 1000 + 2 * RECHECK_INTERVAL_SECONDS + 1;
 const authed = (c: Open): Promise<true> => eventually(() => c.client.provider.isAuthenticated, AUTH_WAIT_MS, 'authenticated');
 const closedBy = (c: Open): Promise<string> => eventually(() => c.reasons[0], 8000, 'closed by the re-check');
 async function user(sub: string, role = 'member'): Promise<string> {
