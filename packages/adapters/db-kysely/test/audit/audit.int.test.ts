@@ -107,6 +107,17 @@ describe('the audit row of a collection change', () => {
     expect(rows.map((r) => r.detail.previousPermission).filter((p) => p === null)).toHaveLength(1);
   });
 
+  it('deleting a collection writes one row naming the batch', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'del-audit', createdBy: admin }, after);
+    const result = await repo.softDelete(c.id, admin);
+    expect(await events(c.id)).toEqual([{ action: 'collection.deleted', target_type: 'collection', target_id: c.id, actor_id: admin }]);
+    const detail = (await t.admin.query<{ detail: unknown }>(`select detail from audit_events where target_id = $1`, [c.id]))[0]?.detail;
+    expect(detail).toEqual({ batch: result?.batch, pages: 0 });
+    expect(await repo.softDelete(c.id, admin)).toBeUndefined();
+    expect(await events(c.id)).toHaveLength(1);
+  });
+
   it('a failed upsert leaves no audit row', async () => {
     const repo = createCollections(t.app);
     const c = await repo.append({ name: 'acl-fail', createdBy: admin }, after);

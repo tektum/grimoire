@@ -125,3 +125,88 @@ describe('collection access entries', () => {
     expect(await repo.removeAccess(a.id, saved.entry.id, admin)).toBe(false);
   });
 });
+
+const addPage = async (collectionId: string, title: string, parentId: string | null = null): Promise<string> =>
+  ((await t.app.query<{ id: string }>(`insert into pages (collection_id, created_by, title, parent_id) values ($1, $2, $3, $4) returning id`, [collectionId, admin, title, parentId]))[0] as { id: string }).id;
+
+describe('the collection tree', () => {
+  it('returns only live pages, flat, with id, urlId, parentId, position, title and icon', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'tree', createdBy: admin }, after);
+    const root = await addPage(c.id, 'Root');
+    const child = await addPage(c.id, 'Child', root);
+    const dead = await addPage(c.id, 'Dead');
+    await t.admin.query(`update pages set deleted_at = now(), icon = null where id = $1`, [dead]);
+    await t.admin.query(`update pages set icon = 'star' where id = $1`, [root]);
+    const pages = await repo.tree(c.id);
+    expect(pages?.map((p) => [p.id, p.parentId, p.title, p.icon])).toEqual([[root, null, 'Root', 'star'], [child, root, 'Child', null]]);
+    expect(Object.keys(pages?.[0] ?? {}).sort()).toEqual(['icon', 'id', 'parentId', 'position', 'title', 'urlId']);
+    expect(pages?.[0]?.urlId).toMatch(/\S+/);
+    expect(await repo.tree('00000000-0000-4000-8000-000000000000')).toBeUndefined();
+    await repo.softDelete(c.id, admin);
+    expect(await repo.tree(c.id)).toBeUndefined();
+  });
+});
+
+describe('soft delete of a collection', () => {
+  it('deletes the collection and every live page with one shared batch, removes no row, and keeps an earlier batch', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'doomed', defaultPermission: 'read', createdBy: admin }, after);
+    const keep = await repo.append({ name: 'survivor', createdBy: admin }, after);
+    const a = await addPage(c.id, 'A');
+    const b = await addPage(c.id, 'B', a);
+    const earlier = await addPage(c.id, 'Earlier');
+    const elsewhere = await addPage(keep.id, 'Elsewhere');
+    const earlierBatch = ((await t.admin.query<{ id: string }>(`select gen_random_uuid() as id`))[0] as { id: string }).id;
+    await t.admin.query(`update pages set deleted_at = now(), deleted_batch = $2 where id = $1`, [earlier, earlierBatch]);
+    const before = Number((await t.admin.query<{ n: string }>(`select (select count(*) from pages) + (select count(*) from collections) as n`))[0]?.n);
+
+    const result = await repo.softDelete(c.id, admin);
+    expect(result?.pages).toBe(2);
+    const rows = await t.admin.query<{ id: string; deleted_at: Date | null; deleted_batch: string | null; deleted_by: string | null }>(
+      `select id, deleted_at, deleted_batch, deleted_by from pages where collection_id = $1 order by title`, [c.id],
+    );
+    expect(rows.map((r) => [r.id, r.deleted_at !== null, r.deleted_batch, r.deleted_by])).toEqual([
+      [a, true, result?.batch, admin], [b, true, result?.batch, admin], [earlier, true, earlierBatch, null],
+    ]);
+    expect(Number((await t.admin.query<{ n: string }>(`select (select count(*) from pages) + (select count(*) from collections) as n`))[0]?.n)).toBe(before);
+    expect((await t.admin.query<{ deleted_at: Date | null }>(`select deleted_at from pages where id = $1`, [elsewhere]))[0]?.deleted_at).toBeNull();
+
+    expect(await repo.get(c.id)).toBeUndefined();
+    expect(await repo.tree(c.id)).toBeUndefined();
+    expect(await repo.listLive([c.id, keep.id])).toEqual([keep]);
+    expect((await repo.tree(keep.id))?.map((p) => p.id)).toEqual([elsewhere]);
+    expect(await repo.softDelete(c.id, admin)).toBeUndefined();
+  });
+});
+
+describe('visibleCollections and checkCollection', () => {
+  it('agree for every collection of the test world: live, deleted, defaults, entries, groups, roles', async () => {
+    const repo = createCollections(t.app);
+    const authorizer = createAuthorizer(createAccessStore(t.app));
+    const viewer = await addUser(t.app, 'vera', 'viewer');
+    const outsider = await addUser(t.app, 'otto', 'member');
+    const group = await addGroup(t.app, 'Agreeing');
+    await t.app.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, outsider]);
+    const made = [
+      await repo.append({ name: 'g-none', createdBy: admin }, after),
+      await repo.append({ name: 'g-read', defaultPermission: 'read', createdBy: admin }, after),
+      await repo.append({ name: 'g-rw', defaultPermission: 'read_write', createdBy: admin }, after),
+      await repo.append({ name: 'g-entry', createdBy: admin }, after),
+      await repo.append({ name: 'g-group', createdBy: admin }, after),
+      await repo.append({ name: 'g-deleted', defaultPermission: 'read_write', createdBy: admin }, after),
+    ];
+    await repo.upsertAccess((made[3] as { id: string }).id, { principalType: 'user', principalId: viewer, permission: 'read_write' }, admin);
+    await repo.upsertAccess((made[4] as { id: string }).id, { principalType: 'group', principalId: group, permission: 'read_write' }, admin);
+    await repo.softDelete((made[5] as { id: string }).id, admin);
+    const every = (await t.admin.query<{ id: string }>(`select id from collections`)).map((r) => r.id);
+    for (const user of [admin, member, viewer, outsider]) {
+      const visible = new Map((await authorizer.visibleCollections(user)).map((v) => [v.collectionId, v.access]));
+      for (const id of every) {
+        const decided = await authorizer.checkCollection({ userId: user, collectionId: id });
+        expect([id, visible.get(id) ?? 'none']).toEqual([id, decided.access]);
+      }
+    }
+    expect((await authorizer.visibleCollections(viewer)).find((v) => v.collectionId === (made[3] as { id: string }).id)?.access).toBe('read-only');
+  });
+});

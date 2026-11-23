@@ -131,5 +131,29 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
         return true;
       });
     },
+    tree(collectionId) {
+      // One snapshot for the liveness check and the pages: a delete that commits in between cannot make a deleted collection answer an empty tree.
+      return db.transaction(async (tx) => {
+        await tx.query(`set transaction isolation level repeatable read`);
+        const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null`, [collectionId]);
+        if (live.length === 0) return undefined;
+        const rows = await tx.query<{ id: string; url_id: string; parent_id: string | null; position: string; title: string; icon: string | null }>(
+          `select id, url_id, parent_id, position, title, icon from pages where collection_id = $1 and deleted_at is null order by position, id`, [collectionId],
+        );
+        return rows.map((r) => ({ id: r.id, urlId: r.url_id, parentId: r.parent_id, position: r.position, title: r.title, icon: r.icon }));
+      });
+    },
+    async softDelete(collectionId, actorId) {
+      return db.transaction(async (tx) => {
+        const batch = (await tx.query<{ id: string }>(`select gen_random_uuid() as id`))[0]?.id as string;
+        const gone = await tx.query(`update collections set deleted_at = now(), updated_at = now() where id = $1 and deleted_at is null returning 1`, [collectionId]);
+        if (gone.length === 0) return undefined;
+        const pages = await tx.query(
+          `update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $3 where collection_id = $1 and deleted_at is null returning 1`, [collectionId, actorId, batch],
+        );
+        await insertAuditEvent(tx, { actorId, action: 'collection.deleted', targetType: 'collection', targetId: collectionId, detail: { batch, pages: pages.length } });
+        return { batch, pages: pages.length };
+      });
+    },
   };
 }
