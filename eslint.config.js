@@ -47,7 +47,7 @@ const envRules = [
 ];
 
 // Server-only libraries: never in the browser client or the shared libraries (R11.1).
-const serverOnlyModules = ["hono", "@hono", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible"];
+const serverOnlyModules = ["hono", "@hono", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible", "@aws-sdk"];
 const serverOnlyPatterns = serverOnlyModules.flatMap((m) => [m, `${m}/*`]);
 const serverOnlyMessage = "Server-only library: not allowed here; the browser client and shared libraries stay provider-free (R11.1).";
 const adapterPackage = (name) => `@tektum/grimoire-adapter-${name}`;
