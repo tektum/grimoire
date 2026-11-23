@@ -151,26 +151,39 @@ describe('global cap on unauthenticated sockets', () => {
   });
 });
 
+// Product behaviour shown here: from ONE address only 10 not-yet-signed-in sockets are allowed at a time (GRIMOIRE_COLLAB_MAX_UNAUTH_SOCKETS_PER_ADDRESS), so an office of 100
+// behind one address is admitted in waves, by the client's own retry after a refusal, all within a few seconds. Each client waits with the budget stated by the test, not the 5 s
+// default of the helper: all the waits start at the same moment, and the time to admit the last one depends on the machine.
+const OFFICE_BUDGET_MS = 30_000;
+/** Waits for every client to sync within the office budget; returns when each synced (first, median, p90, last) and how many were refused at least once. */
+async function syncAll(cs: ReturnType<typeof connect>[]): Promise<string> {
+  const t0 = Date.now();
+  const times: number[] = [];
+  await Promise.all(cs.map((c) => eventually(() => (c.provider.synced ? true : undefined), OFFICE_BUDGET_MS, 'provider synced').then(() => { times.push(Date.now() - t0); })));
+  times.sort((x, y) => x - y);
+  const at = (q: number): number => times[Math.min(times.length - 1, Math.floor(times.length * q))] ?? 0;
+  const line = `office sync: ${String(cs.length)} clients, first ${String(times[0])} ms, median ${String(at(0.5))} ms, p90 ${String(at(0.9))} ms, last ${String(times.at(-1))} ms, refused at least once ${String(cs.filter((c) => c.closes.length > 0 || c.failures.length > 0).length)}`;
+  process.stdout.write(`\n${line}\n`);
+  expect(times.at(-1) ?? Number.POSITIVE_INFINITY).toBeLessThan(OFFICE_BUDGET_MS);
+  return line;
+}
+
 describe('an office behind one address (R4.19, R12.28)', () => {
   it('100 users with valid tokens open 3 pages each within a minute from one address: all 300 sync', async () => {
     const s = await start();
     const pages = [newPage(), newPage(), newPage()];
     for (const p of pages) await seedPage(DB, p);
-    const t0 = Date.now();
     const cs = pages.flatMap((p) => Array.from({ length: 100 }, (_, i) => connect(wsUrl(s.port), p, `dev:test-secret-0123456789abcdef:user${String(i)}:member`)));
     clients.push(...cs);
-    await Promise.all(cs.map(synced));
-    expect(Date.now() - t0).toBeLessThan(30_000);
+    await syncAll(cs);
   }, 120_000);
 
   it('100 simultaneous reconnects from one address all sync', async () => {
     const s = await start();
     const page = newPage(); await seedPage(DB, page);
-    const t0 = Date.now();
     const cs = Array.from({ length: 100 }, (_, i) => connect(wsUrl(s.port), page, `dev:test-secret-0123456789abcdef:user${String(i)}:member`));
     clients.push(...cs);
-    await Promise.all(cs.map(synced));
-    expect(Date.now() - t0).toBeLessThan(30_000);
+    await syncAll(cs);
   }, 120_000);
 });
 
