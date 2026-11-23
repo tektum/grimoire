@@ -149,6 +149,7 @@ describe('extension names are unique', () => {
   it('an outside extension that carries the name of a built-in one is a configuration error when the host is built', async () => {
     await expect(startLive('member', { extensions: [{ extensionName: 'grimoire-auth', priority: 1000 }] })).rejects.toThrow(/duplicate extension name: grimoire-auth/);
     await expect(startLive('member', { extensions: [{ extensionName: 'x', priority: 1 }, { extensionName: 'x', priority: 2 }] })).rejects.toThrow(/duplicate extension name: x/);
+    await expect(startLive('member', { extensions: [{ extensionName: 'grimoire-lifecycle', priority: 1 }] })).rejects.toThrow(/duplicate extension name: grimoire-lifecycle/);
   });
 });
 

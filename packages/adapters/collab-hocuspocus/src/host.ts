@@ -12,7 +12,7 @@ import { createLifecycle } from './extensions/lifecycle.js';
 import { createPeerHooks } from './peer-bridge.js';
 import { PeerRegistry } from './peers.js';
 import type { BreakerOptions } from './save.js';
-import { buildExtensions } from './registry.js';
+import { assertUniqueExtensionNames, buildExtensions } from './registry.js';
 import { GOING_AWAY, REFUSAL_CLOSE_CODES } from './refusal.js';
 import type { RefusalTable } from './refusal.js';
 import { createUpgradeGuard } from './upgrade-guard.js';
@@ -131,7 +131,7 @@ export function createCollabHost(options: CollabHostOptions = {}): HocuspocusCol
         // What a socket may have queued before it authenticates: honest clients send only their auth frame (their offline backlog follows the first server message), so one maximum frame is enough.
         maxUnauthenticatedQueueSize: 1024 * 1024,
         ...(options.idleTimeoutMs !== undefined ? { timeout: options.idleTimeoutMs } : {}),
-        extensions: [...extensions, lifecycle.extension],
+        extensions: ((all) => { assertUniqueExtensionNames(all); return all; })([...extensions, lifecycle.extension]),
       });
       lifecycle.bind(hp);
       hocuspocus = hp;
