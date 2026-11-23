@@ -4,7 +4,7 @@ import { spawnWatched } from '@tektum/grimoire-test-support/harness';
 import path from 'node:path';
 import { here } from '../support.ts';
 
-export const SCENARIOS = ['sign-in-matrix'] as const;
+export const SCENARIOS = ['sign-in-matrix', 'closed-collection', 'read-only', 'access-cutoff', 'session-expiry'] as const;
 
 function runScenario(name: string): Promise<{ code: number; lines: string[] }> {
   return new Promise((resolve) => {

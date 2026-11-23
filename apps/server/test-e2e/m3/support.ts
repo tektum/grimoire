@@ -1,11 +1,11 @@
 // Helpers of the sign-in end-to-end test. They extend the collaboration harness (../support.ts: scenario runner, peers, Compose helper, runtime database handle):
 // the stack runs OUTSIDE local mode with the real Descope adapter (compose.m3.yaml), tokens come from the local key server (tools/m3-keyserver),
 // users, collections and pages are created through the real tables (as the administrator or the runtime role), never by loosening authorisation.
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import https from 'node:https';
 import path from 'node:path';
-import { DEV_COLLECTION, compose, eventually, newPage, peer, repoRoot, storedText, closeDb, scenario } from '../support.ts';
+import { DEV_COLLECTION, compose, eventually, newPage, peer, repoRoot, storedText, closeDb, scenario, waitUntil } from '../support.ts';
 import type { Peer, T } from '../support.ts';
 
 // The collaboration runner writes to test-results/m1 unless told otherwise: the scenarios of these scenarios write to test-results/m3.
@@ -80,3 +80,46 @@ export async function attempt(page: string, label: string, token: string, text?:
   const outcome = p.failures[0] ?? (p.provider.isAuthenticated ? p.provider.authorizedScope ?? 'authenticated' : 'closed');
   return { peer: p, outcome };
 }
+
+/** What the refused or closed client saw first: the code and the reason string of its first close. */
+export const firstClose = (p: Peer, timeoutMs: number, what: string): Promise<{ readonly code: number; readonly reason: string }> =>
+  eventually(() => p.closed[0], timeoutMs, what);
+
+/** A client that signed in and holds a synced page; the granted scope is the first thing asserted. */
+export async function signedIn(page: string, label: string, token: string | (() => string), scope: 'read-write' | 'readonly'): Promise<Peer> {
+  const p = peer(page, label, 'member', { token });
+  await eventually(() => (p.provider.isAuthenticated && p.provider.synced ? true : p.failures.length > 0 || p.closed.length > 0 ? true : undefined), 15_000, `${label} signed in`);
+  if (p.failures.length > 0 || p.closed.length > 0 || p.provider.authorizedScope !== scope) {
+    p.destroy();
+    throw new Error(`${label}: expected a signed-in ${scope} client, got ${p.failures[0] ?? p.closed[0]?.reason ?? String(p.provider.authorizedScope)}`);
+  }
+  return p;
+}
+
+/** Waits `ms` while the condition keeps holding: throws (with `what`) the moment it does not. A negative proof ("nobody was closed") needs elapsed time, not a sleep. */
+export async function holds(ms: number, still: () => boolean, what: string): Promise<void> {
+  if (await waitUntil(() => !still(), ms)) throw new Error(`${what}: stopped holding within ${String(ms)} ms`);
+}
+
+// ---- collections and grants (administrator) ---------------------------------------------------------------------------------------------
+const SYSTEM_USER = '00000000-0000-4000-8000-000000000001';
+export async function userId(sub: string): Promise<string> { return scalar(`select id from users where descope_user_id = ${lit(sub)}`); }
+/** A collection; `defaultPermission` null makes it CLOSED (only users with an entry, and administrators, reach it). */
+export async function createCollection(name: string, defaultPermission: 'read' | 'read_write' | null): Promise<string> {
+  const id = randomUUID();
+  await psql(`insert into collections (id, name, position, default_permission, created_by) values ('${id}', ${lit(name)}, 'b0', ${defaultPermission === null ? 'null' : lit(defaultPermission)}, '${SYSTEM_USER}')`);
+  return id;
+}
+export async function createPageIn(collection: string): Promise<string> {
+  const id = randomUUID();
+  await psql(`insert into pages (id, collection_id) values ('${id}', '${collection}')`);
+  return id;
+}
+export async function grant(collection: string, sub: string, permission: 'read' | 'read_write'): Promise<void> {
+  await psql(`insert into collection_access (collection_id, user_id, permission) select '${collection}', id, ${lit(permission)} from users where descope_user_id = ${lit(sub)} on conflict (collection_id, user_id) where user_id is not null do update set permission = excluded.permission`);
+}
+export async function revoke(collection: string, sub: string): Promise<void> {
+  await psql(`delete from collection_access where collection_id = '${collection}' and user_id = (select id from users where descope_user_id = ${lit(sub)})`);
+}
+export async function setRole(sub: string, role: 'member' | 'admin' | 'viewer'): Promise<void> { await psql(`update users set role = ${lit(role)} where descope_user_id = ${lit(sub)}`); }
+export async function setSuspended(sub: string, suspended: boolean): Promise<void> { await psql(`update users set suspended_at = ${suspended ? 'now()' : 'null'} where descope_user_id = ${lit(sub)}`); }
