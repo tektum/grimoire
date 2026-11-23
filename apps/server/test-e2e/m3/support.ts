@@ -168,7 +168,7 @@ export function rawSocket(): Promise<RawSocket> {
           const len = (buf[1] ?? 0) & 0x7f;
           if (buf.length >= 4 && buf[0] === 0x88 && buf.length >= 2 + len) done({ code: buf.readUInt16BE(2), reason: buf.subarray(4, 2 + len).toString() });
         });
-        socket.on('close', () => { done({ code: 0, reason: 'ended without a close frame' }); });
+        socket.on('close', (hadError: boolean) => { done({ code: 0, reason: `ended without a close frame; hadError=${String(hadError)} bytes=${String(buf.length)} hex=${buf.subarray(0, 32).toString('hex')}` }); });
         socket.on('error', () => { done({ code: 0, reason: 'socket error' }); });
       });
       resolve({ status: 101, retryAfter: undefined, closing, destroy: () => { socket.destroy(); } });

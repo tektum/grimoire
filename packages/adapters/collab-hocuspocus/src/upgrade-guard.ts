@@ -174,7 +174,10 @@ function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unkno
   if (!upgraded) { socket.destroy(); return; }
   socket.pause?.(); // the reservation is already released: no input (an auth message included) may be handled while the frame is pending
   let done = false;
+  const dbg = (m: string): void => { process.stderr.write(`DBG-PREAUTH ${m} writable=${String((socket as any).writable)} destroyed=${String((socket as any).destroyed)} wlen=${String((socket as any).writableLength)}\n`); };
+  dbg('start');
   const destroy = (): void => {
+    dbg(done ? 'destroy-again' : 'destroy');
     if (done) return;
     done = true;
     clearTimeout(fallback);
@@ -182,7 +185,7 @@ function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unkno
   };
   const fallback = setTimeout(destroy, CLOSE_FLUSH_GRACE_MS);
   fallback.unref();
-  try { socket.write(closeFrame(codeFor(REFUSAL_CLOSE_CODES, 'preauth-timeout'), 'preauth-timeout'), destroy); } catch { destroy(); /* a socket that is already dead cannot be told */ }
+  try { socket.write(closeFrame(codeFor(REFUSAL_CLOSE_CODES, 'preauth-timeout'), 'preauth-timeout'), (err?: unknown) => { dbg(`write-cb err=${String(err)}`); destroy(); }); dbg('after-write'); } catch { destroy(); /* a socket that is already dead cannot be told */ }
 }
 
 export function createUpgradeGuard(o?: UpgradeGuardOptions): UpgradeGuard {
