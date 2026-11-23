@@ -90,18 +90,26 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       return db.transaction(async (tx): Promise<readonly CaughtUpRevision[]> => {
         // One instance at a time: a second one waits, then finds the first one's revisions and has nothing left to make.
         await tx.query(`select pg_advisory_xact_lock(hashtext('grimoire.revisions.catch_up'))`);
-        const rows = await tx.query<{ page_id: string; id: string }>(
-          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
-           select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', p.last_edited_at
-             from pages p left join users u on u.id = p.last_edited_by
-            where p.deleted_at is null and p.markdown is not null and p.markdown_hash is not null and p.markdown_stale_since is null
+        const due = `p.deleted_at is null and p.markdown is not null and p.markdown_hash is not null and p.markdown_stale_since is null
               and p.last_edited_at is not null and p.last_edited_at < timestamptz 'epoch' + $1::bigint * interval '1 millisecond'
-              and p.markdown_hash is distinct from (select r.markdown_hash from revisions r where r.page_id = p.id order by r.created_at desc, r.id limit 1)
-            order by p.last_edited_at limit $2
-           returning page_id, id`,
-          [editedBefore, limit],
-        );
-        return rows.map((r) => ({ pageId: r.page_id, revisionId: r.id }));
+              and p.markdown_hash is distinct from (select r.markdown_hash from revisions r where r.page_id = p.id order by r.created_at desc, r.id limit 1)`;
+        const candidates = await tx.query<{ id: string }>(`select p.id from pages p where ${due} order by p.last_edited_at, p.id limit $2`, [editedBefore, limit]);
+        const made: CaughtUpRevision[] = [];
+        // Page by page, under the page's own lock (the one `createFromPage` takes): the check against the latest revision and the insert
+        // cannot interleave with another revision of the same page. The check is made again under the lock, as the page may have changed.
+        for (const { id } of candidates) {
+          await lockPage(tx, id);
+          const rows = await tx.query<{ page_id: string; id: string }>(
+            `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+             select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', p.last_edited_at
+               from pages p left join users u on u.id = p.last_edited_by
+              where p.id = $2 and ${due}
+             returning page_id, id`,
+            [editedBefore, id],
+          );
+          for (const r of rows) made.push({ pageId: r.page_id, revisionId: r.id });
+        }
+        return made;
       });
     },
   };

@@ -211,6 +211,18 @@ describe('RevisionRepo.catchUp', () => {
     expect((await rows()).length).toBe(before);
   });
 
+  it('makes one revision, not two, when the catch-up and a revision of the same page run at once', async () => {
+    const id = await savedPage({ title: 'Both', markdown: 'both ways', editedMs: NOW - 30 * 60_000, editedBy: ana });
+    const repo = createRevisions(t.app);
+    const [fromCatchUp, fromPage] = await Promise.all([
+      repo.catchUp(NOW - 5 * 60_000, 100),
+      repo.createFromPage({ pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at: NOW - 30 * 60_000 }),
+    ]);
+    expect((await revisionsOf(id))).toHaveLength(1);
+    const caught = fromCatchUp.filter((m) => m.pageId === id).length;
+    expect(caught + (fromPage.kind === 'created' ? 1 : 0)).toBe(1);
+  });
+
   it('makes at most `limit` revisions per call, oldest edit first, and two instances at once make no duplicate', async () => {
     const pages: string[] = [];
     for (let n = 0; n < 3; n += 1) pages.push(await savedPage({ title: `Batch${String(n)}`, markdown: `batch ${String(n)}`, editedMs: NOW - 20 * 60_000 + n, editedBy: ana }));
