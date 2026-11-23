@@ -24,6 +24,16 @@ export default defineConfig({
         "packages/test-support/**", // test helpers, not shipped code
         "**/src/testing/**", // test doubles and generators shipped for tests only
         "**/src/test-facilities.ts", // test-only facilities of the config adapter
+        // Empty skeletons until the named task implements each one; its tests arrive with the implementation, and the task removes its line here.
+        "packages/adapters/db-kysely/src/idempotency.ts", // M4-T02 implements it
+        "packages/adapters/db-kysely/src/collections.ts", // M4-T05 implements it
+        "packages/adapters/db-kysely/src/audit.ts", // M4-T05 implements it
+        "packages/adapters/db-kysely/src/pages.ts", // M4-T06 implements it
+        "packages/adapters/db-kysely/src/trash.ts", // M4-T07 implements it
+        "packages/adapters/db-kysely/src/revisions.ts", // M4-T08 implements it
+        "packages/adapters/db-kysely/src/admin.ts", // M4-T09 implements it
+        "packages/adapters/db-kysely/src/page-state.ts", // M4-T10 implements it
+        "packages/adapters/db-kysely/src/attachments.ts", // M5-T04 implements it
       ],
       // Floors set from the measured baseline (2026-11-21, unit project only), a point or so below it. They are a ratchet:
       // `COVERAGE_RATCHET=1 bun run test:coverage` rewrites them upwards when coverage has grown; they never go down
