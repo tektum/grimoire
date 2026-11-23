@@ -75,7 +75,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
-  app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http));
+  app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http, ctx.auth.roles));
   app.use('/v1/*', userLimiter(app, ctx.config.http, ctx.log));
   app.use('/v1/*', idempotency(app, ctx.http, { ...(opts.replayRebuild === undefined ? {} : { rebuild: opts.replayRebuild }), ...(opts.idempotencySample === undefined ? {} : { sample: opts.idempotencySample }) }));
   for (const router of routers) app.route('/', router);
