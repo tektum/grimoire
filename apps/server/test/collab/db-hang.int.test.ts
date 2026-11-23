@@ -69,7 +69,15 @@ describe('a database that hangs', () => {
     const cs = [saved, u1, u2].map((p) => client(s, p));
     await Promise.all(cs.map((c) => synced(c)));
     cs[0]?.text.insert(0, 'saved before the stall');
-    await eventually(async () => ((await pageRow(DB, saved))?.ydoc ? true : undefined), 5000, 'first page stored');
+    // The text itself, not any stored state: opening an empty page can store an initial state before the edit is saved, and the stall must start after the edit is in the row.
+    await eventually(async () => (textOf((await pageRow(DB, saved))?.ydoc).includes('saved before the stall') ? true : undefined), 5000, 'first page stored with its edit');
+    // The row is visible when the write commits, but the server learns of the save from the database's answer: a stall that starts before that answer has passed leaves it undelivered, and
+    // the page counts as unsaved at SIGTERM. (This test's edit is not a valid editor document, so the server logs no `collab.saved` for it: there is no server-side signal to wait for.)
+    // The database has sent its answer when every connection of the server is idle again; the proxy has passed it on when it has been quiet for a moment.
+    await eventually(async () => {
+      const busy = await sqlAdmin<{ n: string }>('postgres', `select count(*) as n from pg_stat_activity where datname = '${DB}' and usename = 'grimoire_app' and state <> 'idle'`);
+      return Number(busy[0]?.n) === 0 && proxy.quietForMs() >= 300 ? true : undefined;
+    }, 15_000, 'the database answered the first save and the answer passed the proxy');
     proxy.stall();
     cs[1]?.text.insert(0, 'unsaved one'); cs[2]?.text.insert(0, 'unsaved two');
     // Both stores have been tried and have hung up to their timeout: the retries are pending or in flight when the signal arrives.
