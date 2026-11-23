@@ -9,6 +9,8 @@ import type { AppEnv } from './http/env.js';
 import { createRouter } from './http/factory.js';
 import { corsMiddleware } from './http/cors.js';
 import { addressLimiter, userLimiter } from './http/rate-limit.js';
+import { idempotency } from './http/idempotency.js';
+import type { ReplayRebuild } from './http/idempotency.js';
 import { authenticate } from './http/auth.js';
 import { clientVersionGate } from './http/client-version.js';
 import { routers } from './routes/registry.js';
@@ -25,6 +27,10 @@ export interface AppOptions {
   readonly requestTimeoutMs?: number;
   /** Newest migration /readyz requires; defaults to the newest the build ships. */
   readonly expectedMigration?: string;
+  /** Replay hooks of idempotent routes, by `"METHOD /route/pattern"`; a route without one replays as stored. */
+  readonly replayRebuild?: Readonly<Record<string, ReplayRebuild>>;
+  /** Test seam: true for the request that also cleans up old idempotency keys (about one in a hundred by default). */
+  readonly idempotencySample?: () => boolean;
 }
 
 export const DEFAULT_BODY_LIMIT_BYTES = 1_048_576;
@@ -67,6 +73,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(clientVersionGate(ctx.config.minClientVersion));
   app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http));
   app.use('/v1/*', userLimiter(app, ctx.config.http, ctx.log));
+  app.use('/v1/*', idempotency(app, ctx.http, { ...(opts.replayRebuild === undefined ? {} : { rebuild: opts.replayRebuild }), ...(opts.idempotencySample === undefined ? {} : { sample: opts.idempotencySample }) }));
   for (const router of routers) app.route('/', router);
   return app;
 }

@@ -57,10 +57,13 @@ export function addressLimiter(http: HttpConfig, trustedProxies: readonly string
   };
 }
 
-/** The per-route limits of the routes defined so far, keyed by method and route pattern. Rebuilt when a route is added. */
-function routeLimits(app: OpenAPIHono<AppEnv>): (method: string, pattern: string) => RouteRateLimit | undefined {
+/**
+ * The value of a route extension (`x-grimoire-rate-limit`, `x-grimoire-idempotent`) for the routes defined so far, found by method and
+ * route pattern. The table is rebuilt when a route is added, so routes need no registration of their own.
+ */
+export function routeExtension<T>(app: OpenAPIHono<AppEnv>, extension: string): (method: string, pattern: string) => T | undefined {
   let seen = -1;
-  let table = new Map<string, RouteRateLimit>();
+  let table = new Map<string, T>();
   return (method, pattern) => {
     const definitions = app.openAPIRegistry.definitions;
     if (definitions.length !== seen) {
@@ -68,8 +71,8 @@ function routeLimits(app: OpenAPIHono<AppEnv>): (method: string, pattern: string
       table = new Map();
       for (const d of definitions) {
         if (d.type !== 'route') continue;
-        const limit = (d.route as { 'x-grimoire-rate-limit'?: RouteRateLimit })['x-grimoire-rate-limit'];
-        if (limit !== undefined) table.set(`${d.route.method.toUpperCase()} ${d.route.path.replace(/\{([^}]+)\}/g, ':$1')}`, limit);
+        const value = (d.route as unknown as Record<string, T | undefined>)[extension];
+        if (value !== undefined) table.set(`${d.route.method.toUpperCase()} ${d.route.path.replace(/\{([^}]+)\}/g, ':$1')}`, value);
       }
     }
     return table.get(`${method.toUpperCase()} ${pattern}`);
@@ -80,7 +83,7 @@ function routeLimits(app: OpenAPIHono<AppEnv>): (method: string, pattern: string
 export function userLimiter(app: OpenAPIHono<AppEnv>, http: HttpConfig, log: HttpDeps['log']): MiddlewareHandler<AppEnv> {
   const overall = new RateLimiterMemory({ points: http.userLimitPerMinute, duration: WINDOW_SECONDS });
   const perRoute = new Map<string, RateLimiterMemory>();
-  const limitOf = routeLimits(app);
+  const limitOf = routeExtension<RouteRateLimit>(app, 'x-grimoire-rate-limit');
   return async (c, next) => {
     const who = c.get('user')?.id ?? c.get('identity')?.userId;
     if (who === undefined) return next();
