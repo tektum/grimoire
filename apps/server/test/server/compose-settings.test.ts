@@ -74,3 +74,29 @@ it('the app service gives the process at least its shutdown backstop plus the ma
   expect(graceMs).toBeGreaterThanOrEqual(requiredGracePeriodMs(defaultSave));
 });
 
+
+const appBlock = (compose: string): string => /^ {2}app:\n([\s\S]*?)(?=^ {2}\S|^\S)/m.exec(compose)?.[1] ?? '';
+
+it('the app service gets the runtime file store pair and never the admin pair, under any name', () => {
+  const compose = readFileSync(path.join(root, 'compose.yaml'), 'utf8');
+  const app = appBlock(compose);
+  expect(app).toContain('GRIMOIRE_DEV_S3_APP_ACCESS_KEY');
+  expect(app).toContain('GRIMOIRE_DEV_S3_APP_SECRET_KEY');
+  expect(app).not.toMatch(/GRIMOIRE_S3_ADMIN_/);
+  expect(app).not.toMatch(/GRIMOIRE_DEV_S3_(ACCESS|SECRET)_KEY|AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY)/);
+});
+
+it('the runtime identity is rendered from .env, may only read, write and list the grimoire bucket, and differs from the admin identity', () => {
+  const compose = readFileSync(path.join(root, 'compose.yaml'), 'utf8');
+  const env = Object.fromEntries(
+    readFileSync(path.join(root, '.env.example'), 'utf8').split('\n').filter((l) => /^[A-Z0-9_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
+  );
+  expect(compose).toContain('-s3.config=/etc/seaweedfs/s3.json');
+  expect(compose).toContain('"actions":["Read:grimoire","Write:grimoire","List:grimoire"]');
+  for (const v of ['ACCESS', 'SECRET']) {
+    expect(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]).toBeTruthy();
+    expect(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]).not.toBe(env[`GRIMOIRE_DEV_S3_${v}_KEY`]);
+    expect(env[`GRIMOIRE_S3_${v}_KEY`]).toBe(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]);
+    expect(compose).not.toContain(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]);
+  }
+});

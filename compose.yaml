@@ -22,7 +22,11 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
-    command: ["mini", "-dir=/data", "-s3", "-ip.bind=0.0.0.0"]
+    command: ["mini", "-dir=/data", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-ip.bind=0.0.0.0"]
+    configs:
+      - source: seaweedfs-identities
+        target: /etc/seaweedfs/s3.json
+        mode: 0444
     environment:
       AWS_ACCESS_KEY_ID: ${GRIMOIRE_DEV_S3_ACCESS_KEY} # development only; value in .env
       AWS_SECRET_ACCESS_KEY: ${GRIMOIRE_DEV_S3_SECRET_KEY} # development only; value in .env
@@ -77,8 +81,8 @@ services:
       # File store: the endpoint is the Compose service (the .env value points at the host port, for tests run on the host).
       GRIMOIRE_S3_ENDPOINT: http://seaweedfs:8333
       GRIMOIRE_S3_BUCKET: "${GRIMOIRE_S3_BUCKET:-grimoire}"
-      GRIMOIRE_S3_ACCESS_KEY: ${GRIMOIRE_DEV_S3_ACCESS_KEY}
-      GRIMOIRE_S3_SECRET_KEY: ${GRIMOIRE_DEV_S3_SECRET_KEY}
+      GRIMOIRE_S3_ACCESS_KEY: ${GRIMOIRE_DEV_S3_APP_ACCESS_KEY:?copy GRIMOIRE_DEV_S3_APP_ACCESS_KEY from .env.example into .env}
+      GRIMOIRE_S3_SECRET_KEY: ${GRIMOIRE_DEV_S3_APP_SECRET_KEY:?copy GRIMOIRE_DEV_S3_APP_SECRET_KEY from .env.example into .env}
       GRIMOIRE_S3_PUBLIC_ENDPOINT: "${GRIMOIRE_S3_PUBLIC_ENDPOINT:-}"
       GRIMOIRE_S3_REGION: "${GRIMOIRE_S3_REGION:-}"
       GRIMOIRE_S3_ADDRESSING_STYLE: "${GRIMOIRE_S3_ADDRESSING_STYLE:-}"
@@ -149,6 +153,13 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+
+# The runtime identity is rendered from .env, so no key is written twice in the repository. The admin identity comes from AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY above (healthcheck and bucket setup); the runtime identity may only read, write and list the grimoire bucket.
+configs:
+  seaweedfs-identities:
+    content: |
+      {"identities":[{"name":"app","credentials":[{"accessKey":"${GRIMOIRE_DEV_S3_APP_ACCESS_KEY:?copy GRIMOIRE_DEV_S3_APP_ACCESS_KEY from .env.example into .env}","secretKey":"${GRIMOIRE_DEV_S3_APP_SECRET_KEY:?copy GRIMOIRE_DEV_S3_APP_SECRET_KEY from .env.example into .env}"}],"actions":["Read:grimoire","Write:grimoire","List:grimoire"]}]}
 
 volumes:
   grimoire-pgdata:
