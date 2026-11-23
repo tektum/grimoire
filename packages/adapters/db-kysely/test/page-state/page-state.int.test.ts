@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eventually } from '@tektum/grimoire-test-support/harness';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import type { SeededContent } from '@tektum/grimoire-core/pages/seeded-content';
@@ -43,6 +44,52 @@ beforeAll(async () => {
 afterAll(async () => { await t?.drop(); });
 
 describe('the PostgreSQL PageStateRepo', () => {
+  it('counts a page with a state and no Markdown as stale, so a reset cannot empty it unconfirmed', async () => {
+    const id = await makePage('only state');
+    await t.admin.query(`update pages set markdown = null, text_content = null, markdown_hash = null where id = $1`, [id]);
+    const before = await row(id);
+    const repo = createPageState(t.app);
+    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: false })).toEqual({ kind: 'stale-unconfirmed' });
+    expect(await row(id)).toEqual(before);
+    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: true })).toMatchObject({ kind: 'reset', markdownStale: true });
+  });
+
+  it('refuses an actor who is no longer an active administrator when the transaction runs, and changes nothing', async () => {
+    const id = await makePage('guarded');
+    const before = await row(id);
+    const demoted = await addUser(t.app, 'demoted', 'admin');
+    const suspended = await addUser(t.app, 'suspended', 'admin');
+    await t.admin.query(`update users set role = 'member' where id = $1`, [demoted]);
+    await t.admin.query(`update users set suspended_at = now() where id = $1`, [suspended]);
+    const repo = createPageState(t.app);
+    for (const actorId of [demoted, suspended, '00000000-0000-4000-8000-000000000000']) {
+      expect(await repo.reset({ pageId: id, actorId, confirmStale: true })).toEqual({ kind: 'not-admin' });
+    }
+    expect(await row(id)).toEqual(before);
+    expect(await audits(id)).toEqual([]);
+  });
+
+  it('waits for a demotion that holds the actor row, then refuses', async () => {
+    const id = await makePage('race');
+    const actor = await addUser(t.app, 'racer', 'admin');
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let held = (): void => undefined;
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    const demotion = t.admin.transaction(async (tx) => {
+      await tx.query(`update users set role = 'member' where id = $1`, [actor]);
+      held();
+      await gate;
+    });
+    await locked;
+    const reset = createPageState(t.app).reset({ pageId: id, actorId: actor, confirmStale: true });
+    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the reset waiting on the actor row');
+    release();
+    await demotion;
+    expect(await reset).toEqual({ kind: 'not-admin' });
+    expect(await audits(id)).toEqual([]);
+  });
+
   it('without Markdown drops the state, bumps the epoch once, keeps the Markdown, and writes one audit row', async () => {
     const id = await makePage('keep me');
     const before = await row(id);

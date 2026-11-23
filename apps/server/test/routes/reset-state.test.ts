@@ -22,7 +22,7 @@ const ROLES: Record<string, Role> = { admin: 'admin', member: 'member', outsider
 const NIL = '00000000-0000-4000-8000-000000000000';
 
 /** Three people; the page lives in `open` (everyone reads). `hidden` is a page in a collection only an administrator can see. */
-function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c) {
+function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c, admins?: ReadonlySet<string>) {
   const t = makeContext();
   const world = emptyWorld();
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
@@ -42,7 +42,7 @@ function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c)
   const ghost = '00000000-0000-4000-8000-000000000999';
   world.pages.push({ id: ghost, collectionId: open.id, deleted: false, epoch: 0 });
   const untracked = pages.seed({ collectionId: open.id, title: 'Untracked', markdown: 'm' }).id;
-  const pageState = new FakePageStateRepo();
+  const pageState = new FakePageStateRepo(admins);
   pageState.track(page.id, { markdown: 'old text', epoch: 4 });
   pageState.track(hidden.id, { markdown: 'secret', epoch: 0 });
   const fake = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical text' } });
@@ -116,6 +116,30 @@ describe('a reset that keeps the saved Markdown', () => {
     const confirmed = await call('admin', page.id, { confirmStale: true });
     expect([confirmed.status, await confirmed.json()]).toEqual([200, { stateEpoch: 5, markdownStale: true }]);
     expect(pageState.stored(page.id)).toMatchObject({ state: null, stale: false });
+  });
+});
+
+describe('a page with a state and no Markdown', () => {
+  it('counts as stale: a reset without Markdown needs confirmation, because nothing would be left to rebuild it from', async () => {
+    const { call, page, pageState } = build();
+    pageState.track(page.id, { markdown: null, epoch: 4 });
+    const refused = await call('admin', page.id);
+    expect([refused.status, await code(refused)]).toEqual([409, 'markdown_stale']);
+    expect(pageState.stored(page.id)).toMatchObject({ epoch: 4 });
+    expect(pageState.stored(page.id)?.state).not.toBeNull();
+    const confirmed = await call('admin', page.id, { confirmStale: true });
+    expect([confirmed.status, await confirmed.json()]).toEqual([200, { stateEpoch: 5, markdownStale: true }]);
+  });
+});
+
+describe('an actor who stopped being an administrator before the commit', () => {
+  it('is refused 403 by the store, and nothing changes: epoch, state, audit', async () => {
+    const { call, page, pageState } = build(undefined, new Set());
+    const res = await call('admin', page.id, { markdown: '# x' });
+    expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
+    expect(pageState.stored(page.id)).toMatchObject({ epoch: 4, markdown: 'old text' });
+    expect(pageState.stored(page.id)?.state).not.toBeNull();
+    expect(pageState.audit).toEqual([]);
   });
 });
 

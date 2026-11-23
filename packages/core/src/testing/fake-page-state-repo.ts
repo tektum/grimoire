@@ -14,6 +14,9 @@ export class FakePageStateRepo implements PageStateRepo {
   readonly audit: AuditEvent[] = [];
   private readonly pages = new Map<string, FakePageState>();
 
+  /** When given, only these users are active administrators at commit time; otherwise every actor is. */
+  constructor(private readonly admins?: ReadonlySet<string>) {}
+
   /** Test setup: a live page with a saved state. */
   track(id: string, page: Partial<FakePageState> = {}): void {
     this.pages.set(id, { state: new Uint8Array([9]), markdown: null, text: null, epoch: 0, stale: false, ...page });
@@ -25,9 +28,10 @@ export class FakePageStateRepo implements PageStateRepo {
   }
 
   reset({ pageId, actorId, content, confirmStale }: ResetInput): Promise<ResetResult> {
+    if (this.admins !== undefined && !this.admins.has(actorId)) return Promise.resolve({ kind: 'not-admin' });
     const page = this.pages.get(pageId);
     if (page === undefined) return Promise.resolve({ kind: 'not-found' });
-    const markdownStale = content === undefined && page.stale;
+    const markdownStale = content === undefined && (page.stale || (page.markdown === null && page.state !== null));
     if (markdownStale && !confirmStale) return Promise.resolve({ kind: 'stale-unconfirmed' });
     if (content !== undefined && content.state.length === 0) return Promise.resolve({ kind: 'empty-state' });
     page.epoch += 1;

@@ -17,6 +17,7 @@ export interface ResetInput {
 export type ResetResult =
   | { kind: 'reset'; stateEpoch: number; markdownStale: boolean }
   | { kind: 'not-found' }
+  | { kind: 'not-admin' }
   | { kind: 'stale-unconfirmed' }
   | { kind: 'empty-state' };
 

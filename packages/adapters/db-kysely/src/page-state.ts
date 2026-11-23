@@ -10,8 +10,13 @@ export function createPageState(db: KyselyDatabase): PageStateRepo {
   return {
     reset({ pageId, actorId, content, confirmStale }) {
       return db.transaction(async (tx): Promise<ResetResult> => {
+        // The actor is checked again under a lock that a demotion or a suspension (which takes the row for update) waits for: the right to reset is
+        // bound to the commit, not to the moment the request was admitted.
+        const actor = await tx.query(`select 1 from users where id = $1 and role = 'admin' and suspended_at is null for share`, [actorId]);
+        if (actor.length === 0) return { kind: 'not-admin' };
         const rows = await tx.query<Locked>(
-          `select p.title, p.state_epoch, p.markdown_stale_since is not null as stale from pages p
+          // A page with a state and no Markdown counts as stale: dropping its state would leave nothing to rebuild it from.
+          `select p.title, p.state_epoch, (p.markdown_stale_since is not null or (p.markdown is null and p.ydoc is not null)) as stale from pages p
            where p.id = $1 and p.deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update of p`,
           [pageId],
         );

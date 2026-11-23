@@ -62,6 +62,7 @@ router.openapi(resetPageState, async (c) => {
   switch (result.kind) {
     case 'reset': return c.json({ stateEpoch: result.stateEpoch, markdownStale: result.markdownStale }, 200);
     case 'not-found': return fail('not_found');
+    case 'not-admin': return fail('forbidden');
     case 'stale-unconfirmed': return fail('markdown_stale');
     case 'empty-state': return fail('invalid');
   }
