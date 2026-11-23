@@ -291,7 +291,7 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
       // running after that is terminated at once (`force`), so close() never takes a second deadline on top of the first.
       closing ??= (async () => {
         let timer: NodeJS.Timeout | undefined;
-        if (pending > 0) await Promise.race([new Promise<void>((r) => drained.push(r)), new Promise<void>((r) => { timer = setTimeout(r, closeDeadlineMs); })]);
+        if (pending > 0) await Promise.race([new Promise<void>((r) => drained.push(r)), new Promise<void>((r) => { timer = setTimeout(r, closeDeadlineMs); timer.unref(); })]);
         clearTimeout(timer);
         await pool.close().catch(() => undefined);
       })();

@@ -55,10 +55,10 @@ describe('timeout', () => {
   });
   it('a hostile job that queued only briefly still had its full allowance: a plain timeout', async () => {
     const converter = fixture({ timeoutMs: 4000, queueWaitMs: 2000 });
-    const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('spin', key())]);
+    const [first, second] = await Promise.all([converter.seed('busy-50', key()), converter.seed('spin', key())]);
     expect(first).toMatchObject(OK);
     expect(second).toMatchObject({ ok: false, reason: 'timeout' });
-  }, 15_000); // the spin runs to its limit of about 3.7 s
+  }, 15_000); // the spin runs to its limit of about 3.9 s; it waits about 50 ms of the 400 ms the 10% boundary allows
   it('a call that waited within the wait limit and finished within the total succeeds', async () => {
     const converter = fixture({ timeoutMs: 2000, queueWaitMs: 1000 });
     const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
