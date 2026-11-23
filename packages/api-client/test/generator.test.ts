@@ -42,5 +42,5 @@ describe('openapi-typescript under the repository TypeScript', () => {
       `${generated}\ntype Body = paths['/v1/things/{id}']['post']['requestBody']['content']['application/json'];\nexport const body: Body = ${body};\n`;
     expect(diagnostics(uses('{ title: "x" }'))).toEqual([]);
     expect(diagnostics(uses('{ title: 1 }')).join('\n')).toContain("'number' is not assignable to type 'string'");
-  });
+  }, 30_000); // it type-checks generated code with the TypeScript compiler: ~1.3 s alone, over the 5 s default under full-suite coverage load on two cores
 });
