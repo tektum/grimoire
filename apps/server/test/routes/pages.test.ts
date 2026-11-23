@@ -3,7 +3,9 @@ import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
-import type { SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
+import type { MarkdownConverter, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
+import * as Y from 'yjs';
+import { convertInProcess, reseedInProcess, seedInProcess } from '@tektum/grimoire-adapter-markdown-milkdown';
 import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import { createFakeAccessStore, emptyWorld } from '@tektum/grimoire-core/testing/fake-access-store';
 import { FakeCollectionRepo } from '@tektum/grimoire-core/testing/fake-collection-repo';
@@ -18,7 +20,7 @@ import { makeContext } from '../server/support/context.js';
 const ROLES: Record<string, Role> = { admin: 'admin', member: 'member', outsider: 'member' };
 
 /** Three people over `open` (everyone reads; members only read) and `shared` (members write), plus `closed` (administrators only). */
-function build() {
+function build(realConverter?: MarkdownConverter) {
   const t = makeContext();
   const world = emptyWorld();
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
@@ -34,7 +36,8 @@ function build() {
   const shared2 = collections.seed({ name: 'Shared two', description: null, icon: null, color: null, position: 'a4', defaultPermission: 'read_write' });
   const closed = collections.seed({ name: 'Closed', description: null, icon: null, color: null, position: 'a3', defaultPermission: null });
   const pages = new FakePageRepo(world);
-  const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
+  const fake = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
+  const converter = realConverter ?? fake;
   const store = createFakeAccessStore(world);
   const access = createPageAccess(store);
   const app = createApp({
@@ -51,7 +54,7 @@ function build() {
       headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, pages, collections, converter, world, open, shared, shared2, closed, rows, access };
+  return { call, pages, collections, converter: fake, world, open, shared, shared2, closed, rows, access };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -603,5 +606,32 @@ describe('POST /v1/pages with an empty editor state', () => {
     const res = await make(b, { collectionId: b.shared.id, markdown: 'x' });
     expect(res.status).toBe(503);
     expect(b.pages.count()).toBe(0);
+  });
+});
+
+/** The converter as the pool offers it, without a worker: the seed behind `seed`, the serialiser, the system rebuild. */
+const inProcess: MarkdownConverter = {
+  seed: (markdown) => seedInProcess(markdown),
+  reseed: (markdown) => reseedInProcess(markdown),
+  toMarkdown: (state) => convertInProcess(state),
+  close: () => Promise.resolve(),
+};
+const FIXED_SEED_CLIENT = 3_000_000_000;
+const clients = (state: Uint8Array): number[] => [...new Set(Y.decodeUpdate(state).structs.map((s) => s.id.client))];
+
+describe('the state a page create stores (real seed)', () => {
+  it('is not under the converter\'s fixed client id, and two creates from one text have different ids', async () => {
+    const b = build(inProcess);
+    const ids: number[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const res = await make(b, { collectionId: b.shared.id, title: `T${String(i)}`, markdown: '# same\n\ntext' });
+      expect(res.status).toBe(201);
+      const stored = b.pages.stored(((await res.json()) as { id: string }).id)?.state;
+      expect(stored).toBeDefined();
+      ids.push(...clients(stored as Uint8Array));
+    }
+    expect(ids).toHaveLength(2);
+    expect(ids).not.toContain(FIXED_SEED_CLIENT);
+    expect(ids[0]).not.toBe(ids[1]);
   });
 });

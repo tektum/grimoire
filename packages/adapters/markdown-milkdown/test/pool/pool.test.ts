@@ -73,8 +73,13 @@ describe('determinism: the pool answers byte for byte as the in-process converte
   it('every case of the stability corpus, to Markdown and back', async () => {
     for (const { name, markdown } of loadCorpus()) {
       const seeded = await converter.seed(markdown, 'test-key');
-      expect(seeded, name).toEqual(await seedInProcess(markdown));
-      if (!seeded.ok) continue;
+      const direct = await seedInProcess(markdown);
+      // A seed of user Markdown is written under a fresh client id, so the bytes differ; the outcome and the document do not.
+      if (!seeded.ok || !direct.ok) {
+        expect(seeded, name).toEqual(direct);
+        continue;
+      }
+      expect(await convertInProcess(seeded.state), name).toEqual(await convertInProcess(direct.state));
       expect(await converter.toMarkdown(seeded.state), name).toEqual(await convertInProcess(seeded.state));
     }
   });
