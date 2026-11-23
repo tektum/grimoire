@@ -12,6 +12,7 @@ const fileFloors = {
   "packages/adapters/db-kysely/src/pages.ts": { statements: 96, branches: 91, functions: 99, lines: 99 },
   "packages/adapters/db-kysely/src/admin.ts": { statements: 96, branches: 95, functions: 99, lines: 96 },
   "packages/adapters/db-kysely/src/page-state.ts": { statements: 99, branches: 99, functions: 99, lines: 99 },
+  "packages/adapters/db-kysely/src/trash.ts": { statements: 95, branches: 89, functions: 99, lines: 99 },
 };
 
 export default {
