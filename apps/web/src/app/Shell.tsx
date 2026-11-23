@@ -1,8 +1,9 @@
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, useLocation } from 'react-router';
 import { ErrorBoundary } from './ErrorBoundary';
 
 /** Header, contents area and main (contracts section 3). The contents tree and search arrive with their screens. */
 export function Shell() {
+  const { pathname } = useLocation();
   return (
     <div className="shell">
       <header className="shell-header">
@@ -16,7 +17,7 @@ export function Shell() {
           <p>Contents</p>
         </aside>
         <main className="shell-main">
-          <ErrorBoundary>
+          <ErrorBoundary key={pathname}>
             <Outlet />
           </ErrorBoundary>
         </main>

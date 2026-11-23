@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -54,6 +54,24 @@ describe('ErrorBoundary', () => {
     boom = false;
     screen.getByRole('button', { name: 'Try again' }).click();
     expect(await screen.findByText('fine')).toBeTruthy();
+    spy.mockRestore();
+  });
+});
+
+describe('Shell error boundary', () => {
+  it('clears the error alert when the user navigates to another route', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const Bad = () => {
+      throw new TypeError('x');
+    };
+    const routes = routeObjects();
+    const children = routes[0]!.children!;
+    const router = createMemoryRouter([{ ...routes[0]!, children: [{ path: '/boom', element: <Bad /> }, ...children] }], { initialEntries: ['/boom'] });
+    render(<RouterProvider router={router} />);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    screen.getByRole('link', { name: 'Trash' }).click();
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect((await screen.findAllByRole('heading', { level: 1 }))[0]?.textContent).toBe('Trash');
     spy.mockRestore();
   });
 });
