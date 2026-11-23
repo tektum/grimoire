@@ -2,7 +2,7 @@ import { BlockList, isIP } from 'node:net';
 import { z } from 'zod';
 import { isDescopeProjectId } from '@tektum/grimoire-core/ports/auth-verifier';
 import { parseVersion } from '@tektum/grimoire-core/version';
-import type { Config, FilesConfig } from '@tektum/grimoire-core/ports/config';
+import type { Config, FilesConfig, FilesSetupConfig } from '@tektum/grimoire-core/ports/config';
 
 const P = 'GRIMOIRE_';
 const MAX_INT = Number.MAX_SAFE_INTEGER;
@@ -82,11 +82,12 @@ const domain = z.string(msg(domainRule)).transform((v, ctx) => {
   return v.toLowerCase();
 });
 
-type Purpose = 'server' | 'migrate';
+type Purpose = 'server' | 'migrate' | 'files-setup';
 type Raw = Readonly<Record<string, string>>;
 type S3Required = 'ENDPOINT' | 'BUCKET' | 'ACCESS_KEY' | 'SECRET_KEY';
 const S3_ANY = ['ENDPOINT', 'PUBLIC_ENDPOINT', 'BUCKET', 'ACCESS_KEY', 'SECRET_KEY', 'REGION', 'ADDRESSING_STYLE'] as const;
 const SERVER_ONLY = 'is required to run the server';
+const SETUP_ONLY = 'is required to run files-setup';
 
 const MIME_RULE = 'must be a comma list of lowercase type/subtype names';
 const FORBIDDEN_TYPES = ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/xml', 'application/xml', 'text/javascript', 'application/javascript'];
@@ -118,7 +119,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_DESCOPE_MANAGEMENT_KEY: field(text),
   GRIMOIRE_DEV_TOKEN_SECRET: field(z.string().regex(/^[A-Za-z0-9_-]{16,128}$/, msg('must be 16 to 128 characters of A-Z a-z 0-9 _ -'))),
   GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
-  GRIMOIRE_ALLOWED_ORIGINS: field(list(origin, originRule), purpose === 'server' ? SERVER_ONLY : undefined, true),
+  GRIMOIRE_ALLOWED_ORIGINS: field(list(origin, originRule), purpose === 'server' ? SERVER_ONLY : purpose === 'files-setup' ? SETUP_ONLY : undefined, true),
   GRIMOIRE_TRUSTED_PROXY: field(list(ipOrCidr, ipRule), undefined, true).default([]),
   GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field(int(1, MAX_INT)).default(45000),
   GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES: field(int(1, MAX_INT)).default(1048576),
@@ -155,15 +156,15 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_COLLAB_RECHECK_SECONDS: field(int(1, 600)).default(60),
   // S3 is parsed and validated but not yet used (R2.27). No default for the addressing style: a set
   // variable must stay distinguishable from an absent one for the all-or-nothing rule.
-  GRIMOIRE_S3_ENDPOINT: field(httpUrl),
+  GRIMOIRE_S3_ENDPOINT: field(httpUrl, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_PUBLIC_ENDPOINT: field(httpUrl),
-  GRIMOIRE_S3_BUCKET: field(text),
+  GRIMOIRE_S3_BUCKET: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_ACCESS_KEY: field(text),
   GRIMOIRE_S3_SECRET_KEY: field(text),
   GRIMOIRE_S3_REGION: field(text),
   GRIMOIRE_S3_ADDRESSING_STYLE: field(z.enum(['path', 'virtual'], msg('must be one of: path, virtual'))),
-  GRIMOIRE_S3_ADMIN_ACCESS_KEY: field(text),
-  GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text),
+  GRIMOIRE_S3_ADMIN_ACCESS_KEY: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
+  GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_CREATE_ONLY_HEADER: field(z.enum(['if-none-match', 'x-goog-if-generation-match'], msg('must be one of: if-none-match, x-goog-if-generation-match'))).default('if-none-match'),
   GRIMOIRE_S3_CORS_MODE: field(z.enum(['api', 'external'], msg('must be one of: api, external'))).default('api'),
   GRIMOIRE_FILES_MAX_BYTES: field(int(1, MAX_INT)).default(26_214_400),
@@ -280,8 +281,9 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
     }, { path: ['GRIMOIRE_SAVE_TIMEOUT_MS'], when: always, error: () => `plus ${P}COLLAB_STORE_TIMEOUT_MS must be smaller than ${P}SHUTDOWN_SAVE_DEADLINE_MS` })
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ENDPOINT'), s3Missing('ENDPOINT'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_BUCKET'), s3Missing('BUCKET'))
-    .refine(() => !s3Any() || set('GRIMOIRE_S3_ACCESS_KEY'), s3Missing('ACCESS_KEY'))
-    .refine(() => !s3Any() || set('GRIMOIRE_S3_SECRET_KEY'), s3Missing('SECRET_KEY'))
+    // files-setup uses the admin key and never the runtime key.
+    .refine(() => purpose === 'files-setup' || !s3Any() || set('GRIMOIRE_S3_ACCESS_KEY'), s3Missing('ACCESS_KEY'))
+    .refine(() => purpose === 'files-setup' || !s3Any() || set('GRIMOIRE_S3_SECRET_KEY'), s3Missing('SECRET_KEY'))
     .refine(() => set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') === set('GRIMOIRE_S3_ADMIN_SECRET_KEY'), {
       path: [set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') ? 'GRIMOIRE_S3_ADMIN_SECRET_KEY' : 'GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
       error: () => `is required when the other ${P}S3_ADMIN_* key is set`,
@@ -320,7 +322,18 @@ const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>): { readonly fi
   } };
 };
 
-const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
+/** The files-setup step: the admin identity and the store, never the runtime key. */
+const filesSetupConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose): { readonly filesSetup?: FilesSetupConfig } =>
+  purpose === 'files-setup' && v.GRIMOIRE_S3_ENDPOINT !== undefined && v.GRIMOIRE_S3_BUCKET !== undefined
+    && v.GRIMOIRE_S3_ADMIN_ACCESS_KEY !== undefined && v.GRIMOIRE_S3_ADMIN_SECRET_KEY !== undefined
+    ? { filesSetup: {
+      endpoint: v.GRIMOIRE_S3_ENDPOINT, bucket: v.GRIMOIRE_S3_BUCKET, region: v.GRIMOIRE_S3_REGION ?? 'us-east-1',
+      addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path', corsMode: v.GRIMOIRE_S3_CORS_MODE,
+      accessKey: v.GRIMOIRE_S3_ADMIN_ACCESS_KEY, secretKey: v.GRIMOIRE_S3_ADMIN_SECRET_KEY,
+    } }
+    : {};
+
+const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose): Config => ({
   local: v.GRIMOIRE_LOCAL === '1',
   role: v.GRIMOIRE_ROLE,
   host: v.GRIMOIRE_HOST,
@@ -338,6 +351,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   ...(v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY !== undefined ? { descopeManagementKey: v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY } : {}),
   firstAdminEmails: v.GRIMOIRE_FIRST_ADMIN_EMAILS,
   ...filesConfig(v),
+  ...filesSetupConfig(v, purpose),
   descopeMaxTokenLifetimeSeconds: v.GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS,
   allowedEmailDomains: v.GRIMOIRE_ALLOWED_EMAIL_DOMAINS,
   allowedOrigins: v.GRIMOIRE_ALLOWED_ORIGINS ?? [],
@@ -376,5 +390,5 @@ export function parseEnv(env: Readonly<Record<string, string | undefined>>, purp
   { readonly config: Config } | { readonly issues: readonly z.core.$ZodIssue[] } {
   const raw = cleaned(env);
   const result = envSchema(purpose, raw).safeParse(raw);
-  return result.success ? { config: toConfig(result.data) } : { issues: result.error.issues };
+  return result.success ? { config: toConfig(result.data, purpose) } : { issues: result.error.issues };
 }
