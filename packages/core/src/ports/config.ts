@@ -46,6 +46,16 @@ export interface CollabConfig {
   readonly recheckSeconds: number;
 }
 
+/** Limits of the HTTP API, counted per minute (contracts section 9). */
+export interface HttpConfig {
+  /** Requests one signed-in user may make per minute. */
+  readonly userLimitPerMinute: number;
+  /** Requests per minute from one address that carry no credentials or a token that fails verification. */
+  readonly addressLimitPerMinute: number;
+  /** Flood guard: every request from one address, per minute. */
+  readonly addressCeilingPerMinute: number;
+}
+
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
   readonly database: { readonly url?: string; readonly migrationUrl?: string };
@@ -63,4 +73,11 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   readonly devTokenSecret?: string;
   /** Local mode may bind a non-loopback address only when this is set (GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK). */
   readonly localAllowNonLoopback: boolean;
-  readonly collab: CollabConfig }
+  readonly collab: CollabConfig;
+  readonly http: HttpConfig;
+  /** The address browsers use for live editing (GRIMOIRE_PUBLIC_COLLAB_URL); absent when unset. */
+  readonly publicCollabUrl?: string;
+  /** When true, a bare session token on the WebSocket is refused as too old a client. */
+  readonly requireHandshake: boolean;
+  /** Oldest client version accepted, as `major.minor.patch`. */
+  readonly minClientVersion: string }

@@ -12,6 +12,11 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_HOST: 'the image sets 0.0.0.0 (a container must listen on all its interfaces)',
   GRIMOIRE_PORT: 'fixed at 8080: the published port, the exposed port and the healthcheck use it',
   GRIMOIRE_COLLAB_PORT: 'collaboration shares the HTTP port in this stack; a second port would need its own published port',
+  GRIMOIRE_REQUIRE_HANDSHAKE: 'the default (off) is right for the local stack; a deployment turns it on',
+  GRIMOIRE_MIN_CLIENT_VERSION: 'the default (0.0.0) accepts every client; a deployment raises it',
+  GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: 'the default limit suits the local stack',
+  GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: 'the default limit suits the local stack',
+  GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: 'the default limit suits the local stack',
 };
 
 it('every GRIMOIRE_* setting the loader reads appears in compose.yaml or is listed above with a reason', () => {

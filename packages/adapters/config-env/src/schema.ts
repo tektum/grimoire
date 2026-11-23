@@ -51,6 +51,7 @@ const list = <T extends z.ZodType<string, string>>(item: T, rule: string) =>
   z.string(msg(rule)).transform((v) => v.split(',').map((s) => s.trim()).filter((s) => s !== ''))
     .pipe(z.array(item).min(1, msg(rule)));
 
+const VERSION_RULE = 'must be a version of three dot-separated numbers';
 const httpRule = 'must be an http:// or https:// URL';
 const httpUrl = z.url({ protocol: HTTP, ...msg(httpRule) });
 const descopeBaseUrl = httpUrl.superRefine((v, ctx) => {
@@ -145,6 +146,11 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_SECRET_KEY: field(text),
   GRIMOIRE_S3_REGION: field(text),
   GRIMOIRE_S3_ADDRESSING_STYLE: field(z.enum(['path', 'virtual'], msg('must be one of: path, virtual'))),
+  GRIMOIRE_REQUIRE_HANDSHAKE: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
+  GRIMOIRE_MIN_CLIENT_VERSION: field(z.string(msg(VERSION_RULE)).regex(/^\d+\.\d+\.\d+$/, msg(VERSION_RULE))).default('0.0.0'),
+  GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(1000),
+  GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(60),
+  GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: field(int(1, MAX_INT)).default(6000),
   GRIMOIRE_PUBLIC_API_URL: field(httpUrl),
   GRIMOIRE_PUBLIC_COLLAB_URL: field(z.url({ protocol: /^(?:https?|wss?)$/, ...msg('must be an http(s):// or ws(s):// URL') })),
   GRIMOIRE_FIRST_ADMIN_EMAILS: field(list(email.transform((v) => v.toLowerCase()), emailRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
@@ -273,6 +279,14 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   allowedOrigins: v.GRIMOIRE_ALLOWED_ORIGINS ?? [],
   trustedProxies: v.GRIMOIRE_TRUSTED_PROXY,
   shutdownSaveDeadlineMs: v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS,
+  requireHandshake: v.GRIMOIRE_REQUIRE_HANDSHAKE === '1',
+  minClientVersion: v.GRIMOIRE_MIN_CLIENT_VERSION,
+  ...(v.GRIMOIRE_PUBLIC_COLLAB_URL !== undefined ? { publicCollabUrl: v.GRIMOIRE_PUBLIC_COLLAB_URL } : {}),
+  http: {
+    userLimitPerMinute: v.GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE,
+    addressLimitPerMinute: v.GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE,
+    addressCeilingPerMinute: v.GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE,
+  },
   collab: {
     maxPayloadBytes: v.GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES, maxStateBytes: v.GRIMOIRE_COLLAB_MAX_STATE_BYTES,
     seedMaxMarkdownBytes: v.GRIMOIRE_SEED_MAX_MARKDOWN_BYTES, seedTimeoutMs: v.GRIMOIRE_SEED_TIMEOUT_MS, reseedTimeoutMs: v.GRIMOIRE_RESEED_TIMEOUT_MS, saveTimeoutMs: v.GRIMOIRE_SAVE_TIMEOUT_MS, convertPoolSize: v.GRIMOIRE_CONVERT_POOL_SIZE,

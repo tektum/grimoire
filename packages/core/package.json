@@ -28,6 +28,10 @@
     "./version": {
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"
+    },
+    "./tree/*": {
+      "types": "./dist/tree/*.d.ts",
+      "default": "./dist/tree/*.js"
     }
   }
 }

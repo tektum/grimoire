@@ -14,11 +14,25 @@ export type ConsoleMethod = 'log' | 'info' | 'debug' | 'warn' | 'error';
 export type RequestMethod = string; // an HTTP method token, as Hono reports it
 
 export interface DebugEvents {
+  'http.request': { method: RequestMethod; route: string; status: number; ms: number };
+  'http.validation_failed': { route: string; issues: number };
   'console.info_output': { method: ConsoleMethod };
   'health.not_ready': { reason: 'draining' | 'database' | 'migration_pending' };
 }
 
 export interface InfoEvents {
+  'http.idempotent_replay': { route: string };
+  'collections.created': { collectionId: string };
+  'collections.deleted': { collectionId: string };
+  'collections.access_changed': { collectionId: string };
+  'pages.created': { pageId: string };
+  'pages.moved': { pageId: string };
+  'pages.deleted': { pageId: string };
+  'pages.restored': { pageId: string };
+  'pages.purged': { pageId: string; count: number };
+  'pages.state_reset': { pageId: string; epoch: number };
+  'admin.user_changed': { userId: string };
+  'admin.group_changed': { groupId: string };
   'server.starting': { role: string; local: boolean };
   'http.listening': { host: string; port: number };
   'collab.attached': { role: string };
@@ -34,6 +48,9 @@ export interface InfoEvents {
 }
 
 export interface WarnEvents {
+  'http.rate_limited': { scope: 'user' | 'address' | 'route'; route: string };
+  'http.auth_rejected': { reason: 'missing' | 'invalid' | 'expired' | 'suspended' | 'no-user' };
+  'config.collab_url_missing': Record<string, never>;
   'server.local_mode_exposed': { host: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */
   'server.test_facilities_active': { facilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[] };
