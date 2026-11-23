@@ -76,3 +76,13 @@ describe('Shell error boundary', () => {
     spy.mockRestore();
   });
 });
+
+describe('skip link', () => {
+  it('points into the current page, not at the root of the document base', async () => {
+    render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/p/a-b1/history?x=1'] })} />);
+    const link = screen.getByRole('link', { name: 'Skip to the page' });
+    expect(link.getAttribute('href')).toBe('/p/a-b1/history?x=1#main');
+    expect(document.getElementById('main')).toBeTruthy();
+    await screen.findAllByRole('heading', { level: 1 });
+  });
+});

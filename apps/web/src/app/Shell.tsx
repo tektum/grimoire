@@ -3,10 +3,10 @@ import { ErrorBoundary } from './ErrorBoundary';
 
 /** Header, contents area and main (contracts section 3). The contents tree and search arrive with their screens. */
 export function Shell() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   return (
     <div className="shell">
-      <a className="skip-link" href="#main">
+      <a className="skip-link" href={`${pathname}${search}#main`}>
         Skip to the page
       </a>
       <header className="shell-header">

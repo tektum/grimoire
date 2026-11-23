@@ -24,7 +24,8 @@ export default function SamplePage() {
       <article className="page-text" aria-labelledby="sample-title">
         <h1 id="sample-title">Planning the autumn release</h1>
         <p>
-          The release is on track. Read the <a href="#plan">plan below</a>, then add your notes: <Cursor index={0} name="Ada" />
+          The release is on track. Read the <a href={`${location.pathname}${location.search}#plan`}>plan below</a>, then add your notes:{' '}
+          <Cursor index={0} name="Ada" />
           every edit appears for the others as you type, and <Cursor index={1} name="Grace" />
           their cursors carry a name, so nobody has to guess who is where.
         </p>

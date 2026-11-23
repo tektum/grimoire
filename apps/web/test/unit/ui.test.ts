@@ -97,3 +97,11 @@ describe('reduced motion and focus', () => {
     expect(global).toMatch(/:focus-visible\s*\{[^}]*var\(--focus\)/);
   });
 });
+
+describe('direction-aware layout', () => {
+  it('uses logical properties only, so a right-to-left layout mirrors', () => {
+    const css = global.replace(/\/\*[\s\S]*?\*\//g, '');
+    const physical = css.match(/(?:^|[;{\s])(?:left|right|margin-left|margin-right|padding-left|padding-right|border-left|border-right|border-top-left-radius|border-bottom-left-radius|border-top-right-radius|border-bottom-right-radius)\s*:|text-align:\s*(?:left|right)|translateX\(/g);
+    expect(physical).toBeNull();
+  });
+});
