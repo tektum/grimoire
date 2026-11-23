@@ -3,6 +3,8 @@
 # harness generates a throwaway CA and server certificate (tools/m3-keyserver/pki.sh, into test-results/m3/pki, ignored by git) and the app trusts the CA through
 # NODE_EXTRA_CA_CERTS. The key server runs in a container built from the same image as the app (distroless Node) with the tool folder mounted read-only; the
 # image itself never contains tools/. Its port is published on 127.0.0.1 only. Test project id: P2m3exittestprojectabcdefghij.
+# The access re-check runs every M3_RECHECK_SECONDS (5 by default; a dedicated name, because `make up` copies .env.example to .env and that file's GRIMOIRE_COLLAB_RECHECK_SECONDS=60
+# would win over a default written here).
 # Restarting only the key server mints a new key id: the app picks it up within 30 s (the SDK's unknown-key cooldown), not at once; see docs/proof/m3-descope.md Q9.
 services:
   keyserver:
@@ -46,5 +48,5 @@ services:
       GRIMOIRE_DESCOPE_PROJECT_ID: "${M3_PROJECT_ID:-P2m3exittestprojectabcdefghij}"
       GRIMOIRE_DESCOPE_BASE_URL: https://keyserver:8443
       GRIMOIRE_ALLOWED_EMAIL_DOMAINS: example.test
-      GRIMOIRE_COLLAB_RECHECK_SECONDS: "${GRIMOIRE_COLLAB_RECHECK_SECONDS:-5}"
+      GRIMOIRE_COLLAB_RECHECK_SECONDS: "${M3_RECHECK_SECONDS:-5}"
       NODE_EXTRA_CA_CERTS: /pki/ca.pem
