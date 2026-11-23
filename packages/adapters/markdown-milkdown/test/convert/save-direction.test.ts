@@ -6,9 +6,9 @@ import { nestedState, paragraphWith, stateFromFragment, stateFromMarkdown } from
 // document). The cost is bounded by the save direction's time limit in the pool, not by a pre-check. See docs/proof/m2-conversion.md.
 const shapes: [string, string][] = [
   ['python listing of 2,500 lines in a code block', '```python\n' + 'def foo_bar_baz(a_b, c_d):\n    return a_b * c_d_e\n'.repeat(1_250) + '```\n'],
-  ['pretty JSON of 150 KB in a code block', '```json\n' + '  {"a_b": [1, 2, {"c": "d_e"}], "f": "*g*"},\n'.repeat(3_300) + '```\n'],
+  ['pretty JSON of 120 KB in a code block', '```json\n' + '  {"a_b": [1, 2, {"c": "d_e"}], "f": "*g*"},\n'.repeat(2_600) + '```\n'],
   ['task list of 3,000 items', '- [ ] task *a* done_x\n'.repeat(3_000)],
-  ['table of 1,000 rows with links', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(1_000)],
+  ['table of 800 rows with links', '| h | h | h | h | h | h |\n|---|---|---|---|---|---|\n' + '| [a](http://x.y/1) | [b](u) | [c](u) | [d](u) | [e](u) | [f](u) |\n'.repeat(800)],
 ];
 
 describe('saving a page that holds the shapes the seed direction accepts', () => {
@@ -29,8 +29,9 @@ describe('saving a page that holds the shapes the seed direction accepts', () =>
 describe('what saving stores can always be rebuilt', () => {
   it('Markdown over the stored-Markdown cap is refused by the save, naming the limit (so that it never is stored)', async () => {
     const state = await stateFromMarkdown('```\n' + 'a_b\n'.repeat(262_200) + '```\n'); // 1,048,800 bytes of Markdown, a small state
-    expect(await convertInProcess(state)).toEqual({ ok: false, reason: 'too-large', detail: expect.stringMatching(/^the Markdown is 10488\d\d bytes; the limit is 1048576 bytes$/) });
-    expect((await convertInProcess(state, { maxReseedMarkdownBytes: 2_000_000 })).ok).toBe(true);
+    // The state is a little over the state cap too (one character of code is about one byte of state), so the fixture raises that cap: this test is about the Markdown cap.
+    expect(await convertInProcess(state, { maxStateBytes: 2_000_000 })).toEqual({ ok: false, reason: 'too-large', detail: expect.stringMatching(/^the Markdown is 10488\d\d bytes; the limit is 1048576 bytes$/) });
+    expect((await convertInProcess(state, { maxStateBytes: 2_000_000, maxReseedMarkdownBytes: 2_000_000 })).ok).toBe(true);
   }, 60_000);
 
   it('the stored-Markdown cap is exact: a Markdown of exactly the limit is stored, one byte more is refused', async () => {

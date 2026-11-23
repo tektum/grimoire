@@ -1,12 +1,12 @@
 {
   "seed": 20261120,
-  "targetBytes": 190000,
-  "inputBytes": 189999,
-  "inputSha256": "b055de661065c090a133ce3f97c05e94c524f0c27bd08be309818dd04ae164cf",
+  "targetBytes": 125000,
+  "inputBytes": 125038,
+  "inputSha256": "561bcf7858fa0551656da5ebc00368ab25263267295187c59e3b49caa59d7533",
   "outcome": "converted",
-  "outputBytes": 191764,
-  "outputSha256": "108b6acf21ecd0890cc4455e5c02bc277b5d66498f2d40b0a5b8f8cdb651d2ad",
-  "textBytes": 171327,
-  "textSha256": "04ef5a236f577769af6031e4dd6f589bc4b32d691c0c172d5a73e386ec41595e",
+  "outputBytes": 126264,
+  "outputSha256": "46373e0b50333c647b0a8a07265e36f9e8ac77b5fdcdb1904e5b659af9bf0b27",
+  "textBytes": 112928,
+  "textSha256": "cdea0de721802ca1e80e758ad43480d5836691e2d8caad9bd3472111faec19e2",
   "secondSaveIdentical": true
 }

@@ -24,10 +24,10 @@ export interface ConverterLimits {
 }
 
 export const DEFAULT_LIMITS: ConverterLimits = Object.freeze({
-  maxStateBytes: 1_536_000,
+  maxStateBytes: 1_000_000,
   maxDepth: 100,
   maxBlocks: 50_000,
-  maxSeedMarkdownBytes: 196_608,
+  maxSeedMarkdownBytes: 131_072,
   maxSeedLines: 8_000,
   maxSeedLineMarkers: 50,
   maxReseedMarkdownBytes: 1_048_576,

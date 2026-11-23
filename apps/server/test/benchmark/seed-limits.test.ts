@@ -5,7 +5,7 @@ import { describe, it } from 'vitest';
 import { requireBuild } from '../server/support/harness.js';
 
 //, item 5 (measurement, not pass/fail): the largest Markdown of each shape that the pooled converter seeds with the production
-// options (512 MB worker, 10 s, state cap 1,536,000), and the Markdown size at which the state reaches the cap.
+// options (512 MB worker, 10 s, state cap 1,000,000), and the Markdown size at which the state reaches the cap.
 const gen = {
   words: (kb: number) => 'The quick brown fox jumps over the lazy dog, again and again, with *emphasis* and `code` and a [link](https://example.com).\n\n'.repeat(Math.ceil((kb * 1024) / 121)),
   list: (kb: number) => Array.from({ length: Math.ceil((kb * 1024) / 18) }, (_, i) => `- item number ${String(i)}\n`).join(''),
@@ -17,7 +17,7 @@ describe('seed limits', { timeout: 3_000_000 }, () => {
   it('measures', async () => {
     requireBuild();
     const out: Record<string, unknown> = {};
-    const conv = createMarkdownConverter({ maxStateBytes: 1_536_000 });
+    const conv = createMarkdownConverter({ maxStateBytes: 1_000_000 });
     const tryPool = async (kind: Kind, kb: number) => {
       const md = gen[kind](kb);
       const t = performance.now();

@@ -2,6 +2,7 @@ import { FRAGMENT_NAME, isSafeUrl } from '@tektum/grimoire-editor-schema';
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
 import { convertInProcess, seedInProcess } from '../../src/index.js';
+import { DEFAULT_LIMITS } from '../../src/limits.js';
 import { stateFromDocJson } from '../../src/testing/states.js';
 
 // Review finding F4: a Yjs state can carry any address directly, so the converter enforces the allow-list again at save time.
@@ -32,8 +33,8 @@ describe('the converter refuses to store an address that is not allowed', () => 
     expect(result.markdown).toContain('![pic](https://example.com/ok.png)');
   });
 
-  it('a 1.4 MB address is not stored', async () => {
-    const state = await stateFromDocJson({ type: 'doc', content: [para(run('long', [link(`https://example.com/${'p'.repeat(1_400_000)}`)]))] });
+  it('an address of nearly the state cap is not stored', async () => {
+    const state = await stateFromDocJson({ type: 'doc', content: [para(run('long', [link(`https://example.com/${'p'.repeat(Math.floor(DEFAULT_LIMITS.maxStateBytes * 0.9))}`)]))] });
     const result = await convertInProcess(state);
     expect(result).toMatchObject({ ok: true, markdown: 'long\n' });
   });

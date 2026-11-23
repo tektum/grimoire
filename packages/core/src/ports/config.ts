@@ -10,6 +10,8 @@ export interface CollabConfig {
   readonly seedTimeoutMs: number;
   /** Time one rebuild of a page from the Markdown its own serialiser stored may take. */
   readonly reseedTimeoutMs: number;
+  /** Time one conversion of a page's state to Markdown (a save) may take before its worker is stopped. */
+  readonly saveTimeoutMs: number;
   /** Worker threads converting Markdown and page state. */
   readonly convertPoolSize: number;
   readonly stateWarnPercent: number;

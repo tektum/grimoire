@@ -32,13 +32,13 @@ describe('loadConfig defaults', () => {
     expect(c.descopeProjectId).toBeUndefined();
     expect(c.database).toEqual({ url: base.GRIMOIRE_DATABASE_URL });
     expect(c.collab).toEqual({
-      maxPayloadBytes: 1048576, maxStateBytes: 1536000, stateWarnPercent: 80,
+      maxPayloadBytes: 1048576, maxStateBytes: 1_000_000, stateWarnPercent: 80,
       messagesPerWindow: 300, rateWindowSeconds: 10, maxConnectionsPerPage: 100,
       maxConnections: 500, maxOpenDocuments: 200, memoryLimitBytes: 1073741824,
       memoryGuardPercent: 80, idleUnloadSeconds: 60, connectAttemptsPerWindow: 50,
       connectWindowSeconds: 60, banSeconds: 300, maxUnauthSocketsPerAddress: 10, maxUnauthSockets: 500, maxUnauthQueuedBytes: 67_108_864,
       preauthTimeoutSeconds: 5, maxSocketsPerUser: 20, maxDocumentsPerUser: 50, bytesPerSecondPerUser: 2097152,
-      seedMaxMarkdownBytes: 196608, seedTimeoutMs: 5000, reseedTimeoutMs: 30000, convertPoolSize: 2,
+      seedMaxMarkdownBytes: 131072, seedTimeoutMs: 10000, reseedTimeoutMs: 30000, saveTimeoutMs: 10000, convertPoolSize: 2,
       debounceMs: 3000, maxDebounceMs: 10000, storeRetryBaseMs: 1000, storeRetryMaxMs: 30000, storeTimeoutMs: 2000, recheckSeconds: 60,
     });
   });
@@ -79,7 +79,7 @@ const cases: readonly (readonly [string, string, string])[] = [
   ['GRIMOIRE_ALLOWED_ORIGINS', 'http://x.test/', 'http://x.test'],
   ['GRIMOIRE_TRUSTED_PROXY', 'not-an-ip', '192.168.0.0/16'],
   ['GRIMOIRE_TRUSTED_PROXY', '10.0.0.0/33', '10.0.0.0/32'],
-  ['GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS', '0', '2001'],
+  ['GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS', '0', '12001'],
   ['GRIMOIRE_DESCOPE_PROJECT_ID', '   ', 'P123'],
   ['GRIMOIRE_PUBLIC_API_URL', 'ftp://x', 'https://api.test'],
   ['GRIMOIRE_PUBLIC_COLLAB_URL', 'x', 'wss://collab.test'],

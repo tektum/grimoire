@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { convertInProcess, createMarkdownConverter } from '../../src/index.js';
+import { DEFAULT_LIMITS } from '../../src/limits.js';
 import { SHAPES } from '../../src/testing/hostile-shapes.js';
 import type { Shape } from '../../src/testing/hostile-shapes.js';
 import { stateFromDocJson } from '../../src/testing/states.js';
@@ -9,7 +10,7 @@ import { ensureBuilt } from '../pool/support.js';
  * CPU time of one conversion of an adversarial document (review finding F1). Measured with `process.cpuUsage` (one core,
  * the conversion is synchronous), so a loaded machine does not fail it.
  *
- * Budget: 5 s of CPU per conversion at the largest state the converter accepts (1,536,000 bytes) on the development machine
+ * Budget: 5 s of CPU per conversion at the largest state the converter accepts (the state cap, 1,000,000 bytes by default) on the development machine
  * (32 cores, Node 26); the worker's own timeout is 10 s. Growth: from 100 KB to 500 KB the time may grow at most 8-fold
  * (linear is 5; the rest is slack for the garbage collector), so a quadratic cost (25-fold) fails. A refusal with a typed
  * reason is a pass: it is cheap and the page keeps its live state.
@@ -28,7 +29,7 @@ const SLOWER_THAN_THE_LIMIT = [
 const LIMIT_MS = 10_000;
 const margin = (ms: number): string => `${(LIMIT_MS / Math.max(ms, 1)).toFixed(2)}x${LIMIT_MS / Math.max(ms, 1) < 2 ? ' UNDER 2x' : ''}`;
 const MAX_GROWTH = 8;
-const CAP_BYTES = 1_536_000;
+const CAP_BYTES = DEFAULT_LIMITS.maxStateBytes;
 
 const cpu = (): number => {
   const used = process.cpuUsage();

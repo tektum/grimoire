@@ -44,7 +44,8 @@ afterAll(async () => { await dropTestDatabase(DB); });
 
 describe('message size: maxPayload (R4.16)', () => {
   it('a 2 MB frame closes that socket with 1009, a frame of exactly 1,048,576 bytes is accepted, and a new client loads the page with its text', async () => {
-    const s = await start(); const id = await page();
+    // The page-size cap is raised here: a frame of exactly the message limit (1,048,576 bytes) is also a page over the default cap, and this test is about the message limit.
+    const s = await start({ GRIMOIRE_COLLAB_MAX_STATE_BYTES: '2000000' }); const id = await page();
     const alice = edit(s, id); await synced(alice);
     alice.text.insert(0, 'hello');
     await eventually(async () => (textOf(await stored(id)) === 'hello' ? true : undefined), 8000, 'hello stored');
@@ -97,15 +98,18 @@ describe('malformed updates (R4.17)', () => {
   }, 30_000);
 });
 
+/** The default state cap of the server under test (the setting is not changed here). */
+const STATE_CAP = 1_000_000;
+
 describe('state cap and warning (R4.16, R4.47, R3.18)', () => {
-  it('a page stored at 1,500,000 bytes refuses a paste that would pass 1,536,000, stays readable and editable, and each editor gets one state-warning', async () => {
+  it('a page stored near the state cap (1,000,000 bytes by default) refuses a paste that would pass it, stays readable and editable, and each editor gets one state-warning', async () => {
     const s = await start(); const id = await page();
-    const seed = stateOfSize(1_500_000);
+    const seed = stateOfSize(STATE_CAP - 36_000);
     await setPageState(DB, id, seed);
     const a = edit(s, id); const b = edit(s, id);
     await Promise.all([synced(a), synced(b)]);
     const start0 = b.text.length;
-    expect(start0).toBeGreaterThan(1_400_000);
+    expect(start0).toBeGreaterThan(STATE_CAP - 100_000);
 
     a.text.insert(0, 'v'.repeat(100_000)); // one update of about 100 KB: well under maxPayload, over the cap
     await eventually(() => (count(a, 'state-cap') > 0 ? true : undefined), 8000, 'state-cap message to the sender');
@@ -119,9 +123,9 @@ describe('state cap and warning (R4.16, R4.47, R3.18)', () => {
     expect(events(s, 'collab.refused').map((e) => e['code'])).toContain('state-cap');
 
     for (let i = 0; i < 20; i++) { b.text.insert(b.text.length, 'e'); await sleep(5); }
-    await eventually(async () => ((await pageRow(DB, id))?.ydoc_size ?? 0) > 1_500_000 ? true : undefined, 8000, 'later edits stored');
+    await eventually(async () => ((await pageRow(DB, id))?.ydoc_size ?? 0) > STATE_CAP - 36_000 ? true : undefined, 8000, 'later edits stored');
     const row = await pageRow(DB, id);
-    expect(row?.ydoc_size).toBeLessThanOrEqual(1_536_000);
+    expect(row?.ydoc_size).toBeLessThanOrEqual(STATE_CAP);
     expect(textOf(row?.ydoc).endsWith('e'.repeat(20))).toBe(true);
     const c = edit(s, id); await synced(c);
     expect(c.text.length).toBe(start0 + 20);

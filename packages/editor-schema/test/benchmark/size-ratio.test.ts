@@ -1,7 +1,7 @@
 /**
  * Benchmark (project `benchmark`, `bun run test:benchmark`; never part of `bun run test`): ratio of Yjs state size to
  * Markdown size for five document shapes at about 10 KB, 100 KB and the largest document whose state fits under the
- * 1,536,000-byte cap. Documents are generated from a fixed seed, parsed by the shared plugin array and written to a
+ * 1,000,000-byte cap. Documents are generated from a fixed seed, parsed by the shared plugin array and written to a
  * Yjs fragment by y-prosemirror, which is what the editor's collab plugin does. Each ratio must stay within 5% of the
  * value recorded in docs/proof/m2-schema-fixes.md.
  */
@@ -11,7 +11,7 @@ import { prosemirrorToYXmlFragment } from "y-prosemirror";
 import { FRAGMENT_NAME } from "../../src/index.js";
 import { makeEditor } from "../helpers.js";
 
-const STATE_CAP = 1_536_000;
+const STATE_CAP = 1_000_000; // the default of GRIMOIRE_COLLAB_MAX_STATE_BYTES
 const TOLERANCE = 0.05;
 
 const WORDS = "the quick brown fox jumps over lazy dog while server converts live state into canonical markdown for every page document editor schema paragraph heading table cell list item review draft publish team notes meeting agenda budget quarter roadmap customer feedback release incident".split(" ");

@@ -19,8 +19,8 @@ afterAll(async () => {
 
 describe('options', () => {
   it('default to the contracts', () => {
-    expect(converter.options).toMatchObject({ poolSize: 2, seedTimeoutMs: 5_000, timeoutMs: 10_000, heapMb: 512, maxDepth: 100, maxBlocks: 50_000 });
-    expect(converter.options).toMatchObject({ maxStateBytes: 1_536_000, maxSeedMarkdownBytes: 196_608 });
+    expect(converter.options).toMatchObject({ poolSize: 2, seedTimeoutMs: 10_000, timeoutMs: 10_000, heapMb: 512, maxDepth: 100, maxBlocks: 50_000 });
+    expect(converter.options).toMatchObject({ maxStateBytes: 1_000_000, maxSeedMarkdownBytes: 131_072 });
   });
   it('refuse a timeout the timer cannot hold, and every limit that is not a positive integer (a NaN or a 0 cannot switch a check off)', async () => {
     expect(() => createMarkdownConverter({ timeoutMs: 4_294_967_296 })).toThrow(RangeError);

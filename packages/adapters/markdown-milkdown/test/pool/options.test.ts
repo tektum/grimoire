@@ -13,7 +13,7 @@ describe('pool options: each is a positive integer and an error names it', () =>
     expect(resolveOptions({ [name]: 4_294_967_295 })[name]).toBe(4_294_967_295);
   });
   it('defaults', () => {
-    expect(resolveOptions()).toMatchObject({ poolSize: 2, timeoutMs: 10_000, seedTimeoutMs: 5_000, reseedTimeoutMs: 30_000, heapMb: 512, queueLimit: 32, closeDeadlineMs: 5_000 });
+    expect(resolveOptions()).toMatchObject({ poolSize: 2, timeoutMs: 10_000, seedTimeoutMs: 10_000, reseedTimeoutMs: 30_000, heapMb: 512, queueLimit: 32, closeDeadlineMs: 5_000 });
   });
 });
 

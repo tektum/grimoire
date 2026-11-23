@@ -17,10 +17,10 @@ const settled = <T>(p: Promise<T>): { done: () => boolean; value: Promise<T> } =
 };
 
 describe('options', () => {
-  it('two workers and a 5 s seed limit by default; convert keeps its own 10 s', async () => {
+  it('two workers and a 10 s seed limit by default; convert keeps its own 10 s', async () => {
     const c = createMarkdownConverter();
     try {
-      expect(c.options).toMatchObject({ poolSize: 2, seedTimeoutMs: 5_000, timeoutMs: 10_000 });
+      expect(c.options).toMatchObject({ poolSize: 2, seedTimeoutMs: 10_000, timeoutMs: 10_000 });
     } finally { await c.close(); }
   });
   it('refuses a seed limit that is not a bounded positive integer', () => {
@@ -96,7 +96,7 @@ describe('one seed at a time per key', () => {
   it('a key is free again after a refusal by the pre-check', async () => {
     const c = createMarkdownConverter({ poolSize: 2 });
     try {
-      expect(await c.seed('a'.repeat(196_609), 'k')).toMatchObject({ ok: false, reason: 'too-large' });
+      expect(await c.seed('a'.repeat(131_073), 'k')).toMatchObject({ ok: false, reason: 'too-large' });
       expect((await c.seed('fine', 'k')).ok).toBe(true);
     } finally { await c.close(); }
   }, 60_000);
