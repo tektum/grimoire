@@ -25,7 +25,7 @@ export interface RevisionsExtension extends Extension {
   readonly scheduler: RevisionScheduler;
 }
 
-/** Page revisions (R9.2, R9.3) as a host extension: it only translates Hocuspocus hooks into the scheduler's calls. Lowest priority, so it runs after saves. */
+/** Page revisions (R9.2, R9.3) as a host extension: it only translates Hocuspocus hooks into the scheduler's calls, without waiting for them. Lowest priority, so it runs after saves. */
 export function createRevisionsExtension(o: RevisionsOptions): RevisionsExtension {
   const scheduler = createRevisionScheduler({ repo: o.repo, clock: o.clock, report: revisionReport(o.log), ...(o.timers ? { timers: o.timers } : {}) });
   return {
@@ -38,15 +38,16 @@ export function createRevisionsExtension(o: RevisionsOptions): RevisionsExtensio
     async onChange(data: HookPayloadByName['onChange']): Promise<void> {
       scheduler.changed(data.documentName, readContext(data.context).userId);
     },
+    // Revision work never holds up the host: a slow or hung database must not delay a store, an unload or the shutdown. The scheduler
+    // catches and logs its own failures, so the promises it returns never reject.
     async afterStoreDocument(data: HookPayloadByName['afterStoreDocument']): Promise<void> {
-      await scheduler.saved(data.documentName);
+      void scheduler.saved(data.documentName);
     },
     async afterUnloadDocument(data: HookPayloadByName['afterUnloadDocument']): Promise<void> {
-      await scheduler.unloaded(data.documentName);
+      void scheduler.unloaded(data.documentName);
     },
     async onDestroy(): Promise<void> {
       scheduler.stop();
-      await scheduler.whenIdle();
     },
   };
 }

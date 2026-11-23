@@ -32,6 +32,7 @@ describe('the revisions extension', () => {
     expect(t.timers.pending).toBe(2); // the page's timer and the catch-up's second pass
     await t.ext.afterStoreDocument?.(payload());
     await t.ext.afterUnloadDocument?.(payload());
+    await t.ext.scheduler.whenIdle();
     expect(t.repo.made(PAGE).map((r) => [r.reason, r.markdown, r.authors])).toEqual([['idle', 'one', [ANA]], ['last_editor_left', 'two', [ANA]]]);
     expect(t.timers.pending).toBe(1); // the catch-up's second pass
   });
@@ -41,10 +42,22 @@ describe('the revisions extension', () => {
     t.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
     await t.ext.onChange?.(payload({ context: undefined }));
     await t.ext.afterUnloadDocument?.(payload());
+    await t.ext.scheduler.whenIdle();
     expect(t.repo.made(PAGE)).toEqual([expect.objectContaining({ authors: [], lastAuthorId: null })]);
   });
 
-  it('cancels its timers and waits for work when the server is destroyed', async () => {
+  it('does not wait for revision work: a hung repository holds up neither an unload nor the shutdown', async () => {
+    const t = make();
+    t.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
+    t.repo.createFromPage = () => new Promise(() => undefined); // a database that never answers
+    await t.ext.onChange?.(payload());
+    await t.ext.afterUnloadDocument?.(payload());
+    await t.ext.afterStoreDocument?.(payload());
+    await t.ext.onDestroy?.({} as never);
+    expect(t.timers.pending).toBe(0);
+  });
+
+  it('cancels its timers when the server is destroyed', async () => {
     const t = make();
     t.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
     await t.ext.onChange?.(payload());
