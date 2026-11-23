@@ -13,6 +13,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   type_mismatch: "The file doesn't look like its type",
   upload_missing: "The upload didn't finish. Try again",
   size_mismatch: "The upload didn't finish. Try again",
+  rate_limited: 'Too many requests. Try again in a moment',
   forbidden: "You can't do that here",
   invalid: 'Check the value and try again',
   unavailable: 'Try again',

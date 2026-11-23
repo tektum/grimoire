@@ -105,12 +105,13 @@ export function wrapFetch(o: WrapOptions): (request: Request) => Promise<Respons
           await sleep(seconds * 1000);
           continue;
         }
-        o.notify(rateLimitedMessage(seconds));
+        o.notify(messageFor('rate_limited'));
         return response;
       }
       if (response.status === 503) {
         if (retryable && attempt < MAX_RETRIES) {
-          await sleep((BACKOFF_S[attempt] ?? 4) * 1000);
+          const asked = Number(response.headers.get('Retry-After'));
+          await sleep((asked > 0 ? Math.min(MAX_WAIT_S, asked) : (BACKOFF_S[attempt] ?? 4)) * 1000);
           continue;
         }
         o.notify(messageFor('unavailable'));

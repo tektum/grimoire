@@ -69,6 +69,19 @@ describe('API wrapper', () => {
     await t.api.PATCH('/v1/pages/{id}' as never, { params: { path: { id: 'p1' } }, body: {} } as never);
     expect(t.calls).toHaveLength(1);
     expect(t.sleep).not.toHaveBeenCalled();
+    expect(t.notify).toHaveBeenCalledWith('Too many requests. Try again in a moment');
+    expect(t.notify).not.toHaveBeenCalledWith(expect.stringContaining('trying again'));
+  });
+  it('waits for the Retry-After of a 503 before retrying a GET, and falls back to the backoff without one', async () => {
+    const a = setup([err(503, 'unavailable', { 'Retry-After': '5' }), json(200)]);
+    await a.api.GET('/v1/me' as never);
+    expect(a.sleep).toHaveBeenCalledWith(5000);
+    const b = setup([err(503, 'unavailable'), json(200)]);
+    await b.api.GET('/v1/me' as never);
+    expect(b.sleep).toHaveBeenCalledWith(1000);
+    const c = setup([err(503, 'unavailable', { 'Retry-After': '999' }), json(200)]);
+    await c.api.GET('/v1/me' as never);
+    expect(c.sleep).toHaveBeenCalledWith(30000);
   });
   it('caps the wait at 30 s and the retries at 3', async () => {
     const t = setup(Array.from({ length: 6 }, () => err(429, 'rate_limited', { 'Retry-After': '999' })));

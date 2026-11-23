@@ -7,7 +7,16 @@ export interface ClientStorage {
   remove(key: string): void;
 }
 
-export function createClientStorage(backend: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): ClientStorage {
+/** `localStorage` itself can throw on access (site data blocked, for example in an embedded frame): then there is no backend. */
+const defaultBackend = (): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null => {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+
+export function createClientStorage(backend: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null = defaultBackend()): ClientStorage {
   const guard = <T>(fn: () => T, fallback: T): T => {
     try {
       return fn();
