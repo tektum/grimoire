@@ -10,9 +10,6 @@ import type { KyselyDatabase } from '../../src/index.js';
 import { createAccessStore } from '../../src/permissions.js';
 import { createMigratedDatabase, dropDatabase, loadWorld, sqlAs, urlFor } from './support.js';
 
-/** Migration 0006 renumbers "Unfiled" from `a0` to rank 1 of the collections (`'a0' || lpad(1, 6, '0') || '1'`); the model must hold the stored value. */
-const UNFILED_POSITION = 'a000000011';
-
 // Differential test: the pure decision over the in-memory facts and over the facts the SQL reads must agree for every (user, page) and (user, collection),
 // for every worlds drawn at random. The seed is printed in every failure message; GRIMOIRE_ACCESS_SEED=<n> replays one run.
 const DB = `grimoire_m3t04_diff_${String(process.pid)}`;
@@ -32,7 +29,7 @@ function prng(seed: number): () => number {
   };
 }
 
-function randomWorld(rand: () => number): World {
+function randomWorld(rand: () => number, unfiledPosition: string): World {
   const int = (n: number): number => Math.floor(rand() * n);
   const chance = (p: number): boolean => rand() < p;
   const w = emptyWorld();
@@ -43,7 +40,7 @@ function randomWorld(rand: () => number): World {
   for (const g of w.groups) for (const u of w.users) if (chance(0.3)) w.members.push({ groupId: g.id, userId: u.id });
   const perms: (Permission | null)[] = [null, null, 'read', 'read_write'];
   // The migration's own "Unfiled" collection (no default permission) is part of every world; the loader does not insert it again.
-  w.collections.push({ id: UNFILED, deleted: false, defaultPermission: null, position: UNFILED_POSITION });
+  w.collections.push({ id: UNFILED, deleted: false, defaultPermission: null, position: unfiledPosition });
   for (let i = 0; i < collectionCount; i++) {
     w.collections.push({ id: uuidOf('collection', i + 1), deleted: chance(0.15), defaultPermission: perms[int(perms.length)] ?? null, position: `a${String(i).padStart(4, '0')}` });
   }
@@ -60,8 +57,12 @@ function randomWorld(rand: () => number): World {
 }
 
 let db: KyselyDatabase;
+/** The stored position of "Unfiled": the model reads it after migrating, so a later renumbering cannot desynchronise it. */
+let unfiledPosition = '';
 beforeAll(async () => {
   await createMigratedDatabase(DB);
+  unfiledPosition = (await sqlAs<{ position: string }>(urlFor('grimoire_admin', DB), 'select position from collections where id = $1', [UNFILED]))[0]?.position ?? '';
+  expect(unfiledPosition).not.toBe('');
   db = createDatabase(urlFor('grimoire_app', DB));
 }, 180_000);
 afterAll(async () => {
@@ -83,7 +84,7 @@ describe(`SQL form against the pure decision (seed ${String(SEED)})`, () => {
     let triples = 0;
     for (let n = 0; n < WORLDS; n++) {
       await clear();
-      const world = randomWorld(rand);
+      const world = randomWorld(rand, unfiledPosition);
       await loadWorld(DB, world);
       const fakeAuth = createAuthorizer(createFakeAccessStore(world));
       const absentUser = uuidOf('absent', 1), absentPage = uuidOf('absent', 2), absentCollection = uuidOf('absent', 3);
