@@ -6,6 +6,7 @@ DELETE /v1/collections/{id}/access/{entryId} | op:deleteCollectionAccess | polic
 DELETE /v1/groups/{id} | op:deleteGroup | policy:admin | path:id:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
 DELETE /v1/groups/{id}/members/{userId} | op:removeGroupMember | policy:admin | path:id:string<uuid>,userId:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
 DELETE /v1/pages/{id} | op:deletePage | policy:page:write:id | path:id:string<uuid> | query:- | req:- | res:204:-,409:{error:{code:string,message:string}} | rate:- | idem:no
+DELETE /v1/trash/{id} | op:purgeFromTrash | policy:admin | path:id:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
 GET /v1/collections | op:listCollections | policy:authenticated | path:- | query:- | req:- | res:200:{items:Collection[]} | rate:- | idem:no
 GET /v1/collections/{id} | op:getCollection | policy:collection:read:id | path:id:string<uuid> | query:- | req:- | res:200:Collection | rate:- | idem:no
 GET /v1/collections/{id}/access | op:listCollectionAccess | policy:collection:admin:id | path:id:string<uuid> | query:- | req:- | res:200:CollectionAccess | rate:- | idem:no
@@ -19,6 +20,7 @@ GET /v1/pages/{id} | op:getPage | policy:page:read:id | path:id:string<uuid> | q
 GET /v1/pages/{id}/markdown | op:getPageMarkdown | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:- | rate:- | idem:no
 GET /v1/pages/{id}/revisions | op:listRevisions | policy:page:read:id | path:id:string<uuid> | query:cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:{items:Revision[],nextCursor:string|null} | rate:- | idem:no
 GET /v1/pages/{id}/revisions/{rid} | op:getRevision | policy:page:read:id | path:id:string<uuid>,rid:string<uuid> | query:- | req:- | res:200:RevisionWithMarkdown | rate:- | idem:no
+GET /v1/trash | op:listTrash | policy:authenticated | path:- | query:collectionId?:string<uuid>,cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:TrashList | rate:- | idem:no
 GET /v1/users | op:listUsers | policy:admin | path:- | query:cursor?:string(..1024),limit?:integer(1..100)=50,q?:string(1..200) | req:- | res:200:AdminUserList | rate:- | idem:no
 PATCH /v1/collections/{id} | op:patchCollection | policy:collection:admin:id | path:id:string<uuid> | query:- | req:PatchCollection | res:200:Collection,409:{error:{code:string,message:string}} | rate:- | idem:no
 PATCH /v1/groups/{id} | op:patchGroup | policy:admin | path:id:string<uuid> | query:- | req:GroupName | res:200:Group,409:{error:{code:string,message:string}} | rate:- | idem:no
@@ -29,6 +31,7 @@ POST /v1/groups | op:createGroup | policy:admin | path:- | query:- | req:GroupNa
 POST /v1/pages | op:createPage | policy:collection-body:collectionId:write | path:- | query:- | req:CreatePage | res:201:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:yes
 POST /v1/pages/{id}/move | op:movePage | policy:page:write:id | path:id:string<uuid> | query:- | req:MovePage | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/pages/{id}/reset-state | op:resetPageState | policy:admin | path:id:string<uuid> | query:- | req:ResetPageState | res:200:PageStateReset,409:{error:{code:string,message:string}} | rate:5/60s | idem:yes
+POST /v1/trash/{id}/restore | op:restoreFromTrash | policy:trash:write:id | path:id:string<uuid> | query:- | req:- | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/users/names | op:userNames | policy:authenticated | path:- | query:- | req:UserNamesRequest | res:200:UserNames | rate:60/60s | idem:no
 PUT /v1/collections/{id}/access | op:putCollectionAccess | policy:collection:admin:id | path:id:string<uuid> | query:- | req:GrantCollectionAccess | res:200:CollectionAccessEntry | rate:- | idem:no
 PUT /v1/groups/{id}/members/{userId} | op:addGroupMember | policy:admin | path:id:string<uuid>,userId:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
@@ -59,5 +62,7 @@ schema ResetPageState = {confirmStale?:boolean,markdown?:string}!
 schema Revision = {authors:RevisionAuthor[],createdAt:number,id:string<uuid>,lastAuthor:{id:string<uuid>,name:string}|null,reason:idle|last_editor_left|before_restore|manual|import,title:string}
 schema RevisionAuthor = {id:string<uuid>,name:string}
 schema RevisionWithMarkdown = Revision&{markdown:string}
+schema TrashItem = {collectionId:string<uuid>,daysLeft:integer,deletedAt:number,deletedBy:string<uuid>|null,id:string<uuid>,title:string}
+schema TrashList = {items:TrashItem[],nextCursor:string|null}
 schema UserNames = {items:{id:string<uuid>,name:string}[]}
 schema UserNamesRequest = {ids:string<uuid>[](1..50)}!

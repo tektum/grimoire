@@ -117,6 +117,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     ordering: createOrdering(), converter,
     idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
+    deleteFiles: () => Promise.resolve(), // the file store is not wired yet: a purge removes no object until it is
   };
   let collab: AppContext['collab'];
   if (pageDb && authDb) {

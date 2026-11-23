@@ -72,7 +72,7 @@ const CreateBody = z
   .openapi('CreatePage');
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { 'application/json': { schema } } });
-const ErrorBody = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
+export const ErrorBody = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
 export const createPage = defineRoute({
   method: 'post', path: '/v1/pages', operationId: 'createPage', summary: 'Create a page', tags: ['pages'],

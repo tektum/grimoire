@@ -51,7 +51,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
     ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
-    pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(),
+    pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), deleteFiles: () => Promise.resolve(),
   };
   const ctx: AppContext = {
     config, log, clock, db, http,
