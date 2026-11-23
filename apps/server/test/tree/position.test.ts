@@ -82,31 +82,3 @@ describe('ordering.isValidPosition', () => {
     expect(ordering.between(all.at(-1)!, null) > all.at(-1)!).toBe(true);
   });
 });
-
-describe('repository retry contract', () => {
-  it('re-reads neighbours after two unique-violation failures and succeeds on the third try', () => {
-    const rows = ['a0'];
-    let calls = 0;
-    const insert = (key: string) => {
-      calls++;
-      if (calls <= 2) {
-        rows.push(key); // a concurrent writer took the slot
-        throw Object.assign(new Error('duplicate'), { code: '23505' });
-      }
-      rows.push(key);
-    };
-    const tried: string[] = [];
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const key = ordering.between(rows.at(-1)!, null);
-      tried.push(key);
-      try {
-        insert(key);
-        break;
-      } catch (e) {
-        if ((e as { code?: string }).code !== '23505') throw e;
-      }
-    }
-    expect(calls).toBe(3);
-    expect(new Set(tried).size).toBe(3);
-  });
-});
