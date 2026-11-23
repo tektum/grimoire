@@ -352,6 +352,33 @@ describe('after the shutdown began', () => {
   });
 });
 
+describe('stopping leaves no timer behind, whatever was in flight', () => {
+  it('clears the timer an edit armed while a revision was being written, and the catch-up\'s second pass, and any later call arms none', async () => {
+    const b = build();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = b.repo.createFromPage.bind(b.repo);
+    b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    b.scheduler.changed(PAGE, ANA);
+    b.timers.advance(5 * MINUTE - 1);
+    b.scheduler.changed(PAGE, BOB);
+    b.timers.advance(5 * MINUTE); // the idle timer fires and the write waits at the gate
+    await vi.waitFor(() => { expect(b.repo.calls.filter((c) => c.startsWith('createFromPage'))).toHaveLength(1); });
+    b.scheduler.changed(PAGE, ANA); // arms a timer while the write is in flight
+    expect(b.timers.pending).toBeGreaterThan(0);
+    b.scheduler.stop();
+    expect(b.timers.pending).toBe(0);
+    release();
+    await b.scheduler.whenIdle();
+    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.opened();
+    expect(b.timers.pending).toBe(0);
+  });
+});
+
 describe('stopping', () => {
   it('cancels every timer, the catch-up\'s second pass included', async () => {
     const b = build();
