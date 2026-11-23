@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { composeSeed } from './composition.js';
+import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
+import { composeFilesSetup, composeSeed, runFilesSetup } from './composition.js';
 import { composeMigrate } from './lifecycle/compose-migrate.js';
 import { seedLocal } from './seed/index.js';
 
@@ -52,12 +53,46 @@ async function seed(): Promise<number> {
   }
 }
 
+/**
+ * `grimoire files-setup`: makes the bucket exist and its CORS rule the application's origins (`api` mode), or, when an
+ * operator owns the rule (`external` mode), creates the bucket and checks the rule with the preflights a browser sends.
+ * Runs on the host with the admin key, which only this command reads. Prints the bucket and the origins, never a key.
+ */
+async function filesSetup(): Promise<number> {
+  const composed = composeFilesSetup();
+  if (!composed.ok) return composed.code;
+  const { setup, allowedOrigins, log } = composed.ctx;
+  try {
+    const checked = await runFilesSetup(setup, allowedOrigins);
+    if (!checked.ok) {
+      log.error('files_setup.cors_refused', { problem: checked.problem });
+      return 1;
+    }
+    log.info('files_setup.done', {
+      bucket: setup.bucket,
+      origins: allowedOrigins,
+      cors: setup.corsMode === 'external' ? 'external' : 'api',
+    });
+    return 0;
+  } catch (e) {
+    // A store refusal carries adapter-authored text only; anything else is named by its class.
+    log.error('files_setup.failed', {
+      reason: e instanceof FileStorageError ? e.message : e instanceof Error ? e.name : 'NonError',
+    });
+    return 1;
+  }
+}
+
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'migrate') {
   process.exitCode = await migrate(rest);
 } else if (command === 'seed') {
   process.exitCode = await seed();
+} else if (command === 'files-setup') {
+  process.exitCode = await filesSetup();
 } else {
-  process.stderr.write('usage: grimoire migrate [--dir <migrations directory>] | grimoire seed\n');
+  process.stderr.write(
+    'usage: grimoire migrate [--dir <migrations directory>] | grimoire seed | grimoire files-setup\n',
+  );
   process.exitCode = 2;
 }

@@ -1,9 +1,21 @@
-import { CreateBucketCommand, PutBucketCorsCommand, S3Client, type BucketLocationConstraint } from '@aws-sdk/client-s3';
+import {
+  CreateBucketCommand,
+  DeleteBucketCommand,
+  GetBucketCorsCommand,
+  PutBucketCorsCommand,
+  S3Client,
+  type BucketLocationConstraint,
+  type CORSRule,
+} from '@aws-sdk/client-s3';
 import { mapError } from './errors.js';
 
 /** What setting the store up needs: the admin identity (the running server never holds it) and the origins. */
 export interface EnsureBucketOptions {
   readonly endpoint: string;
+  /** What browsers use (a path prefix included); `checkCors` asks it, `endpoint` when unset. */
+  readonly publicEndpoint?: string;
+  /** Milliseconds `checkCors` waits for one preflight; ten seconds when unset. */
+  readonly timeoutMs?: number;
   readonly bucket: string;
   readonly region: string;
   readonly addressing: 'path' | 'virtual';
@@ -80,4 +92,101 @@ export async function putBucketCors(o: EnsureBucketOptions): Promise<void> {
 export async function ensureBucket(o: EnsureBucketOptions): Promise<void> {
   await createBucket(o);
   await putBucketCors(o);
+}
+
+/** The CORS rules the bucket has now (for the set-up check and for tests); an absent bucket is `unavailable`. */
+export async function readBucketCors(o: EnsureBucketOptions): Promise<CORSRule[]> {
+  const s3 = client(o);
+  try {
+    return (await s3.send(new GetBucketCorsCommand({ Bucket: o.bucket }))).CORSRules ?? [];
+  } catch (error) {
+    throw mapError(error);
+  } finally {
+    s3.destroy();
+  }
+}
+
+/** Removes an empty bucket: for tests and tooling that made their own; the server and the set-up step never call it. */
+export async function deleteBucket(o: EnsureBucketOptions): Promise<void> {
+  const s3 = client(o);
+  try {
+    await s3.send(new DeleteBucketCommand({ Bucket: o.bucket }));
+  } catch (error) {
+    throw mapError(error);
+  } finally {
+    s3.destroy();
+  }
+}
+
+export type CorsCheck = { readonly ok: true } | { readonly ok: false; readonly problem: string };
+
+/** The key the preflights ask about; no object needs to exist for a preflight. */
+const PROBE_KEY = 'attachments/cors-probe';
+
+const listOf = (value: string | null): string[] =>
+  (value ?? '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item !== '');
+
+/** The address of the probe object on the endpoint browsers use, in the addressing style of the setting, prefix kept. */
+export function corsProbeUrl(o: EnsureBucketOptions): string {
+  const url = new URL(o.publicEndpoint ?? o.endpoint);
+  const prefix = url.pathname.replace(/\/+$/, '');
+  if (o.addressing === 'virtual') {
+    url.hostname = `${o.bucket}.${url.hostname}`;
+    url.pathname = `${prefix}/${PROBE_KEY}`;
+  } else {
+    url.pathname = `${prefix}/${o.bucket}/${PROBE_KEY}`;
+  }
+  return url.toString();
+}
+
+/**
+ * For a store whose CORS an operator sets (`external` mode): sends the preflights a browser would send, for each
+ * allowed origin on the upload path (`PUT` with `content-type`, `content-disposition` and the create-only header) and
+ * the download path (`GET` and `HEAD`), and names the first origin, method or header the answers do not allow.
+ * Sends no key and writes nothing.
+ */
+export async function checkCors(o: EnsureBucketOptions): Promise<CorsCheck> {
+  const url = corsProbeUrl(o);
+  const createOnly = (o.createOnlyHeader ?? 'if-none-match').toLowerCase();
+  const probes = [
+    { method: 'PUT', headers: ['content-type', 'content-disposition', createOnly] },
+    { method: 'GET', headers: [] },
+    { method: 'HEAD', headers: [] },
+  ];
+  for (const origin of o.allowedOrigins) {
+    for (const probe of probes) {
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'OPTIONS',
+          signal: AbortSignal.timeout(o.timeoutMs ?? 10_000),
+          headers: {
+            origin,
+            'access-control-request-method': probe.method,
+            ...(probe.headers.length > 0 ? { 'access-control-request-headers': probe.headers.join(',') } : {}),
+          },
+        });
+      } catch {
+        throw mapError(undefined);
+      }
+      const allowedOrigin = response.headers.get('access-control-allow-origin');
+      if (!response.ok || (allowedOrigin !== origin && allowedOrigin !== '*')) {
+        return { ok: false, problem: `origin ${origin} is not allowed` };
+      }
+      const methods = listOf(response.headers.get('access-control-allow-methods'));
+      if (!methods.includes(probe.method.toLowerCase()) && !methods.includes('*')) {
+        return { ok: false, problem: `method ${probe.method} is not allowed for origin ${origin}` };
+      }
+      const headers = listOf(response.headers.get('access-control-allow-headers'));
+      for (const header of probe.headers) {
+        if (!headers.includes(header) && !headers.includes('*')) {
+          return { ok: false, problem: `header ${header} is not allowed for origin ${origin}` };
+        }
+      }
+    }
+  }
+  return { ok: true };
 }

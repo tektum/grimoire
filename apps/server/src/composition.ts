@@ -2,7 +2,7 @@
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import { migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
-import type { Config } from '@tektum/grimoire-core/ports/config';
+import type { Config, FilesSetupConfig } from '@tektum/grimoire-core/ports/config';
 import type { CollabDeps, CollaborationHost } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import type { DevRoleSource } from '@tektum/grimoire-core/ports/dev-role';
@@ -14,6 +14,7 @@ import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
 import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import { createDevAuth } from '@tektum/grimoire-adapter-auth-dev';
 import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
+import { checkCors, createBucket, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { createAccessStore, createAdmin, createAudit, createCollections, createDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -167,6 +168,33 @@ export function composeMigrate(options: MigrateOptions = {}): CommandComposition
   const url = config.database.migrationUrl;
   if (!url) { log.error('migrate.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_MIGRATION_URL', rule: 'is required to run migrations' }] }); return { ok: false, code: 2, log }; }
   return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}
+
+export interface FilesSetupComposition { readonly setup: FilesSetupConfig; readonly allowedOrigins: readonly string[]; readonly log: EventLog }
+export type FilesSetupCompositionResult = { readonly ok: true; readonly ctx: FilesSetupComposition } | { readonly ok: false; readonly code: 2; readonly log: EventLog };
+
+/** `grimoire files-setup`: the store and the admin identity from the `files-setup` settings (no database, no runtime key). */
+export function composeFilesSetup(options: { readonly env?: Env } = {}): FilesSetupCompositionResult {
+  const log = createEventLog(createJsonLogger({ clock: systemClock }));
+  let config: Config;
+  try { config = options.env ? loadConfig(options.env, { purpose: 'files-setup' }) : loadConfigFromProcessEnv({ purpose: 'files-setup' }); } catch (e) {
+    log.error('files_setup.config_invalid', { settings: e instanceof ConfigError ? e.problems : [{ setting: 'configuration', rule: 'invalid' }] });
+    return { ok: false, code: 2, log };
+  }
+  if (config.filesSetup === undefined) { log.error('files_setup.config_invalid', { settings: [{ setting: 'GRIMOIRE_S3_ENDPOINT', rule: 'the store settings are required to run files-setup' }] }); return { ok: false, code: 2, log }; }
+  return { ok: true, ctx: { setup: config.filesSetup, allowedOrigins: config.allowedOrigins, log } };
+}
+
+/**
+ * The set-up step itself, bound to the store adapter here like the migrations are: in `api` mode the bucket and its
+ * CORS rule are made to match the origins; in `external` mode the bucket is created and the operator's rule is checked
+ * with the preflights a browser sends. Throws the adapter's `FileStorageError` when the store refuses.
+ */
+export async function runFilesSetup(setup: FilesSetupConfig, allowedOrigins: readonly string[]): Promise<{ readonly ok: true } | { readonly ok: false; readonly problem: string }> {
+  const options = { ...setup, allowedOrigins };
+  if (setup.corsMode !== 'external') { await ensureBucket(options); return { ok: true }; }
+  await createBucket(options);
+  return checkCors(options);
 }
 
 export function composeSeed(options: { readonly env?: Env } = {}): CommandCompositionResult {
