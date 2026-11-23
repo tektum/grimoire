@@ -44,6 +44,10 @@ describe('migrations 0005 and 0006', () => {
     const run = admin(AT_0004);
     await insertPage(run, { id: PARENT });
     for (let i = 0; i < 3; i += 1) await insertPage(run, { parent_id: PARENT }); // three siblings with the default position a0
+    const OTHER = 'b1000000-3c1d-4a53-9a62-5d1c2a7e8f10';
+    await insertPage(run, { id: OTHER });
+    const createdFirst = await insertPage(run, { parent_id: OTHER, position: 'a1' });
+    const createdSecond = await insertPage(run, { parent_id: OTHER, position: 'a0' }); // created after the other, but ordered before it
     await insertCollection(run, { position: 'a0' }); // and two collections with the same position as "Unfiled"
     await insertCollection(run, { position: 'a0' });
     expect(await sqlAdmin(AT_0004, `select count(distinct position)::int as n from pages where parent_id = '${PARENT}'`)).toEqual([{ n: 1 }]);
@@ -52,6 +56,8 @@ describe('migrations 0005 and 0006', () => {
     expect(migrated.code, migrated.output).toBe(0);
     const siblings = await sqlAdmin<{ position: string }>(AT_0004, `select position from pages where parent_id = '${PARENT}' order by position`);
     expect(siblings.map((r) => r.position)).toEqual(['a00000011', 'a00000021', 'a00000031']);
+    const ordered = await sqlAdmin<{ id: string }>(AT_0004, `select id from pages where parent_id = '${OTHER}' order by position`);
+    expect(ordered.map((r) => r.id)).toEqual([createdSecond, createdFirst]); // distinct positions keep their order
     const collections = await sqlAdmin<{ id: string; position: string }>(AT_0004, 'select id, position from collections order by position');
     expect(new Set(collections.map((r) => r.position)).size).toBe(3);
     expect(collections.find((r) => r.id === UNFILED_COLLECTION_ID)).toBeDefined();

@@ -44,14 +44,14 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       for each row execute function pages_tsv_update()`.execute(db);
   await sql`update pages set text_content = text_content`.execute(db);
 
-  // Positions are renumbered before the unique indexes exist: rank over (created_at, id) among siblings, valid under `fractional-indexing`.
+  // Positions are renumbered before the unique indexes exist: rank over (position, created_at, id) among siblings (an existing order survives; only equal positions fall back to creation order), valid under `fractional-indexing`.
   await sql`
     update pages p set position = 'a0' || lpad(r.rank::text, 6, '0') || '1'
-      from (select id, row_number() over (partition by collection_id, coalesce(parent_id, collection_id) order by created_at, id) as rank from pages) r
+      from (select id, row_number() over (partition by collection_id, coalesce(parent_id, collection_id) order by position, created_at, id) as rank from pages) r
       where p.id = r.id`.execute(db);
   await sql`
     update collections c set position = 'a0' || lpad(r.rank::text, 6, '0') || '1'
-      from (select id, row_number() over (order by created_at, id) as rank from collections) r
+      from (select id, row_number() over (order by position, created_at, id) as rank from collections) r
       where c.id = r.id`.execute(db);
 
   // Bare inserts (fixtures) stay unique: seven digits, so a default never equals a renumbered six-digit position. The API always passes a position.
