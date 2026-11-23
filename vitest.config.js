@@ -32,6 +32,7 @@ export default defineConfig({
         ...exclude,
         "**/*.test.ts", // tests
         "**/*.test.tsx", // tests of the web client
+        "apps/web/src/main.tsx", // the entry that mounts the app into the page: no logic of its own, exercised by the browser checks
         "**/*.d.ts", // type declarations: no code
         "**/test/**", // tests and their helpers
         "**/test-e2e/**", // end-to-end scenarios (run in containers)
@@ -69,8 +70,7 @@ export default defineConfig({
         "packages/adapters/jobs-pgboss/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/pages/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
-        // The web client: no code of its own yet; the pull request that adds the shell sets this to the measured value, and it only rises.
-        "apps/web/src/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
+        "apps/web/src/**": { statements: 94, branches: 87, functions: 87, lines: 97 },
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/auth-descope/src/index.ts": { statements: 99, branches: 98, functions: 100, lines: 100 },
