@@ -12,8 +12,12 @@ const TABLE_PRIVILEGES: ReadonlyMap<string, string> = new Map([
   ['queue', 'select, update'],
 ]);
 
-/** Functions that create or drop queues (DDL): the runtime role must not run them. Everything else it may. */
-const DDL_FUNCTIONS: ReadonlySet<string> = new Set(['create_queue', 'delete_queue']);
+/**
+ * Functions the runtime role must not run: they create or drop queues (`create_queue`, `delete_queue`) or run a command string
+ * against the job tables (`job_table_run`, `job_table_run_async`, `job_table_format`), which only the library's migrations call.
+ * Any other function in the schema it may run.
+ */
+const DDL_FUNCTIONS: ReadonlySet<string> = new Set(['create_queue', 'delete_queue', 'job_table_format', 'job_table_run', 'job_table_run_async']);
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 

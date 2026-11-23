@@ -53,14 +53,12 @@ describe('grimoire migrate installs pg-boss', () => {
     }
   }, 120_000);
 
-  it('lets the runtime role run no function that creates or drops a queue', async () => {
+  it('lets the runtime role run no function that creates or drops a queue or runs a command on the job tables', async () => {
     const rows = await sqlAdmin<{ name: string; allowed: boolean }>(DB,
       `select p.proname as name, has_function_privilege('grimoire_app', p.oid, 'execute') as allowed
          from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'pgboss' order by 1`);
     const byName = new Map(rows.map((r) => [r.name, r.allowed]));
-    expect(byName.get('create_queue')).toBe(false);
-    expect(byName.get('delete_queue')).toBe(false);
-    expect(rows.filter((r) => r.allowed).map((r) => r.name)).toEqual(expect.arrayContaining(['job_table_run']));
+    for (const name of ['create_queue', 'delete_queue', 'job_table_format', 'job_table_run', 'job_table_run_async']) expect(byName.get(name), name).toBe(false);
     console.log(`runtime role may execute: ${rows.filter((r) => r.allowed).map((r) => r.name).join(', ')}`);
   }, 120_000);
 
