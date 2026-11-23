@@ -144,6 +144,19 @@ describe("two things the reader got wrong on import", () => {
     expect(runs).toEqual([["a ", ["emphasis"]], ["b c d", ["emphasis", "strong"]], [" e", ["emphasis"]]]);
   });
 
+  it("a list item whose TEXT is the literal characters [ ] or [x] (written escaped) stays a plain item with its text: it is not turned into an empty task item", async () => {
+    const editor = await makeEditor({ markdown: "x\n" });
+    for (const literal of ["[ ]", "[x]", "[X]"]) {
+      const item = editor.parse(`* \\${literal}\n`); // an escaped opening bracket: text, not a checkbox
+      const states: unknown[] = []; const texts: string[] = [];
+      item.descendants((node) => { if (node.type.name === "list_item") { states.push(node.attrs["checked"]); texts.push(node.textContent); } });
+      expect(states, `${literal} is not a task item`).toEqual([null]);
+      expect(texts, `${literal} keeps its text`).toEqual([literal]);
+      const again = editor.parse(editor.serialize(item));
+      expect(again.textContent, `${literal} survives a save`).toBe(literal);
+    }
+  });
+
   it("an imported empty to-do item (`* [ ]`, `* [x]`) is a task item with an empty paragraph, not the text [ ]", async () => {
     const editor = await makeEditor({ markdown: "x\n" });
     const doc = editor.parse("* [ ]\n* [x]\n* [ ] done\n");
