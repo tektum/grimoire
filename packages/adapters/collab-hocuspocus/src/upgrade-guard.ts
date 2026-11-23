@@ -173,14 +173,13 @@ const CLOSE_FLUSH_GRACE_MS = 1000;
 function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unknown; destroy(): unknown }, upgraded: boolean): void {
   if (!upgraded) { socket.destroy(); return; }
   let done = false;
-  let fallback: NodeJS.Timeout | undefined;
   const destroy = (): void => {
     if (done) return;
     done = true;
-    if (fallback) clearTimeout(fallback);
+    clearTimeout(fallback);
     socket.destroy();
   };
-  fallback = setTimeout(destroy, CLOSE_FLUSH_GRACE_MS);
+  const fallback = setTimeout(destroy, CLOSE_FLUSH_GRACE_MS);
   fallback.unref();
   try { socket.write(closeFrame(codeFor(REFUSAL_CLOSE_CODES, 'preauth-timeout'), 'preauth-timeout'), destroy); } catch { destroy(); /* a socket that is already dead cannot be told */ }
 }
