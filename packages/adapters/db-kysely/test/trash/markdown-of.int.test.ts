@@ -38,18 +38,29 @@ afterAll(async () => { await t?.drop(); });
 describe('PageRepo.markdownOf', () => {
   it('returns the stored Markdown and says the row has a state, for a page made from Markdown', async () => {
     const id = await make('From text', '# Hello\n\nworld\n');
-    expect(await pages().markdownOf(id)).toEqual({ markdown: '# Hello\n\nworld\n', hasState: true });
+    const got = await pages().markdownOf(id);
+    expect(got).toMatchObject({ markdown: '# Hello\n\nworld\n', hasState: true, title: 'From text', markdownStaleSince: null });
+    expect(got?.savedAt).toBe((await pages().get(id))?.savedAt);
   });
 
   it('returns no Markdown and no state for a page made without content', async () => {
     const id = await make('Empty');
-    expect(await pages().markdownOf(id)).toEqual({ markdown: null, hasState: false });
+    expect(await pages().markdownOf(id)).toMatchObject({ markdown: null, hasState: false, title: 'Empty' });
   });
 
   it('returns a state without Markdown when only the state is stored', async () => {
     const id = await make('State only');
     await t.admin.query(`update pages set ydoc = '\\x0102', markdown = null where id = $1`, [id]);
-    expect(await pages().markdownOf(id)).toEqual({ markdown: null, hasState: true });
+    expect(await pages().markdownOf(id)).toMatchObject({ markdown: null, hasState: true });
+  });
+
+  it('gives the stale time as the same epoch milliseconds the page read gives, from the same row as the text', async () => {
+    const id = await make('Behind', 'old');
+    await t.admin.query(`update pages set markdown_stale_since = to_timestamp(1700000000.456) where id = $1`, [id]);
+    const got = await pages().markdownOf(id);
+    expect(got?.markdownStaleSince).toBe(1_700_000_000_456);
+    expect(got?.markdownStaleSince).toBe((await pages().get(id))?.markdownStaleSince);
+    expect(got?.markdown).toBe('old');
   });
 
   it('is undefined for an unknown page, a deleted page and a page of a deleted collection', async () => {

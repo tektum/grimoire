@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
 import { checkMove, forestOf } from '../tree/move.js';
-import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult } from '../ports/page-repo.js';
+import type { CreatePageResult, MarkdownOfPage, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -154,9 +154,11 @@ export class FakePageRepo implements PageRepo {
     return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince });
   }
 
-  markdownOf(id: string): Promise<{ markdown: string | null; hasState: boolean } | undefined> {
+  markdownOf(id: string): Promise<MarkdownOfPage | undefined> {
     const row = this.livePage(id);
-    return Promise.resolve(row === undefined ? undefined : { markdown: row.markdown, hasState: row.state !== null });
+    return Promise.resolve(
+      row === undefined ? undefined : { markdown: row.markdown, hasState: row.state !== null, title: row.title, savedAt: row.savedAt, markdownStaleSince: row.staleSince },
+    );
   }
 
   idOfUrlId(urlId: string): Promise<string | undefined> {

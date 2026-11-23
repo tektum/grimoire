@@ -102,6 +102,18 @@ describe('GET /v1/pages/{id}/markdown', () => {
     expect(res.headers.get('x-saved-at')).toMatch(/^\d+$/);
   });
 
+  it('does not fail on a title that an emoji or a lone surrogate would break at the cut', async () => {
+    const b = build();
+    const cut = b.pages.seed({ collectionId: b.open.id, title: `${'a'.repeat(79)}\u{1F600} tail`, markdown: 'x' });
+    const ok = await b.get('member', cut.id);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('content-disposition')).toMatch(/filename\*=UTF-8''a{79}%F0%9F%98%80\.md$/);
+    const lone = b.pages.seed({ collectionId: b.open.id, title: 'x\ud800y', markdown: 'x' });
+    const bad = await b.get('member', lone.id);
+    expect(bad.status).toBe(200);
+    expect(bad.headers.get('content-disposition')).toContain("filename*=UTF-8''x%EF%BF%BDy.md");
+  });
+
   it('carries no stale header for a page whose Markdown is current', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.open.id, markdown: 'fresh' });
