@@ -16,6 +16,7 @@ export const integrationCovered = [
   "packages/adapters/db-kysely/src/admin.ts", // integration tests: packages/adapters/db-kysely/test/admin
   "packages/adapters/db-kysely/src/page-state.ts", // integration tests: packages/adapters/db-kysely/test/page-state
   "packages/adapters/db-kysely/src/trash.ts", // integration tests: packages/adapters/db-kysely/test/trash
+  "packages/adapters/db-kysely/src/revisions.ts", // integration tests: packages/adapters/db-kysely/test/revisions
 ];
 
 export default defineConfig({
@@ -40,7 +41,6 @@ export default defineConfig({
         "**/src/test-facilities.ts", // test-only facilities of the config adapter
         ...integrationCovered,
         // Empty skeletons until the named task implements each one; its tests arrive with the implementation, and the task removes its line here.
-        "packages/adapters/db-kysely/src/revisions.ts", // M4-T08 implements it
         "packages/adapters/db-kysely/src/attachments.ts", // M5-T04 implements it
       ],
       // Floors set from the measured baseline (2026-11-21, unit project only), a point or so below it. They are a ratchet:

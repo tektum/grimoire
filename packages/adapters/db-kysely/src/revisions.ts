@@ -1,5 +1,5 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
-import type { CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
+import type { BeforeRestoreResult, CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -110,6 +110,27 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
           for (const r of rows) made.push({ pageId: r.page_id, revisionId: r.id });
         }
         return made;
+      });
+    },
+    snapshotBeforeRestore(pageId) {
+      return db.transaction(async (tx): Promise<BeforeRestoreResult> => {
+        const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean; editor: string | null }>(
+          `select p.title, p.markdown, p.markdown_stale_since is not null as stale, u.id as editor
+             from pages p left join users u on u.id = p.last_edited_by where p.id = $1 and p.deleted_at is null for share of p`, [pageId],
+        ))[0];
+        if (page === undefined) return { kind: 'no-page' };
+        if (page.stale) return { kind: 'stale' };
+        if (page.markdown === null) return { kind: 'nothing-saved' };
+        const hash = markdownHash(page.title, page.markdown);
+        const latest = (await tx.query<{ id: string; h: Buffer }>(`select id, markdown_hash as h from revisions where page_id = $1 order by created_at desc, id limit 1`, [pageId]))[0];
+        if (latest !== undefined && Buffer.from(latest.h).equals(hash)) return { kind: 'existing', id: latest.id };
+        const rows = await tx.query<{ id: string }>(
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+           select p.id, p.title, p.markdown, $2::bytea, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'before_restore', coalesce(p.last_edited_at, now())
+             from pages p left join users u on u.id = p.last_edited_by where p.id = $1 returning id`,
+          [pageId, hash],
+        );
+        return { kind: 'created', id: (rows[0] as { id: string }).id };
       });
     },
   };

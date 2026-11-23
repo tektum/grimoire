@@ -234,3 +234,44 @@ describe('RevisionRepo.catchUp', () => {
     expect(made.sort()).toEqual([pages[1], pages[2]].sort());
   });
 });
+
+describe('RevisionRepo.snapshotBeforeRestore', () => {
+  it('writes a before_restore revision of the last saved state, dated at the last edit and naming the last editor, once', async () => {
+    const id = await savedPage({ title: 'Before', markdown: 'saved before the restore', editedMs: 1_700_001_000_000, editedBy: bob });
+    const repo = createRevisions(t.app);
+    const first = await repo.snapshotBeforeRestore(id);
+    expect(first.kind).toBe('created');
+    expect(await revisionsOf(id)).toEqual([{ reason: 'before_restore', title: 'Before', markdown: 'saved before the restore', ms: '1700001000000', author_ids: [bob], last_author_id: bob }]);
+    const again = await repo.snapshotBeforeRestore(id);
+    expect(again).toEqual({ kind: 'existing', id: first.kind === 'created' ? first.id : '' });
+    expect(await revisionsOf(id)).toHaveLength(1);
+  });
+
+  it('writes another when the title or Markdown changed since the latest revision', async () => {
+    const id = await savedPage({ title: 'Same', markdown: 'one', editedMs: 1_700_001_100_000, editedBy: ana });
+    const repo = createRevisions(t.app);
+    await repo.snapshotBeforeRestore(id);
+    await t.admin.query(`update pages set markdown = 'two', markdown_hash = $2 where id = $1`, [id, markdownHash('Same', 'two')]);
+    expect((await repo.snapshotBeforeRestore(id)).kind).toBe('created');
+    expect((await revisionsOf(id)).map((r) => r.markdown)).toEqual(['one', 'two']);
+  });
+
+  it('refuses stale Markdown, says nothing is saved for a page without Markdown, and finds no deleted or unknown page, writing nothing', async () => {
+    const repo = createRevisions(t.app);
+    const stale = await savedPage({ stale: true });
+    const bare = await savedPage({ markdown: null });
+    const gone = await savedPage();
+    await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
+    expect(await repo.snapshotBeforeRestore(stale)).toEqual({ kind: 'stale' });
+    expect(await repo.snapshotBeforeRestore(bare)).toEqual({ kind: 'nothing-saved' });
+    expect(await repo.snapshotBeforeRestore(gone)).toEqual({ kind: 'no-page' });
+    expect(await repo.snapshotBeforeRestore('00000000-0000-4000-8000-000000000000')).toEqual({ kind: 'no-page' });
+    expect([await revisionsOf(stale), await revisionsOf(bare), await revisionsOf(gone)]).toEqual([[], [], []]);
+  });
+
+  it('names no author for a page whose last editor is unknown', async () => {
+    const id = await savedPage({ title: 'Anon', markdown: 'text', editedMs: 1_700_001_200_000, editedBy: null });
+    await createRevisions(t.app).snapshotBeforeRestore(id);
+    expect((await revisionsOf(id))[0]).toMatchObject({ author_ids: [], last_author_id: null });
+  });
+});

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
-import type { CaughtUpRevision, ListedRevision, PageRevisionRequest, PageRevisionResult, Revision, RevisionAuthor, RevisionListQuery, RevisionReason, RevisionRepo, RevisionSummary } from '../ports/revision-repo.js';
+import type { BeforeRestoreResult, CaughtUpRevision, ListedRevision, PageRevisionRequest, PageRevisionResult, Revision, RevisionAuthor, RevisionListQuery, RevisionReason, RevisionRepo, RevisionSummary } from '../ports/revision-repo.js';
 
 export interface SeedRevision {
   readonly pageId: string;
@@ -74,6 +74,23 @@ export class FakeRevisionRepo implements RevisionRepo {
     const created = this.seed({
       pageId: request.pageId, createdAt: later ? (page.lastEditedAt as number) : request.at, title: page.title, markdown: page.markdown, authors: ids.map((id) => ({ id, name: id })),
       lastAuthor: lastId === null ? null : { id: lastId, name: lastId }, reason: request.reason,
+    });
+    return Promise.resolve({ kind: 'created', id: created.id });
+  }
+
+  snapshotBeforeRestore(pageId: string): Promise<BeforeRestoreResult> {
+    this.calls.push(`snapshotBeforeRestore:${pageId}`);
+    if (this.failNext !== undefined) { const e = this.failNext; this.failNext = undefined; return Promise.reject(e); }
+    const page = this.pageStates.get(pageId);
+    if (page === undefined) return Promise.resolve({ kind: 'no-page' });
+    if (page.stale === true) return Promise.resolve({ kind: 'stale' });
+    if (page.markdown === null) return Promise.resolve({ kind: 'nothing-saved' });
+    const latest = this.rows.filter((r) => r.pageId === pageId).sort((a, b) => b.micros - a.micros)[0];
+    if (latest !== undefined && latest.hash.equals(markdownHash(page.title, page.markdown))) return Promise.resolve({ kind: 'existing', id: latest.id });
+    const by = page.lastEditedBy ?? null;
+    const created = this.seed({
+      pageId, createdAt: page.lastEditedAt ?? Date.now(), title: page.title, markdown: page.markdown,
+      authors: by === null ? [] : [{ id: by, name: by }], lastAuthor: by === null ? null : { id: by, name: by }, reason: 'before_restore',
     });
     return Promise.resolve({ kind: 'created', id: created.id });
   }

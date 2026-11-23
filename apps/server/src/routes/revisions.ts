@@ -37,6 +37,24 @@ export const getRevision = defineRoute({
   responses: { 200: json(RevisionWithMarkdownSchema, 'The revision') },
 });
 
+export const RestoreSchema = z
+  .object({
+    title: z.string(),
+    markdown: z.string(),
+    safetyRevisionId: z.string().uuid().nullable().describe('The revision that holds the page as it was saved before the restore; null when the page had no saved Markdown'),
+  })
+  .openapi('RestoreRevision');
+
+const ErrorBody = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
+
+export const restoreRevision = defineRoute({
+  method: 'post', path: '/v1/pages/{id}/revisions/{rid}/restore', operationId: 'restoreRevision', summary: 'Take a revision back: the safety copy is written, the old text is returned', tags: ['revisions'],
+  policy: { kind: 'page', param: 'id', need: 'write' }, request: { params: RevisionParams },
+  responses: { 200: json(RestoreSchema, 'The revision\'s title and Markdown, and the safety revision'), 409: json(ErrorBody, 'The page is still being saved (markdown_stale), or the safety copy could not be written (save_failed)') },
+});
+
+const STALE_MESSAGE = 'The page is still being saved. Try again in a moment.';
+
 const router = createRouter();
 
 router.openapi(listRevisions, async (c) => {
@@ -57,6 +75,19 @@ router.openapi(getRevision, async (c) => {
   await guardPage(c, id, 'read');
   const revision = await c.get('deps').revisions.get(id, rid);
   return revision === undefined ? fail('not_found') : c.json(revision, 200);
+});
+
+router.openapi(restoreRevision, async (c) => {
+  const { id, rid } = c.req.valid('param');
+  await guardPage(c, id, 'write');
+  const { revisions } = c.get('deps');
+  const revision = await revisions.get(id, rid);
+  if (revision === undefined) return fail('not_found');
+  // The safety copy first (R9.6); the live document is never touched here: the client applies the returned Markdown as ordinary edits.
+  const copy = await revisions.snapshotBeforeRestore(id).catch(() => fail('save_failed'));
+  if (copy.kind === 'stale') return fail('markdown_stale', STALE_MESSAGE);
+  if (copy.kind === 'no-page') return fail('not_found');
+  return c.json({ title: revision.title, markdown: revision.markdown, safetyRevisionId: copy.kind === 'nothing-saved' ? null : copy.id }, 200);
 });
 
 export default router;
