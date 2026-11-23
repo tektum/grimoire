@@ -1,5 +1,6 @@
 import { z } from '@hono/zod-openapi';
 import { errorResponse } from '../http/error.js';
+import type { Identity } from '../http/env.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 
 export const MeSchema = z
@@ -28,9 +29,9 @@ router.openapi(getMe, async (c) => {
   // A returning user was read and re-checked by the authentication step; nothing is created for them here.
   let user = c.get('user');
   if (user === undefined) {
-    const identity = c.get('identity');
+    // The authentication step always sets the identity of a provisioning route.
+    const identity = c.get('identity') as Identity;
     const devRole = c.get('devRole');
-    if (identity === undefined) return errorResponse('unauthenticated') as never;
     const result = await provisioner.signIn({ identity, ...(devRole === undefined ? {} : { devRole }) });
     if (result.kind === 'refused') {
       const unavailable = result.reason === 'profile-unavailable' || result.reason === 'profile-missing';

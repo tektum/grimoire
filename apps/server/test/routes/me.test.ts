@@ -155,4 +155,19 @@ describe('GET /v1/me', () => {
     expect(created.roleOf).not.toHaveBeenCalled();
     expect(returning.roleOf).not.toHaveBeenCalled();
   });
+
+  it('refuses a user who is suspended by the time the provisioner reads the row', async () => {
+    const { me, users } = build({ rows: [stored({ suspended: true })] });
+    // The authentication step sees no row; the provisioner then finds the suspended one (a concurrent change).
+    vi.spyOn(users, 'findByDescopeId').mockResolvedValueOnce(undefined);
+    const res = await me();
+    expect([res.status, await code(res)]).toEqual([403, 'account_suspended']);
+  });
+
+  it('refuses when the development role of a returning user cannot be stored', async () => {
+    const { me, users } = build({ rows: [stored()], devRole: 'admin' });
+    vi.spyOn(users, 'updateRole').mockResolvedValue(undefined);
+    const res = await me();
+    expect([res.status, await code(res)]).toEqual([403, 'not_allowed']);
+  });
 });
