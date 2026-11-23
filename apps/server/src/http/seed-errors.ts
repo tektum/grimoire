@@ -20,7 +20,6 @@ export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'det
     if (r.reason === 'content-lost' || r.reason === 'too-large' || r.reason === 'too-deep' || r.reason === 'invalid-state') {
       return { code: 'invalid', message: r.message ?? 'The Markdown cannot be converted.' };
     }
-    if (r.reason === 'timeout') return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
     return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
   }
   switch (r.reason) {
