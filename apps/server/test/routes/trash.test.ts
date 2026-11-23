@@ -205,6 +205,14 @@ describe('POST /v1/trash/{id}/restore', () => {
     expect(deep.parentId).toBeNull();
   });
 
+  it('is 404 when the batch is purged between the checks and the restore', async () => {
+    const b = build();
+    const root = b.trash.seedDeleted({ collectionId: b.shared.id });
+    b.trash.beforeRestore = () => void b.trash.purge(root, b.rows[0]?.id as string, []); // an administrator purges it after the access check
+    const res = await b.call('member', 'POST', `/v1/trash/${root}/restore`);
+    expect([res.status, await code(res)]).toEqual([404, 'not_found']);
+  });
+
   it('restores only into the collection that was checked: a page that moved after the check is 409 conflict and stays in the trash', async () => {
     const b = build();
     const root = b.trash.seedDeleted({ collectionId: b.shared.id });
