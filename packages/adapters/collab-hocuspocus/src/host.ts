@@ -13,7 +13,7 @@ import { createPeerHooks } from './peer-bridge.js';
 import { PeerRegistry } from './peers.js';
 import type { BreakerOptions } from './save.js';
 import { assertUniqueExtensionNames, buildExtensions } from './registry.js';
-import { GOING_AWAY, REFUSAL_CLOSE_CODES } from './refusal.js';
+import { GOING_AWAY, REFUSAL_CLOSE_CODES, codeFor } from './refusal.js';
 import type { RefusalTable } from './refusal.js';
 import { createUpgradeGuard } from './upgrade-guard.js';
 import type { UpgradeGuard } from './upgrade-guard.js';
@@ -73,7 +73,8 @@ function throttled(report: (e: unknown, suppressed: number) => void): (e: unknow
 
 export function createCollabHost(options: CollabHostOptions = {}): HocuspocusCollabHost {
   let guard: UpgradeGuard = options.guard ?? createUpgradeGuard();
-  const peers = new PeerRegistry({ ...REFUSAL_CLOSE_CODES, ...options.refusals });
+  const refusalCodes = { ...REFUSAL_CLOSE_CODES, ...options.refusals };
+  const peers = new PeerRegistry(refusalCodes);
   let hocuspocus: Hocuspocus | undefined;
   let ws: ReturnType<typeof crossws> | undefined;
   let persistenceAbandon: (() => void) | undefined;
@@ -85,12 +86,16 @@ export function createCollabHost(options: CollabHostOptions = {}): HocuspocusCol
   let reportUpgradeFailure: (e: unknown) => void = () => undefined; // set in start(), where the log exists
 
   /** One page: only that page's document connections (the sockets stay, other pages on them keep working). One user: exactly that user's documents on every socket. Neither: everything. */
-  const closeSockets = (filter?: { userId?: string; documentName?: string }): Promise<void> => {
-    if (filter?.documentName !== undefined) hocuspocus?.closeConnections(filter.documentName);
+  const closeSockets = (filter?: { userId?: string; documentName?: string }, refusalReason?: string): Promise<void> => {
+    const close = refusalReason === undefined ? undefined : { code: codeFor(refusalCodes, refusalReason), reason: refusalReason };
+    if (filter?.documentName !== undefined) {
+      if (close === undefined) hocuspocus?.closeConnections(filter.documentName);
+      else for (const c of hocuspocus?.documents.get(filter.documentName)?.getConnections() ?? []) c.close(close);
+    }
     else if (filter?.userId !== undefined) {
       peers.closeUser(filter.userId, (peerId, documentName) => {
         for (const c of hocuspocus?.documents.get(documentName)?.getConnections() ?? []) {
-          if (readContext(c.context).peerId === peerId) c.close({ code: GOING_AWAY.code, reason: GOING_AWAY.reason });
+          if (readContext(c.context).peerId === peerId) c.close(close ?? { code: GOING_AWAY.code, reason: GOING_AWAY.reason });
         }
       });
     }

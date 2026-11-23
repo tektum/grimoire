@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import type { CollabLog } from '../events.js';
 import { readContext } from '../context.js';
 import { createEditorTracker, editorColumn } from '../editors.js';
-import { Refusal } from '../refusal.js';
+import { REFUSAL_CLOSE_CODES, Refusal } from '../refusal.js';
 import { createConversionGate, createSaver, hashMarkdown, isBusy, reidentify } from '../save.js';
 import type { BreakerOptions } from '../save.js';
 import type { Conversion } from '../save.js';
@@ -163,7 +163,8 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
           epochRefused.add(pageId);
           cancelTimer(pageId);
           o.log.emit('collab.save_refused_epoch', { pageId, loaded: epochs.get(pageId) ?? 0, reason: outcome.reason });
-          instance?.closeConnections(pageId);
+          // The clients see the stale-epoch close (4409), the code a reconnect with the old epoch is refused with, so they reload instead of retrying.
+          for (const c of instance?.documents.get(pageId)?.getConnections() ?? []) c.close({ code: REFUSAL_CLOSE_CODES['stale-epoch'] as number, reason: 'stale-epoch' });
         }
         saved.set(pageId, version);
         failures.delete(pageId);

@@ -70,8 +70,11 @@ export interface CollaborationHost {
   /**
    * Closes sockets (all, or those of one user) or one page's connections. Does not wait for stores. The contract defines it for the
    * access re-check and revocation of milestone 3 (R4.13, R4.48), which closes by user and by page; nothing in the server calls it yet.
+   * `refusalReason` names the close the clients see on a user's or a page's connections: its code is the one registered for that refusal
+   * reason (a reset or restore closes a page with `stale-epoch`, 4409), so a client can tell it from a network drop. Without it a user's
+   * connections end with 1001 and a page's with the library's reset close. Closing everything is always 1001.
    */
-  closeConnections(filter?: { userId?: string; documentName?: string }): Promise<void>;
+  closeConnections(filter?: { userId?: string; documentName?: string }, refusalReason?: string): Promise<void>;
   /** Refuses new upgrades, closes sockets, stores every loaded page, gives up at the deadline. */
   shutdown(o: { deadlineMs: number }): Promise<ShutdownReport>;
 }
