@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import { convertInProcess, reseedInProcess, seedInProcess } from '@tektum/grimoire-adapter-markdown-milkdown';
+import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
@@ -198,5 +201,27 @@ describe('a retry of a reset with the same Idempotency-Key', () => {
     (removed.world.pages.find((p) => p.id === removed.page.id) as { deleted: boolean }).deleted = true;
     expect((await removed.call('admin', removed.page.id, undefined, key)).status).toBe(404);
     expect(removed.pageState.audit).toHaveLength(1);
+  });
+});
+
+describe('the state a reset stores (real seed)', () => {
+  const FIXED = 3_000_000_000;
+  const clients = (state: Uint8Array): number[] => [...new Set(Y.decodeUpdate(state).structs.map((x) => x.id.client))];
+  const inProcess: MarkdownConverter = {
+    seed: (markdown) => seedInProcess(markdown),
+    reseed: (markdown) => reseedInProcess(markdown),
+    toMarkdown: (state) => convertInProcess(state),
+    close: () => Promise.resolve(),
+  };
+
+  it('is not under the fixed client id, and differs from the seed a create of the same text got', async () => {
+    const { call, page, pageState } = build(() => inProcess);
+    const created = await seedUserMarkdown(inProcess, 'someone', 'Doc', '# Same\n\ntext');
+    if (isSeedRefusal(created)) throw new Error(created.detail);
+    expect((await call('admin', page.id, { markdown: '# Same\n\ntext' })).status).toBe(200);
+    const stored = pageState.stored(page.id)?.state as Uint8Array;
+    expect(clients(stored)).toHaveLength(1);
+    expect(clients(stored)).not.toContain(FIXED);
+    expect(clients(stored)).not.toEqual(clients(created.state));
   });
 });
