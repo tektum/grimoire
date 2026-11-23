@@ -12,7 +12,9 @@ const need = (name) => { const v = process.env[name] ?? ''; if (v === '') { proc
 const projectId = need('DESCOPE_DEV_PROJECT_ID');
 const loginId = need('DESCOPE_DEV_TEST_LOGIN');
 const managementKey = need('DESCOPE_DEV_MANAGEMENT_KEY');
-const base = process.env.DESCOPE_DEV_BASE_URL ?? 'https://api.descope.com';
+// The host follows the region in the project id, as the application's adapter does (an explicit base URL overrides it).
+const region = projectId.slice(1, -27);
+const base = process.env.DESCOPE_DEV_BASE_URL ?? (region === '' ? 'https://api.descope.com' : `https://api.${region}.descope.com`);
 
 const post = async (path, bearer, body) => {
   const res = await fetch(`${base}${path}`, { method: 'POST', headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) });

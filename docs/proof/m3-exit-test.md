@@ -57,6 +57,17 @@ Wall time per scenario from one CI run of `make test-m3` (4-CPU runner; differen
 | `database-outage` | 120.9 |
 | `pre-sign-in` | 5.5 |
 
+Metrics from a later run of the same job (milliseconds):
+
+| Measure | Value |
+|---|---|
+| access cut-off (all four cases closed in one re-check round) | 4,882 |
+| expiry lag (token expiry to the close) | 1,030 |
+| key server restart to first sign-in with the new key | 167 |
+| database stopped to the expiring session closed `session-expired` | 24,977 |
+| database stopped to the valid session closed `try-again` | 120,003 |
+| pre-sign-in close of the idle sockets | 5,012 |
+
 The mutation job took 3 min 54 s in total. From now on `make test-m3` also prints one `TIMES` line per scenario with its duration and its recorded metrics (cut-off times, expiry lag, outage times), so later runs carry them.
 
 ## Known limits

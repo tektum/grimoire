@@ -19,13 +19,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: descope-dev
-    env:
-      DESCOPE_DEV_PROJECT_ID: ${{ vars.DESCOPE_DEV_PROJECT_ID }}
-      DESCOPE_DEV_TEST_LOGIN: ${{ vars.DESCOPE_DEV_TEST_LOGIN }}
-      DESCOPE_DEV_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
     steps:
       - name: Stop cleanly while the provider project does not exist
         id: gate
+        env:
+          DESCOPE_DEV_PROJECT_ID: ${{ vars.DESCOPE_DEV_PROJECT_ID }}
+          DESCOPE_DEV_TEST_LOGIN: ${{ vars.DESCOPE_DEV_TEST_LOGIN }}
+          DESCOPE_DEV_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
         run: |
           if [ -z "${DESCOPE_DEV_MANAGEMENT_KEY}" ] || [ -z "${DESCOPE_DEV_PROJECT_ID}" ] || [ -z "${DESCOPE_DEV_TEST_LOGIN}" ]; then
             echo "blocked: provider dev project not provisioned"
@@ -43,4 +43,8 @@ jobs:
           install_args: node
       - name: Check a real session token
         if: steps.gate.outputs.blocked != 'true'
+        env:
+          DESCOPE_DEV_PROJECT_ID: ${{ vars.DESCOPE_DEV_PROJECT_ID }}
+          DESCOPE_DEV_TEST_LOGIN: ${{ vars.DESCOPE_DEV_TEST_LOGIN }}
+          DESCOPE_DEV_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
         run: node tools/m3-live/check.mjs
