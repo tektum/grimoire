@@ -13,9 +13,9 @@ export const getPageMarkdown = defineRoute({
     200: {
       description: 'The Markdown the system last saved (empty for a page with none). It is stored text: nothing is converted for this call.',
       headers: z.object({
-        'x-saved-at': z.string().describe('When the page was last written, ISO 8601 UTC with milliseconds (compare it with `savedAt` of the page)'),
+        'x-saved-at': z.string().describe('When the page was last written, as epoch milliseconds: the number `savedAt` of the page carries'),
         'x-grimoire-markdown-stale': z.literal('true').optional().describe('Present when the editor state is newer than this Markdown'),
-        'x-grimoire-markdown-stale-since': z.string().optional().describe('With the stale header: since when, as an HTTP date'),
+        'x-grimoire-markdown-stale-since': z.string().optional().describe('With the stale header: since when, as epoch milliseconds: the number `markdownStaleSince` of the page carries'),
       }),
       content: { 'text/markdown': { schema: z.string() } },
     },
@@ -47,13 +47,13 @@ router.openapi(getPageMarkdown, async (c) => {
     'content-type': 'text/markdown; charset=utf-8',
     'x-content-type-options': 'nosniff',
     'content-disposition': `attachment; filename="${fileName(page.title)}"; filename*=UTF-8''${encodedFileName(page.title)}`,
-    'x-saved-at': new Date(page.savedAt).toISOString(),
+    'x-saved-at': String(page.savedAt),
   };
   // Stale: the state was saved and its Markdown could not be made (a recorded time), or the page has a state and no Markdown at all.
   const staleSince = page.markdownStaleSince ?? (stored.markdown === null && stored.hasState ? page.savedAt : null);
   if (staleSince !== null) {
     headers['x-grimoire-markdown-stale'] = 'true';
-    headers['x-grimoire-markdown-stale-since'] = new Date(staleSince).toUTCString();
+    headers['x-grimoire-markdown-stale-since'] = String(staleSince);
   }
   return c.body(stored.markdown ?? '', 200, headers);
 });

@@ -64,7 +64,7 @@ describe('GET /v1/pages/{id}/markdown', () => {
     expect(res.headers.get('content-type')).toMatch(/^text\/markdown/);
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('content-disposition')).toMatch(/^attachment/);
-    expect(res.headers.get('x-saved-at')).toBe('2026-11-23T10:30:15.123Z');
+    expect(res.headers.get('x-saved-at')).toBe(String(Date.UTC(2026, 10, 23, 10, 30, 15, 123)));
     expect(await res.text()).toBe('# Title\n\nbody\n');
   });
 
@@ -87,6 +87,21 @@ describe('GET /v1/pages/{id}/markdown', () => {
     expect((await b.get('member', untitled.id)).headers.get('content-disposition')).toBe('attachment; filename="page.md"; filename*=UTF-8\'\'page.md');
   });
 
+  it('gives both times as the epoch-millisecond integers the page JSON carries, so a client compares them directly', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.open.id, markdown: 'x', savedAt: 1_700_000_000_123, markdownStaleSince: 1_700_000_000_456 });
+    const res = await b.get('member', page.id);
+    const detail = (await (await b.app.request(`/v1/pages/${page.id}`, { headers: { authorization: 'Bearer member' } })).json()) as {
+      savedAt: number;
+      markdownStaleSince: number;
+    };
+    expect([Number(res.headers.get('x-saved-at')), Number(res.headers.get('x-grimoire-markdown-stale-since'))]).toEqual([
+      detail.savedAt,
+      detail.markdownStaleSince,
+    ]);
+    expect(res.headers.get('x-saved-at')).toMatch(/^\d+$/);
+  });
+
   it('carries no stale header for a page whose Markdown is current', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.open.id, markdown: 'fresh' });
@@ -95,13 +110,13 @@ describe('GET /v1/pages/{id}/markdown', () => {
     expect(res.headers.has('x-grimoire-markdown-stale-since')).toBe(false);
   });
 
-  it('says the Markdown is stale, and since when as an HTTP date, when the editor state is newer', async () => {
+  it('says the Markdown is stale, and since when in epoch milliseconds, when the editor state is newer', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.open.id, markdown: 'old text', markdownStaleSince: Date.UTC(2026, 10, 22, 8, 0, 0) });
     const res = await b.get('member', page.id);
     expect(res.status).toBe(200);
     expect(res.headers.get('x-grimoire-markdown-stale')).toBe('true');
-    expect(res.headers.get('x-grimoire-markdown-stale-since')).toBe('Sun, 22 Nov 2026 08:00:00 GMT');
+    expect(res.headers.get('x-grimoire-markdown-stale-since')).toBe(String(Date.UTC(2026, 10, 22, 8, 0, 0)));
     expect(await res.text()).toBe('old text');
   });
 
