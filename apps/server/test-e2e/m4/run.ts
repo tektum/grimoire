@@ -4,7 +4,7 @@ import { spawnWatched } from '@tektum/grimoire-test-support/harness';
 import path from 'node:path';
 import { here } from '../support.ts';
 
-export const SCENARIOS = ['config', 'limits', 'session'] as const;
+export const SCENARIOS = ['session', 'edit-and-history', 'reset-page', 'limits', 'markdown-limits', 'config'] as const;
 
 function runScenario(name: string): Promise<{ code: number; lines: string[] }> {
   return new Promise((resolve) => {
