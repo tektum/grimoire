@@ -14,7 +14,7 @@ export function createIdempotency(db: KyselyDatabase): IdempotencyStore {
       if (inserted.length > 0) return { kind: 'claimed' };
       const rows = await db.query<Existing>(
         `select request_hash = decode($3, 'hex') as same, status, response from idempotency_keys where user_id = $1 and key = $2`,
-        [userId, key],
+        [userId, key, requestHash],
       );
       const row = rows[0];
       // The row can vanish between the two statements (a release or the cleanup): the caller is then simply refused and may retry.
