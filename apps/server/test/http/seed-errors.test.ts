@@ -52,4 +52,14 @@ describe('seedRefusalToHttp', () => {
   it('never repeats the detail of a refusal in the answer', () => {
     expect(JSON.stringify(seedRefusalToHttp(seed('internal', 'secret-detail')))).not.toContain('secret-detail');
   });
+
+  it('uses fixed sentences when the pool sends none', () => {
+    expect(seedRefusalToHttp(seed('invalid-markdown', 'x'))).toEqual({ code: 'invalid', message: 'The Markdown is not valid.' });
+    expect(seedRefusalToHttp(seed('internal', 'one-at-a-time'))).toMatchObject({ code: 'rate_limited', message: 'Another conversion is still running. Try again in a moment.' });
+    expect(seedRefusalToHttp(back('content-lost'))).toEqual({ code: 'invalid', message: 'The Markdown cannot be converted.' });
+  });
+
+  it('answers 422 invalid when the conversion back times out', () => {
+    expect(seedRefusalToHttp(back('timeout'))).toEqual({ code: 'invalid', message: 'the Markdown takes too long to convert' });
+  });
 });
