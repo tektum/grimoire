@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAudit } from '../../src/audit.js';
 import { createCollections } from '../../src/collections.js';
-import { addUser, createTestDatabase } from '../collections/support.js';
+import { addGroup, addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
 let t: TestDatabase;
@@ -55,6 +55,26 @@ describe('the audit row of a collection change', () => {
     const shared = await repo.append({ name: 'shared', defaultPermission: 'read', createdBy: admin }, after);
     expect(await events(plain.id)).toEqual([]);
     expect(await events(shared.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: shared.id, actor_id: admin }]);
+  });
+
+  it('an access upsert and an access removal each write exactly one row', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-audit', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Audited');
+    const saved = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (saved.kind !== 'saved') throw new Error('not saved');
+    expect(await events(c.id)).toEqual([{ action: 'collection.access_upserted', target_type: 'collection', target_id: c.id, actor_id: admin }]);
+    await repo.removeAccess(c.id, saved.entry.id, admin);
+    expect((await events(c.id)).map((e) => e.action)).toEqual(['collection.access_upserted', 'collection.access_removed']);
+    expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(false);
+    expect(await events(c.id)).toHaveLength(2);
+  });
+
+  it('a failed upsert leaves no audit row', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-fail', createdBy: admin }, after);
+    expect(await repo.upsertAccess(c.id, { principalType: 'user', principalId: '00000000-0000-4000-8000-000000000000', permission: 'read' }, admin)).toEqual({ kind: 'no-principal' });
+    expect(await events(c.id)).toEqual([]);
   });
 
   it('a change that fails leaves no audit row and no change: both are one transaction', async () => {

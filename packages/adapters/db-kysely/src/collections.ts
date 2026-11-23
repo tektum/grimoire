@@ -1,4 +1,4 @@
-import type { CollectionPatch, CollectionRecord, CollectionRepo, StoredPermission } from '@tektum/grimoire-core/ports/collection-repo';
+import type { AccessEntry, CollectionPatch, CollectionRecord, CollectionRepo, StoredPermission } from '@tektum/grimoire-core/ports/collection-repo';
 import { insertAuditEvent } from './audit.js';
 import type { KyselyDatabase } from './index.js';
 
@@ -12,6 +12,14 @@ const record = (r: Row): CollectionRecord => ({
 const PATCH_COLUMNS = [
   ['name', 'name'], ['description', 'description'], ['icon', 'icon'], ['color', 'color'], ['defaultPermission', 'default_permission'], ['position', 'position'],
 ] as const;
+
+interface EntryRow { id: string; user_id: string | null; group_id: string | null; name: string; permission: StoredPermission }
+const entry = (r: EntryRow): AccessEntry => ({
+  id: r.id, principalType: r.user_id === null ? 'group' : 'user', principalId: (r.user_id ?? r.group_id) as string, name: r.name, permission: r.permission,
+});
+const ENTRY_SELECT = `select a.id, a.user_id, a.group_id, coalesce(u.name, g.name::text) as name, a.permission from collection_access a
+  left join users u on u.id = a.user_id left join groups g on g.id = a.group_id`;
+const isForeignKeyViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23503';
 
 const isPositionTaken = (e: unknown): boolean =>
   typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'collections_position_uq';
@@ -75,6 +83,49 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
         if (isPositionTaken(e)) return { kind: 'position-taken' };
         throw e;
       }
+    },
+    async listAccess(collectionId) {
+      const found = (await db.query<{ default_permission: StoredPermission | null }>(`select default_permission from collections where id = $1 and deleted_at is null`, [collectionId]))[0];
+      if (found === undefined) return undefined;
+      const rows = await db.query<EntryRow>(`${ENTRY_SELECT} where a.collection_id = $1 order by a.created_at, a.id`, [collectionId]);
+      return { defaultPermission: found.default_permission, entries: rows.map(entry) };
+    },
+    async upsertAccess(collectionId, grant, actorId) {
+      try {
+        return await db.transaction(async (tx) => {
+          const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for share`, [collectionId]);
+          if (live.length === 0) return { kind: 'not-found' as const };
+          const column = grant.principalType === 'user' ? 'user_id' : 'group_id';
+          const saved = await tx.query<{ id: string }>(
+            `insert into collection_access (collection_id, ${column}, permission) values ($1, $2, $3)
+             on conflict (collection_id, ${column}) where ${column} is not null do update set permission = excluded.permission returning id`,
+            [collectionId, grant.principalId, grant.permission],
+          );
+          const id = (saved[0] as { id: string }).id;
+          await insertAuditEvent(tx, { actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant } });
+          const rows = await tx.query<EntryRow>(`${ENTRY_SELECT} where a.id = $1`, [id]);
+          return { kind: 'saved' as const, entry: entry(rows[0] as EntryRow) };
+        });
+      } catch (e) {
+        if (isForeignKeyViolation(e)) return { kind: 'no-principal' };
+        throw e;
+      }
+    },
+    async removeAccess(collectionId, entryId, actorId) {
+      return db.transaction(async (tx) => {
+        const removed = await tx.query<{ user_id: string | null; group_id: string | null; permission: StoredPermission }>(
+          `delete from collection_access a using collections c where a.id = $1 and a.collection_id = $2 and c.id = a.collection_id and c.deleted_at is null
+           returning a.user_id, a.group_id, a.permission`,
+          [entryId, collectionId],
+        );
+        const row = removed[0];
+        if (row === undefined) return false;
+        await insertAuditEvent(tx, {
+          actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
+          detail: { principalType: row.user_id === null ? 'group' : 'user', principalId: row.user_id ?? row.group_id, permission: row.permission },
+        });
+        return true;
+      });
     },
   };
 }

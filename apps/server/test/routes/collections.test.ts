@@ -30,6 +30,9 @@ function build() {
   const collections = new FakeCollectionRepo(world);
   const open = collections.seed({ name: 'Open', description: null, icon: null, color: null, position: 'a1', defaultPermission: 'read' });
   const closed = collections.seed({ name: 'Closed', description: 'private', icon: null, color: null, position: 'a2', defaultPermission: null });
+  const group = '00000000-0000-4000-8000-000000000200';
+  world.groups.push({ id: group });
+  collections.names.set(group, 'Writers');
   const store = createFakeAccessStore(world);
   const app = createApp({
     ...t.ctx, auth: { verifier }, signInPolicy,
@@ -45,7 +48,7 @@ function build() {
       headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, collections, open, closed, rows };
+  return { call, collections, open, closed, rows, group };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -200,5 +203,76 @@ describe('caller', () => {
   it('refuses a request that carries no signed-in user', () => {
     const noUser = { get: () => undefined } as never;
     expect(() => caller(noUser)).toThrow(ApiError);
+  });
+});
+
+describe('collection access routes', () => {
+  const grant = (principalId: string, permission = 'read', principalType = 'user') => ({ principalType, principalId, permission });
+
+  it('are for administrators: 403 to a reader, 404 to a user who cannot read the collection', async () => {
+    const { call, open, closed, rows } = build();
+    const entry = grant(rows[3]?.id as string);
+    for (const [method, tail, body] of [['GET', '', undefined], ['PUT', '', entry], ['DELETE', `/${NIL}`, undefined]] as const) {
+      const reader = await call('member', method, `/v1/collections/${open.id}/access${tail}`, body);
+      expect([method, reader.status, await code(reader)]).toEqual([method, 403, 'forbidden']);
+      const outsider = await call('outsider', method, `/v1/collections/${closed.id}/access${tail}`, body);
+      expect([method, outsider.status, await code(outsider)]).toEqual([method, 404, 'not_found']);
+    }
+  });
+
+  it('PUT gives access at once, twice on one principal leaves one entry with the same id, and DELETE takes it away', async () => {
+    const { call, closed, rows } = build();
+    const outsider = rows[3]?.id as string;
+    const seen = async () => (await call('outsider', 'GET', `/v1/collections/${closed.id}`)).status;
+    expect(await seen()).toBe(404);
+    const first = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(outsider));
+    const second = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(outsider, 'read_write'));
+    expect([first.status, second.status]).toEqual([200, 200]);
+    const a = (await first.json()) as { id: string; name: string };
+    const b = (await second.json()) as { id: string; permission: string };
+    expect(b).toMatchObject({ id: a.id, permission: 'read_write' });
+    expect(a.name).toBe(outsider);
+    expect(await seen()).toBe(200);
+    const list = (await (await call('admin', 'GET', `/v1/collections/${closed.id}/access`)).json()) as { defaultPermission: null; entries: { id: string }[] };
+    expect(list).toMatchObject({ defaultPermission: null, entries: [{ id: a.id, principalType: 'user', principalId: outsider, permission: 'read_write' }] });
+    expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${a.id}`)).status).toBe(204);
+    expect(await seen()).toBe(404);
+    expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${a.id}`)).status).toBe(404);
+  });
+
+  it('give a group access by its id and name it in the list', async () => {
+    const { call, closed, group } = build();
+    const res = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(group, 'read', 'group'));
+    expect(await res.json()).toMatchObject({ principalType: 'group', principalId: group, name: 'Writers' });
+  });
+
+  it('write one audit row per upsert and per removal, naming the administrator', async () => {
+    const { call, collections, closed, rows, group } = build();
+    const put = (await (await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(group, 'read', 'group'))).json()) as { id: string };
+    await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${put.id}`);
+    expect(collections.audit.events.map((e) => [e.actorId, e.action, e.targetType, e.targetId])).toEqual([
+      [rows[0]?.id, 'collection.access_upserted', 'collection', closed.id],
+      [rows[0]?.id, 'collection.access_removed', 'collection', closed.id],
+    ]);
+    expect(collections.audit.events[1]?.detail).toEqual({ principalType: 'group', principalId: group, permission: 'read' });
+  });
+
+  it('refuse an unknown principal, a bad body and a malformed id with 422, and an entry of another collection with 404', async () => {
+    const { call, open, closed, rows } = build();
+    for (const body of [grant(NIL), grant(NIL, 'read', 'group'), grant(rows[3]?.id as string, 'write'), { principalId: NIL }, { ...grant(NIL), extra: 1 }, grant('nope')]) {
+      const res = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, body);
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+    expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/nope`)).status).toBe(422);
+    const entry = (await (await call('admin', 'PUT', `/v1/collections/${open.id}/access`, grant(rows[3]?.id as string))).json()) as { id: string };
+    expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${entry.id}`)).status).toBe(404);
+  });
+
+  it('answer 404 when the collection disappears between the check and the work', async () => {
+    const { call, collections, open, rows } = build();
+    collections.listAccess = () => Promise.resolve(undefined);
+    collections.upsertAccess = () => Promise.resolve({ kind: 'not-found' });
+    expect((await call('admin', 'GET', `/v1/collections/${open.id}/access`)).status).toBe(404);
+    expect((await call('admin', 'PUT', `/v1/collections/${open.id}/access`, grant(rows[3]?.id as string))).status).toBe(404);
   });
 });

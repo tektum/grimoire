@@ -34,6 +34,26 @@ export type UpdateResult =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'position-taken' };
 
+export type PrincipalType = 'user' | 'group';
+
+export interface AccessEntry {
+  readonly id: string;
+  readonly principalType: PrincipalType;
+  readonly principalId: string;
+  /** The user's or the group's name. */
+  readonly name: string;
+  readonly permission: StoredPermission;
+}
+
+export interface AccessList { readonly defaultPermission: StoredPermission | null; readonly entries: readonly AccessEntry[] }
+
+export interface AccessGrant { readonly principalType: PrincipalType; readonly principalId: string; readonly permission: StoredPermission }
+
+export type UpsertAccessResult =
+  | { readonly kind: 'saved'; readonly entry: AccessEntry }
+  | { readonly kind: 'not-found' }
+  | { readonly kind: 'no-principal' };
+
 /** Collections and their access entries. Every change that can take access away also writes its audit row in the same transaction. */
 export interface CollectionRepo {
   /** The live collections among `ids`, in `position` order. */
@@ -47,4 +67,10 @@ export interface CollectionRepo {
   append(input: NewCollection, positionAfter: (last: string | null) => string): Promise<CollectionRecord>;
   /** Applies the patch to a live collection. A change of `defaultPermission` writes the audit row `collection.default_permission_changed`. */
   update(id: string, patch: CollectionPatch, actorId: string): Promise<UpdateResult>;
+  /** The default permission and the entries of a live collection (oldest entry first), or undefined. */
+  listAccess(collectionId: string): Promise<AccessList | undefined>;
+  /** Inserts the entry, or changes the permission of the principal's existing one (the id stays). Writes the audit row `collection.access_upserted`. */
+  upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult>;
+  /** Removes an entry of this collection. Writes the audit row `collection.access_removed`. False when the collection has no such entry. */
+  removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean>;
 }

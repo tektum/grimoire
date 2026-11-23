@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult } from '../ports/collection-repo.js';
+import type { AccessEntry, AccessGrant, AccessList, CollectionPatch, CollectionRecord, CollectionRepo, NewCollection, UpdateResult, UpsertAccessResult } from '../ports/collection-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 import { FakeAuditLog } from './fake-audit-log.js';
+
+const visible = (e: AccessEntry & { collectionId: string }): AccessEntry => ({ id: e.id, principalType: e.principalType, principalId: e.principalId, name: e.name, permission: e.permission });
 
 /**
  * In-memory CollectionRepo for tests. The permission facts live in the `World` the fake access store reads, so a change made here is what
@@ -10,6 +12,9 @@ import { FakeAuditLog } from './fake-audit-log.js';
  */
 export class FakeCollectionRepo implements CollectionRepo {
   private readonly rows = new Map<string, CollectionRecord>();
+  private readonly entries: (AccessEntry & { collectionId: string })[] = [];
+  /** Test setup: display names of users and groups (the id is the name otherwise). */
+  readonly names = new Map<string, string>();
 
   constructor(readonly world: World = emptyWorld(), readonly audit: FakeAuditLog = new FakeAuditLog()) {}
 
@@ -71,6 +76,46 @@ export class FakeCollectionRepo implements CollectionRepo {
       });
     }
     return Promise.resolve({ kind: 'updated', collection: next });
+  }
+
+  listAccess(collectionId: string): Promise<AccessList | undefined> {
+    const c = this.rows.get(collectionId);
+    if (c === undefined) return Promise.resolve(undefined);
+    return Promise.resolve({ defaultPermission: c.defaultPermission, entries: this.entries.filter((e) => e.collectionId === collectionId).map(visible) });
+  }
+
+  upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult> {
+    if (!this.rows.has(collectionId)) return Promise.resolve({ kind: 'not-found' });
+    const known = grant.principalType === 'user' ? this.world.users : this.world.groups;
+    if (!known.some((p) => p.id === grant.principalId)) return Promise.resolve({ kind: 'no-principal' });
+    const at = this.entries.findIndex((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId);
+    const entry = { id: at < 0 ? randomUUID() : (this.entries[at] as AccessEntry).id, collectionId, ...grant, name: this.names.get(grant.principalId) ?? grant.principalId };
+    if (at < 0) this.entries.push(entry);
+    else this.entries[at] = entry;
+    this.mirrorEntries();
+    this.audit.events.push({ actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant } });
+    return Promise.resolve({ kind: 'saved', entry: visible(entry) });
+  }
+
+  removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean> {
+    const at = this.entries.findIndex((e) => e.id === entryId && e.collectionId === collectionId);
+    const entry = this.entries[at];
+    if (entry === undefined || !this.rows.has(collectionId)) return Promise.resolve(false);
+    this.entries.splice(at, 1);
+    this.mirrorEntries();
+    this.audit.events.push({
+      actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
+      detail: { principalType: entry.principalType, principalId: entry.principalId, permission: entry.permission },
+    });
+    return Promise.resolve(true);
+  }
+
+  private mirrorEntries(): void {
+    const ids = new Set(this.entries.map((e) => e.collectionId));
+    this.world.access = [
+      ...this.world.access.filter((a) => !ids.has(a.collectionId) && !this.rows.has(a.collectionId)),
+      ...this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) })),
+    ];
   }
 
   private live(): CollectionRecord[] {
