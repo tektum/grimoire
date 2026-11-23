@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { repoRoot, runToEnd } from '@tektum/grimoire-test-support';
@@ -96,6 +97,12 @@ describe('compose.yaml (R1.7, R2.12, R2.14): nothing in the stack reaches outsid
       const registryHost = service.image.includes('/') && (first.includes('.') || first.includes(':'));
       expect(registryHost, `${name} uses a registry host: ${service.image}`).toBe(false);
     }
+  });
+
+  it('builds the application only from base images pinned by digest, so a build pulls exactly the reviewed bytes (a pull happens before the stack runs, not from it)', () => {
+    const from = readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8').split('\n').filter((l) => /^FROM\s/i.test(l));
+    expect(from.length).toBeGreaterThan(0);
+    for (const line of from) expect(line, line).toMatch(/^FROM\s+\S+@sha256:[0-9a-f]{64}(\s+AS\s+\S+)?\s*$/i);
   });
 
   it('points every endpoint, URL and origin of the application at the stack itself or at loopback', () => {
