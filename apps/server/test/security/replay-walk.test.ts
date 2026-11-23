@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { routeReplays } from '../../src/http/replays.js';
 import type { Operation } from './document.js';
-import { exampleBody, operations } from './document.js';
+import { bodyFields, exampleBody, operations } from './document.js';
 import { buildWorld, pathFor } from './world.js';
 import type { Who } from './world.js';
 
@@ -32,7 +32,10 @@ describe('the idempotent operations', () => {
     const play = async (revoke: 'demote' | 'suspend') => {
       const w = await buildWorld();
       const who = callerOf(op);
-      const send = () => w.call(who, op.method, pathFor(op, w), exampleBody(op.bodySchema as never, { uuid: w.ids.page, collectionId: w.ids.openCollection }), { 'idempotency-key': `walk-${revoke}` });
+      // A collection the walk makes is readable by everyone: a demoted caller can still see it, so only a check of the admin right itself can refuse the retry.
+      const readable = bodyFields(op).includes('defaultPermission') ? { defaultPermission: 'read' } : {};
+      const body = { ...(exampleBody(op.bodySchema as never, { uuid: w.ids.page, collectionId: w.ids.openCollection }) as object), ...readable };
+      const send = () => w.call(who, op.method, pathFor(op, w), body, { 'idempotency-key': `walk-${revoke}` });
       const first = await send();
       expect(first.status, await first.clone().text()).toBeLessThan(300);
       const same = await send();
@@ -42,10 +45,12 @@ describe('the idempotent operations', () => {
       return { w, retry: await send() };
     };
 
-    it('replays the stored answer while the caller may still do it, and not after the caller was demoted', async () => {
+    it('replays the stored answer while the caller may still do it, and not after the caller was demoted: 403, the right is checked again, not only the sight of the result', async () => {
+      // Whoever was demoted can still read what the walk made (a collection with `defaultPermission: 'read'`, a page in the open collection), so the 403 can only
+      // come from a check of the right itself.
       const { retry } = await play('demote');
       expect(retry.headers.get('idempotent-replay')).not.toBe('true');
-      expect([403, 404]).toContain(retry.status);
+      expect([retry.status, ((await retry.json()) as { error: { code: string } }).error.code]).toEqual([403, 'forbidden']);
     });
 
     it('does not replay to a caller who was suspended after the first call', async () => {
