@@ -100,6 +100,16 @@ describe('FakeFileStorage objects', () => {
     expect(await text((await store.get('k')).body)).toBe('abcdefghij');
   });
 
+  it('lets only one of two concurrent conditional puts win', async () => {
+    const store = new FakeFileStorage();
+    const results = await Promise.allSettled([
+      store.put('k', bytes('0123456789'), { ...png, ifNoneMatch: true }),
+      store.put('k', bytes('abcdefghij'), { ...png, ifNoneMatch: true }),
+    ]);
+    expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+    expect(await text((await store.get('k')).body)).toBe('0123456789');
+  });
+
   it('refuses a bad key on every method before doing anything', async () => {
     const store = new FakeFileStorage();
     const bad = 'a//b';
@@ -226,6 +236,26 @@ describe('FakeFileStorage signed URLs', () => {
     clock.advance(1);
     expect(await kindOf(store.receiveSignedUpload(url, headers, bytes('0123456789')))).toBe('unavailable');
     expect(await kindOf(store.head('k'))).toBe('not-found');
+  });
+
+  it('refuses an upload that drops or alters the signed content-disposition', async () => {
+    const store = new FakeFileStorage();
+    const { url, headers } = await store.signUpload('k', { ...png, ttlSeconds: 60, disposition: 'attachment' });
+    expect(await kindOf(store.receiveSignedUpload(url, { 'content-type': 'image/png' }, bytes('0123456789')))).toBe(
+      'unavailable',
+    );
+    expect(
+      await kindOf(
+        store.receiveSignedUpload(url, { ...headers, 'content-disposition': 'inline' }, bytes('0123456789')),
+      ),
+    ).toBe('unavailable');
+    expect(await kindOf(store.head('k'))).toBe('not-found');
+    await store.receiveSignedUpload(
+      url,
+      { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment' },
+      bytes('0123456789'),
+    );
+    expect((await store.head('k')).size).toBe(10);
   });
 
   it('signs a download with its overrides, expiring on the clock', async () => {

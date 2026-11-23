@@ -124,10 +124,11 @@ export class FakeFileStorage implements FileStorage {
     o: { size: number; contentType: string; ifNoneMatch?: boolean },
   ): Promise<{ etag: string }> {
     assertValidKey(key);
+    const bytes = await collect(body);
+    // No await between this check and the write below: the check and the write are one step.
     if (o.ifNoneMatch && this.objects.has(key)) {
       throw new FileStorageError('already-exists', 'the object exists and the put is create-only');
     }
-    const bytes = await collect(body);
     if (bytes.length !== o.size) throw new FileStorageError('unavailable', 'the body is not the declared size');
     this.counter += 1;
     const etag = `"fake-${this.counter}"`;
@@ -253,6 +254,9 @@ export class FakeFileStorage implements FileStorage {
     if (body.length !== request.size) throw new FileStorageError('unavailable', 'the size is not the signed size');
     if (sent['content-type'] !== request.contentType) {
       throw new FileStorageError('unavailable', 'the type is not the signed type');
+    }
+    if (request.disposition && sent['content-disposition'] !== request.disposition) {
+      throw new FileStorageError('unavailable', 'the signed content-disposition header is missing');
     }
     const header = request.createOnlyHeader;
     if (request.ifNoneMatch && sent[header] !== CREATE_ONLY_HEADERS[header]) {
