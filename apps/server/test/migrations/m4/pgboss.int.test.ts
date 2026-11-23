@@ -81,14 +81,19 @@ describe('grimoire migrate installs pg-boss', () => {
   }, 120_000);
 
   it('does not let the runtime role create a queue: that is DDL and belongs to the migration role', async () => {
-    const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined });
+    // pg-boss may reject the call or report the failure through its error event; either way the PostgreSQL privilege error must be there.
+    const reported: unknown[] = [];
+    const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: (e) => reported.push(e) });
+    let rejection: unknown;
     try {
-      const failure: unknown = await queue.ensureQueue('m4-runtime-made').then(() => undefined, (e: unknown) => e);
-      expect(failure, 'creating a queue as the runtime role must fail').toBeInstanceOf(Error);
-      expect(sqlState(failure)).toBe('42501'); // insufficient_privilege, not a connection error or a typo
+      await queue.ensureQueue('m4-runtime-made');
+    } catch (e) {
+      rejection = e;
     } finally {
       await queue.stop({ graceMs: 0 });
     }
+    const states = [rejection, ...reported].filter((e) => e !== undefined).map(sqlState);
+    expect(states, 'creating a queue as the runtime role must fail with insufficient_privilege (42501)').toContain('42501');
     expect(await sqlAdmin<{ name: string }>(DB, "select name from pgboss.queue where name = 'm4-runtime-made'")).toEqual([]);
   }, 120_000);
 });
