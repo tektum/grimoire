@@ -70,4 +70,15 @@ describe('a document with more than the limit of `]` in text', () => {
     expect(markdown).toContain('[a\\]b](https://example.com/)');
     expect(markdown).not.toContain('\\\\]');
   });
+
+  it('leaves an autolink alone: its text is its address, and a backslash is not an escape inside `<...>`', async () => {
+    const address = 'https://example.com/a]b]';
+    const markdown = await markdownOf(doc(paragraph(
+      text(closers(CLOSING_BRACKET_LIMIT + 1)),
+      { type: 'text', text: address, marks: [{ type: 'link', attrs: { href: address, title: null } }] },
+    )));
+    expect(markdown).toContain(`<${address}>`);
+    expect(markdown).not.toContain(`<${address.replaceAll(']', '\\]')}>`);
+    expect(markdown.replace(`<${address}>`, '')).not.toMatch(/(?<!\\)\]/);
+  });
 });

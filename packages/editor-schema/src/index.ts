@@ -694,6 +694,15 @@ function escapeUnescapedClosers(value: string): string {
   return out;
 }
 
+/**
+ * The text of a link whose text is its address is written `<address>`, and a backslash is not an escape inside the angle brackets (a `]` escaped there reads
+ * back as a different address). The parser does not scan for footnote openings inside an autolink, so leaving its `]` alone costs nothing.
+ */
+function isAutolinkText(value: string, parent: unknown, after: string): boolean {
+  const link = parent as { type?: string; url?: string; title?: string | null; children?: unknown[] } | undefined;
+  return link?.type === "link" && after === ">" && !link.title && link.children?.length === 1 && (value === link.url || `mailto:${value}` === link.url);
+}
+
 export const escapingTextWriter: MilkdownPlugin = (ctx) => {
   ctx.inject(escapeClosingBracketsCtx);
   // In the synchronous part: the options are read when `init` builds the remark processor, which comes later.
@@ -701,12 +710,12 @@ export const escapingTextWriter: MilkdownPlugin = (ctx) => {
     ...options,
     handlers: {
       ...withoutAttentionHandlers(options.handlers),
-      text: (node, _parent, state, info) => {
+      text: (node, parent, state, info) => {
         const value = node.value;
         const trailing = value.slice(value.length - trailingBlanks(value));
         const body = value.slice(0, value.length - trailing.length);
         const safe = state.safe(body, { ...info, encode: [], after: trailing === "" ? info.after : trailing.charAt(0) });
-        return (ctx.get(escapeClosingBracketsCtx) ? escapeUnescapedClosers(safe) : safe) + trailing;
+        return (ctx.get(escapeClosingBracketsCtx) && !isAutolinkText(node.value, parent, info.after) ? escapeUnescapedClosers(safe) : safe) + trailing;
       },
     },
   }));

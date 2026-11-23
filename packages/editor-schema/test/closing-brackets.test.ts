@@ -62,4 +62,22 @@ describe("the text writer with the escape flag", () => {
     expect(serialize(false)).toBe("p\\\\]q r\\\\\\\\]s\n");
     expect(serialize(true)).toBe("p\\\\\\]q r\\\\\\\\\\]s\n");
   });
+
+  it("leaves the `]` of an autolink alone (a backslash is no escape inside <...>), and escapes every other link text", async () => {
+    const autolink = (value: string, href: string, title: string | null = null): Json => ({ type: "text", text: value, marks: [{ type: "link", attrs: { href, title } }] });
+    const { serialize } = await docOf(para(0,
+      autolink("https://example.com/a]", "https://example.com/a]"),
+      text(" "),
+      autolink("me@example.com]", "mailto:me@example.com]"),
+      text(" "),
+      autolink("https://example.com/t]", "https://example.com/t]", "a title"),
+      text(" "),
+      autolink("https://example.com/other]", "https://example.com/different"),
+    ));
+    const markdown = serialize(true);
+    expect(markdown).toContain("<https://example.com/a]>");
+    expect(markdown).toContain("<me@example.com]>");
+    expect(markdown).toContain("[https://example.com/t\\]](https://example.com/t]");
+    expect(markdown).toContain("[https://example.com/other\\]](https://example.com/different)");
+  });
 });
