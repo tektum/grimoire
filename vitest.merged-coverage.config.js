@@ -23,6 +23,7 @@ export default {
     ...base.test,
     coverage: {
       ...base.test.coverage,
+      exclude: integration.test.coverage.exclude, // the files only integration tests cover count here
       enabled: true,
       reportsDirectory: "coverage/merged",
       reporter: ["text", "json-summary", "lcov"],

@@ -60,6 +60,10 @@ enforces both sets on the unit and integration coverage together. In CI the `Uni
 and `Integration tests` jobs each run their own check and upload their blob, and the
 `Coverage` job merges the two and writes the coverage per package to the job summary. A
 file that only integration tests cover counts in the merged run.
+The job also fails when a floor's glob matches no file of the merged report, or when the report's
+paths are not under the workspace (blobs carry the absolute paths of the machine that made them),
+because a floor that matches nothing passes without checking anything
+(`tools/ci/check-floor-matches.mjs`).
 
 `mise.toml` lists node, bun, gitleaks, actionlint and zizmor, with their checksums in
 `mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
