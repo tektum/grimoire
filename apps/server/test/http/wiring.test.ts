@@ -52,8 +52,13 @@ describe('application context wiring', () => {
     expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'close-database']);
   });
 
-  it('the ordering fails with OrderingNotAvailable until the ordering task lands', () => {
-    expect(() => ctxOf().http.ordering.between(null, null)).toThrow('sibling ordering is not available');
+  it('the ordering is the real one: it gives a valid first key and a key between two neighbours', () => {
+    const { ordering } = ctxOf().http;
+    const first = ordering.between(null, null);
+    expect(ordering.isValidPosition(first)).toBe(true);
+    const next = ordering.between(first, null);
+    const middle = ordering.between(first, next);
+    expect(first < middle && middle < next).toBe(true);
   });
 
   it('the fake context used by route tests carries the same keys', () => {
