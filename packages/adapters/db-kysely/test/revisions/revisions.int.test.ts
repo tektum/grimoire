@@ -247,6 +247,13 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     expect(await revisionsOf(id)).toHaveLength(1);
   });
 
+  it('makes one safety copy, not several, when restores of one page run at once, and the others name that copy', async () => {
+    const id = await savedPage({ title: 'Restoring', markdown: 'at once', editedMs: 1_700_001_050_000, editedBy: ana });
+    const results = await Promise.all([1, 2, 3, 4].map(() => createRevisions(t.app).snapshotBeforeRestore(id)));
+    expect(results.map((r) => r.kind).sort()).toEqual(['created', 'existing', 'existing', 'existing']);
+    expect(await revisionsOf(id)).toHaveLength(1);
+  });
+
   it('writes another when the title or Markdown changed since the latest revision', async () => {
     const id = await savedPage({ title: 'Same', markdown: 'one', editedMs: 1_700_001_100_000, editedBy: ana });
     const repo = createRevisions(t.app);

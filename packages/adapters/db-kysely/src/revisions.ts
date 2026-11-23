@@ -114,6 +114,8 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
     },
     snapshotBeforeRestore(pageId) {
       return db.transaction(async (tx): Promise<BeforeRestoreResult> => {
+        // Under the page's lock, as `createFromPage` and the catch-up: two safety copies of one state cannot race into two revisions.
+        await lockPage(tx, pageId);
         const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean; editor: string | null }>(
           `select p.title, p.markdown, p.markdown_stale_since is not null as stale, u.id as editor
              from pages p left join users u on u.id = p.last_edited_by where p.id = $1 and p.deleted_at is null for share of p`, [pageId],
