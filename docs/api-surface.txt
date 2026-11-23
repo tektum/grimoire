@@ -17,6 +17,8 @@ GET /v1/me | op:getMe | policy:authenticated:true | path:- | query:- | req:- | r
 GET /v1/pages/by-url-id/{urlId} | op:getPageByUrlId | policy:page:read:urlId | path:urlId:string(1..64) | query:- | req:- | res:200:Page | rate:- | idem:no
 GET /v1/pages/{id} | op:getPage | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:Page | rate:- | idem:no
 GET /v1/pages/{id}/markdown | op:getPageMarkdown | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:- | rate:- | idem:no
+GET /v1/pages/{id}/revisions | op:listRevisions | policy:page:read:id | path:id:string<uuid> | query:cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:{items:Revision[],nextCursor:string|null} | rate:- | idem:no
+GET /v1/pages/{id}/revisions/{rid} | op:getRevision | policy:page:read:id | path:id:string<uuid>,rid:string<uuid> | query:- | req:- | res:200:RevisionWithMarkdown | rate:- | idem:no
 GET /v1/users | op:listUsers | policy:admin | path:- | query:cursor?:string(..1024),limit?:integer(1..100)=50,q?:string(1..200) | req:- | res:200:AdminUserList | rate:- | idem:no
 PATCH /v1/collections/{id} | op:patchCollection | policy:collection:admin:id | path:id:string<uuid> | query:- | req:PatchCollection | res:200:Collection,409:{error:{code:string,message:string}} | rate:- | idem:no
 PATCH /v1/groups/{id} | op:patchGroup | policy:admin | path:id:string<uuid> | query:- | req:GroupName | res:200:Group,409:{error:{code:string,message:string}} | rate:- | idem:no
@@ -51,5 +53,8 @@ schema PageMeta = {collectionId:string<uuid>,createdBy:string<uuid>,icon:string|
 schema PatchCollection = {color?:string(..64)|null,defaultPermission?:read|read_write|null|null,description?:string(..2000)|null,icon?:string(..64)|null,name?:string(1..100),position?:string(1..255)}!
 schema PatchPage = {icon?:string(..64)|null,title?:string(1..255)}!
 schema PatchUser = {role?:admin|member|viewer,suspended?:boolean}!(min properties 1)
+schema Revision = {authors:RevisionAuthor[],createdAt:number,id:string<uuid>,lastAuthor:{id:string<uuid>,name:string}|null,reason:idle|last_editor_left|before_restore|manual|import,title:string}
+schema RevisionAuthor = {id:string<uuid>,name:string}
+schema RevisionWithMarkdown = Revision&{markdown:string}
 schema UserNames = {items:{id:string<uuid>,name:string}[]}
 schema UserNamesRequest = {ids:string<uuid>[](1..50)}!
