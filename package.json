@@ -25,7 +25,7 @@
     "build": "tsc -b",
     "licence": "node tools/licence-report/run.mjs",
     "licence:check-images": "node tools/licence-report/run.mjs --check-images",
-    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/",
+    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/ tools/m3-live/test/",
     "licence:pending": "node tools/licence-report/run.mjs --allow-pending",
     "openapi": "bun run build && node apps/server/dist/openapi/emit.js && bunx openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/schema.d.ts",
     "openapi:check": "bun run openapi && git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/schema.d.ts",
