@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createWebApi } from '../../src/api/client';
 import { MESSAGES, messageFor } from '../../src/api/messages';
+import { retryAfterSeconds } from '../../src/api/middleware';
 
 const json = (status: number, body: unknown = {}, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 const err = (status: number, code: string, headers?: Record<string, string>) => json(status, { error: { code } }, headers);
@@ -10,12 +11,20 @@ function setup(replies: (Response | Error)[], refreshResult = true) {
   const queue = [...replies];
   const hooks = { refresh: vi.fn(async () => refreshResult), signOut: vi.fn(), notify: vi.fn(), reload: vi.fn(), sleep: vi.fn(async () => {}) };
   let token = 'old';
-  hooks.refresh.mockImplementation(async () => { token = 'new'; return refreshResult; });
+  hooks.refresh.mockImplementation(async () => {
+    token = 'new';
+    return refreshResult;
+  });
   let n = 0;
   const api = createWebApi({
     baseUrl: 'https://api.example',
     getToken: async () => token,
-    fetch: async (r) => { calls.push(r); const next = queue.shift() ?? json(200); if (next instanceof Error) throw next; return next; },
+    fetch: async (r) => {
+      calls.push(r);
+      const next = queue.shift() ?? json(200);
+      if (next instanceof Error) throw next;
+      return next;
+    },
     uuid: () => `uuid-${++n}`,
     ...hooks,
   });
@@ -101,7 +110,21 @@ describe('API wrapper', () => {
     expect(t.notify).toHaveBeenCalledWith('Try again');
   });
   it('has a text for every error code of the table and shows it as a notice', async () => {
-    for (const code of ['would_create_cycle', 'too_deep', 'collection_full', 'collection_deleted', 'name_taken', 'last_admin', 'save_failed', 'conflict', 'too_large', 'type_not_allowed', 'type_mismatch', 'upload_missing', 'size_mismatch']) {
+    for (const code of [
+      'would_create_cycle',
+      'too_deep',
+      'collection_full',
+      'collection_deleted',
+      'name_taken',
+      'last_admin',
+      'save_failed',
+      'conflict',
+      'too_large',
+      'type_not_allowed',
+      'type_mismatch',
+      'upload_missing',
+      'size_mismatch',
+    ]) {
       expect(MESSAGES[code]).toBeTruthy();
       const t = setup([err(409, code)]);
       await t.api.PATCH('/v1/pages/{id}' as never, { params: { path: { id: 'p1' } }, body: {} } as never);
@@ -129,5 +152,30 @@ describe('API wrapper', () => {
     const t = setup([err(426, 'client_too_old')]);
     await t.api.GET('/v1/me' as never);
     expect(t.reload).toHaveBeenCalled();
+  });
+});
+
+describe('Retry-After', () => {
+  const now = Date.parse('2026-11-23T22:00:00Z');
+  it('reads whole seconds and HTTP dates, and nothing else', () => {
+    expect(retryAfterSeconds('5', now)).toBe(5);
+    expect(retryAfterSeconds(' 12 ', now)).toBe(12);
+    expect(retryAfterSeconds('Mon, 23 Nov 2026 22:00:07 GMT', now)).toBe(7);
+    expect(retryAfterSeconds('Mon, 23 Nov 2026 21:59:00 GMT', now)).toBe(0);
+    for (const bad of [null, '', '  ', 'soon', '-3', '1.5']) expect([bad, retryAfterSeconds(bad, now)]).toEqual([bad, null]);
+  });
+  it('waits for an HTTP-date Retry-After on a 503 and on a 429', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(now);
+      const a = setup([err(503, 'unavailable', { 'Retry-After': 'Mon, 23 Nov 2026 22:00:09 GMT' }), json(200)]);
+      await a.api.GET('/v1/me' as never);
+      expect(a.sleep).toHaveBeenCalledWith(9000);
+      const b = setup([err(429, 'rate_limited', { 'Retry-After': 'Mon, 23 Nov 2026 22:00:03 GMT' }), json(200)]);
+      await b.api.GET('/v1/me' as never);
+      expect(b.sleep).toHaveBeenCalledWith(3000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

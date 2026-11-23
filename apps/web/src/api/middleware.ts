@@ -28,6 +28,16 @@ export const IDEMPOTENT: readonly { method: string; path: RegExp }[] = [
 ];
 export const isIdempotent = (method: string, pathname: string): boolean => IDEMPOTENT.some((o) => o.method === method && o.path.test(pathname));
 
+/** A `Retry-After` value (RFC 9110): whole seconds, or an HTTP date. Gives the delay in seconds, or null when there is no usable one. */
+export function retryAfterSeconds(value: string | null, now: number = Date.now()): number | null {
+  if (value === null || value.trim() === '') return null;
+  const text = value.trim();
+  if (/^\d+$/.test(text)) return Number(text);
+  if (!/^[A-Za-z]{3}, \d{1,2} [A-Za-z]{3} \d{4} \d\d:\d\d:\d\d GMT$/.test(text)) return null; // the HTTP date format of RFC 9110
+  const at = Date.parse(text);
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
+}
+
 const MAX_RETRIES = 3;
 const MAX_WAIT_S = 30;
 const BACKOFF_S = [1, 2, 4];
@@ -99,7 +109,7 @@ export function wrapFetch(o: WrapOptions): (request: Request) => Promise<Respons
         return response;
       }
       if (response.status === 429) {
-        const seconds = Math.min(MAX_WAIT_S, Math.max(0, Number(response.headers.get('Retry-After')) || 1));
+        const seconds = Math.min(MAX_WAIT_S, Math.max(1, retryAfterSeconds(response.headers.get('Retry-After')) ?? 1));
         if (retryable && attempt < MAX_RETRIES) {
           o.notify(rateLimitedMessage(seconds));
           await sleep(seconds * 1000);
@@ -110,8 +120,8 @@ export function wrapFetch(o: WrapOptions): (request: Request) => Promise<Respons
       }
       if (response.status === 503) {
         if (retryable && attempt < MAX_RETRIES) {
-          const asked = Number(response.headers.get('Retry-After'));
-          await sleep((asked > 0 ? Math.min(MAX_WAIT_S, asked) : (BACKOFF_S[attempt] ?? 4)) * 1000);
+          const asked = retryAfterSeconds(response.headers.get('Retry-After'));
+          await sleep((asked !== null && asked > 0 ? Math.min(MAX_WAIT_S, asked) : (BACKOFF_S[attempt] ?? 4)) * 1000);
           continue;
         }
         o.notify(messageFor('unavailable'));
