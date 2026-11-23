@@ -8,6 +8,7 @@ import { createPersistenceExtension } from './extensions/persistence.js';
 import type { PersistenceExtension } from './extensions/persistence.js';
 import { createPresenceExtension } from './extensions/presence.js';
 import { createRecheck } from './extensions/recheck.js';
+import { createRevisionsExtension } from './extensions/revisions.js';
 import type { Recheck } from './extensions/recheck.js';
 import { guardConnectHooks } from './guard.js';
 import type { RefusalTable } from './refusal.js';
@@ -32,7 +33,7 @@ export interface RegistryOptions {
   readonly refusals?: RefusalTable;
 }
 
-/** The ordered extension list; Hocuspocus orders by `priority` (auth 1000, re-check 900, limits 800, presence 600, persistence 100, lifecycle 50). */
+/** The ordered extension list; Hocuspocus orders by `priority` (auth 1000, re-check 900, limits 800, presence 600, persistence 100, lifecycle 50, revisions 10). */
 export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; persistence: PersistenceExtension; recheck: Recheck } {
   const persistence = createPersistenceExtension({
     deps: o.deps, ...(o.refusals ? { refusals: o.refusals } : {}), log: o.log, sleep: o.sleep, convertConcurrency: o.deps.config.collab.convertPoolSize, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
@@ -48,6 +49,7 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
     createPresenceExtension(),
     recheck.extension,
     persistence,
+    createRevisionsExtension({ repo: o.deps.revisions, clock: o.deps.clock, log: o.log }),
     ...(o.extra ?? []),
   ].map((e) => guardConnectHooks(e, { ...o, onFailed: (d) => { limits.connectFailed(d); } }));
   assertUniqueExtensionNames(extensions);

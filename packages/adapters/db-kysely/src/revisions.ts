@@ -1,4 +1,5 @@
-import type { ListedRevision, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
+import type { CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -45,6 +46,46 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       const rows = await db.query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2`, [pageId, revisionId]);
       const row = rows[0];
       return row === undefined ? undefined : { ...summary(row), markdown: row.markdown as string } satisfies Revision;
+    },
+    createFromPage(request) {
+      return db.transaction(async (tx): Promise<PageRevisionResult> => {
+        const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean }>(
+          `select title, markdown, markdown_stale_since is not null as stale from pages where id = $1 and deleted_at is null for share`, [request.pageId],
+        ))[0];
+        if (page === undefined) return { kind: 'no-page' };
+        if (page.stale) return { kind: 'stale' };
+        if (page.markdown === null) return { kind: 'no-markdown' };
+        const hash = markdownHash(page.title, page.markdown);
+        const latest = (await tx.query<{ h: Buffer }>(`select markdown_hash as h from revisions where page_id = $1 order by created_at desc, id limit 1`, [request.pageId]))[0];
+        if (latest !== undefined && Buffer.from(latest.h).equals(hash)) return { kind: 'unchanged' };
+        // Authors that are not user rows are dropped (a development token's name is not a user), in the order they were given.
+        const rows = await tx.query<{ id: string }>(
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+           values ($1, $2, $3, $4,
+             (select coalesce(array_agg(t.id order by t.ord), '{}') from unnest($5::uuid[]) with ordinality as t(id, ord) where exists (select 1 from users u where u.id = t.id)),
+             (select id from users where id = $6::uuid), $7, timestamptz 'epoch' + $8::bigint * interval '1 millisecond') returning id`,
+          [request.pageId, page.title, page.markdown, hash, [...request.authorIds], request.lastAuthorId, request.reason, request.at],
+        );
+        return { kind: 'created', id: (rows[0] as { id: string }).id };
+      });
+    },
+    catchUp(editedBefore, limit) {
+      return db.transaction(async (tx): Promise<readonly CaughtUpRevision[]> => {
+        // One instance at a time: a second one waits, then finds the first one's revisions and has nothing left to make.
+        await tx.query(`select pg_advisory_xact_lock(hashtext('grimoire.revisions.catch_up'))`);
+        const rows = await tx.query<{ page_id: string; id: string }>(
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+           select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', p.last_edited_at
+             from pages p left join users u on u.id = p.last_edited_by
+            where p.deleted_at is null and p.markdown is not null and p.markdown_hash is not null and p.markdown_stale_since is null
+              and p.last_edited_at is not null and p.last_edited_at < timestamptz 'epoch' + $1::bigint * interval '1 millisecond'
+              and p.markdown_hash is distinct from (select r.markdown_hash from revisions r where r.page_id = p.id order by r.created_at desc, r.id limit 1)
+            order by p.last_edited_at limit $2
+           returning page_id, id`,
+          [editedBefore, limit],
+        );
+        return rows.map((r) => ({ pageId: r.page_id, revisionId: r.id }));
+      });
     },
   };
 }

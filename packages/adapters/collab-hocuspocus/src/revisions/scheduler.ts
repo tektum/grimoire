@@ -1,0 +1,160 @@
+import type { Clock } from '@tektum/grimoire-core/ports/clock';
+import type { PageRevisionResult, RevisionRepo } from '@tektum/grimoire-core/ports/revision-repo';
+import { editorColumn } from '../editors.js';
+
+/** Revisions after this long without an edit (R9.2). */
+export const IDLE_MS = 5 * 60 * 1000;
+/** Pages the catch-up after a restart handles per statement. */
+export const CATCH_UP_BATCH = 500;
+
+/** The timers the scheduler uses; tests pass fake ones. */
+export interface Timers {
+  setTimeout(callback: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+const globalTimers: Timers = { setTimeout: (callback, ms) => setTimeout(callback, ms), clearTimeout: (handle) => { clearTimeout(handle as ReturnType<typeof setTimeout>); } };
+
+type Reason = 'idle' | 'last_editor_left';
+
+/** What the scheduler reports; the extension turns each into its log event (counts and ids only). */
+export interface SchedulerReport {
+  created(pageId: string, reason: Reason): void;
+  /** The saved Markdown was stale: one report per deferral. */
+  deferred(pageId: string): void;
+  /** `pageId` is `catch-up` for the restart catch-up. */
+  failed(pageId: string, errorName: string): void;
+}
+
+/** What has happened to a page since its last revision. */
+interface Pending {
+  readonly authors: Set<string>;
+  latest: string | undefined;
+  lastEditAt: number;
+  timer: unknown;
+  /** A revision that could not be made yet because the saved Markdown was stale: made at the next save that clears the flag. */
+  deferred: Reason | undefined;
+}
+
+export interface SchedulerOptions {
+  readonly repo: RevisionRepo;
+  readonly clock: Clock;
+  readonly report: SchedulerReport;
+  readonly timers?: Timers;
+  readonly idleMs?: number;
+}
+
+export interface RevisionScheduler {
+  /** A change arrived on the page from `userId` (undefined: no known user). Restarts the page's 5-minute timer. */
+  changed(pageId: string, userId: string | undefined): void;
+  /** A save of the page finished: a deferred revision is tried again. */
+  saved(pageId: string): Promise<void>;
+  /** The page was unloaded (its last connection left and its last save is done): the last editor left. */
+  unloaded(pageId: string): Promise<void>;
+  /** A page was opened. The first time since the start, the revisions a restart lost are made; until then there is no database work. */
+  opened(): void;
+  /** Resolves when no revision work is running (for tests and shutdown). */
+  whenIdle(): Promise<void>;
+  /** Cancels every timer. */
+  stop(): void;
+}
+
+/**
+ * The rules of R9.2 and R9.3, apart from Hocuspocus: a timer per edited page, the last editor leaving, the catch-up after a restart. A
+ * page nobody changed has no state here and costs nothing; a revision is made from the page's SAVED state by the repository, which skips
+ * identical content and refuses stale Markdown.
+ */
+export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler {
+  const timers = o.timers ?? globalTimers;
+  const idleMs = o.idleMs ?? IDLE_MS;
+  const pending = new Map<string, Pending>();
+  const inFlight = new Set<Promise<void>>();
+  const tails = new Map<string, Promise<void>>();
+  let caughtUp = false;
+
+  const track = (p: Promise<void>): Promise<void> => {
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
+    return p;
+  };
+
+  /** Page by page, one at a time: a timer and an unload of the same page never write two revisions of one state. */
+  const serial = (pageId: string, work: () => Promise<void>): Promise<void> => {
+    const run = (tails.get(pageId) ?? Promise.resolve()).then(work);
+    const settled = run.catch(() => undefined);
+    tails.set(pageId, settled);
+    void settled.then(() => { if (tails.get(pageId) === settled) tails.delete(pageId); });
+    return track(settled);
+  };
+
+  const outcome = (pageId: string, reason: Reason, state: Pending, result: PageRevisionResult): void => {
+    if (result.kind === 'created') {
+      pending.delete(pageId);
+      o.report.created(pageId, reason);
+    } else if (result.kind === 'stale') {
+      // One event per deferral, not one per attempt.
+      if (state.deferred === undefined) o.report.deferred(pageId);
+      state.deferred = reason;
+    } else {
+      // Identical to the latest revision, no Markdown yet, or no page: nothing is owed for these edits.
+      pending.delete(pageId);
+    }
+  };
+
+  const attempt = (pageId: string, reason: Reason): Promise<void> =>
+    serial(pageId, async () => {
+      const state = pending.get(pageId);
+      if (state === undefined) return;
+      timers.clearTimeout(state.timer);
+      state.timer = undefined;
+      try {
+        const result = await o.repo.createFromPage({
+          pageId, reason, authorIds: [...state.authors], lastAuthorId: state.latest ?? null, at: state.lastEditAt,
+        });
+        outcome(pageId, reason, state, result);
+      } catch (error) {
+        // The edits stay owed: the next trigger tries again.
+        o.report.failed(pageId, error instanceof Error ? error.name : 'unknown');
+      }
+    });
+
+  return {
+    changed(pageId, userId) {
+      const at = o.clock.now();
+      const state = pending.get(pageId) ?? { authors: new Set<string>(), latest: undefined, lastEditAt: at, timer: undefined, deferred: undefined };
+      const editor = editorColumn(userId);
+      if (editor !== undefined) state.authors.add(editor);
+      state.latest = editor;
+      state.lastEditAt = at;
+      timers.clearTimeout(state.timer);
+      state.timer = timers.setTimeout(() => { void attempt(pageId, 'idle'); }, idleMs);
+      pending.set(pageId, state);
+    },
+    saved(pageId) {
+      const reason = pending.get(pageId)?.deferred;
+      return reason === undefined ? Promise.resolve() : attempt(pageId, reason);
+    },
+    unloaded(pageId) {
+      return pending.has(pageId) ? attempt(pageId, 'last_editor_left') : Promise.resolve();
+    },
+    opened() {
+      if (caughtUp) return;
+      caughtUp = true;
+      void track((async () => {
+        try {
+          for (;;) {
+            const made = await o.repo.catchUp(o.clock.now() - idleMs, CATCH_UP_BATCH);
+            for (const m of made) o.report.created(m.pageId, 'idle');
+            if (made.length < CATCH_UP_BATCH) return;
+          }
+        } catch (error) {
+          o.report.failed('catch-up', error instanceof Error ? error.name : 'unknown');
+        }
+      })());
+    },
+    whenIdle: async () => { while (inFlight.size > 0) await Promise.all([...inFlight]); },
+    stop() {
+      for (const state of pending.values()) timers.clearTimeout(state.timer);
+    },
+  };
+}
