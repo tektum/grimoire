@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_HANDSHAKE_LENGTH, MAX_TOKEN_LENGTH, compareVersions, parseVersion, readHandshake } from '../../src/handshake.js';
+import { MAX_HANDSHAKE_LENGTH, MAX_TOKEN_LENGTH, readHandshake } from '../../src/handshake.js';
 import { createAuthExtension } from '../../src/extensions/auth.js';
 import { PAGE, makeDeps } from '../host/support.js';
 
@@ -43,11 +43,9 @@ describe('handshake wrapper', () => {
     expect(readHandshake(wrapped, OPTIONS).token).toBe(t);
   });
 
-  it('a configured floor with leading zeros still gates, and an unreadable floor fails closed', () => {
+  it('an unreadable floor (config validation rejects it first) fails closed instead of admitting everyone', () => {
     const old = wrap({ t: 'x', v: '1.1.9' });
-    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: '1.02.0' })).toThrow(expect.objectContaining({ reason: 'client-too-old' }));
-    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: '1.20.03' })).toThrow(expect.objectContaining({ reason: 'client-too-old' }));
-    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: 'latest' })).toThrow('minClientVersion');
+    for (const minClientVersion of ['1.02.0', 'latest']) expect(() => readHandshake(old, { ...OPTIONS, minClientVersion })).toThrow('minClientVersion');
   });
 
   it('a non-string token is invalid', () => {
@@ -74,12 +72,5 @@ describe('handshake wrapper', () => {
   it('a version below the minimum is refused client-too-old; the minimum and above are accepted', () => {
     expect(() => readHandshake(wrap({ t: 'x', v: '1.1.9' }), OPTIONS)).toThrow(expect.objectContaining({ reason: 'client-too-old' }));
     for (const v of ['1.2.0', '2.0.0', '1.10.0']) expect(readHandshake(wrap({ t: 'x', v }), OPTIONS).token).toBe('x');
-  });
-
-  it('versions compare numerically, not as text', () => {
-    expect(parseVersion('1.10.0')).toEqual([1, 10, 0]);
-    expect(parseVersion('01.2.3')).toBeUndefined();
-    expect(compareVersions([1, 10, 0], [1, 9, 0])).toBeGreaterThan(0);
-    expect(compareVersions([1, 2, 3], [1, 2, 3])).toBe(0);
   });
 });
