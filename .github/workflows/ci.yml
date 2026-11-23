@@ -399,6 +399,28 @@ jobs:
         if: always()
         run: make down-volumes
 
+  stack-guard:
+    name: Stack Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: A pull request into a branch other than main must be part of a stack
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          STACK: ${{ toJSON(github.event.pull_request.stack) }}
+        run: |
+          set -eu
+          if [ "$EVENT" != "pull_request" ] || [ "$BASE_REF" = "main" ]; then
+            echo "Not a pull request into a branch other than main: nothing to check."
+            exit 0
+          fi
+          if [ "$STACK" = "null" ] || [ -z "$STACK" ]; then
+            echo "::error::This pull request targets '$BASE_REF', not main, and is not part of a stack. Link it with 'gh stack link' so that it is held to the rules of main, then re-run this job."
+            exit 1
+          fi
+          echo "Part of a stack: ok."
+
   ci-required:
     name: CI Required
     runs-on: ubuntu-latest
@@ -417,6 +439,7 @@ jobs:
       - e2e-m1
       - e2e-m2
       - e2e-m3
+      - stack-guard
     steps:
       - name: Verify every needed job succeeded
         env:
