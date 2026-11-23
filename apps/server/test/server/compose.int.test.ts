@@ -19,8 +19,12 @@ interface Resolved {
 }
 
 // `docker compose config` only renders the files: it needs the Compose plugin but no running engine. The renderer runs as a child of this
-// process (through `runToEnd`), and only its standard output is the JSON (warnings go to standard error).
-const RENDER = "const { spawnSync } = require('node:child_process'); const r = spawnSync('docker', JSON.parse(process.argv[1]), { encoding: 'utf8', maxBuffer: 1 << 26 });"
+// process (through `runToEnd`), and only its standard output is the JSON (warnings go to standard error). Docker gets a minimal environment:
+// Compose prefers the process environment over `--env-file` and over `${VAR:-default}`, so the harness's own variables (an allowed-origins
+// value, a token secret) would hide what the committed files say.
+const RENDER = "const { spawnSync } = require('node:child_process'); const keep = ['PATH', 'HOME', 'DOCKER_CONFIG', 'XDG_CONFIG_HOME', 'XDG_RUNTIME_DIR'];"
+  + " const env = Object.fromEntries(keep.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]]));"
+  + " const r = spawnSync('docker', JSON.parse(process.argv[1]), { encoding: 'utf8', maxBuffer: 1 << 26, env });"
   + " process.stdout.write(r.status === 0 ? r.stdout : `docker compose failed: ${r.stderr}`); process.exitCode = r.status ?? 1;";
 
 async function render(...files: string[]): Promise<Resolved> {
@@ -69,7 +73,7 @@ describe('compose.yaml (R2.12, R13.1): the local stack', () => {
     const app = local.services['app'];
     expect(app?.build).toBeDefined();
     expect(app?.image).toBeUndefined();
-    expect(published(app ?? {} as never).every((p) => p.startsWith('127.0.0.1:'))).toBe(true);
+    expect(published(app ?? {} as never)).toEqual(['127.0.0.1:8080->8080']);
   });
 });
 
@@ -131,6 +135,7 @@ describe('compose.offline.yaml (R2.14): the no-route-out override', () => {
     for (const name of Object.keys(local.services)) {
       expect(offline.services[name]?.environment, name).toEqual(local.services[name]?.environment);
       expect(offline.services[name]?.image, name).toEqual(local.services[name]?.image);
+      expect(published(offline.services[name] ?? {} as never), name).toEqual(published(local.services[name] ?? {} as never));
     }
   });
 });
