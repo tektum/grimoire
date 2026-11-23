@@ -222,6 +222,37 @@
         ],
         "type": "object"
       },
+      "CreatePage": {
+        "additionalProperties": false,
+        "properties": {
+          "afterId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "collectionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "markdown": {
+            "description": "Seed Markdown; limited by the server (size, lines, markers per line)",
+            "type": "string"
+          },
+          "parentId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "collectionId"
+        ],
+        "type": "object"
+      },
       "Error": {
         "properties": {
           "error": {
@@ -303,6 +334,73 @@
           "email",
           "name",
           "role"
+        ],
+        "type": "object"
+      },
+      "PageMeta": {
+        "properties": {
+          "collectionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "createdBy": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "icon": {
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastEditedAt": {
+            "description": "Epoch milliseconds",
+            "nullable": true,
+            "type": "number"
+          },
+          "lastEditedBy": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "parentId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "position": {
+            "description": "Sort key among siblings; compare as bytes",
+            "type": "string"
+          },
+          "savedAt": {
+            "description": "Epoch milliseconds the page was last written",
+            "type": "number"
+          },
+          "stateEpoch": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "urlId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "urlId",
+          "collectionId",
+          "parentId",
+          "position",
+          "title",
+          "icon",
+          "createdBy",
+          "lastEditedBy",
+          "lastEditedAt",
+          "savedAt",
+          "stateEpoch"
         ],
         "type": "object"
       },
@@ -1463,6 +1561,138 @@
         "x-grimoire-policy": {
           "kind": "authenticated",
           "provision": true
+        }
+      }
+    },
+    "/v1/pages": {
+      "post": {
+        "operationId": "createPage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageMeta"
+                }
+              }
+            },
+            "description": "The new page"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Too deep, the collection is full or deleted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a page",
+        "tags": [
+          "pages"
+        ],
+        "x-grimoire-idempotent": true,
+        "x-grimoire-policy": {
+          "field": "collectionId",
+          "kind": "collection-body",
+          "need": "write"
         }
       }
     }

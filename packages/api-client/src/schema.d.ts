@@ -127,6 +127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a page */
+        post: operations["createPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -198,6 +215,17 @@ export interface components {
             icon?: string;
             name: string;
         };
+        CreatePage: {
+            /** Format: uuid */
+            afterId?: string;
+            /** Format: uuid */
+            collectionId: string;
+            /** @description Seed Markdown; limited by the server (size, lines, markers per line) */
+            markdown?: string;
+            /** Format: uuid */
+            parentId?: string | null;
+            title?: string;
+        };
         Error: {
             error: {
                 code: string;
@@ -224,6 +252,28 @@ export interface components {
              * @enum {string}
              */
             role: "admin" | "member" | "viewer";
+        };
+        PageMeta: {
+            /** Format: uuid */
+            collectionId: string;
+            /** Format: uuid */
+            createdBy: string;
+            icon: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Epoch milliseconds */
+            lastEditedAt: number | null;
+            /** Format: uuid */
+            lastEditedBy: string | null;
+            /** Format: uuid */
+            parentId: string | null;
+            /** @description Sort key among siblings; compare as bytes */
+            position: string;
+            /** @description Epoch milliseconds the page was last written */
+            savedAt: number;
+            stateEpoch: number;
+            title: string;
+            urlId: string;
         };
         PatchCollection: {
             color?: string | null;
@@ -1040,6 +1090,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The request is not valid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The service is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePage"];
+            };
+        };
+        responses: {
+            /** @description The new page */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageMeta"];
+                };
+            };
+            /** @description Missing, malformed or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too deep, the collection is full or deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error: {
+                            code: string;
+                            message: string;
+                        };
+                    };
                 };
             };
             /** @description The request is not valid */
