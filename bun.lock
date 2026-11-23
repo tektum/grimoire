@@ -203,6 +203,8 @@
       "dependencies": {
         "@milkdown/core": "7.23.0",
         "@milkdown/ctx": "7.23.0",
+        "@milkdown/exception": "7.23.0",
+        "@milkdown/transformer": "7.23.0",
         "@tektum/grimoire-core": "*",
         "@tektum/grimoire-editor-schema": "*",
         "piscina": "5.3.2",
