@@ -268,4 +268,30 @@ export class FakeFileStorage implements FileStorage {
       ifNoneMatch: request.ifNoneMatch,
     });
   }
+
+  /**
+   * What the browser gets back from a signed download URL: the stored bytes, the type (the signed override or the
+   * stored one) and a `content-disposition` built from the signed disposition and file name. A file name is
+   * written as an ASCII fallback plus an RFC 5987 `filename*`, so no control character reaches a header.
+   * Refused once the clock has passed the expiry; an absent object is `not-found`.
+   */
+  async receiveSignedDownload(url: string): Promise<{ body: Uint8Array; headers: Record<string, string> }> {
+    const request = this.signed.find((entry) => entry.kind === 'download' && entry.url === url);
+    if (request?.kind !== 'download') throw new FileStorageError('unavailable', 'the signature is unknown');
+    if (this.clock.now() >= request.expiresAt) throw new FileStorageError('unavailable', 'the signature has expired');
+    const { bytes, contentType } = this.find(request.key);
+    let disposition: string = request.disposition;
+    if (request.fileName !== undefined) {
+      const fallback = request.fileName.replace(/[^\x20-\x7e]|["\\;]/g, '_');
+      const encoded = encodeURIComponent(request.fileName).replace(
+        /['()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+      );
+      disposition += `; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+    }
+    return {
+      body: bytes.slice(),
+      headers: { 'content-type': request.contentType ?? contentType, 'content-disposition': disposition },
+    };
+  }
 }

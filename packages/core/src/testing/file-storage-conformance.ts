@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   FileStorageError,
   type ByteStream,
@@ -7,26 +7,60 @@ import {
   type FileStorageErrorKind,
 } from '../ports/file-storage.js';
 
+/** The request header that makes an upload create-only (a setting of the store). */
+export type CreateOnlyHeader = 'if-none-match' | 'x-goog-if-generation-match';
+
 /**
  * What a store can and cannot do in the test set-up. A case that needs a capability the store lacks is reported as
- * skipped with the capability's name, never left out.
+ * skipped with the capability's name, never left out. `realExpiry` says whether `harness.advance` lets real time
+ * pass (the fake moves an injected clock instead); the cases run either way.
  */
 export interface FileStorageCapabilities {
   readonly cors: boolean;
   readonly anonymousDenied: boolean;
   readonly realExpiry: boolean;
   readonly flatMemory: boolean;
+  /** The store refuses a signed upload whose signed headers the client changed or dropped. */
+  readonly signedHeadersEnforced: boolean;
+  readonly createOnlyHeader: CreateOnlyHeader;
 }
 
-/** What a case needs besides the store. */
+export type FileStorageFlag = {
+  [K in keyof FileStorageCapabilities]: FileStorageCapabilities[K] extends boolean ? K : never;
+}[keyof FileStorageCapabilities];
+
+export interface SignedRequest {
+  readonly method: 'GET' | 'PUT' | 'OPTIONS';
+  readonly url: string;
+  readonly headers?: Record<string, string>;
+  readonly body?: Uint8Array;
+}
+
+export interface SignedResponse {
+  readonly status: number;
+  /** Header names in lower case. */
+  readonly headers: Record<string, string>;
+  readonly body: Uint8Array;
+}
+
+/** What a case needs besides the store: the browser's side of a signed URL, and the passing of time. */
 export interface FileStorageHarness {
   readonly store: FileStorage;
+  readonly capabilities: FileStorageCapabilities;
+  /** The scheme and host every signed URL must start with (no trailing slash). */
+  readonly publicOrigin: string;
+  /** Sends what an HTTP client would send; never throws for a refusal, it answers a status. */
+  send(request: SignedRequest): Promise<SignedResponse>;
+  /** Lets `seconds` pass for signed URLs: the fake moves its clock, a real store waits. */
+  advance(seconds: number): Promise<void>;
+  /** A URL to the object without any signature. */
+  unsignedUrl(key: string): string;
 }
 
 export interface FileStorageCase {
   readonly name: string;
   /** The capability that must be true for the case to run. */
-  readonly requires?: keyof FileStorageCapabilities;
+  readonly requires?: FileStorageFlag;
   run(h: FileStorageHarness): Promise<void>;
 }
 
@@ -64,6 +98,8 @@ export async function expectKind(kind: FileStorageErrorKind, action: Promise<unk
 }
 
 const binary = 'application/octet-stream';
+const createOnlyValue = (header: CreateOnlyHeader): string => (header === 'if-none-match' ? '*' : '0');
+const isSuccess = (status: number): boolean => status >= 200 && status < 300;
 
 export const fileStorageConformance: readonly FileStorageCase[] = [
   {
@@ -270,6 +306,241 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       const second = patternBytes(20);
       await store.put(key, second, { size: 20, contentType: binary });
       assert.deepEqual(await readAll((await store.get(key)).body), second, 'an unconditional put overwrites');
+    },
+  },
+  {
+    name: 'sign-upload-exact',
+    async run({ store, send, capabilities }) {
+      const key = `${freshPrefix()}/a`;
+      const bytes = patternBytes(300);
+      const signed = await store.signUpload(key, {
+        size: 300,
+        contentType: 'image/png',
+        ttlSeconds: 600,
+        ifNoneMatch: true,
+      });
+      assert.equal(signed.method, 'PUT');
+      assert.ok(signed.expiresAt > 0 && Number.isFinite(signed.expiresAt), 'expiresAt is a time in milliseconds');
+      assert.equal(signed.headers['content-type'], 'image/png');
+      assert.equal(signed.headers[capabilities.createOnlyHeader], createOnlyValue(capabilities.createOnlyHeader));
+      assert.equal(signed.headers['content-disposition'], undefined, 'no disposition was asked for');
+      const sent = await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: bytes });
+      assert.ok(isSuccess(sent.status), `the exact upload is accepted, got ${sent.status}`);
+      const head = await store.head(key);
+      assert.equal(head.size, 300);
+      assert.equal(head.contentType, 'image/png');
+      assert.deepEqual(await readAll((await store.get(key)).body), bytes);
+      const attachment = await store.signUpload(key, {
+        size: 1,
+        contentType: binary,
+        ttlSeconds: 60,
+        disposition: 'attachment',
+      });
+      assert.equal(attachment.headers['content-disposition'], 'attachment');
+    },
+  },
+  {
+    name: 'sign-upload-wrong-size',
+    async run({ store, send }) {
+      const key = `${freshPrefix()}/a`;
+      const signed = await store.signUpload(key, { size: 10, contentType: binary, ttlSeconds: 600 });
+      for (const length of [11, 9, 0]) {
+        const sent = await send({
+          method: 'PUT',
+          url: signed.url,
+          headers: signed.headers,
+          body: patternBytes(length),
+        });
+        assert.ok(
+          !isSuccess(sent.status),
+          `a body of ${length} bytes for a signed size of 10 is refused, got ${sent.status}`,
+        );
+        await expectKind('not-found', store.head(key), `the key stays absent after ${length} bytes`);
+      }
+    },
+  },
+  {
+    name: 'sign-upload-wrong-type',
+    async run({ store, send }) {
+      const key = `${freshPrefix()}/a`;
+      const signed = await store.signUpload(key, { size: 10, contentType: 'image/png', ttlSeconds: 600 });
+      const headers = { ...signed.headers, 'content-type': 'text/html' };
+      const sent = await send({ method: 'PUT', url: signed.url, headers, body: patternBytes(10) });
+      assert.ok(!isSuccess(sent.status), `another content type is refused, got ${sent.status}`);
+      await expectKind('not-found', store.head(key), 'the key stays absent');
+    },
+  },
+  {
+    name: 'sign-upload-no-overwrite',
+    async run({ store, send, capabilities }) {
+      const key = `${freshPrefix()}/a`;
+      const header = capabilities.createOnlyHeader;
+      const other = header === 'if-none-match' ? 'x-goog-if-generation-match' : 'if-none-match';
+      const first = patternBytes(10);
+      const one = await store.signUpload(key, { size: 10, contentType: binary, ttlSeconds: 600, ifNoneMatch: true });
+      assert.equal(one.headers[header], createOnlyValue(header), 'the create-only header is signed with its value');
+      assert.equal(one.headers[other], undefined, 'the other create-only header is not');
+      assert.ok(isSuccess((await send({ method: 'PUT', url: one.url, headers: one.headers, body: first })).status));
+      const two = await store.signUpload(key, { size: 12, contentType: binary, ttlSeconds: 600, ifNoneMatch: true });
+      const refused = await send({ method: 'PUT', url: two.url, headers: two.headers, body: patternBytes(12) });
+      assert.equal(refused.status, 412, 'a second create-only upload to the key is refused with 412');
+      assert.deepEqual(
+        await readAll((await store.get(key)).body),
+        first,
+        'the refused upload leaves the object unchanged',
+      );
+    },
+  },
+  {
+    name: 'create-only-header-stripped',
+    requires: 'signedHeadersEnforced',
+    async run({ store, send, capabilities }) {
+      const fresh = `${freshPrefix()}/a`;
+      const taken = `${freshPrefix()}/b`;
+      const original = patternBytes(10);
+      await store.put(taken, original, { size: 10, contentType: binary });
+      for (const key of [fresh, taken]) {
+        const signed = await store.signUpload(key, {
+          size: 10,
+          contentType: binary,
+          ttlSeconds: 600,
+          ifNoneMatch: true,
+        });
+        const headers = { ...signed.headers };
+        delete headers[capabilities.createOnlyHeader];
+        const sent = await send({ method: 'PUT', url: signed.url, headers, body: patternBytes(10) });
+        assert.ok(
+          !isSuccess(sent.status),
+          `an upload without the signed create-only header is refused, got ${sent.status}`,
+        );
+      }
+      await expectKind('not-found', store.head(fresh), 'the fresh key stays absent');
+      assert.deepEqual(await readAll((await store.get(taken)).body), original, 'the existing object is unchanged');
+    },
+  },
+  {
+    name: 'sign-upload-expired',
+    async run({ store, send, advance }) {
+      const key = `${freshPrefix()}/a`;
+      const signed = await store.signUpload(key, { size: 10, contentType: binary, ttlSeconds: 2 });
+      await advance(3);
+      const sent = await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: patternBytes(10) });
+      assert.ok(!isSuccess(sent.status), `an expired signature is refused, got ${sent.status}`);
+      await expectKind('not-found', store.head(key), 'the key stays absent');
+    },
+  },
+  {
+    name: 'sign-download-overrides',
+    async run({ store, send }) {
+      const key = `${freshPrefix()}/a`;
+      const bytes = patternBytes(64);
+      await store.put(key, bytes, { size: 64, contentType: binary });
+      const hostile = 'caf\u00e9\r\nx-injected: yes\r\n.png';
+      const signed = await store.signDownload(key, {
+        ttlSeconds: 600,
+        disposition: 'attachment',
+        fileName: hostile,
+        contentType: 'text/plain',
+      });
+      assert.ok(signed.expiresAt > 0);
+      const got = await send({ method: 'GET', url: signed.url });
+      assert.equal(got.status, 200);
+      assert.deepEqual(got.body, bytes);
+      assert.ok(
+        got.headers['content-type']?.startsWith('text/plain'),
+        'the signed content type overrides the stored one',
+      );
+      const disposition = got.headers['content-disposition'] ?? '';
+      assert.ok(disposition.startsWith('attachment'), 'the signed disposition is used');
+      assert.ok(disposition.includes("filename*=UTF-8''caf%C3%A9"), 'a non-ASCII name is carried encoded');
+      assert.equal(got.headers['x-injected'], undefined, 'a line break in the name cannot add a header');
+      for (const value of Object.values(got.headers)) assert.ok(!/[\r\n]/.test(value), 'no header holds a line break');
+      const inline = await store.signDownload(key, { ttlSeconds: 600, disposition: 'inline' });
+      const plain = await send({ method: 'GET', url: inline.url });
+      assert.equal(plain.status, 200);
+      assert.ok(plain.headers['content-disposition']?.startsWith('inline'));
+      assert.ok(plain.headers['content-type']?.startsWith(binary), 'without an override the stored type is kept');
+    },
+  },
+  {
+    name: 'signed-urls-use-public-endpoint',
+    async run({ store, publicOrigin }) {
+      const key = `${freshPrefix()}/a`;
+      const up = await store.signUpload(key, { size: 1, contentType: binary, ttlSeconds: 60 });
+      const down = await store.signDownload(key, { ttlSeconds: 60, disposition: 'inline' });
+      for (const url of [up.url, down.url]) {
+        assert.ok(
+          url.startsWith(`${publicOrigin}/`),
+          `a signed URL starts with the public endpoint, got ${url.slice(0, 40)}`,
+        );
+      }
+    },
+  },
+  {
+    name: 'anonymous-denied',
+    requires: 'anonymousDenied',
+    async run({ store, send, unsignedUrl }) {
+      const key = `${freshPrefix()}/a`;
+      await store.put(key, patternBytes(5), { size: 5, contentType: binary });
+      const got = await send({ method: 'GET', url: unsignedUrl(key) });
+      assert.ok(got.status === 401 || got.status === 403, `an unsigned read is denied, got ${got.status}`);
+    },
+  },
+  {
+    name: 'cors-preflight',
+    requires: 'cors',
+    async run({ store, send }) {
+      const key = `${freshPrefix()}/a`;
+      const signed = await store.signUpload(key, { size: 5, contentType: binary, ttlSeconds: 60, ifNoneMatch: true });
+      const origin = 'https://app.example.test';
+      const answer = await send({
+        method: 'OPTIONS',
+        url: signed.url,
+        headers: {
+          origin,
+          'access-control-request-method': 'PUT',
+          'access-control-request-headers': Object.keys(signed.headers).join(','),
+        },
+      });
+      assert.ok(isSuccess(answer.status), `the preflight is answered, got ${answer.status}`);
+      const allowed = answer.headers['access-control-allow-origin'];
+      assert.ok(allowed === origin || allowed === '*', 'the origin is allowed');
+      assert.ok((answer.headers['access-control-allow-methods'] ?? '').toUpperCase().includes('PUT'), 'PUT is allowed');
+    },
+  },
+  {
+    name: 'stream-200mb-flat-memory',
+    requires: 'flatMemory',
+    async run({ store }) {
+      const key = `${freshPrefix()}/big`;
+      const chunk = patternBytes(1024 * 1024);
+      const chunks = 200;
+      const expected = createHash('sha256');
+      for (let i = 0; i < chunks; i++) expected.update(chunk);
+      const before = process.memoryUsage().rss;
+      let peak = before;
+      const sample = () => {
+        peak = Math.max(peak, process.memoryUsage().rss);
+      };
+      const generated = (async function* () {
+        for (let i = 0; i < chunks; i++) {
+          sample();
+          yield chunk;
+        }
+      })();
+      await store.put(key, generated, { size: chunk.length * chunks, contentType: binary });
+      const got = await store.get(key);
+      const actual = createHash('sha256');
+      let length = 0;
+      for await (const part of got.body) {
+        actual.update(part);
+        length += part.length;
+        sample();
+      }
+      await store.delete(key);
+      assert.equal(length, chunk.length * chunks);
+      assert.equal(actual.digest('hex'), expected.digest('hex'), 'the bytes read back are the bytes written');
+      assert.ok(peak - before < 50 * 1024 * 1024, `RSS grew by ${Math.round((peak - before) / 1048576)} MB`);
     },
   },
 ];
