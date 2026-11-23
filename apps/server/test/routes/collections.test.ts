@@ -151,6 +151,22 @@ describe('the audit row of a collection created with a default permission', () =
   });
 });
 
+describe('a retry of a collection create with the same Idempotency-Key', () => {
+  it('is refused when the caller is no longer an administrator, or the collection is gone, and replays while both hold', async () => {
+    const b = build();
+    const post = () => b.call('admin', 'POST', '/v1/collections', { name: 'Once' }, { 'idempotency-key': 'k' });
+    const first = (await (await post()).json()) as { id: string };
+    expect((await post()).headers.get('idempotent-replay')).toBe('true');
+    await b.collections.softDelete(first.id, b.rows[0]?.id as string);
+    expect((await post()).status).toBe(404);
+    const demoted = build();
+    const again = () => demoted.call('admin', 'POST', '/v1/collections', { name: 'Twice' }, { 'idempotency-key': 'k2' });
+    await again();
+    demoted.collections.world.users[0]!.role = 'member';
+    expect((await again()).status).toBe(404);
+  });
+});
+
 describe('PATCH /v1/collections/{id}', () => {
   it('answers 403 to a reader who is not an administrator and 404 to one who cannot read', async () => {
     const { call, open, closed } = build();

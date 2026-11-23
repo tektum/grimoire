@@ -43,10 +43,10 @@ const resources = [
 const core = path.join(repoRoot, 'packages/core/src');
 
 describe.each(resources)('%s', (file, port, fake) => {
-  it('has a port that exports its interface, with no import at all', () => {
+  it('has a port that exports its interface, with no runtime import (a type-only import of a core type is allowed)', () => {
     const source = readFileSync(path.join(core, 'ports', `${file}.ts`), 'utf8');
     expect(source).toMatch(new RegExp(`export (interface|type) ${port}\\b`));
-    expect(source).not.toMatch(/^\s*import\b/m);
+    expect(source).not.toMatch(/^\s*import\b(?!\s+type\b)/m);
   });
 
   it('has a fake that is a class implementing the port and can be constructed', () => {
