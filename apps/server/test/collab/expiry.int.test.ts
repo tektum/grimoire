@@ -228,12 +228,13 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const r = await rig();
     await user('T7renew');
     const p = await page();
-    let current = await issuer.token('T7renew', { exp: nowSec() + 4, iat: nowSec() - 5 });
+    const firstExp = nowSec() + 4; // the expiry the test waits past is the one the token carries, not a second reading of the clock
+    let current = await issuer.token('T7renew', { exp: firstExp, iat: nowSec() - 5 });
     const fresh = await issuer.token('T7renew');
     const c = open(r, p, () => current);
     await authed(c);
     current = fresh; // the provider answers the server's token request with this
-    const firstExpiry = (nowSec() + 4) * 1000;
+    const firstExpiry = firstExp * 1000;
     await eventually(() => Date.now() > firstExpiry + 2500, 10_000, 'past the first expiry and one more interval');
     expect(c.client.provider.isAuthenticated).toBe(true);
     expect(c.reasons).toEqual([]);
