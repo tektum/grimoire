@@ -110,12 +110,36 @@ describe('checkCors', () => {
   });
 });
 
+describe('where and how long checkCors asks', () => {
+  it('asks the public endpoint, not the internal one, and keeps its path prefix', async () => {
+    recorder.respond = allowing([ONE, TWO], 'GET, PUT, HEAD', FULL);
+    expect(
+      await checkCors(options({ endpoint: 'http://127.0.0.1:1', publicEndpoint: `${recorder.origin}/files/` })),
+    ).toEqual({
+      ok: true,
+    });
+    expect(recorder.seen[0]?.path).toBe(`/files/${bucket}/attachments/cors-probe`);
+  });
+
+  it('gives up on a store that accepts the request and never answers, as unavailable', async () => {
+    recorder.hang = true;
+    await expect(checkCors(options({ timeoutMs: 200, allowedOrigins: [ONE] }))).rejects.toMatchObject({
+      kind: 'unavailable',
+    });
+  });
+});
+
 describe('corsProbeUrl', () => {
   it('puts the bucket in the path, or in the host for virtual addressing', () => {
     const base = options({ endpoint: 'http://store.example.test:8333' });
     expect(corsProbeUrl(base)).toBe(`http://store.example.test:8333/${bucket}/attachments/cors-probe`);
     expect(corsProbeUrl({ ...base, addressing: 'virtual' })).toBe(
       `http://${bucket}.store.example.test:8333/attachments/cors-probe`,
+    );
+    const prefixed = { ...base, publicEndpoint: 'https://files.example.test/files' };
+    expect(corsProbeUrl(prefixed)).toBe(`https://files.example.test/files/${bucket}/attachments/cors-probe`);
+    expect(corsProbeUrl({ ...prefixed, addressing: 'virtual' })).toBe(
+      `https://${bucket}.files.example.test/files/attachments/cors-probe`,
     );
   });
 });

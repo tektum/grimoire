@@ -82,6 +82,8 @@ export interface FilesConfig {
 /** What `grimoire files-setup` needs: the store and the admin identity (never part of the server's `files`). */
 export interface FilesSetupConfig {
   readonly endpoint: string;
+  /** The URL browsers use (a path prefix included); the internal endpoint when none is set, as in `FilesConfig`. */
+  readonly publicEndpoint: string;
   readonly bucket: string;
   readonly region: string;
   readonly addressing: 'path' | 'virtual';

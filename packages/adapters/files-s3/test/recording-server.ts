@@ -43,6 +43,7 @@ export function useRecordingServer(): void {
           headers: req.headers,
           body: Buffer.concat(parts),
         });
+        if (recorder.hang) return; // accepts the request and never answers
         const reply = recorder.respond?.(recorder.seen[recorder.seen.length - 1] as Seen) ?? recorder.reply;
         res.writeHead(reply.status, reply.headers);
         res.end(req.method === 'HEAD' ? undefined : reply.body);
@@ -56,6 +57,7 @@ export function useRecordingServer(): void {
     recorder.seen.length = 0;
     recorder.reply = { status: 200 };
     delete recorder.respond;
+    delete recorder.hang;
   });
 }
 

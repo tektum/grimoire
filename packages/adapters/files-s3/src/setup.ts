@@ -12,6 +12,10 @@ import { mapError } from './errors.js';
 /** What setting the store up needs: the admin identity (the running server never holds it) and the origins. */
 export interface EnsureBucketOptions {
   readonly endpoint: string;
+  /** What browsers use (a path prefix included); `checkCors` asks it, `endpoint` when unset. */
+  readonly publicEndpoint?: string;
+  /** Milliseconds `checkCors` waits for one preflight; ten seconds when unset. */
+  readonly timeoutMs?: number;
   readonly bucket: string;
   readonly region: string;
   readonly addressing: 'path' | 'virtual';
@@ -125,14 +129,15 @@ const listOf = (value: string | null): string[] =>
     .map((item) => item.trim().toLowerCase())
     .filter((item) => item !== '');
 
-/** The address of the probe object, in the addressing style of the setting. */
+/** The address of the probe object on the endpoint browsers use, in the addressing style of the setting, prefix kept. */
 export function corsProbeUrl(o: EnsureBucketOptions): string {
-  const url = new URL(o.endpoint);
+  const url = new URL(o.publicEndpoint ?? o.endpoint);
+  const prefix = url.pathname.replace(/\/+$/, '');
   if (o.addressing === 'virtual') {
     url.hostname = `${o.bucket}.${url.hostname}`;
-    url.pathname = `/${PROBE_KEY}`;
+    url.pathname = `${prefix}/${PROBE_KEY}`;
   } else {
-    url.pathname = `/${o.bucket}/${PROBE_KEY}`;
+    url.pathname = `${prefix}/${o.bucket}/${PROBE_KEY}`;
   }
   return url.toString();
 }
@@ -157,6 +162,7 @@ export async function checkCors(o: EnsureBucketOptions): Promise<CorsCheck> {
       try {
         response = await fetch(url, {
           method: 'OPTIONS',
+          signal: AbortSignal.timeout(o.timeoutMs ?? 10_000),
           headers: {
             origin,
             'access-control-request-method': probe.method,

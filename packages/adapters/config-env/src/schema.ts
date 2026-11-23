@@ -327,7 +327,7 @@ const filesSetupConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: 
   purpose === 'files-setup' && v.GRIMOIRE_S3_ENDPOINT !== undefined && v.GRIMOIRE_S3_BUCKET !== undefined
     && v.GRIMOIRE_S3_ADMIN_ACCESS_KEY !== undefined && v.GRIMOIRE_S3_ADMIN_SECRET_KEY !== undefined
     ? { filesSetup: {
-      endpoint: v.GRIMOIRE_S3_ENDPOINT, bucket: v.GRIMOIRE_S3_BUCKET, region: v.GRIMOIRE_S3_REGION ?? 'us-east-1',
+      endpoint: v.GRIMOIRE_S3_ENDPOINT, publicEndpoint: v.GRIMOIRE_S3_PUBLIC_ENDPOINT ?? v.GRIMOIRE_S3_ENDPOINT, bucket: v.GRIMOIRE_S3_BUCKET, region: v.GRIMOIRE_S3_REGION ?? 'us-east-1',
       addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path', corsMode: v.GRIMOIRE_S3_CORS_MODE,
       createOnlyHeader: v.GRIMOIRE_S3_CREATE_ONLY_HEADER,
       accessKey: v.GRIMOIRE_S3_ADMIN_ACCESS_KEY, secretKey: v.GRIMOIRE_S3_ADMIN_SECRET_KEY,

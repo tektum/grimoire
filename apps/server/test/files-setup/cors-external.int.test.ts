@@ -16,6 +16,7 @@ const adminSecret = randomUUID();
 
 interface Asked {
   method: string;
+  path: string;
   query: string;
   headers: IncomingHttpHeaders;
 }
@@ -34,7 +35,7 @@ beforeAll(async () => {
     req.resume();
     req.on('end', () => {
       const url = new URL(req.url ?? '/', 'http://stub.invalid');
-      asked.push({ method: req.method ?? '', query: url.search, headers: req.headers });
+      asked.push({ method: req.method ?? '', path: url.pathname, query: url.search, headers: req.headers });
       if (req.method === 'OPTIONS') {
         const origin = String(req.headers.origin);
         const rule = allow(origin, String(req.headers['access-control-request-method']));
@@ -126,6 +127,12 @@ describe('files-setup with GRIMOIRE_S3_CORS_MODE=external', () => {
     expect(other.code).toBe(1);
     expect(other.output).toContain('x-goog-if-generation-match');
   }, 120_000);
+
+  it('sends the preflights to the public endpoint, its path prefix kept', async () => {
+    const result = await run({ GRIMOIRE_S3_PUBLIC_ENDPOINT: `${endpoint}/files` });
+    expect(result.code).toBe(0);
+    expect(preflights().map((p) => p.path)).toEqual(Array(6).fill(`/files/${bucket}/attachments/cors-probe`));
+  }, 60_000);
 
   it('with api, the default, writes the rule and sends no preflight', async () => {
     const result = await run({ GRIMOIRE_S3_CORS_MODE: 'api' });
