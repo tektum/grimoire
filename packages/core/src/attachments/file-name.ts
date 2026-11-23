@@ -36,7 +36,7 @@ function limit(cleaned: string): string {
 export function cleanFileName(name: string): string {
   const cleaned = name.normalize('NFC').replace(/\p{Cs}/gu, '\ufffd').replace(/[/\\\p{Cc}:*?"<>|]/gu, '_').replace(/^[. ]+|[. ]+$/g, '');
   if (cleaned === '') return 'file';
-  const limited = limit(cleaned);
+  const limited = limit(cleaned).replace(/[. ]+$/, '');
   const dot = limited.lastIndexOf('.');
   const extension = dot > 0 ? limited.slice(dot) : '';
   if (!SCRIPTABLE.has(extension.slice(1).toLowerCase())) return limited;

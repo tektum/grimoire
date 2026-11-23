@@ -71,4 +71,11 @@ describe('cleanFileName', () => {
     // A long extension that is not one of the list stays as it is.
     expect(cleanFileName(`a.${'q'.repeat(100)}`).startsWith('a.qqq')).toBe(true);
   });
+
+  it('trims again after the cut, which can stop right after a dot or a space', () => {
+    for (const tail of [' ', '.']) {
+      const out = cleanFileName(`${'x'.repeat(249)}.html${tail}${'y'.repeat(70)}`);
+      expect([bytes(out) <= 255, out.endsWith('.html.txt')]).toEqual([true, true]);
+    }
+  });
 });
