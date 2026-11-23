@@ -20,9 +20,10 @@ async function migrate(args: string[]): Promise<number> {
   if (!composed.ok) return composed.code;
   const { db, log } = composed.ctx;
   try {
-    const { applied } = await composed.migrate(values.dir ?? defaultDir);
+    const { applied, jobTables } = await composed.migrate(values.dir ?? defaultDir);
     if (applied.length === 0) log.info('migrate.nothing_pending', {});
     for (const name of applied) log.info('migrate.applied', { migration: name });
+    log.info('migrate.jobs_schema', { tables: jobTables });
     log.info('migrate.done', { applied: applied.length });
     return 0;
   } catch (e) {

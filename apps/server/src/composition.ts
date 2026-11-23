@@ -149,10 +149,10 @@ export interface CommandComposition { readonly config: Config; readonly db: Kyse
 export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
 export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
 /** Kysely migrations first, then pg-boss's own schema with its grants for the runtime role (the role name is fixed by the migrations). */
-export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string): Promise<{ readonly applied: string[] }> {
+export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string): Promise<{ readonly applied: string[]; readonly jobTables: number }> {
   const { applied } = await migrateDatabase(db, dir);
-  await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' }); // not counted: `applied` lists the Kysely migrations
-  return { applied };
+  const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' });
+  return { applied, jobTables: granted.length }; // `applied` lists only the Kysely migrations
 }
 
 export function composeMigrate(options: MigrateOptions = {}): CommandCompositionResult {

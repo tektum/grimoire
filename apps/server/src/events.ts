@@ -44,6 +44,7 @@ export interface InfoEvents {
   'migrate.nothing_pending': Record<string, never>;
   'migrate.applied': { migration: string };
   'migrate.done': { applied: number };
+  'migrate.jobs_schema': { tables: number };
   'seed.done': Record<string, never>;
 }
 
