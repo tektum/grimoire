@@ -22,14 +22,17 @@ interface Resolved {
 // process (through `runToEnd`), and only its standard output is the JSON (warnings go to standard error). Docker gets a minimal environment:
 // Compose prefers the process environment over `--env-file` and over `${VAR:-default}`, so the harness's own variables (an allowed-origins
 // value, a token secret) would hide what the committed files say.
-const RENDER = "const { spawnSync } = require('node:child_process'); const keep = ['PATH', 'HOME', 'DOCKER_CONFIG', 'XDG_CONFIG_HOME', 'XDG_RUNTIME_DIR'];"
+const KEEP = ['PATH', 'HOME', 'DOCKER_CONFIG', 'XDG_CONFIG_HOME', 'XDG_RUNTIME_DIR'];
+const RENDER = `const { spawnSync } = require('node:child_process'); const keep = ${JSON.stringify(KEEP)};`
   + " const env = Object.fromEntries(keep.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]]));"
   + " const r = spawnSync('docker', JSON.parse(process.argv[1]), { encoding: 'utf8', maxBuffer: 1 << 26, env });"
   + " process.stdout.write(r.status === 0 ? r.stdout : `docker compose failed: ${r.stderr}`); process.exitCode = r.status ?? 1;";
 
 async function render(...files: string[]): Promise<Resolved> {
   const args = ['compose', '--project-directory', repoRoot, '--env-file', path.join(repoRoot, '.env.example'), '--profile', '*', ...files.flatMap((f) => ['-f', path.join(repoRoot, f)]), 'config', '--format', 'json'];
-  const done = await runToEnd(['-e', RENDER, JSON.stringify(args)], {});
+  // The child starts with the harness's own environment: forward what Docker needs to find its plugin (a custom config directory, the XDG paths).
+  const forwarded = Object.fromEntries(KEEP.flatMap((k) => (process.env[k] === undefined ? [] : [[k, process.env[k] as string]])));
+  const done = await runToEnd(['-e', RENDER, JSON.stringify(args)], forwarded);
   expect(done.code, done.output).toBe(0);
   return JSON.parse(done.output) as Resolved;
 }
