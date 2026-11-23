@@ -4,6 +4,8 @@ import { editorColumn } from '../editors.js';
 
 /** Revisions after this long without an edit (R9.2). */
 export const IDLE_MS = 5 * 60 * 1000;
+/** After a failed catch-up the next page open tries again, but not sooner than this. */
+export const CATCH_UP_RETRY_MS = 60 * 1000;
 /** Pages the catch-up after a restart handles per statement. */
 export const CATCH_UP_BATCH = 500;
 
@@ -28,8 +30,11 @@ export interface SchedulerReport {
 
 /** What has happened to a page since its last revision. */
 interface Pending {
-  readonly authors: Set<string>;
+  /** Each author with the version of their latest change: a revision takes the authors up to the version it was made from. */
+  readonly authors: Map<string, number>;
   latest: string | undefined;
+  /** Counts the changes: an edit that arrives while a revision is being made is newer than what that revision read. */
+  version: number;
   lastEditAt: number;
   timer: unknown;
   /** A revision that could not be made yet because the saved Markdown was stale: made at the next save that clears the flag. */
@@ -71,6 +76,8 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
   const inFlight = new Set<Promise<void>>();
   const tails = new Map<string, Promise<void>>();
   let caughtUp = false;
+  let retryAfter = 0;
+  let catchUpTimer: unknown;
 
   const track = (p: Promise<void>): Promise<void> => {
     inFlight.add(p);
@@ -87,17 +94,24 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
     return track(settled);
   };
 
-  const outcome = (pageId: string, reason: Reason, state: Pending, result: PageRevisionResult): void => {
+  /** Edits that arrived after `seen` are not covered by what the repository read: they stay owed, with a timer, and the authors already in the revision go. */
+  const settle = (pageId: string, state: Pending, seen: number): void => {
+    if (state.version === seen) { pending.delete(pageId); return; }
+    for (const [author, version] of state.authors) if (version <= seen) state.authors.delete(author);
+    state.deferred = undefined;
+  };
+
+  const outcome = (pageId: string, reason: Reason, state: Pending, seen: number, result: PageRevisionResult): void => {
     if (result.kind === 'created') {
-      pending.delete(pageId);
+      settle(pageId, state, seen);
       o.report.created(pageId, reason);
     } else if (result.kind === 'stale') {
       // One event per deferral, not one per attempt.
       if (state.deferred === undefined) o.report.deferred(pageId);
       state.deferred = reason;
     } else {
-      // Identical to the latest revision, no Markdown yet, or no page: nothing is owed for these edits.
-      pending.delete(pageId);
+      // Identical to the latest revision, no Markdown yet, or no page: nothing is owed for the edits the repository saw.
+      settle(pageId, state, seen);
     }
   };
 
@@ -107,11 +121,15 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
       if (state === undefined) return;
       timers.clearTimeout(state.timer);
       state.timer = undefined;
+      const seen = state.version;
+      const authorIds = [...state.authors.keys()];
+      const lastAuthorId = state.latest ?? null;
+      const at = state.lastEditAt;
       try {
         const result = await o.repo.createFromPage({
-          pageId, reason, authorIds: [...state.authors], lastAuthorId: state.latest ?? null, at: state.lastEditAt,
+          pageId, reason, authorIds, lastAuthorId, at,
         });
-        outcome(pageId, reason, state, result);
+        outcome(pageId, reason, state, seen, result);
       } catch (error) {
         // The edits stay owed: the next trigger tries again.
         o.report.failed(pageId, error instanceof Error ? error.name : 'unknown');
@@ -121,9 +139,10 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
   return {
     changed(pageId, userId) {
       const at = o.clock.now();
-      const state = pending.get(pageId) ?? { authors: new Set<string>(), latest: undefined, lastEditAt: at, timer: undefined, deferred: undefined };
+      const state = pending.get(pageId) ?? { authors: new Map<string, number>(), latest: undefined, version: 0, lastEditAt: at, timer: undefined, deferred: undefined };
+      state.version += 1;
       const editor = editorColumn(userId);
-      if (editor !== undefined) state.authors.add(editor);
+      if (editor !== undefined) state.authors.set(editor, state.version);
       state.latest = editor;
       state.lastEditAt = at;
       timers.clearTimeout(state.timer);
@@ -138,23 +157,35 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
       return pending.has(pageId) ? attempt(pageId, 'last_editor_left') : Promise.resolve();
     },
     opened() {
-      if (caughtUp) return;
+      if (caughtUp || o.clock.now() < retryAfter) return;
       caughtUp = true;
-      void track((async () => {
+      const run = async (): Promise<boolean> => {
         try {
           for (;;) {
             const made = await o.repo.catchUp(o.clock.now() - idleMs, CATCH_UP_BATCH);
             for (const m of made) o.report.created(m.pageId, 'idle');
-            if (made.length < CATCH_UP_BATCH) return;
+            if (made.length < CATCH_UP_BATCH) return true;
           }
         } catch (error) {
           o.report.failed('catch-up', error instanceof Error ? error.name : 'unknown');
+          return false;
         }
+      };
+      void track((async () => {
+        if (!(await run())) {
+          // The next page open tries again, after a pause.
+          caughtUp = false;
+          retryAfter = o.clock.now() + CATCH_UP_RETRY_MS;
+          return;
+        }
+        // Pages saved less than 5 minutes before the restart had no timer in this process: one more pass, when they have been quiet that long.
+        catchUpTimer = timers.setTimeout(() => { void track(run().then(() => undefined)); }, idleMs);
       })());
     },
     whenIdle: async () => { while (inFlight.size > 0) await Promise.all([...inFlight]); },
     stop() {
       for (const state of pending.values()) timers.clearTimeout(state.timer);
+      timers.clearTimeout(catchUpTimer);
     },
   };
 }

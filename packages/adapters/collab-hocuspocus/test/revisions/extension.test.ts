@@ -29,11 +29,11 @@ describe('the revisions extension', () => {
     expect(t.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle' })]);
     t.repo.setPage(PAGE, { title: 'T', markdown: 'two' });
     await t.ext.onChange?.(payload());
-    expect(t.timers.pending).toBe(1);
+    expect(t.timers.pending).toBe(2); // the page's timer and the catch-up's second pass
     await t.ext.afterStoreDocument?.(payload());
     await t.ext.afterUnloadDocument?.(payload());
     expect(t.repo.made(PAGE).map((r) => [r.reason, r.markdown, r.authors])).toEqual([['idle', 'one', [ANA]], ['last_editor_left', 'two', [ANA]]]);
-    expect(t.timers.pending).toBe(0);
+    expect(t.timers.pending).toBe(1); // the catch-up's second pass
   });
 
   it('reads the editor from the connection context, and takes a change with no context as no editor', async () => {

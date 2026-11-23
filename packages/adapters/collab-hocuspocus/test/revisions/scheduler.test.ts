@@ -95,6 +95,48 @@ describe('the 5-minute rule (R9.2)', () => {
   });
 });
 
+describe('an edit that arrives while a revision is being made', () => {
+  it('is not lost: it keeps its timer and makes its own revision, with only its own authors', async () => {
+    const b = build();
+    saved(b, 'before');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = b.repo.createFromPage.bind(b.repo);
+    b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
+    b.scheduler.changed(PAGE, ANA);
+    const firstEditAt = b.clock.now();
+    b.timers.advance(5 * MINUTE);
+    await vi.waitFor(() => { expect(b.repo.calls).toHaveLength(1); }); // the first revision read 'before' and waits at the gate
+    saved(b, 'after');
+    b.scheduler.changed(PAGE, BOB); // arrives while the first revision is still being written
+    release();
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ markdown: 'before', authors: [ANA], createdAt: firstEditAt })]);
+    expect(b.timers.pending).toBe(1);
+    b.timers.advance(5 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE).map((r) => [r.markdown, r.authors])).toEqual([['before', [ANA]], ['after', [BOB]]]);
+  });
+
+  it('is still owed when the page unloads before its timer: the last editor leaving makes the revision', async () => {
+    const b = build();
+    saved(b, 'before');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = b.repo.createFromPage.bind(b.repo);
+    b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
+    b.scheduler.changed(PAGE, ANA);
+    b.timers.advance(5 * MINUTE);
+    await vi.waitFor(() => { expect(b.repo.calls).toHaveLength(1); });
+    saved(b, 'after');
+    b.scheduler.changed(PAGE, ANA);
+    release();
+    await b.scheduler.whenIdle();
+    await b.scheduler.unloaded(PAGE);
+    expect(b.repo.made(PAGE).map((r) => [r.reason, r.markdown])).toEqual([['idle', 'before'], ['last_editor_left', 'after']]);
+  });
+});
+
 describe('the last editor leaving', () => {
   it('makes a revision with reason last_editor_left at once, and cancels the timer', async () => {
     const b = build();
@@ -196,6 +238,40 @@ describe('the catch-up after a restart (R9.3)', () => {
     expect(b.repo.calls).toEqual(['catchUp']);
   });
 
+  it('runs once more after 5 minutes for the pages saved just before the restart, which had no timer', async () => {
+    const b = build();
+    const recent = b.clock.now() - 3 * MINUTE;
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'saved just before the restart', lastEditedAt: recent, lastEditedBy: ANA });
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([]);
+    expect(b.timers.pending).toBe(1);
+    b.timers.advance(5 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle', createdAt: recent })]);
+    expect(b.repo.calls).toEqual(['catchUp', 'catchUp']);
+    b.timers.advance(60 * MINUTE);
+    await b.scheduler.whenIdle();
+    expect(b.repo.calls).toEqual(['catchUp', 'catchUp']);
+  });
+
+  it('tries again at a later page open after a failure, but not at once', async () => {
+    const b = build();
+    b.repo.setPage(PAGE, { title: 'T', markdown: 'text', lastEditedAt: b.clock.now() - 6 * MINUTE, lastEditedBy: ANA });
+    b.repo.failNext = new Error('database down');
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.events('collab.revision_failed')).toHaveLength(1);
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.repo.calls).toEqual(['catchUp']);
+    b.timers.advance(60_000);
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.repo.calls).toEqual(['catchUp', 'catchUp']);
+    expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'idle' })]);
+  });
+
   it('leaves a page saved less than 5 minutes ago to its own timer, and one that already has its revision alone', async () => {
     const b = build();
     b.repo.setPage(PAGE, { title: 'T', markdown: 'recent', lastEditedAt: b.clock.now() - 4 * MINUTE, lastEditedBy: ANA });
@@ -224,10 +300,12 @@ describe('the catch-up after a restart (R9.3)', () => {
 });
 
 describe('stopping', () => {
-  it('cancels every timer', () => {
+  it('cancels every timer, the catch-up\'s second pass included', async () => {
     const b = build();
     b.scheduler.changed(PAGE, ANA);
-    expect(b.timers.pending).toBe(1);
+    b.scheduler.opened();
+    await b.scheduler.whenIdle();
+    expect(b.timers.pending).toBe(2);
     b.scheduler.stop();
     expect(b.timers.pending).toBe(0);
   });
