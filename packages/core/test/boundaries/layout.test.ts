@@ -29,6 +29,7 @@ type Manifest = Partial<Record<(typeof dependencyFields)[number], Record<string,
 const sameCopy = "the converter must load the same copy as the schema package and the collaboration adapter; versions pinned identically";
 const allowedDuplicates: Record<string, string> = {
   "@hocuspocus/provider": "the collaboration adapter and its shared test client must use the same provider transport; versions pinned identically",
+  "@hocuspocus/server": "the shared test client's own test (connect.int.test.ts) needs a minimal in-process collaboration server of the same library the adapter runs; versions pinned identically",
   jose: "server exit tests sign Descope tokens with the same jose library used by the adapter to verify them, pinned identically",
   yjs: sameCopy,
   "@milkdown/core": sameCopy,

@@ -180,6 +180,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "@hocuspocus/provider": "4.8.0",
+        "@hocuspocus/server": "4.8.0",
         "@tektum/grimoire-core": "*",
         "yjs": "13.6.33",
       },
