@@ -155,11 +155,11 @@ services:
     security_opt: ["no-new-privileges:true"]
 
 # The runtime identity is rendered from .env, so no key is written twice in the repository. The admin identity comes from AWS_ACCESS_KEY_ID /
-# AWS_SECRET_ACCESS_KEY above (healthcheck and bucket setup); the runtime identity may only read, write and list the grimoire bucket.
+# AWS_SECRET_ACCESS_KEY above (healthcheck and bucket setup); the runtime identity may only read, write and list the configured bucket (`GRIMOIRE_S3_BUCKET`, default grimoire).
 configs:
   seaweedfs-identities:
     content: |
-      {"identities":[{"name":"app","credentials":[{"accessKey":"${GRIMOIRE_DEV_S3_APP_ACCESS_KEY:?copy GRIMOIRE_DEV_S3_APP_ACCESS_KEY from .env.example into .env}","secretKey":"${GRIMOIRE_DEV_S3_APP_SECRET_KEY:?copy GRIMOIRE_DEV_S3_APP_SECRET_KEY from .env.example into .env}"}],"actions":["Read:grimoire","Write:grimoire","List:grimoire"]}]}
+      {"identities":[{"name":"app","credentials":[{"accessKey":"${GRIMOIRE_DEV_S3_APP_ACCESS_KEY:?copy GRIMOIRE_DEV_S3_APP_ACCESS_KEY from .env.example into .env}","secretKey":"${GRIMOIRE_DEV_S3_APP_SECRET_KEY:?copy GRIMOIRE_DEV_S3_APP_SECRET_KEY from .env.example into .env}"}],"actions":["Read:${GRIMOIRE_S3_BUCKET:-grimoire}","Write:${GRIMOIRE_S3_BUCKET:-grimoire}","List:${GRIMOIRE_S3_BUCKET:-grimoire}"]}]}
 
 volumes:
   grimoire-pgdata:

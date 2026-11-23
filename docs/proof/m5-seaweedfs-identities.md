@@ -15,6 +15,6 @@ The measurement is the Compose integration check in CI: it signs requests with t
 ## Result
 
 - `admin`: the existing development pair (`GRIMOIRE_DEV_S3_*`), used by the healthcheck and bucket setup.
-- `app`: `GRIMOIRE_DEV_S3_APP_*`, rendered from `.env` through a top-level `configs:` entry; actions `Read:grimoire`, `Write:grimoire`, `List:grimoire`.
+- `app`: `GRIMOIRE_DEV_S3_APP_*`, rendered from `.env` through a top-level `configs:` entry; actions `Read`, `Write` and `List` on `GRIMOIRE_S3_BUCKET` (default `grimoire`).
 - The app service receives only the `app` pair. No file with a key value is committed other than `.env.example`.
 - An existing `.env` without the two new variables makes Compose stop with a message naming them.

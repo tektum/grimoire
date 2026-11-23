@@ -12,7 +12,7 @@ const env = Object.fromEntries(
 const admin = { id: env.GRIMOIRE_DEV_S3_ACCESS_KEY ?? '', secret: env.GRIMOIRE_DEV_S3_SECRET_KEY ?? '' };
 const app = { id: env.GRIMOIRE_DEV_S3_APP_ACCESS_KEY ?? '', secret: env.GRIMOIRE_DEV_S3_APP_SECRET_KEY ?? '' };
 const HOST = '127.0.0.1:8333';
-const BUCKET = 'grimoire';
+const BUCKET = env.GRIMOIRE_S3_BUCKET || 'grimoire';
 const CORS = '<CORSConfiguration><CORSRule><AllowedOrigin>http://localhost</AllowedOrigin><AllowedMethod>GET</AllowedMethod></CORSRule></CORSConfiguration>';
 
 const sha = (d: string | Buffer): string => createHash('sha256').update(d).digest('hex');

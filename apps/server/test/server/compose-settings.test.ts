@@ -92,7 +92,7 @@ it('the runtime identity is rendered from .env, may only read, write and list th
     readFileSync(path.join(root, '.env.example'), 'utf8').split('\n').filter((l) => /^[A-Z0-9_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
   );
   expect(compose).toContain('-s3.config=/etc/seaweedfs/s3.json');
-  expect(compose).toContain('"actions":["Read:grimoire","Write:grimoire","List:grimoire"]');
+  expect(compose).toContain('"actions":["Read:${GRIMOIRE_S3_BUCKET:-grimoire}","Write:${GRIMOIRE_S3_BUCKET:-grimoire}","List:${GRIMOIRE_S3_BUCKET:-grimoire}"]');
   for (const v of ['ACCESS', 'SECRET']) {
     expect(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]).toBeTruthy();
     expect(env[`GRIMOIRE_DEV_S3_APP_${v}_KEY`]).not.toBe(env[`GRIMOIRE_DEV_S3_${v}_KEY`]);
