@@ -289,8 +289,9 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const c = open(r, p, await issuer.token('T7outage'));
     await authed(c);
     // Authenticated is not tracked: the server registers the connection for re-checks (and starts the round timer) only once the document has loaded,
-    // a database read. A stall that begins before that leaves no round to fail. A round that asked the store about the connection proves it is tracked.
-    await eventually(() => r.facts.length >= 1, ROUND_BUDGET_MS, 'a round checked the connection');
+    // a database read. A stall that begins before that leaves no round to fail. A round that asked the store after sign-in proves it is tracked.
+    const atSignIn = r.facts.length; // sign-in itself asks the store once; only a later call is a round
+    await eventually(() => r.facts.length > atSignIn, ROUND_BUDGET_MS, 'a round checked the connection');
     proxy.stall();
     const failures = (): number => r.logger.entries.filter((e) => e.event === 'collab.recheck_skipped').length;
     await eventually(() => failures() >= 1, ROUND_BUDGET_MS, 'a round failed');
