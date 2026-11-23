@@ -62,7 +62,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
-  app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.signInPolicy, ctx.http));
+  app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http));
   for (const router of routers) app.route('/', router);
   return app;
 }

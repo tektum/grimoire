@@ -22,7 +22,7 @@ function build(s: Setup = {}) {
   const users = new FakeUserStore(s.rows ?? [row()]);
   const lookups = vi.spyOn(users, 'findByDescopeId');
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: false };
-  const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
+  const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger: t.logger });
   const ctx = { ...t.ctx, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, users, provisioner } };
   const app = createApp(ctx);
   const seen: { identity: Identity | undefined; user: UserRecord | undefined }[] = [];
@@ -132,6 +132,13 @@ describe('suspended and returning users', () => {
     const refused = t.logger.entries.filter((e) => e.event === 'users.refused');
     expect(refused).toHaveLength(1);
     expect(refused[0]).toMatchObject({ level: 'warn', fields: { reason: 'domain-not-allowed' } });
+  });
+
+  it('refuses a suspended user with account_suspended even when the domain is no longer allowed', async () => {
+    const { app } = build({ rows: [row({ suspended: true, email: 'ann@removed.example' })] });
+    const res = await get(app, '/v1/things', `Bearer ${TOKEN}`);
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('account_suspended');
   });
 
   it('refuses a returning user whose claims carry a profile outside the allowed domains', async () => {
