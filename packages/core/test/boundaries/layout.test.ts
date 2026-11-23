@@ -9,7 +9,7 @@ const expectedNames = [
   "@tektum/grimoire-editor-schema",
   "@tektum/grimoire-api-client",
   "@tektum/grimoire-web",
-  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown"].map(
+  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss"].map(
 
     (a) => `@tektum/grimoire-adapter-${a}`,
   ),
@@ -29,6 +29,7 @@ type Manifest = Partial<Record<(typeof dependencyFields)[number], Record<string,
 const sameCopy = "the converter must load the same copy as the schema package and the collaboration adapter; versions pinned identically";
 const allowedDuplicates: Record<string, string> = {
   "@hocuspocus/provider": "the collaboration adapter and its shared test client must use the same provider transport; versions pinned identically",
+  "@hocuspocus/server": "the shared test client's own test (connect.int.test.ts) needs a minimal in-process collaboration server of the same library the adapter runs; versions pinned identically",
   jose: "server exit tests sign Descope tokens with the same jose library used by the adapter to verify them, pinned identically",
   yjs: sameCopy,
   "@milkdown/core": sameCopy,
@@ -38,6 +39,8 @@ const allowedDuplicates: Record<string, string> = {
   "y-prosemirror": "editor-schema tests write the Yjs fragment (y-prosemirror); the converter reads it at run time",
   "@milkdown/plugin-collab": "editor-schema two-editors and fragment-name tests bind the collab plugin; converter parity tests too",
   "happy-dom": "editor-schema tests run a real editor, which needs a DOM; converter parity tests too",
+  zod: "one copy, same pin as the other declaration",
+  "rate-limiter-flexible": "one copy, same pin as the other declaration",
 };
 
 function allManifests(): { file: string; manifest: Manifest }[] {
@@ -149,5 +152,16 @@ describe("repository layout", () => {
     for (const name of Object.keys(allowedDuplicates)) if ((places.get(name)?.size ?? 0) > 1) expect([...(specs.get(name) ?? [])], `${name} must have one version everywhere`).toHaveLength(1);
     const duplicates = [...places].filter(([name, files]) => files.size > 1 && !allowedDuplicates[name]);
     expect(duplicates.map(([name, files]) => `${name}: ${[...files].join(", ")}`)).toEqual([]);
+  });
+});
+
+describe("test:conformance script", () => {
+  const script = (JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts["test:conformance"] ?? "";
+
+  it("filters on the word, passes with no match yet, and never runs the container or benchmark projects", () => {
+    expect(script).toMatch(/\bconformance$/);
+    expect(script).toContain("--passWithNoTests");
+    expect(script).toContain("--project unit");
+    expect(script).not.toMatch(/container|benchmark/);
   });
 });
