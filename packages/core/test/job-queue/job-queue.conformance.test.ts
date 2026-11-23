@@ -6,7 +6,7 @@ import { jobQueueCaseNames, jobQueueConformance, type JobQueueHarness } from '..
 function harness(): JobQueueHarness {
   const database = new FakeDatabase();
   const queue = new FakeJobQueue(database);
-  return { queue, database, advance: (s) => queue.advance(s), crashWorkers: async () => queue.crashWorkers() };
+  return { queue, database, advance: (s) => queue.advance(s), crashWorkers: async () => { queue.crashWorkers(); return queue; } };
 }
 
 describe('FakeJobQueue conformance (same cases as the pg-boss adapter)', () => {

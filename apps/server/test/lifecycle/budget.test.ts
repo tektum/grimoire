@@ -1,10 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_STOP_GRACE_MS } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { DERIVED_BUDGETS_MS, SHUTDOWN_BUDGET_MS, overallShutdownDeadlineMs, requiredGracePeriodMs, shutdownPhaseSumMs } from '../../src/lifecycle/budget.js';
 
 describe('one shutdown deadline budget', () => {
   it('has no literal 5000 or 4000 deadlines in wiring code', () => {
     expect(() => execFileSync('grep', ['-rn', '5000\\|4000', 'apps/server/src/lifecycle/run.ts', 'apps/server/src/composition.ts', 'apps/server/src/collab/index.ts'], { stdio: 'pipe' })).toThrow();
+  });
+
+  it('the job queue\'s default stop timeout fits inside the release-jobs step', () => {
+    expect(DEFAULT_STOP_GRACE_MS).toBeLessThanOrEqual(DERIVED_BUDGETS_MS.releaseJobs);
   });
 
   it('derives the hook deadlines from the table', () => {

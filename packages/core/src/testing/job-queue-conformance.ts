@@ -3,16 +3,17 @@ import type { Database } from '../ports/database.js';
 import type { JobQueue } from '../ports/job-queue.js';
 
 /**
- * What a conformance case needs besides the queue. `advance` lets time pass and returns once every job that is
- * due by then has run to completion (the fake moves a virtual clock; the real adapter waits for its workers).
- * `crashWorkers` stops every worker without letting running jobs finish; registering `work` again afterwards
- * starts new workers. Every case uses its own queue names, so the cases do not disturb each other.
+ * What a conformance case needs besides the queue. `advance(seconds, until)` lets time pass: the fake moves a
+ * virtual clock by `seconds` and runs what is due (it ignores `until`); a real queue cannot skip time, so it
+ * waits until `until()` is true instead (and fails when that takes much longer than `seconds`); when no `until` is
+ * given it lets `seconds` of real time pass, so that something that should not happen has the time to. `crashWorkers` kills every worker without letting running jobs finish and returns
+ * the queue to use afterwards (jobs that were running are given back to it). Every case uses its own queue names.
  */
 export interface JobQueueHarness {
   readonly queue: JobQueue;
   readonly database: Database;
-  advance(seconds: number): Promise<void>;
-  crashWorkers(): Promise<void>;
+  advance(seconds: number, until?: () => boolean): Promise<void>;
+  crashWorkers(): Promise<JobQueue>;
 }
 
 export interface JobQueueCase { readonly name: string; run(h: JobQueueHarness): Promise<void> }
@@ -27,7 +28,7 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       await queue.work<{ n: number }>('c-enqueue', async (p) => { seen.push(p); });
       const id = await queue.enqueue('c-enqueue', { n: 1 });
       assert.equal(typeof id, 'string');
-      await advance(1);
+      await advance(1, () => seen.length === 1);
       assert.deepEqual(seen, [{ n: 1 }]);
     },
   },
@@ -39,7 +40,7 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       await queue.enqueue('c-delay', {}, { delaySeconds: 5 });
       await advance(1);
       assert.equal(runs, 0, 'must not run before the delay has passed');
-      await advance(10);
+      await advance(10, () => runs === 1);
       assert.equal(runs, 1);
     },
   },
@@ -52,12 +53,18 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
         if (ctx.attempt < 3) throw new Error('not yet');
       });
       await queue.enqueue('c-retry', {}, { retryLimit: 2 });
-      await advance(30);
+      await advance(30, () => attempts.length === 3);
       assert.deepEqual(attempts, [1, 2, 3]);
+      let unasked = 0;
+      await queue.work('c-retry-default', async () => { unasked++; throw new Error('always'); });
+      await queue.enqueue('c-retry-default', {});
+      await advance(30, () => unasked >= 1);
+      await advance(5); // a failing job without a retry limit is not run again
+      assert.equal(unasked, 1);
       let exhausted = 0;
       await queue.work('c-retry-exhausted', async () => { exhausted++; throw new Error('always'); });
       await queue.enqueue('c-retry-exhausted', {}, { retryLimit: 1 });
-      await advance(30);
+      await advance(30, () => exhausted === 2);
       assert.equal(exhausted, 2, 'one run plus one retry, then the job is given up');
     },
   },
@@ -70,7 +77,7 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       const second = await queue.enqueue('c-singleton', {}, { singletonKey: 'k', delaySeconds: 5 });
       assert.equal(typeof first, 'string');
       assert.equal(second, null);
-      await advance(30);
+      await advance(30, () => runs === 1);
       assert.equal(runs, 1);
     },
   },
@@ -80,23 +87,25 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       let runs = 0;
       await queue.work('c-schedule', async () => { runs++; });
       await queue.schedule('c-schedule', '* * * * *');
-      await advance(125);
-      assert.ok(runs >= 1, 'a every-minute schedule fires within two minutes');
+      await advance(125, () => runs >= 1);
+      assert.ok(runs >= 1, 'an every-minute schedule fires within two minutes');
     },
   },
   {
     name: 'crash-rerun',
     async run({ queue, advance, crashWorkers }) {
       const attempts: string[] = [];
+      let fresh: JobQueue | undefined;
       await queue.work('c-crash', async () => {
         attempts.push('first');
-        await crashWorkers();
+        fresh = await crashWorkers();
         throw new Error('the worker died');
       });
-      await queue.enqueue('c-crash', {});
-      await advance(1);
-      await queue.work('c-crash', async () => { attempts.push('second'); });
-      await advance(120);
+      await queue.enqueue('c-crash', {}, { retryLimit: 1 });
+      await advance(1, () => fresh !== undefined);
+      assert.ok(fresh, 'the first run crashed the workers');
+      await fresh.work('c-crash', async () => { attempts.push('second'); });
+      await advance(120, () => attempts.length === 2);
       assert.deepEqual(attempts, ['first', 'second']);
     },
   },
@@ -113,7 +122,7 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
         /boom/,
       );
       await database.transaction(async (tx) => { await queue.enqueue('c-tx', { v: 'committed' }, {}, tx); });
-      await advance(5);
+      await advance(5, () => seen.length >= 1);
       assert.deepEqual(seen, ['committed']);
     },
   },
