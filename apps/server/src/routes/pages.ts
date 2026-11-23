@@ -181,6 +181,8 @@ router.openapi(movePage, async (c) => {
   const { pages, ordering } = c.get('deps');
   const current = await pages.get(id);
   if (current === undefined) return fail('not_found');
+  // The page may have changed collection since the page check: write access is checked on the collection read here, the one the move is bound to.
+  await guardCollection(c, current.collectionId, 'write');
   // Moving into another collection needs write access there as well (R6.25).
   if (body.collectionId !== undefined && body.collectionId !== current.collectionId) await guardCollection(c, body.collectionId, 'write');
   const result = await pages.move(

@@ -500,6 +500,21 @@ describe('POST /v1/pages/{id}/move', () => {
     expect(((await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.shared2.id);
   });
 
+  it('checks write access on the collection the page is in when the move starts, not the one it was in at the page check', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const get = b.pages.get.bind(b.pages);
+    const original = b.pages.move.bind(b.pages);
+    // After the page check another user moves the page into a collection the caller can only read.
+    b.pages.get = async (id) => {
+      await original(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(id);
+    };
+    const res = await move(b, page.id, { parentId: null });
+    expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
+    expect(((await (await b.call('admin', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.open.id);
+  });
+
   it('answers what the repository found when things change between the check and the move', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.shared.id });
