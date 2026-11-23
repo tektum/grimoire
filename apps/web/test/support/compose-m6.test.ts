@@ -28,7 +28,8 @@ describe('compose.m6.yaml', () => {
     for (const [setting, [variable, fallback, inSettings]] of Object.entries(mapping)) {
       expect([setting, environment[setting]]).toEqual([setting, `\${${variable}:-${fallback}}`]);
       // Each default equals the default the settings loader applies, so the overlay changes nothing on its own.
-      expect(settings).toMatch(new RegExp(`${setting}: field\\([^\\n]*\\)\\.default\\(${inSettings.replace(/\./g, '\\.')}\\)`));
+      const line = settings.split('\n').find((l) => l.trimStart().startsWith(`${setting}: field(`)) ?? '';
+      expect([setting, line.trimEnd().endsWith(`.default(${inSettings}),`)]).toEqual([setting, true]);
     }
   });
 
