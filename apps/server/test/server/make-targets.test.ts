@@ -20,8 +20,10 @@ describe('the Makefile', () => {
 
   it('runs the settings test and validates both Compose file sets in check-compose', () => {
     const body = makefile.slice(makefile.indexOf('\ncheck-compose:'), makefile.indexOf('\nmigrate:'));
-    expect(body).toContain('compose-settings.test.ts');
-    expect(body).toContain('config --quiet');
-    expect(body).toContain('-f compose.yaml -f compose.m3.yaml config --quiet');
+    const recipe = body.split('\n').map((l) => l.trim());
+    expect(recipe.some((l) => l.includes('compose-settings.test.ts'))).toBe(true);
+    // Whole lines: the line of the second set also contains `config --quiet`, so a substring would pass with the first one gone.
+    expect(recipe).toContain('$(COMPOSE) config --quiet');
+    expect(recipe).toContain('$(COMPOSE) -f compose.yaml -f compose.m3.yaml config --quiet');
   });
 });
