@@ -30,7 +30,7 @@ const opened = (s: WebSocket): Promise<void> => new Promise((resolve) => { s.add
 /** The upgrade of an eleventh socket, by hand so that the HTTP status of the refusal is visible. */
 function upgradeStatus(): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port: server.port, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64'), Origin: ALLOWED_ORIGIN, 'X-Forwarded-For': ADDRESS } });
+    const req = request({ host: '127.0.0.1', port: server.port, path: '/collab', headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64'), Origin: ALLOWED_ORIGIN, 'X-Forwarded-For': ADDRESS } });
     req.on('response', (res) => { res.resume(); resolve(res.statusCode ?? 0); });
     req.on('upgrade', (_res, socket) => { socket.destroy(); resolve(101); });
     req.on('error', reject);
@@ -44,7 +44,8 @@ describe('pre-sign-in rules for one address, real clock (U1)', () => {
     const ten = Array.from({ length: 10 }, connect);
     await Promise.all(ten.map(opened));
     expect(await upgradeStatus()).toBe(429);
-    expect(server.events.some((e) => e.event === 'collab.upgrade_refused' && e.reason === 'unauthenticated-sockets')).toBe(true);
+    // The log line travels over the child's stdout, the 429 over a socket: wait for the event instead of reading it once.
+    await vi.waitFor(() => { expect(server.events.some((e) => e.event === 'collab.upgrade_refused' && e.reason === 'unauthenticated-sockets')).toBe(true); }, { timeout: 2000 });
 
     // The rule's own 3 s (the sign-in comes before the 5 s default timeout); the server's clock is real and in a child process, so the test follows the wall clock.
     await vi.waitFor(() => { expect(Date.now() - start).toBeGreaterThanOrEqual(3000); }, { timeout: 4000, interval: 50 });
