@@ -51,6 +51,15 @@ const PatchBody = z
   .refine((body) => Object.keys(body).length > 0)
   .openapi('PatchPage');
 
+const MoveBody = z
+  .object({
+    collectionId: z.string().uuid().optional(),
+    parentId: z.string().uuid().nullable(),
+    afterId: z.string().uuid().nullable().optional(),
+  })
+  .strict()
+  .openapi('MovePage');
+
 const CreateBody = z
   .object({
     collectionId: z.string().uuid(),
@@ -92,6 +101,13 @@ export const patchPage = defineRoute({
   policy: { kind: 'page', param: 'id', need: 'write' },
   request: { params: IdParam, body: { required: true, content: { 'application/json': { schema: PatchBody } } } },
   responses: { 200: json(PageMetaSchema, 'The page after the change') },
+});
+
+export const movePage = defineRoute({
+  method: 'post', path: '/v1/pages/{id}/move', operationId: 'movePage', summary: 'Move a page with its subtree', tags: ['pages'],
+  policy: { kind: 'page', param: 'id', need: 'write' },
+  request: { params: IdParam, body: { required: true, content: { 'application/json': { schema: MoveBody } } } },
+  responses: { 200: json(PageMetaSchema, 'The page in its new place'), 409: json(ErrorBody, 'Under itself, too deep, the target collection is full or deleted, or a concurrent change') },
 });
 
 /**
@@ -156,6 +172,34 @@ router.openapi(patchPage, async (c) => {
   await guardPage(c, id, 'write');
   const page = await c.get('deps').pages.updateMeta(id, c.req.valid('json'));
   return page === undefined ? fail('not_found') : c.json(page, 200);
+});
+
+router.openapi(movePage, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  await guardPage(c, id, 'write');
+  const { pages, ordering } = c.get('deps');
+  const current = await pages.get(id);
+  if (current === undefined) return fail('not_found');
+  // Moving into another collection needs write access there as well (R6.25).
+  if (body.collectionId !== undefined && body.collectionId !== current.collectionId) await guardCollection(c, body.collectionId, 'write');
+  const result = await pages.move(
+    id,
+    { collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null },
+    PAGE_LIMITS,
+    (before, after) => ordering.between(before, after),
+  );
+  switch (result.kind) {
+    case 'moved': return c.json(result.page, 200);
+    case 'not-found': return fail('not_found');
+    case 'no-parent': return fail('not_found');
+    case 'collection-deleted': return fail('collection_deleted');
+    case 'no-after': return fail('invalid');
+    case 'would-create-cycle': return fail('would_create_cycle');
+    case 'too-deep': return fail('too_deep');
+    case 'collection-full': return fail('collection_full');
+    case 'conflict': return fail('conflict');
+  }
 });
 
 export default router;

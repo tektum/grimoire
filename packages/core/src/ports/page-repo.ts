@@ -57,6 +57,26 @@ export type CreatePageResult =
   | { readonly kind: 'too-deep' }
   | { readonly kind: 'collection-full' };
 
+/** Where a page goes (R6.25). `collectionId` null: it stays in its collection. `afterId` null: last among the new siblings. */
+export interface PageMove {
+  readonly collectionId: string | null;
+  readonly parentId: string | null;
+  readonly afterId: string | null;
+}
+
+export type MovePageResult =
+  | { readonly kind: 'moved'; readonly page: PageMeta }
+  /** The page is not live (or its collection is deleted). */
+  | { readonly kind: 'not-found' }
+  | { readonly kind: 'collection-deleted' }
+  | { readonly kind: 'no-parent' }
+  | { readonly kind: 'no-after' }
+  | { readonly kind: 'would-create-cycle' }
+  | { readonly kind: 'too-deep' }
+  | { readonly kind: 'collection-full' }
+  /** Concurrent changes kept the transaction from committing after its retries. */
+  | { readonly kind: 'conflict' };
+
 /** Pages and the page tree. */
 export interface PageRepo {
   /**
@@ -75,4 +95,11 @@ export interface PageRepo {
    * transaction, so an editor save with identical content that follows is a skip (R4.21). Undefined when the page is not live.
    */
   updateMeta(id: string, patch: PageMetaPatch): Promise<PageMeta | undefined>;
+  /**
+   * Moves a live page with its whole subtree (deleted descendants too, so every parent link stays inside one collection) in one
+   * serializable transaction, retried at most three times when the database aborts it. The collection rows involved are locked first,
+   * in id order. Refuses a target under the page itself or one of its descendants, the level after the deepest (the whole moved subtree
+   * counts), and a target collection the subtree would take above `maxPages`.
+   */
+  move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult>;
 }
