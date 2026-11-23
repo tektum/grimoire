@@ -67,7 +67,7 @@ describe('Config.files', () => {
     },
   );
 
-  it.each(['application/x-javascript', 'application/ecmascript', 'text/ecmascript', 'text/x-javascript', 'application/rss+xml', 'application/atom+xml'])(
+  it.each(['application/x-javascript', 'application/ecmascript', 'text/ecmascript', 'text/x-javascript', 'text/javascript1.0', 'text/javascript1.5', 'text/jscript', 'text/livescript', 'application/rss+xml', 'application/atom+xml'])(
     'refuses the script or XML family member %s',
     (type) => {
       expect(issuesOf({ GRIMOIRE_FILES_ALLOWED_TYPES: type }).join('\n')).toContain('GRIMOIRE_FILES_ALLOWED_TYPES');

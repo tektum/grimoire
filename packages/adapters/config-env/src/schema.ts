@@ -99,7 +99,7 @@ const DEFAULT_TYPES = [
   'application/zip', 'video/mp4', 'video/webm',
 ];
 // Script and XML families as well as the exact names: a browser runs (or renders as XML, with scripts) every one of them inline.
-const executableType = (t: string): boolean => FORBIDDEN_TYPES.includes(t) || /(^|\/)(x-)?(java|ecma)script$|[+/]xml$/.test(t);
+const executableType = (t: string): boolean => FORBIDDEN_TYPES.includes(t) || /(^|\/)(x-)?(java|ecma)script$|^text\/(javascript1\.[0-5]|jscript|livescript)$|[+/]xml$/.test(t);
 const mime = z.string(msg(MIME_RULE)).regex(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/, msg(MIME_RULE));
 
 
