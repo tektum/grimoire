@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, type RouteObject, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(cleanup);
@@ -66,7 +66,8 @@ describe('Shell error boundary', () => {
     };
     const routes = routeObjects();
     const children = routes[0]!.children!;
-    const router = createMemoryRouter([{ ...routes[0]!, children: [{ path: '/boom', element: <Bad /> }, ...children] }], { initialEntries: ['/boom'] });
+    const withBoom: RouteObject = { path: '/', element: routes[0]!.element, children: [{ path: '/boom', element: <Bad /> }, ...children] };
+    const router = createMemoryRouter([withBoom], { initialEntries: ['/boom'] });
     render(<RouterProvider router={router} />);
     expect(screen.getByRole('alert')).toBeTruthy();
     screen.getByRole('link', { name: 'Trash' }).click();
