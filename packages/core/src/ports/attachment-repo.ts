@@ -54,7 +54,7 @@ export interface AttachmentRepo {
   get(id: string): Promise<AttachmentRow | undefined>;
   /** The rows that exist among `ids`, in no particular order. */
   getMany(ids: readonly string[]): Promise<readonly AttachmentRow[]>;
-  /** Pending to ready: `readyAt` is `now`, `expiresAt` is null. Undefined when the row is not pending (already ready, or gone). */
+  /** Pending to ready: `readyAt` is `now`, `expiresAt` is null. Undefined when the row is not pending (already ready, or gone) or has expired by `now`: an expired upload never completes, so a clean-up that has begun cannot lose an object to a completion that is still under way. */
   markReady(id: string, now: number): Promise<AttachmentRow | undefined>;
   /** Deletes a row whatever its state (an upload that was refused). */
   remove(id: string): Promise<void>;

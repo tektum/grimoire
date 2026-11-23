@@ -91,6 +91,11 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
       assert.deepEqual(await h.repo.get(made.row.id), ready);
       assert.equal(await h.repo.markReady(made.row.id, h.now + 9), undefined, 'a ready row is not made ready again');
       assert.equal(await h.repo.markReady(randomUUID(), h.now), undefined);
+      // An expired row never becomes ready.
+      const late = await h.repo.createPending(pending(h, { uploaderId: h.otherUserId, expiresAt: h.now + 10 }), 100, h.now);
+      if (late.kind !== 'created') throw new Error('setup');
+      assert.equal(await h.repo.markReady(late.row.id, h.now + 10), undefined);
+      assert.equal((await h.repo.get(late.row.id))?.status, 'pending');
     },
   },
   {
@@ -119,7 +124,7 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
       const [first, second, third, live] = [await make(t - 3000), await make(t - 2000), await make(t - 1000), await make(t + 1000)];
       for (const r of [first, second, third, live]) assert.equal(r.kind, 'created');
       if (first.kind !== 'created' || second.kind !== 'created' || third.kind !== 'created' || live.kind !== 'created') return;
-      await h.repo.markReady(third.row.id, t - 500); // a ready row is never listed, whatever its old expiry
+      await h.repo.markReady(third.row.id, t - 1500); // completed before it expired: a ready row is never listed
       const listed = (await h.repo.expiredPending(t, 100)).filter((r) => [first, second, third, live].some((x) => x.kind === 'created' && x.row.id === r.id));
       assert.deepEqual(listed.map((r) => r.id), [first.row.id, second.row.id]);
       const limited = (await h.repo.expiredPending(t - 2500, 1)).filter((r) => r.id === first.row.id);

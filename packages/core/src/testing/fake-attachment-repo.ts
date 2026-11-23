@@ -38,7 +38,7 @@ export class FakeAttachmentRepo implements AttachmentRepo {
   }
 
   markReady(id: string, now: number): Promise<AttachmentRow | undefined> {
-    const index = this.rows.findIndex((r) => r.id === id && r.status === 'pending');
+    const index = this.rows.findIndex((r) => r.id === id && r.status === 'pending' && r.expiresAt !== null && r.expiresAt > now);
     if (index < 0) return Promise.resolve(undefined);
     const ready: AttachmentRow = { ...(this.rows[index] as AttachmentRow), status: 'ready', readyAt: now, expiresAt: null };
     this.rows[index] = ready;
