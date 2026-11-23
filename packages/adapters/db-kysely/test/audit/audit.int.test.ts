@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAudit } from '../../src/audit.js';
 import { createCollections } from '../../src/collections.js';
@@ -79,15 +79,32 @@ describe('the audit row of a collection change', () => {
     ]);
   });
 
-  it('simultaneous first grants to one principal record a previous permission of null only once', async () => {
+  it('first grants to one principal wait for each other on the collection, so only the first records a previous permission of null', async () => {
     const repo = createCollections(t.app);
     const c = await repo.append({ name: 'acl-race', createdBy: admin }, after);
     const group = await addGroup(t.app, 'Racers');
-    await Promise.all(['read', 'read_write', 'read', 'read_write'].map((permission) =>
+    // Another transaction holds the collection; the grants are started while it does, and must queue behind it (a lock that is missing fails the wait).
+    let release!: () => void;
+    let held!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    const holder = t.app.transaction(async (tx) => {
+      await tx.query(`select 1 from collections where id = $1 for update`, [c.id]);
+      held();
+      await gate;
+    });
+    await locked;
+    const grants = Promise.all(['read', 'read_write', 'read', 'read_write'].map((permission) =>
       repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: permission as 'read' }, admin)));
+    await vi.waitFor(async () => {
+      const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+      expect(Number(waiting[0]?.n)).toBe(4);
+    });
+    release();
+    await Promise.all([holder, grants]);
     const rows = await t.admin.query<{ detail: { previousPermission: string | null } }>(`select detail from audit_events where target_id = $1 order by id`, [c.id]);
-    expect(rows.map((r) => r.detail.previousPermission).filter((p) => p === null)).toHaveLength(1);
     expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r.detail.previousPermission).filter((p) => p === null)).toHaveLength(1);
   });
 
   it('a failed upsert leaves no audit row', async () => {
