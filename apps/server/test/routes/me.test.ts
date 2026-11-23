@@ -9,7 +9,7 @@ import { makeContext } from '../server/support/context.js';
 const TOKEN = 'tok-secret-123';
 const PROFILE: Profile = { email: 'ann@example.com', name: 'Ann', emailVerified: true };
 
-interface Setup { rows?: UserRecord[]; claims?: Profile; fetched?: ProfileResult; subject?: string; admins?: string[]; domains?: string[]; invalid?: boolean }
+interface Setup { rows?: UserRecord[]; claims?: Profile; fetched?: ProfileResult; subject?: string; admins?: string[]; domains?: string[]; invalid?: boolean; local?: boolean; devRole?: 'admin' | 'viewer' | 'member' }
 
 function build(s: Setup = {}) {
   const t = makeContext();
@@ -20,11 +20,13 @@ function build(s: Setup = {}) {
     profile,
   };
   const users = new FakeUserStore(s.rows ?? []);
-  const signInPolicy = { firstAdminEmails: s.admins ?? [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: s.admins ?? [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: s.local ?? true };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger: t.logger });
-  const app = createApp({ ...t.ctx, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, users, provisioner } });
+  const roleOf = vi.fn(() => s.devRole);
+  const config = { ...t.ctx.config, local: s.local ?? true };
+  const app = createApp({ ...t.ctx, config, auth: { verifier, roles: { devOnly: true, roleOf } }, signInPolicy, http: { ...t.ctx.http, config, users, provisioner } });
   const me = () => app.request('/v1/me', { headers: { authorization: `Bearer ${TOKEN}` } });
-  return { app, users, profile, me };
+  return { app, users, profile, me, roleOf };
 }
 
 const stored = (over: Partial<UserRecord> = {}): UserRecord => ({ id: 'u1', descopeUserId: 'd1', email: 'ann@example.com', name: 'Ann', role: 'member', suspended: false, ...over });
@@ -132,5 +134,25 @@ describe('GET /v1/me', () => {
     const { app } = build({ rows: [stored()] });
     const res = await app.request('/v1/pages/p1/state', { headers: { authorization: `Bearer ${TOKEN}` } });
     expect([res.status, await code(res)]).toEqual([404, 'not_found']);
+  });
+
+  it('creates the user with the development role of the token in local mode', async () => {
+    const { me } = build({ claims: PROFILE, devRole: 'viewer' });
+    expect(((await (await me()).json()) as { role: string }).role).toBe('viewer');
+  });
+
+  it('syncs a changed development role of a returning user in local mode', async () => {
+    const { me, users } = build({ rows: [stored()], devRole: 'admin' });
+    expect(((await (await me()).json()) as { role: string }).role).toBe('admin');
+    expect(users.all()[0]?.role).toBe('admin');
+  });
+
+  it('never consults the development role outside local mode', async () => {
+    const created = build({ claims: PROFILE, devRole: 'admin', local: false });
+    expect(((await (await created.me()).json()) as { role: string }).role).toBe('member');
+    const returning = build({ rows: [stored()], devRole: 'admin', local: false });
+    expect(((await (await returning.me()).json()) as { role: string }).role).toBe('member');
+    expect(created.roleOf).not.toHaveBeenCalled();
+    expect(returning.roleOf).not.toHaveBeenCalled();
   });
 });

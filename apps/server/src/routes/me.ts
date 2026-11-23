@@ -29,8 +29,9 @@ router.openapi(getMe, async (c) => {
   let user = c.get('user');
   if (user === undefined) {
     const identity = c.get('identity');
+    const devRole = c.get('devRole');
     if (identity === undefined) return errorResponse('unauthenticated') as never;
-    const result = await provisioner.signIn({ identity });
+    const result = await provisioner.signIn({ identity, ...(devRole === undefined ? {} : { devRole }) });
     if (result.kind === 'refused') {
       const unavailable = result.reason === 'profile-unavailable' || result.reason === 'profile-missing';
       return errorResponse(unavailable ? 'unavailable' : 'not_allowed') as never;

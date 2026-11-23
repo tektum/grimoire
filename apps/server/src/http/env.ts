@@ -4,7 +4,7 @@ import type { Authorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
-import type { UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
+import type { Role, UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
 import type { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import type { IdempotencyStore } from '@tektum/grimoire-core/ports/idempotency-store';
 import type { CollectionRepo } from '@tektum/grimoire-core/ports/collection-repo';
@@ -43,4 +43,4 @@ export interface HttpDeps {
   readonly pageState: PageStateRepo;
 }
 
-export type AppEnv = { Variables: { deps: HttpDeps; identity?: Identity; user?: UserRecord } };
+export type AppEnv = { Variables: { deps: HttpDeps; identity?: Identity; user?: UserRecord; devRole?: Role } };

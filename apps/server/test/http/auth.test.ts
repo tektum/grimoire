@@ -18,6 +18,7 @@ function build(s: Setup = {}) {
   const calls: string[] = [];
   const verifier: AuthVerifier = {
     verify: (token) => { calls.push(token); return Promise.resolve(s.result ?? { kind: 'ok', userId: 'd1', expiresAt: 9e12 }); },
+    profile: () => Promise.resolve({ kind: 'ok', profile: PROFILE }),
   };
   const users = new FakeUserStore(s.rows ?? [row()]);
   const lookups = vi.spyOn(users, 'findByDescopeId');
@@ -97,8 +98,11 @@ describe('bearer authentication', () => {
 describe('a verified identity without a row', () => {
   it('reaches GET /v1/me with the identity and no row', async () => {
     const { app, seen } = build({ rows: [] });
-    expect((await get(app, '/v1/me', `Bearer ${TOKEN}`)).status).toBe(200);
-    expect(seen[0]).toEqual({ identity: { userId: 'd1' }, user: undefined });
+    // The real route answers: it provisions the unknown identity from the fetched profile.
+    const res = await get(app, '/v1/me', `Bearer ${TOKEN}`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { email: string }).email).toBe('ann@example.com');
+    expect(seen).toEqual([]);
   });
 
   it('is 403 forbidden on every other route', async () => {
@@ -166,6 +170,6 @@ describe('suspended and returning users', () => {
     await get(app, '/v1/things', `Bearer ${TOKEN}`);
     expect(seen).toEqual([]);
     expect((await get(app, '/v1/me', `Bearer ${TOKEN}`)).status).toBe(200);
-    expect(seen[0]?.user).toBeUndefined();
+    expect(seen).toEqual([]);
   });
 });

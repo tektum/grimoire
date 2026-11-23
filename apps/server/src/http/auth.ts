@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
+import type { DevRoleSource } from '@tektum/grimoire-core/ports/dev-role';
 import { fail } from './error.js';
 import type { AppEnv, HttpDeps } from './env.js';
 
@@ -15,7 +16,7 @@ const BEARER = /^Bearer ([^\s]+)$/i;
  * the verifier's), the row is read from the user store, and the returning-user rule of the provisioner is applied from that stored
  * row on every route, so a user whose domain was removed stops working at once. A suspended user is refused everywhere.
  */
-export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users' | 'provisioner' | 'log'>): MiddlewareHandler<AppEnv> {
+export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users' | 'provisioner' | 'log' | 'config'>, roles?: DevRoleSource): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;
@@ -38,6 +39,8 @@ export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users
       deps.log.warn('http.auth_rejected', { reason: 'invalid' });
       return fail('unauthenticated');
     }
+    // The development role of the token is read in local mode only, as the collaboration host does.
+    const devRole = roles !== undefined && deps.config.local ? roles.roleOf(token) : undefined;
     const identity = { userId: verified.userId, ...(verified.profile === undefined ? {} : { profile: verified.profile }) };
 
     const stored = await deps.users.findByDescopeId(identity.userId);
@@ -47,6 +50,7 @@ export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users
         return fail('forbidden');
       }
       c.set('identity', identity);
+      if (devRole !== undefined) c.set('devRole', devRole);
       return next();
     }
 
@@ -57,8 +61,15 @@ export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users
     }
     // The returning-user rule on the row just read: no second query, and nothing can be created here.
     if (deps.provisioner.recheck({ identity, user: stored }).kind === 'refused') return fail('not_allowed');
+    let user = stored;
+    if (devRole !== undefined && devRole !== stored.role) {
+      // Local mode: a changed development role is synced onto the stored row.
+      const synced = await deps.provisioner.signIn({ identity, devRole });
+      if (synced.kind === 'refused') return fail('not_allowed');
+      user = synced.user;
+    }
     c.set('identity', identity);
-    c.set('user', stored);
+    c.set('user', user);
     return next();
   };
 }
