@@ -3,6 +3,20 @@ import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeDatabase } from '@tektum/grimoire-core/testing/fake-database';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
+import { createPageAccess } from '@tektum/grimoire-core/authorize';
+import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
+import { createFakeAccessStore, emptyWorld } from '@tektum/grimoire-core/testing/fake-access-store';
+import { FakeAdminRepo } from '@tektum/grimoire-core/testing/fake-admin-repo';
+import { FakeAuditLog } from '@tektum/grimoire-core/testing/fake-audit-log';
+import { FakeCollectionRepo } from '@tektum/grimoire-core/testing/fake-collection-repo';
+import { FakeIdempotencyStore } from '@tektum/grimoire-core/testing/fake-idempotency-store';
+import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
+import { FakePageRepo } from '@tektum/grimoire-core/testing/fake-page-repo';
+import { FakePageStateRepo } from '@tektum/grimoire-core/testing/fake-page-state-repo';
+import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
+import { FakeTrashRepo } from '@tektum/grimoire-core/testing/fake-trash-repo';
+import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
+import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import type { AppContext } from '../../../src/composition.js';
 import { createEventLog } from '../../../src/events.js';
 import { Shutdown } from '../../../src/lifecycle/shutdown.js';
@@ -25,13 +39,21 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
   const logger = new FakeLogger();
   const clock = new FakeClock(1000);
   const shutdown = new Shutdown(clock);
+  const config = makeFakeConfig();
+  const log = createEventLog(logger);
+  const verifier = { verify: () => Promise.resolve({ kind: 'service-unavailable' as const }) };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true };
+  const users = new FakeUserStore();
+  const http: AppContext['http'] = {
+    config, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
+    provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
+    ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),
+    idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
+    pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(),
+  };
   const ctx: AppContext = {
-    config: makeFakeConfig(),
-    log: createEventLog(logger),
-    clock,
-    db,
-    auth: { verifier: { verify: () => Promise.resolve({ kind: 'service-unavailable' }) } },
-    signInPolicy: { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true },
+    config, log, clock, db, http,
+    auth: { verifier }, signInPolicy,
     shutdown, shutdownHooks: [], testFacilities: [],
   };
   return { ctx, logger, clock, shutdown };

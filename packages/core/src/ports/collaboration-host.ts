@@ -5,6 +5,7 @@ import type { AuthVerifier, Profile } from './auth-verifier.js';
 import type { Clock } from './clock.js';
 import type { Config } from './config.js';
 import type { Logger } from './logger.js';
+import type { RevisionRepo } from './revision-repo.js';
 import type { MarkdownConverter } from './markdown-converter.js';
 import type { UserRecord } from './user-store.js';
 
@@ -53,6 +54,8 @@ export interface CollabDeps {
   readonly access: PageAccessChecker;
   readonly pages: PageStore;
   readonly converter: MarkdownConverter;
+  /** Unused by the host until M4-T08. */
+  readonly revisions: RevisionRepo;
 }
 
 export interface ShutdownReport {
