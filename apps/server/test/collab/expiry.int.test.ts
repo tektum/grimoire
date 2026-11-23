@@ -254,6 +254,8 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const c = open(r, p, () => current);
     await authed(c);
     const owner = (): unknown => [...(r.host.hocuspocus?.documents.get(p)?.getConnections() ?? [])].map((x) => (x.context as { userId?: string }).userId);
+    // The client is authenticated before the server lists the connection on the document: wait for the listing instead of reading it once.
+    await eventually(() => (owner() as unknown[]).length > 0, AUTH_WAIT_MS, 'connection listed on the document');
     expect(owner()).toEqual([victimId]);
     current = theirs;
     expect(await closedBy(c, TOKEN_REQUEST_WAIT_MS)).toBe('invalid-token');
