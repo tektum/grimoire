@@ -30,18 +30,20 @@ export function routeObjects(): RouteObject[] {
       ),
     };
   });
-  const sample: RouteObject[] = withSample
-    ? [
-        {
-          path: '/design-sample',
-          element: (
-            <Suspense fallback={null}>
-              <SamplePage />
-            </Suspense>
-          ),
-        },
-      ]
-    : [];
+  const Sample = SamplePage;
+  const sample: RouteObject[] =
+    Sample !== null
+      ? [
+          {
+            path: '/design-sample',
+            element: (
+              <Suspense fallback={null}>
+                <Sample />
+              </Suspense>
+            ),
+          },
+        ]
+      : [];
   return [{ path: '/', element: <Shell />, children: [{ index: true, element: <p>Opening your last collection</p> }, ...sample, ...children] }];
 }
 
