@@ -5,8 +5,8 @@ import type { JobQueue } from '../ports/job-queue.js';
 /**
  * What a conformance case needs besides the queue. `advance(seconds, until)` lets time pass: the fake moves a
  * virtual clock by `seconds` and runs what is due (it ignores `until`); a real queue cannot skip time, so it
- * waits until `until()` is true instead (and fails when that takes much longer than `seconds`), or returns at
- * once when no `until` is given. `crashWorkers` kills every worker without letting running jobs finish and returns
+ * waits until `until()` is true instead (and fails when that takes much longer than `seconds`); when no `until` is
+ * given it lets `seconds` of real time pass, so that something that should not happen has the time to. `crashWorkers` kills every worker without letting running jobs finish and returns
  * the queue to use afterwards (jobs that were running are given back to it). Every case uses its own queue names.
  */
 export interface JobQueueHarness {

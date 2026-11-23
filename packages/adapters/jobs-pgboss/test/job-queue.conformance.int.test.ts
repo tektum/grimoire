@@ -20,7 +20,13 @@ const harness = (queue: PgBossJobQueue): JobQueueHarness => ({
   queue,
   database,
   async advance(seconds, until) {
-    if (until) await vi.waitFor(() => { if (!until()) throw new Error('not yet'); }, { timeout: seconds * 1000 + 20_000, interval: 250 });
+    if (until) {
+      await vi.waitFor(() => { if (!until()) throw new Error('not yet'); }, { timeout: seconds * 1000 + 20_000, interval: 250 });
+      return;
+    }
+    // Nothing to wait for: let the real clock run for `seconds`, so a job that wrongly runs (or runs again) shows up.
+    const end = Date.now() + seconds * 1000;
+    await vi.waitFor(() => { if (Date.now() < end) throw new Error('time has not passed'); }, { timeout: seconds * 1000 + 5000, interval: 250 });
   },
   async crashWorkers() {
     // Stop without waiting for running jobs: the job stays "active" until its expiry (5 s) and supervision gives it back.
