@@ -515,8 +515,10 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       const key = `${freshPrefix()}/big`;
       const size = 1024 * 1024;
       const chunks = 200;
-      // Every chunk is new and different, so a store that keeps one chunk or repeats it cannot match the hash.
-      const chunkAt = (i: number): Uint8Array => patternBytes(size).map((byte) => (byte + i) & 0xff);
+      // A pool of 16 different chunks is built once, before the baseline, and cycled: a store that keeps one chunk
+      // or repeats the first cannot match the hash, and the test itself makes no garbage while memory is measured.
+      const pool = Array.from({ length: 16 }, (_, i) => patternBytes(size).map((byte) => (byte + i) & 0xff));
+      const chunkAt = (i: number): Uint8Array => pool[i % pool.length] as Uint8Array;
       const expected = createHash('sha256');
       for (let i = 0; i < chunks; i++) expected.update(chunkAt(i));
       const before = process.memoryUsage().rss;
