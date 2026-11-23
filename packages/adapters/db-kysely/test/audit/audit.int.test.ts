@@ -79,6 +79,17 @@ describe('the audit row of a collection change', () => {
     ]);
   });
 
+  it('simultaneous first grants to one principal record a previous permission of null only once', async () => {
+    const repo = createCollections(t.app);
+    const c = await repo.append({ name: 'acl-race', createdBy: admin }, after);
+    const group = await addGroup(t.app, 'Racers');
+    await Promise.all(['read', 'read_write', 'read', 'read_write'].map((permission) =>
+      repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: permission as 'read' }, admin)));
+    const rows = await t.admin.query<{ detail: { previousPermission: string | null } }>(`select detail from audit_events where target_id = $1 order by id`, [c.id]);
+    expect(rows.map((r) => r.detail.previousPermission).filter((p) => p === null)).toHaveLength(1);
+    expect(rows).toHaveLength(4);
+  });
+
   it('a failed upsert leaves no audit row', async () => {
     const repo = createCollections(t.app);
     const c = await repo.append({ name: 'acl-fail', createdBy: admin }, after);

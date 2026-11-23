@@ -93,7 +93,8 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
     async upsertAccess(collectionId, grant, actorId) {
       try {
         return await db.transaction(async (tx) => {
-          const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for share`, [collectionId]);
+          // The collection row is locked, not the entry's: a first grant has no entry row yet, and two of them must run one after the other so `previousPermission` is true.
+          const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for update`, [collectionId]);
           if (live.length === 0) return { kind: 'not-found' as const };
           const column = grant.principalType === 'user' ? 'user_id' : 'group_id';
           const previous = (await tx.query<{ permission: StoredPermission }>(
