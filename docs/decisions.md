@@ -1,6 +1,6 @@
 # Grimoire decisions log
 
-Every decision made so far, in rough order of making. Numbers are stable; gaps are entries that concerned project organisation only. "Stands" means the decision is in force. "Superseded by N" means a later decision replaced it; superseded decisions stay because the reason for the change is useful. The Spec column names the requirements in the specification (`spec.md`, published later in this series) that carry the decision. "Stands" and "Decided" mean decided, not necessarily built: the brief says what exists today. Two entries were numbered 80; the second is `80a`.
+Every decision made so far, in rough order of making. Numbers are stable; gaps are entries that concerned project organisation only. "Stands" means the decision is in force. "Superseded by N" means a later decision replaced it; superseded decisions stay because the reason for the change is useful. The Spec column names the requirements in [spec.md](spec.md) that carry the decision. "Stands" and "Decided" mean decided, not necessarily built: the brief says what exists today. Two entries were numbered 80; the second is `80a`.
 
 ## Scope, people, product
 

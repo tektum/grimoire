@@ -1,6 +1,6 @@
 # 13. Semantic search: measured facts and a source assessment (2026-11-20)
 
-Sources: the measurements recorded for the semantic-search work (AMD EPYC 9B45, 32 shared vCPU with a load average of 2 to 10, so timings are noisy; Node v26.13.1) and an assessment of primary sources (nothing measured, called "the assessment" below); the requirements are R9.25 to R9.33, R2.45, R2.46, R4.50, R12.40 and R13.28 in the specification (published later in this series).
+Sources: the measurements recorded for the semantic-search work (AMD EPYC 9B45, 32 shared vCPU with a load average of 2 to 10, so timings are noisy; Node v26.13.1) and an assessment of primary sources (nothing measured, called "the assessment" below); the requirements are R9.25 to R9.33, R2.45, R2.46, R4.50, R12.40 and R13.28 in [the spec](../spec.md).
 
 ## What semantic search adds
 
