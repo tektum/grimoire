@@ -321,6 +321,15 @@ describe('GET /v1/collections/{id}/tree', () => {
     ] });
   });
 
+  it('breaks a tie of positions by id, as the database does', async () => {
+    const { call, collections, open } = build();
+    const c3 = collections.seedPage({ collectionId: open.id, id: '00000000-0000-4000-8000-0000000000c3', position: 'a' });
+    const b2 = collections.seedPage({ collectionId: open.id, id: '00000000-0000-4000-8000-0000000000b2', position: 'a', parentId: c3.id });
+    collections.seedPage({ collectionId: open.id, id: '00000000-0000-4000-8000-0000000000a1', position: 'a', parentId: b2.id });
+    const body = (await (await call('member', 'GET', `/v1/collections/${open.id}/tree`)).json()) as { pages: { id: string }[] };
+    expect(body.pages.map((p) => p.id.slice(-2))).toEqual(['a1', 'b2', 'c3']);
+  });
+
   it('is 404 to a user without access', async () => {
     const { call, collections, closed } = build();
     collections.seedPage({ collectionId: closed.id });

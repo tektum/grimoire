@@ -13,12 +13,12 @@ const visible = (e: AccessEntry & { collectionId: string }): AccessEntry => ({ i
 export class FakeCollectionRepo implements CollectionRepo {
   private readonly rows = new Map<string, CollectionRecord>();
   private readonly entries: (AccessEntry & { collectionId: string })[] = [];
-  /** Test setup: display names of users and groups (the id is the name otherwise). */
   private readonly pageRows: (TreePage & { collectionId: string; deleted: boolean; batch: string | null })[] = [];
   private mirrored: World['access'] = [];
   /** Principals whose entry was just removed: a row for them in the world goes too, as the one row of the table does. */
   private changed: World['access'] = [];
   private written = new Set<World['access'][number]>();
+  /** Test setup: display names of users and groups (the id is the name otherwise). */
   readonly names = new Map<string, string>();
 
   constructor(readonly world: World = emptyWorld(), readonly audit: FakeAuditLog = new FakeAuditLog()) {}
@@ -132,10 +132,9 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve(true);
   }
 
-  /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
   tree(collectionId: string): Promise<readonly TreePage[] | undefined> {
     if (!this.rows.has(collectionId)) return Promise.resolve(undefined);
-    const pages = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
+    const pages = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return Promise.resolve(pages.map(({ id, urlId, parentId, position, title, icon }) => ({ id, urlId, parentId, position, title, icon })));
   }
 
@@ -154,6 +153,7 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve({ batch, pages: live.length });
   }
 
+  /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
   private mirrorEntries(): void {
     this.mirrored = this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) }));
     const same = (a: World['access'][number], b: World['access'][number]): boolean => a.collectionId === b.collectionId && a.userId === b.userId && a.groupId === b.groupId;

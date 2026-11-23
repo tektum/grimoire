@@ -143,6 +143,8 @@ describe('the collection tree', () => {
     expect(Object.keys(pages?.[0] ?? {}).sort()).toEqual(['icon', 'id', 'parentId', 'position', 'title', 'urlId']);
     expect(pages?.[0]?.urlId).toMatch(/\S+/);
     expect(await repo.tree('00000000-0000-4000-8000-000000000000')).toBeUndefined();
+    await repo.softDelete(c.id, admin);
+    expect(await repo.tree(c.id)).toBeUndefined();
   });
 });
 
