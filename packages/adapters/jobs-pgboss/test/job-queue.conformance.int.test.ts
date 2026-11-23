@@ -5,7 +5,7 @@ import type { PgBossJobQueue } from '../src/index.js';
 import { createTestDatabase, databaseUrl, dropTestDatabase, installPgBoss, poolDatabase, startQueue } from './pgboss-support.js';
 
 const DB = `grimoire_t_pgboss_conf_${String(process.pid)}`;
-const NAMES = ['c-enqueue', 'c-delay', 'c-retry', 'c-retry-exhausted', 'c-singleton', 'c-schedule', 'c-crash', 'c-tx'];
+const NAMES = ['c-enqueue', 'c-delay', 'c-retry', 'c-retry-exhausted', 'c-retry-default', 'c-singleton', 'c-schedule', 'c-crash', 'c-tx'];
 const database = poolDatabase(databaseUrl(DB));
 let current: PgBossJobQueue | undefined;
 const started: PgBossJobQueue[] = [];

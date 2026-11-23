@@ -16,7 +16,7 @@ export interface EnsureQueueOptions {
 }
 
 /** The part of pg-boss the adapter uses; tests pass a stand-in. */
-export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'isInstalled'>;
+export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'isInstalled' | 'on'>;
 
 /** The database object pg-boss accepts for one call (`db` option). */
 interface PgBossDatabase { executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> }
@@ -45,7 +45,7 @@ export class PgBossJobQueue implements JobQueue {
     return this.boss.send(name, payload as object, {
       ...(options.delaySeconds === undefined ? {} : { startAfter: options.delaySeconds }),
       ...(options.singletonKey === undefined ? {} : { singletonKey: options.singletonKey }),
-      ...(options.retryLimit === undefined ? {} : { retryLimit: options.retryLimit }),
+      retryLimit: options.retryLimit ?? 0, // pg-boss would default to 2 retries; the port's default is none
       ...(tx ? { db: asDatabase(tx) } : {}),
     });
   }
@@ -79,6 +79,8 @@ export interface CreateOptions {
   /** A connection string of a role that can use the pgboss schema. */
   readonly connectionString: string;
   readonly max?: number;
+  /** Receives errors pg-boss reports from its background loops. Required: an unhandled `error` event would end the process. */
+  readonly onError: (error: Error) => void;
   /** How long `stop` waits for running jobs unless it is told otherwise. Default 1.5 s. */
   readonly stopGraceMs?: number;
 }
@@ -94,6 +96,7 @@ export async function createJobQueue(
     migrate: false,
     ...(options.max === undefined ? {} : { max: options.max }),
   });
+  boss.on('error', options.onError);
   await boss.start();
   return new PgBossJobQueue(boss, options.stopGraceMs);
 }

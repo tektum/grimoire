@@ -69,7 +69,7 @@ export function poolDatabase(url: string): Database {
 
 /** A queue with quick supervision, so a crashed worker's job comes back within seconds. */
 export async function startQueue(url: string, queues: readonly string[]): Promise<PgBossJobQueue> {
-  const queue = await createJobQueue({ connectionString: url, max: 4 }, (o) => new PgBoss({ ...o, superviseIntervalSeconds: 5 }));
+  const queue = await createJobQueue({ connectionString: url, max: 4, onError: () => undefined }, (o) => new PgBoss({ ...o, superviseIntervalSeconds: 5 }));
   for (const name of queues) await queue.ensureQueue(name, { singleton: name.endsWith('singleton'), expireInSeconds: 5 });
   return queue;
 }

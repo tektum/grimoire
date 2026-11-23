@@ -55,6 +55,12 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       await queue.enqueue('c-retry', {}, { retryLimit: 2 });
       await advance(30, () => attempts.length === 3);
       assert.deepEqual(attempts, [1, 2, 3]);
+      let unasked = 0;
+      await queue.work('c-retry-default', async () => { unasked++; throw new Error('always'); });
+      await queue.enqueue('c-retry-default', {});
+      await advance(30, () => unasked >= 1);
+      await advance(5); // a failing job without a retry limit is not run again
+      assert.equal(unasked, 1);
       let exhausted = 0;
       await queue.work('c-retry-exhausted', async () => { exhausted++; throw new Error('always'); });
       await queue.enqueue('c-retry-exhausted', {}, { retryLimit: 1 });

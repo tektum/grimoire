@@ -11,6 +11,7 @@ function stub() {
     createQueue: vi.fn(async () => {}),
     getQueue: vi.fn(async () => null),
     isInstalled: vi.fn(async () => true),
+    on: vi.fn(() => boss),
   };
   return boss as typeof boss & PgBossLike;
 }
@@ -23,11 +24,11 @@ describe('PgBossJobQueue', () => {
     expect(boss.send).toHaveBeenCalledWith('n', { a: 1 }, { startAfter: 3, singletonKey: 'k', retryLimit: 2 });
   });
 
-  it('sends bare options when none are given and passes null through for a duplicate singleton', async () => {
+  it('sends no retries when none are asked for and passes null through for a duplicate singleton', async () => {
     const boss = stub();
     boss.send.mockResolvedValueOnce(null as never);
     expect(await new PgBossJobQueue(boss).enqueue('n', {})).toBeNull();
-    expect(boss.send).toHaveBeenCalledWith('n', {}, {});
+    expect(boss.send).toHaveBeenCalledWith('n', {}, { retryLimit: 0 });
   });
 
   it('runs a transactional enqueue on the given transaction', async () => {
@@ -94,11 +95,23 @@ describe('PgBossJobQueue', () => {
 });
 
 describe('createJobQueue', () => {
+  const onError = vi.fn();
+
+  it('listens for pg-boss errors before it starts, so one cannot end the process', async () => {
+    const boss = stub();
+    const order: string[] = [];
+    boss.on.mockImplementation((() => { order.push('on'); return boss; }) as never);
+    boss.start.mockImplementation((async () => { order.push('start'); return boss; }) as never);
+    await createJobQueue({ connectionString: 'postgresql://example/db', onError }, () => boss);
+    expect(order).toEqual(['on', 'start']);
+    expect(boss.on).toHaveBeenCalledWith('error', onError);
+  });
+
   it('starts pg-boss with migrate off, its own schema and no migration of its own', async () => {
     const boss = stub();
     const make = vi.fn(() => boss);
-    await createJobQueue({ connectionString: 'postgresql://example/db' }, make);
-    await createJobQueue({ connectionString: 'postgresql://example/db', max: 4 }, make);
+    await createJobQueue({ connectionString: 'postgresql://example/db', onError }, make);
+    await createJobQueue({ connectionString: 'postgresql://example/db', onError, max: 4 }, make);
     expect(make).toHaveBeenNthCalledWith(1, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false });
     expect(make).toHaveBeenNthCalledWith(2, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false, max: 4 });
     expect(boss.start).toHaveBeenCalledTimes(2);
@@ -106,12 +119,12 @@ describe('createJobQueue', () => {
 
   it('uses the stop grace given at creation as the default of stop', async () => {
     const boss = stub();
-    const q = await createJobQueue({ connectionString: 'postgresql://example/db', stopGraceMs: 700 }, () => boss);
+    const q = await createJobQueue({ connectionString: 'postgresql://example/db', onError, stopGraceMs: 700 }, () => boss);
     await q.stop();
     expect(boss.stop).toHaveBeenCalledWith({ graceful: true, close: true, timeout: 700 });
   });
 
   it('builds a real PgBoss by default without connecting until started', async () => {
-    await expect(createJobQueue({ connectionString: 'postgresql://127.0.0.1:1/none' })).rejects.toThrow();
+    await expect(createJobQueue({ connectionString: 'postgresql://127.0.0.1:1/none', onError })).rejects.toThrow();
   });
 });
