@@ -105,7 +105,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, allowDevRole: config.local };
   const db = createDatabase(url);
   const collabRole = config.role !== 'api';
-  const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
+  const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs, connectionTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
   const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
   const converter = createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) });
   const httpUsers = createUserStore(db);
