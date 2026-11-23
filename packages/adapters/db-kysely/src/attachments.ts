@@ -38,7 +38,7 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
           const user = await tx.query(`select 1 from users where id = $1 for no key update`, [input.uploaderId]);
           if (user.length === 0) return { kind: 'no-user' };
           const counted = await tx.query<{ n: number }>(
-            `select count(*)::int as n from attachments where uploader_id = $1 and status = 'pending' and expires_at > to_timestamp($2::double precision / 1000.0)`,
+            `select count(*)::int as n from attachments where uploader_id = $1 and status = 'pending' and deleted_at is null and expires_at > to_timestamp($2::double precision / 1000.0)`,
             [input.uploaderId, now],
           );
           if ((counted[0]?.n ?? 0) >= cap) return { kind: 'cap' };
@@ -64,7 +64,7 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
     },
     async markReady(id, now) {
       const rows = await db.query<Row>(
-        `update attachments set status = 'ready', ready_at = to_timestamp($2::double precision / 1000.0), expires_at = null where id = $1 and status = 'pending' and expires_at > to_timestamp($2::double precision / 1000.0) returning ${COLUMNS}`,
+        `update attachments set status = 'ready', ready_at = to_timestamp($2::double precision / 1000.0), expires_at = null where id = $1 and status = 'pending' and deleted_at is null and expires_at > to_timestamp($2::double precision / 1000.0) returning ${COLUMNS}`,
         [id, now],
       );
       return rows[0] === undefined ? undefined : record(rows[0]);

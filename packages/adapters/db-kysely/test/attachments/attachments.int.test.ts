@@ -92,4 +92,19 @@ describe('what only the database does', () => {
     expect(await repo.get(marked)).toBeUndefined();
     expect(await repo.getMany([marked])).toEqual([]);
   });
+
+  it('does not complete or count a pending upload the trash purge marked deleted, and still lists it for clean-up', async () => {
+    const repo = createAttachments(t.app);
+    const owner = await addUser(t.app, 'purge-pending', 'member');
+    const now = Date.now();
+    const id = randomUUID();
+    const made = await repo.createPending({ id, pageId, uploaderId: owner, fileName: 'p.png', contentType: 'image/png', size: 5, key: `attachments/${id}`, expiresAt: now + 3_600_000 }, 1, now);
+    expect(made.kind).toBe('created');
+    await t.admin.query(`update attachments set deleted_at = now() where id = $1`, [id]);
+    expect(await repo.markReady(id, now)).toBeUndefined();
+    const next = randomUUID();
+    const again = await repo.createPending({ id: next, pageId, uploaderId: owner, fileName: 'q.png', contentType: 'image/png', size: 5, key: `attachments/${next}`, expiresAt: now + 3_600_000 }, 1, now);
+    expect(again.kind).toBe('created'); // the marked row does not use up the cap of one
+    expect((await repo.expiredPending(now + 4_000_000, 1000)).map((r) => r.id)).toContain(id);
+  });
 });
