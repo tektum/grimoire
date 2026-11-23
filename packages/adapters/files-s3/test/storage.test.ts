@@ -1,72 +1,12 @@
-import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createFileStorage, mapError } from '../src/index.js';
+import { bucket, config, recorder, useRecordingServer, type Seen } from './recording-server.js';
 
-interface Seen {
-  method: string;
-  path: string;
-  query: URLSearchParams;
-  headers: IncomingHttpHeaders;
-  body: Buffer;
-}
-interface Reply {
-  status: number;
-  headers?: Record<string, string>;
-  body?: string;
-}
+useRecordingServer();
+const seen: Seen[] = recorder.seen;
 
-const seen: Seen[] = [];
-let reply: Reply = { status: 200 };
-let server: Server;
-let origin = '';
-
-beforeAll(async () => {
-  server = createServer((req, res) => {
-    const parts: Buffer[] = [];
-    req.on('data', (part: Buffer) => parts.push(part));
-    req.on('end', () => {
-      const url = new URL(req.url ?? '/', 'http://store.invalid');
-      seen.push({
-        method: req.method ?? '',
-        path: url.pathname,
-        query: url.searchParams,
-        headers: req.headers,
-        body: Buffer.concat(parts),
-      });
-      res.writeHead(reply.status, reply.headers);
-      res.end(req.method === 'HEAD' ? undefined : reply.body);
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
-});
-afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-beforeEach(() => {
-  seen.length = 0;
-  reply = { status: 200 };
-});
-
-const bucket = `b-${randomUUID()}`;
-const config = (over: Partial<FilesConfig> = {}): FilesConfig => ({
-  endpoint: origin,
-  publicEndpoint: 'http://public.invalid:8333',
-  publicOrigin: 'http://public.invalid:8333',
-  bucket,
-  accessKey: randomUUID(),
-  secretKey: randomUUID(),
-  region: 'us-east-1',
-  addressing: 'path',
-  createOnlyHeader: 'if-none-match',
-  corsMode: 'api',
-  maxBytes: 1000,
-  allowedTypes: ['image/png'],
-  pendingMaxPerUser: 5,
-  ...over,
-});
 const store = (over: Partial<FilesConfig> = {}) => createFileStorage(config(over), { maxAttempts: 1 });
 const kindOf = async (action: Promise<unknown>) => {
   try {
@@ -104,7 +44,7 @@ describe('the clients', () => {
 
 describe('objects', () => {
   it('heads an object from the response headers', async () => {
-    reply = {
+    recorder.reply = {
       status: 200,
       headers: {
         'content-length': '12',
@@ -123,7 +63,7 @@ describe('objects', () => {
   });
 
   it('gets the body, asking for an inclusive range when given one', async () => {
-    reply = { status: 206, headers: { 'content-type': 'image/png', 'content-length': '3' }, body: '234' };
+    recorder.reply = { status: 206, headers: { 'content-type': 'image/png', 'content-length': '3' }, body: '234' };
     const got = await store().get('k', { range: { start: 2, end: 4 } });
     expect(seen[0]?.headers.range).toBe('bytes=2-4');
     expect(got.size).toBe(3);
@@ -160,27 +100,27 @@ describe('objects', () => {
 
   it('maps the store answers to the port errors', async () => {
     const s = store();
-    reply = {
+    recorder.reply = {
       status: 404,
       headers: { 'content-type': 'application/xml' },
       body: '<Error><Code>NoSuchKey</Code></Error>',
     };
     expect(await kindOf(s.get('k'))).toBe('not-found');
     expect(await kindOf(s.head('k'))).toBe('not-found');
-    reply = {
+    recorder.reply = {
       status: 416,
       headers: { 'content-type': 'application/xml' },
       body: '<Error><Code>InvalidRange</Code></Error>',
     };
     expect(await kindOf(s.get('k', { range: { start: 9, end: 10 } }))).toBe('range-not-satisfiable');
-    reply = { status: 500, body: 'broken' };
+    recorder.reply = { status: 500, body: 'broken' };
     expect(await kindOf(s.get('k'))).toBe('unavailable');
     expect(await kindOf(s.delete('k'))).toBe('unavailable');
   });
 
   it('does not mistake a missing bucket for a missing key, and does not count it as a delete', async () => {
     const s = store();
-    reply = {
+    recorder.reply = {
       status: 404,
       headers: { 'content-type': 'application/xml' },
       body: '<Error><Code>NoSuchBucket</Code></Error>',
@@ -191,10 +131,10 @@ describe('objects', () => {
 
   it('deletes, and counts an absent key as deleted', async () => {
     const s = store();
-    reply = { status: 204 };
+    recorder.reply = { status: 204 };
     await s.delete('k');
     expect(seen[0]).toMatchObject({ method: 'DELETE', path: `/${bucket}/k` });
-    reply = {
+    recorder.reply = {
       status: 404,
       headers: { 'content-type': 'application/xml' },
       body: '<Error><Code>NoSuchKey</Code></Error>',
@@ -203,7 +143,7 @@ describe('objects', () => {
   });
 
   it('puts bytes and streams with their length and type, and no checksum header', async () => {
-    reply = { status: 200, headers: { etag: '"e1"' } };
+    recorder.reply = { status: 200, headers: { etag: '"e1"' } };
     const s = store();
     const stream = (async function* () {
       yield new TextEncoder().encode('0123');
@@ -228,11 +168,11 @@ describe('objects', () => {
       ['x-goog-if-generation-match', '0'],
     ] as const) {
       seen.length = 0;
-      reply = { status: 200, headers: { etag: '"e"' } };
+      recorder.reply = { status: 200, headers: { etag: '"e"' } };
       const s = store({ createOnlyHeader: header });
       await s.put('k', new Uint8Array(2), { size: 2, contentType: 'x/y', ifNoneMatch: true });
       expect(seen[0]?.headers[header]).toBe(value);
-      reply = {
+      recorder.reply = {
         status: 412,
         headers: { 'content-type': 'application/xml' },
         body: '<Error><Code>PreconditionFailed</Code></Error>',
@@ -244,7 +184,7 @@ describe('objects', () => {
   });
 
   it('lists a prefix with a page size and a continuation token', async () => {
-    reply = {
+    recorder.reply = {
       status: 200,
       headers: { 'content-type': 'application/xml' },
       body: `<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>tok2</NextContinuationToken>
@@ -263,7 +203,7 @@ describe('objects', () => {
       ],
       nextCursor: 'tok2',
     });
-    reply = {
+    recorder.reply = {
       status: 200,
       headers: { 'content-type': 'application/xml' },
       body: '<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>',

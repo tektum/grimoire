@@ -29,6 +29,25 @@ export interface FileStorageOptions {
 
 const OCTET_STREAM = 'application/octet-stream';
 
+/** The value that makes a request create-only, for the header the setting names. */
+const createOnlyValue = (header: string): string => (header === 'if-none-match' ? '*' : '0');
+
+/** Adds one request header while the command is built, so that it is signed with the rest. */
+function withHeader<C extends { middlewareStack: PutObjectCommand['middlewareStack'] }>(
+  command: C,
+  name: string,
+  value: string,
+): C {
+  command.middlewareStack.add(
+    (next) => async (args) => {
+      (args.request as { headers: Record<string, string> }).headers[name] = value;
+      return next(args);
+    },
+    { step: 'build', name: `header-${name}` },
+  );
+  return command;
+}
+
 /** A name for the header: control characters (line breaks above all) never reach it. */
 const headerSafeName = (name: string): string => name.replace(/[\u0000-\u001f\u007f]/g, '_');
 
@@ -106,17 +125,7 @@ export class S3FileStorage implements FileStorage {
       ContentLength: o.size,
       ContentType: o.contentType,
     });
-    if (o.ifNoneMatch) {
-      const header = this.config.createOnlyHeader;
-      const value = header === 'if-none-match' ? '*' : '0';
-      command.middlewareStack.add(
-        (next) => async (args) => {
-          (args.request as { headers: Record<string, string> }).headers[header] = value;
-          return next(args);
-        },
-        { step: 'build', name: 'createOnlyHeader' },
-      );
-    }
+    if (o.ifNoneMatch) withHeader(command, this.config.createOnlyHeader, createOnlyValue(this.config.createOnlyHeader));
     const out = await this.send(() => this.client.send(command));
     return { etag: out.ETag ?? '' };
   }
@@ -156,8 +165,45 @@ export class S3FileStorage implements FileStorage {
     };
   }
 
-  async signUpload(): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }> {
-    throw new FileStorageError('unsupported', 'signed uploads arrive with the next change');
+  /**
+   * The signature covers the headers the browser must send as they are: the type, the length (set by the browser from
+   * the body), the create-only header when asked for and the disposition when asked for. The SDK's default would
+   * sign the host alone, and the store would then accept any of them changed.
+   */
+  async signUpload(
+    key: string,
+    o: {
+      size: number;
+      contentType: string;
+      ttlSeconds: number;
+      disposition?: 'attachment';
+      ifNoneMatch?: boolean;
+    },
+  ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }> {
+    assertValidKey(key);
+    const createOnly = this.config.createOnlyHeader;
+    const headers: Record<string, string> = { 'content-type': o.contentType };
+    const signable = new Set(['content-type', 'content-length']);
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: o.contentType,
+      ContentLength: o.size,
+      ...(o.disposition ? { ContentDisposition: o.disposition } : {}),
+    });
+    if (o.disposition) {
+      headers['content-disposition'] = o.disposition;
+      signable.add('content-disposition');
+    }
+    if (o.ifNoneMatch) {
+      headers[createOnly] = createOnlyValue(createOnly);
+      signable.add(createOnly);
+      withHeader(command, createOnly, headers[createOnly]);
+    }
+    const url = await this.send(() =>
+      getSignedUrl(this.signer, command, { expiresIn: o.ttlSeconds, signableHeaders: signable }),
+    );
+    return { method: 'PUT', url, headers, expiresAt: this.now() + o.ttlSeconds * 1000 };
   }
 
   async signDownload(
