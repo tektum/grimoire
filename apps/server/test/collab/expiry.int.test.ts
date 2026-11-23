@@ -84,7 +84,10 @@ const AUTH_WAIT_MS = 8000;
 // the connect wait (AUTH_WAIT_MS, else the session expires before the test looks) and it enters that two-interval window soon enough for closedBy's wait.
 const LONG_LIVED_SEC = AUTH_WAIT_MS / 1000 + 2 * RECHECK_INTERVAL_SECONDS + 1;
 const authed = (c: Open): Promise<true> => eventually(() => c.client.provider.isAuthenticated, AUTH_WAIT_MS, 'authenticated');
-const closedBy = (c: Open): Promise<string> => eventually(() => c.reasons[0], 8000, 'closed by the re-check');
+const closedBy = (c: Open, waitMs = 8000): Promise<string> => eventually(() => c.reasons[0], waitMs, 'closed by the re-check');
+// The server requests a token within 2 intervals of expiry, on a tick: that is at most LONG_LIVED_SEC after issue (+ one interval for the tick). The wait covers the whole
+// lifetime plus a tick and a round, since how long authed took is unknown; the token request always precedes expiry.
+const TOKEN_REQUEST_WAIT_MS = (LONG_LIVED_SEC + 2 * RECHECK_INTERVAL_SECONDS) * 1000;
 async function user(sub: string, role = 'member'): Promise<string> {
   const id = randomUUID();
   await sqlAdmin(DB, `insert into users (id, descope_user_id, email, name, role) values ('${id}', '${sub}', '${sub.toLowerCase()}@example.test', '${sub}', '${role}')`);
@@ -252,7 +255,7 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const owner = (): unknown => [...(r.host.hocuspocus?.documents.get(p)?.getConnections() ?? [])].map((x) => (x.context as { userId?: string }).userId);
     expect(owner()).toEqual([victimId]);
     current = theirs;
-    expect(await closedBy(c)).toBe('invalid-token');
+    expect(await closedBy(c, TOKEN_REQUEST_WAIT_MS)).toBe('invalid-token');
     expect(r.logger.entries.filter((e) => e.event === 'collab.token_sync_failed').map((e) => e.fields)).toEqual([{ pageId: p, reason: 'user-mismatch' }]);
     expect(JSON.stringify(r.logger.entries)).not.toContain(theirs);
   }, 30_000);
@@ -271,9 +274,9 @@ describe('re-check on the real server and database (1 s interval)', () => {
       const c = open(r, p, () => current);
       await authed(c);
       current = bad;
-      expect(await closedBy(c)).toBe('invalid-token');
+      expect(await closedBy(c, TOKEN_REQUEST_WAIT_MS)).toBe('invalid-token');
     }
-  }, 60_000);
+  }, 90_000);
 
   it('the database down for two intervals closes nobody with a valid session; when it is back the checks resume', async () => {
     const proxy = await StallProxy.start(); stops.push(() => proxy.stop());
