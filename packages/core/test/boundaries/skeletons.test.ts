@@ -10,7 +10,6 @@ import * as trashRepo from '../../src/testing/fake-trash-repo.js';
 import * as revisionRepo from '../../src/testing/fake-revision-repo.js';
 import * as adminRepo from '../../src/testing/fake-admin-repo.js';
 import * as pageStateRepo from '../../src/testing/fake-page-state-repo.js';
-import * as jobQueue from '../../src/testing/fake-job-queue.js';
 import * as fileStorage from '../../src/testing/fake-file-storage.js';
 import * as attachmentRepo from '../../src/testing/fake-attachment-repo.js';
 
@@ -23,7 +22,6 @@ const fakes: Record<string, Record<string, unknown>> = {
   'revision-repo': revisionRepo,
   'admin-repo': adminRepo,
   'page-state-repo': pageStateRepo,
-  'job-queue': jobQueue,
   'file-storage': fileStorage,
   'attachment-repo': attachmentRepo,
 };
@@ -38,7 +36,6 @@ const resources = [
   ['revision-repo', 'RevisionRepo', 'FakeRevisionRepo'],
   ['admin-repo', 'AdminRepo', 'FakeAdminRepo'],
   ['page-state-repo', 'PageStateRepo', 'FakePageStateRepo'],
-  ['job-queue', 'JobQueue', 'FakeJobQueue'],
   ['file-storage', 'FileStorage', 'FakeFileStorage'],
   ['attachment-repo', 'AttachmentRepo', 'FakeAttachmentRepo'],
 ] as const;
