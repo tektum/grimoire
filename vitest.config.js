@@ -31,7 +31,6 @@ export default defineConfig({
         "packages/adapters/db-kysely/src/pages.ts", // M4-T06 implements it
         "packages/adapters/db-kysely/src/trash.ts", // M4-T07 implements it
         "packages/adapters/db-kysely/src/revisions.ts", // M4-T08 implements it
-        "packages/adapters/db-kysely/src/admin.ts", // M4-T09 implements it
         "packages/adapters/db-kysely/src/page-state.ts", // M4-T10 implements it
         "packages/adapters/db-kysely/src/attachments.ts", // M5-T04 implements it
       ],
