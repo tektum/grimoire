@@ -9,7 +9,7 @@ const expectedNames = [
   "@tektum/grimoire-editor-schema",
   "@tektum/grimoire-api-client",
   "@tektum/grimoire-web",
-  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown"].map(
+  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss"].map(
 
     (a) => `@tektum/grimoire-adapter-${a}`,
   ),
@@ -38,6 +38,8 @@ const allowedDuplicates: Record<string, string> = {
   "y-prosemirror": "editor-schema tests write the Yjs fragment (y-prosemirror); the converter reads it at run time",
   "@milkdown/plugin-collab": "editor-schema two-editors and fragment-name tests bind the collab plugin; converter parity tests too",
   "happy-dom": "editor-schema tests run a real editor, which needs a DOM; converter parity tests too",
+  zod: "one copy, same pin as the other declaration",
+  "rate-limiter-flexible": "one copy, same pin as the other declaration",
 };
 
 function allManifests(): { file: string; manifest: Manifest }[] {

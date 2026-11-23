@@ -67,7 +67,7 @@ function sourceFiles(dir: string): string[] {
 
 describe("relative imports stay inside their package (scan)", () => {
   it("finds the workspace packages", () => {
-    expect(packageDirs().length).toBe(14);
+    expect(packageDirs().length).toBe(15);
   });
 
   it("resolves every relative specifier in every workspace package (src and test) inside that package", () => {
@@ -151,7 +151,7 @@ describe("relative imports stay inside their package (scan)", () => {
     const dirs = packageDirs().map((d) => path.relative(repoRoot, d).split(path.sep).join("/"));
     for (const name of ["packages/core", "apps/web", "apps/server", "packages/editor-schema", "packages/api-client"]) expect(dirs).toContain(name);
     const adapterDirs = dirs.filter((d) => d.startsWith("packages/adapters/"));
-    expect(adapterDirs).toHaveLength(8);
+    expect(adapterDirs).toHaveLength(9);
     for (const rel of dirs) {
       const dir = path.join(repoRoot, rel);
       const from = path.join(dir, "src/deep/x.ts");
