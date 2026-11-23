@@ -22,7 +22,13 @@
     "@tektum/grimoire-adapter-logger-json": "*",
     "@tektum/grimoire-adapter-markdown-milkdown": "*",
     "@tektum/grimoire-core": "*",
-    "hono": "4.13.19"
+    "hono": "4.13.19",
+    "@hono/zod-openapi": "1.6.3",
+    "@tektum/grimoire-adapter-jobs-pgboss": "*",
+    "fractional-indexing": "4.0.0",
+    "rate-limiter-flexible": "11.5.0",
+    "uuid": "14.0.3",
+    "zod": "4.6.7"
   },
   "bin": {
     "grimoire": "./dist/cli.js"

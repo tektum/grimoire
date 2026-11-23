@@ -36,6 +36,9 @@
     },
     {
       "path": "../../packages/adapters/collab-hocuspocus"
+    },
+    {
+      "path": "../../packages/adapters/jobs-pgboss"
     }
   ]
 }

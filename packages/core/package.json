@@ -24,6 +24,10 @@
     "./users/*": {
       "types": "./dist/users/*.d.ts",
       "default": "./dist/users/*.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "default": "./dist/version.js"
     }
   }
 }
