@@ -1,4 +1,4 @@
-import { CreateBucketCommand, PutBucketCorsCommand, S3Client } from '@aws-sdk/client-s3';
+import { CreateBucketCommand, PutBucketCorsCommand, S3Client, type BucketLocationConstraint } from '@aws-sdk/client-s3';
 import { mapError } from './errors.js';
 
 /** What setting the store up needs: the admin identity (the running server never holds it) and the origins. */
@@ -30,7 +30,15 @@ const client = (o: EnsureBucketOptions): S3Client =>
 export async function createBucket(o: EnsureBucketOptions): Promise<void> {
   const s3 = client(o);
   try {
-    await s3.send(new CreateBucketCommand({ Bucket: o.bucket }));
+    // Outside us-east-1 a store (or AWS) refuses the call without the region as the location.
+    await s3.send(
+      new CreateBucketCommand({
+        Bucket: o.bucket,
+        ...(o.region === 'us-east-1'
+          ? {}
+          : { CreateBucketConfiguration: { LocationConstraint: o.region as BucketLocationConstraint } }),
+      }),
+    );
   } catch (error) {
     if ((error as { name?: unknown }).name === 'BucketAlreadyOwnedByYou') return;
     throw mapError(error);

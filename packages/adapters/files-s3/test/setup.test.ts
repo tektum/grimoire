@@ -24,6 +24,13 @@ describe('createBucket', () => {
     await expect(createBucket(options())).resolves.toBeUndefined();
   });
 
+  it('sends the region as the location outside us-east-1, and nothing in us-east-1', async () => {
+    await createBucket(options({ region: 'eu-west-1' }));
+    await createBucket(options());
+    expect(recorder.seen[0]?.body.toString()).toContain('<LocationConstraint>eu-west-1</LocationConstraint>');
+    expect(recorder.seen[1]?.body.toString()).toBe('');
+  });
+
   it('refuses a bucket that belongs to someone else, and a refused key, as unavailable', async () => {
     recorder.reply = { status: 409, headers: xmlHeaders, body: '<Error><Code>BucketAlreadyExists</Code></Error>' };
     await expect(createBucket(options())).rejects.toMatchObject({ kind: 'unavailable' });

@@ -52,12 +52,13 @@ describe('the runtime key', () => {
   it('is refused on a bucket that is not its own, for every call', async () => {
     const elsewhere = createFileStorage(filesConfig({ bucket: other }), { maxAttempts: 1 });
     for (const action of [
-      elsewhere.head('x'),
-      elsewhere.get('x'),
-      elsewhere.put('x', new Uint8Array(1), { size: 1, contentType: 'image/png' }),
-      elsewhere.list(''),
+      () => elsewhere.head('x'),
+      () => elsewhere.get('x'),
+      () => elsewhere.put('x', new Uint8Array(1), { size: 1, contentType: 'image/png' }),
+      () => elsewhere.list(''),
     ]) {
-      expect((await refusal(action)).kind).toBe('unavailable');
+      // Each call starts only when it is awaited, so no rejection waits unhandled.
+      expect((await refusal(action())).kind).toBe('unavailable');
     }
   });
 
