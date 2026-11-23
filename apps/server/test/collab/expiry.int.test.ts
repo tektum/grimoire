@@ -109,8 +109,8 @@ afterEach(async () => {
 });
 afterAll(async () => { await dropTestDatabase(DB); });
 
-// One failed round takes up to the interval (1 s) plus the re-check's 5 s database limit; slack for a loaded runner under coverage.
-const ROUND_BUDGET_MS = 1000 + 5000 + 30_000;
+// One failed round takes up to the interval plus the re-check's database limit; slack for a loaded runner under coverage.
+const ROUND_BUDGET_MS = RECHECK_INTERVAL_SECONDS * 1000 + RECHECK_DATABASE_TIMEOUT_MS + SLACK_MS;
 
 describe('re-check on the real server and database (1 s interval)', () => {
   it('a user suspended while connected is closed within the interval; a neighbour on the same page is not', async () => {
@@ -260,8 +260,6 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const c = open(r, p, await issuer.token('T7outage'));
     await authed(c);
     proxy.stall();
-    // One failed round takes up to the interval (1 s, see rig) plus the re-check's 5 s database limit; slack for a loaded runner under coverage.
-    const ROUND_BUDGET_MS = RECHECK_INTERVAL_SECONDS * 1000 + RECHECK_DATABASE_TIMEOUT_MS + SLACK_MS;
     const failures = (): number => r.logger.entries.filter((e) => e.event === 'collab.recheck_skipped').length;
     await eventually(() => failures() >= 1, ROUND_BUDGET_MS, 'a round failed');
     const callsDuringOutage = r.facts.length;
