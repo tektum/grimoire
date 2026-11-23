@@ -106,7 +106,10 @@ describe('the PostgreSQL PageRepo updateMeta', () => {
     await createPages(counted(t.app, sent)).updateMeta(id, { icon: 'star' });
     const statements = sent.filter((q) => /\bpages\b/.test(q));
     expect(statements.some((q) => /\bmarkdown\b(?!_)/.test(q))).toBe(false);
-    expect(statements.some((q) => /^\s*update pages set .*\btitle\b/i.test(q))).toBe(false);
+    const updates = statements.filter((q) => /^\s*update pages set\b/i.test(q));
+    expect(updates).toHaveLength(1);
+    // Only the SET list counts: the RETURNING list names the title too.
+    expect(updates.some((q) => /\btitle\b/.test(q.split(/\bwhere\b/i)[0] ?? ''))).toBe(false);
     expect((await pages().get(id))?.title).toBe('Icon');
   });
 
