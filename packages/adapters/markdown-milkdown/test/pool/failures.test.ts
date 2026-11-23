@@ -34,11 +34,41 @@ describe('timeout', () => {
     expect(performance.now() - next).toBeLessThan(2000);
     expect(converter.stats().threads).toBe(1);
   });
-  it('covers the wait in the queue as well as the run', async () => {
+  it('a call that waits longer than the wait limit answers queue-timeout and never starts', async () => {
     const converter = fixture({ timeoutMs: 500 });
     const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
     expect(first).toMatchObject(OK);
+    expect(second).toMatchObject({ ok: false, reason: 'queue-timeout' });
+    expect(converter.stats().threads).toBe(1);
+  });
+  it('wait plus run never exceeds the total: a slow but legal job delayed by a busy pool gets queue-timeout, not timeout', async () => {
+    const converter = fixture({ timeoutMs: 500, queueWaitMs: 400 });
+    const started = performance.now();
+    const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
+    expect(first).toMatchObject(OK);
+    expect(second).toMatchObject({ ok: false, reason: 'queue-timeout' });
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+  it('a hostile job that starts at once with the full allowance and runs out of it is a plain timeout', async () => {
+    const converter = fixture({ timeoutMs: 500, queueWaitMs: 400 });
+    expect(await converter.seed('spin', key())).toMatchObject({ ok: false, reason: 'timeout' });
+  });
+  it('a hostile job that queued only briefly still had its full allowance: a plain timeout', async () => {
+    const converter = fixture({ timeoutMs: 4000, queueWaitMs: 2000 });
+    const [first, second] = await Promise.all([converter.seed('busy-50', key()), converter.seed('spin', key())]);
+    expect(first).toMatchObject(OK);
     expect(second).toMatchObject({ ok: false, reason: 'timeout' });
+  }, 15_000); // the spin runs to its limit of about 3.9 s; it waits about 50 ms of the 400 ms the 10% boundary allows
+  it('a call that waited within the wait limit and finished within the total succeeds', async () => {
+    const converter = fixture({ timeoutMs: 2000, queueWaitMs: 1000 });
+    const [first, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('busy-300', key())]);
+    expect([first.ok, second.ok]).toEqual([true, true]);
+  });
+  it('queue-timeout is an unknown-content refusal: the same page converts once a worker is free', async () => {
+    const converter = fixture({ timeoutMs: 500 });
+    const [, second] = await Promise.all([converter.seed('busy-300', key()), converter.seed('echo', key())]);
+    expect(second).toMatchObject({ ok: false, reason: 'queue-timeout' });
+    expect(await converter.seed('echo', key())).toMatchObject(OK);
   });
 });
 
@@ -128,6 +158,31 @@ describe('back-pressure', () => {
 });
 
 describe('shutdown', () => {
+  it('close() lets calls that still wait for a worker finish within the deadline', async () => {
+    const converter = fixture({ closeDeadlineMs: 3000, timeoutMs: 20_000 });
+    const calls = [converter.seed('busy-300', key()), converter.seed('busy-300', key()), converter.seed('busy-300', key())];
+    await new Promise((r) => setImmediate(r));
+    await converter.close();
+    expect(await Promise.all(calls)).toEqual([expect.objectContaining(OK), expect.objectContaining(OK), expect.objectContaining(OK)]);
+    expect(await converter.seed('echo', key())).toMatchObject({ ok: false, reason: 'internal', detail: 'closed' });
+  });
+  it('close() takes one deadline in total, not one for waiting calls and another for the running one', async () => {
+    const converter = fixture({ closeDeadlineMs: 500, timeoutMs: 20_000 });
+    const call = converter.seed('spin', key());
+    await new Promise((r) => setImmediate(r));
+    const started = performance.now();
+    await converter.close();
+    expect(performance.now() - started).toBeLessThan(900); // two deadlines would be 1000 ms or more
+    await call;
+  });
+  it('close() does not hang past the deadline when the worker never finishes: every call is answered', async () => {
+    const converter = fixture({ closeDeadlineMs: 300, timeoutMs: 20_000 });
+    const calls = [converter.seed('spin', key()), converter.seed('echo', key())];
+    await new Promise((r) => setImmediate(r));
+    await converter.close();
+    const answers = await Promise.all(calls);
+    for (const a of answers) expect(a.ok || ['closed', 'timeout', 'queue-timeout', 'internal'].includes(a.reason)).toBe(true);
+  }, 30_000);
   it('close() lets a running conversion finish within the deadline', async () => {
     const converter = fixture({ closeDeadlineMs: 2000 });
     const running = converter.seed('busy-300', key());

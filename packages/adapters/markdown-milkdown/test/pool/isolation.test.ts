@@ -112,13 +112,14 @@ describe('one seed at a time per key', () => {
 });
 
 describe('residual limit: two hostile keys hold both workers', () => {
-  it('a third key waits at most one limit; then it is served or ends as too long, and the pool recovers', async () => {
+  it('a third key waits at most its wait limit, answers queue-timeout, and the pool recovers', async () => {
     const c = createMarkdownConverter({ poolSize: 2, seedTimeoutMs: LIMIT_MS });
     try {
       const a = settled(c.seed(SLOW, 'a'));
       const b = settled(c.seed(SLOW, 'b'));
       const third = await c.seed('# small\n', 'c');
-      expect(third.ok || (third.reason === 'timeout' && third.detail.startsWith(TOO_LONG))).toBe(true);
+      // Both workers are held for the whole limit, so the third key's wait limit ends first: it never started, and says nothing about its page.
+      expect(third).toMatchObject({ ok: false, reason: 'queue-timeout' });
       expect(await a.value).toMatchObject({ reason: 'timeout' });
       expect(await b.value).toMatchObject({ reason: 'timeout' });
       expect((await c.seed('# after\n', 'c')).ok).toBe(true);

@@ -25,6 +25,13 @@ export default async function behave(request) {
       }
       return { ok: true, state: new Uint8Array(1) };
     }
+    case 'busy-50': {
+      const end = Date.now() + 50;
+      while (Date.now() < end) {
+        /* spin */
+      }
+      return { ok: true, state: new Uint8Array(1) };
+    }
     case 'alloc': {
       const keep = [];
       for (;;) keep.push(new Array(100_000).fill(keep.length));

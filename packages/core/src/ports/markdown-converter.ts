@@ -7,6 +7,9 @@
  * A failure carries a stable `reason` (callers branch on it) and a `detail` (for logs and for callers that tell "busy" from "broken": for the pool's
  * own refusals it is a stable code such as `one-at-a-time`, `no-key`, `queue-full`, `closed`). `message`, when present, is a plain sentence a person
  * can be shown; the pool sets it on every refusal it makes itself. Neither field ever holds page content.
+ *
+ * `timeout` means a worker ran the job and it used up its time. `queue-timeout` means no worker became free in time, or the wait left the run less than its full allowance and it ran out: the page
+ * is not shown to be at fault, so it may be retried.
  */
 export type ConvertFailure =
   | 'invalid-state'
@@ -14,6 +17,7 @@ export type ConvertFailure =
   | 'too-deep'
   | 'content-lost'
   | 'timeout'
+  | 'queue-timeout'
   | 'out-of-memory'
   | 'internal';
 
@@ -21,7 +25,7 @@ export type ConvertResult =
   | { ok: true; markdown: string; text: string }
   | { ok: false; reason: ConvertFailure; detail: string; message?: string };
 
-export type SeedFailure = 'invalid-markdown' | 'too-large' | 'timeout' | 'out-of-memory' | 'internal';
+export type SeedFailure = 'invalid-markdown' | 'too-large' | 'timeout' | 'queue-timeout' | 'out-of-memory' | 'internal';
 
 export type SeedResult = { ok: true; state: Uint8Array } | { ok: false; reason: SeedFailure; detail: string; message?: string };
 

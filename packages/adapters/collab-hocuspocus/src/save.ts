@@ -16,6 +16,7 @@ export const DEFAULT_CONVERT_WAIT_MS = 10_000;
  * counts toward `collab.convert_alarm`. Everything else that is not ok is a real failure (refusal, `invalid-state`, a run past its limit, out of memory).
  */
 export function isBusy(reason: ConvertFailure | string, detail: string): boolean {
+  if (reason === 'queue-timeout') return true;
   if (reason === 'timeout') return detail === WAITING_DETAIL;
   return reason === 'internal' && (detail === 'queue-full' || detail === 'closed' || detail === 'one-at-a-time');
 }
