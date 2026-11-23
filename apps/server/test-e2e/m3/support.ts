@@ -3,9 +3,12 @@
 // users, collections and pages are created through the real tables (as the administrator or the runtime role), never by loosening authorisation.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
-import { DEV_COLLECTION, compose, eventually, newPage, peer, repoRoot, storedText, closeDb, scenario, waitUntil } from '../support.ts';
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import * as Y from 'yjs';
+import { DEV_COLLECTION, ORIGIN, WS_URL, compose, eventually, newPage, originSocket, peer, repoRoot, storedText, closeDb, scenario, waitUntil } from '../support.ts';
 import type { Peer, T } from '../support.ts';
 
 // The collaboration runner writes to test-results/m1 unless told otherwise: the scenarios of these scenarios write to test-results/m3.
@@ -123,3 +126,58 @@ export async function revoke(collection: string, sub: string): Promise<void> {
 }
 export async function setRole(sub: string, role: 'member' | 'admin' | 'viewer'): Promise<void> { await psql(`update users set role = ${lit(role)} where descope_user_id = ${lit(sub)}`); }
 export async function setSuspended(sub: string, suspended: boolean): Promise<void> { await psql(`update users set suspended_at = ${suspended ? 'now()' : 'null'} where descope_user_id = ${lit(sub)}`); }
+
+// ---- documents on one shared socket; raw sockets before sign-in ------------------------------------------------------------------------
+
+export interface Doc { readonly provider: HocuspocusProvider; readonly failures: string[]; readonly closed: { code: number; reason: string }[]; destroy(): void }
+/** One WebSocket that several documents share (the per-user DOCUMENT cap counts sessions, the socket cap counts sockets). */
+export const sharedSocket = (): HocuspocusProviderWebsocket => new HocuspocusProviderWebsocket({ url: WS_URL, WebSocketPolyfill: originSocket(ORIGIN) });
+export function openDoc(socket: HocuspocusProviderWebsocket, page: string, token: string): Doc {
+  const failures: string[] = []; const closed: { code: number; reason: string }[] = [];
+  const provider = new HocuspocusProvider({
+    name: page, token, document: new Y.Doc(), websocketProvider: socket,
+    onAuthenticationFailed: ({ reason }) => { failures.push(reason); },
+    onClose: ({ event }) => { closed.push({ code: event.code, reason: event.reason }); },
+  });
+  provider.attach();
+  return { provider, failures, closed, destroy: () => { provider.destroy(); } };
+}
+
+export interface RawSocket {
+  /** 101 when the upgrade was accepted, else the refusal status. */
+  readonly status: number;
+  readonly retryAfter: string | undefined;
+  /** The close frame the server wrote (code and reason), or code 0 when the socket ended without one. Never settles for a refused upgrade. */
+  readonly closing: Promise<{ readonly code: number; readonly reason: string }>;
+  destroy(): void;
+}
+/** An upgrade request to /collab that never signs in (no frame is ever sent): what a socket in the pre-sign-in window looks like. */
+export function rawSocket(): Promise<RawSocket> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: 8080, path: '/collab', agent: false, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64'), Origin: ORIGIN } });
+    req.on('upgrade', (_res, socket) => {
+      const closing = new Promise<{ code: number; reason: string }>((done) => {
+        let buf = Buffer.alloc(0);
+        socket.on('data', (d: Buffer) => {
+          buf = Buffer.concat([buf, d]);
+          const len = (buf[1] ?? 0) & 0x7f;
+          if (buf.length >= 4 && buf[0] === 0x88 && buf.length >= 2 + len) done({ code: buf.readUInt16BE(2), reason: buf.subarray(4, 2 + len).toString() });
+        });
+        socket.on('close', () => { done({ code: 0, reason: 'ended without a close frame' }); });
+        socket.on('error', () => { done({ code: 0, reason: 'socket error' }); });
+      });
+      resolve({ status: 101, retryAfter: undefined, closing, destroy: () => { socket.destroy(); } });
+    });
+    req.on('response', (res) => {
+      res.resume();
+      const ra = res.headers['retry-after'];
+      resolve({ status: res.statusCode ?? 0, retryAfter: Array.isArray(ra) ? ra[0] : ra, closing: new Promise(() => undefined), destroy: () => { res.destroy(); } });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// ---- stack changes (restored by the scenario that made them) -------------------------------------------------------------------------
+export const stopService = (name: 'keyserver' | 'postgres'): Promise<string> => compose('stop', name);
+export const startService = (name: 'keyserver' | 'postgres'): Promise<string> => compose('start', name);
