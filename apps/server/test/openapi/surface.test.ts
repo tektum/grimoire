@@ -35,7 +35,7 @@ describe('the API surface file', () => {
     const recorded = readFileSync(SURFACE_FILE, 'utf8');
     const diff = surfaceDiff(recorded, surface(buildDocument([unrecorded()])));
     expect(diff).toEqual([
-      '+ POST /v1/unrecorded/{id} | op:unrecordedThing | policy:collection:write:id | query:- | req:UnrecordedBody | res:201:UnrecordedItem[] | rate:3/60s | idem:yes',
+      '+ POST /v1/unrecorded/{id} | op:unrecordedThing | policy:collection:write:id | path:id:string<uuid> | query:- | req:UnrecordedBody | res:201:UnrecordedItem[] | rate:3/60s | idem:yes',
       '+ schema UnrecordedBody = {a:string}',
       '+ schema UnrecordedItem = {b:string}',
     ]);
@@ -54,12 +54,12 @@ describe('the API surface file', () => {
     const text = surface({
       paths: {
         '/b': { post: { operationId: 'b', 'x-grimoire-policy': { kind: 'admin' }, responses: { '200': body({ type: 'object' }), '404': body({ $ref: '#/components/schemas/Error' }), '409': body({ $ref: '#/components/schemas/Error' }) } } },
-        '/a': { get: { operationId: 'a', 'x-grimoire-policy': { kind: 'public' }, parameters: [{ name: 'q', in: 'query' }, { name: 'cursor', in: 'query' }, { name: 'id', in: 'path' }], responses: { '204': {} } } },
+        '/a': { get: { operationId: 'a', 'x-grimoire-policy': { kind: 'public' }, parameters: [{ name: 'q', in: 'query', required: true, schema: { type: 'integer', minimum: 1, maximum: 5, default: 2 } }, { name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '204': {} } } },
       },
     });
     expect(text.split('\n').slice(3)).toEqual([
-      'GET /a | op:a | policy:public | query:cursor,q | req:- | res:204:- | rate:- | idem:no',
-      'POST /b | op:b | policy:admin | query:- | req:- | res:200:{},409:Error | rate:- | idem:no',
+      'GET /a | op:a | policy:public | path:id:string | query:cursor?:string,q:integer(1..5)=2 | req:- | res:204:- | rate:- | idem:no',
+      'POST /b | op:b | policy:admin | path:- | query:- | req:- | res:200:{},409:Error | rate:- | idem:no',
       '',
     ]);
     expect(surface({})).toMatch(/^(#.*\n){3}$/);
@@ -78,6 +78,19 @@ describe('the API surface file', () => {
     }
     expect(surface({ components: { schemas: { M: { type: 'object', minProperties: 2, additionalProperties: { type: 'string' }, oneOf: undefined } } } })).toContain('schema M = {*:string}(min properties 2)');
     expect(surface({ components: { schemas: { U: { oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/M' }], nullable: true }, A: { allOf: [{ $ref: '#/components/schemas/M' }] }, L: { type: 'array' } } } })).toMatch(/schema A = M\nschema L = any\[\]\nschema U = string\|M\|null\n/);
+  });
+
+  it('shows a changed parameter bound, a dropped strictness, a pattern, an exclusive bound and a nullable allOf', () => {
+    const doc = (limitMax: number, strict: boolean) => ({
+      paths: { '/l': { get: { operationId: 'l', 'x-grimoire-policy': { kind: 'admin' }, parameters: [{ name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: limitMax } }] } } },
+      components: { schemas: { Strict: { type: 'object', properties: { a: { type: 'string', pattern: '^x$' }, b: { type: 'number', exclusiveMinimum: 0 }, c: { type: 'number', exclusiveMaximum: 9 } }, ...(strict ? { additionalProperties: false } : {}) }, Page: { allOf: [{ $ref: '#/components/schemas/Strict' }], nullable: true } } },
+    });
+    const text = surface(doc(100, true));
+    expect(text).toContain('query:limit?:integer(1..100)');
+    expect(text).toContain('schema Strict = {a?:string/^x$/,b?:number>0,c?:number<9}!');
+    expect(text).toContain('schema Page = Strict|null');
+    expect(surfaceDiff(text, surface(doc(200, true)))).toHaveLength(2);
+    expect(surfaceDiff(text, surface(doc(100, false)))).toHaveLength(2);
   });
 
   it('gives every operation an operationId and a policy, and the document is the same on every build', () => {
