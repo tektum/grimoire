@@ -15,12 +15,12 @@ function recorder(tables: string[], access: { owns: boolean | null; can_create: 
 }
 
 describe('grantRuntimeRole', () => {
-  it('grants table by table from the tables found, read-only for the version table', async () => {
+  it('grants table by table from the tables found, select and update only on the version table', async () => {
     const { db, sql } = recorder(['bam', 'job', 'version']);
     expect(await grantRuntimeRole(db, 'grimoire_app')).toEqual(['bam', 'job', 'version']);
     expect(sql).toContain('grant usage on schema "pgboss" to "grimoire_app"');
     expect(sql).toContain('grant select, insert, update, delete on table "pgboss"."job" to "grimoire_app"');
-    expect(sql).toContain('grant select on table "pgboss"."version" to "grimoire_app"');
+    expect(sql).toContain('grant select, update on table "pgboss"."version" to "grimoire_app"');
     expect(sql.at(-2)).toBe('grant usage, select on all sequences in schema "pgboss" to "grimoire_app"');
     expect(sql.at(-1)).toBe('grant execute on all functions in schema "pgboss" to "grimoire_app"');
   });

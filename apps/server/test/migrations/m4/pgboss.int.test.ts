@@ -48,8 +48,8 @@ describe('grimoire migrate installs pg-boss', () => {
     expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['job', 'queue', 'version']));
     for (const t of tables) {
       expect({ name: t.name, sel: t.sel }).toEqual({ name: t.name, sel: true });
-      const writes = t.name !== 'version';
-      expect({ name: t.name, ins: t.ins, upd: t.upd, del: t.del }).toEqual({ name: t.name, ins: writes, upd: writes, del: writes });
+      const full = t.name !== 'version'; // version: the loops update its timestamps, nothing else
+      expect({ name: t.name, ins: t.ins, upd: t.upd, del: t.del }).toEqual({ name: t.name, ins: full, upd: true, del: full });
     }
   }, 120_000);
 
@@ -66,7 +66,8 @@ describe('grimoire migrate installs pg-boss', () => {
     await admin.start();
     await admin.createQueue('m4-grants');
     await admin.stop({ graceful: true, close: true, timeout: 2000 });
-    const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined });
+    const errors: Error[] = [];
+    const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: (e) => errors.push(e) });
     try {
       expect(await queue.enqueue('m4-grants', { hello: 'world' })).toEqual(expect.any(String));
       expect(await queue.isLive()).toBe(true);
@@ -74,6 +75,9 @@ describe('grimoire migrate installs pg-boss', () => {
       await queue.stop({ graceMs: 0 });
     }
     expect((await sqlAsApp<{ n: number }>("select count(*)::int as n from pgboss.job where name = 'm4-grants'"))[0]?.n).toBe(1);
+    expect(errors.map((e) => e.message)).toEqual([]);
+    // The maintenance and cron loops take their turn by updating a timestamp of the version row; the runtime role may.
+    await sqlAsApp('update pgboss.version set cron_on = cron_on');
   }, 120_000);
 
   it('does not let the runtime role create a queue: that is DDL and belongs to the migration role', async () => {

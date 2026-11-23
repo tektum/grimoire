@@ -2,8 +2,11 @@ import { PgBoss, type ConstructorOptions } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import { PGBOSS_SCHEMA } from './index.js';
 
-/** What the runtime role may do on a pg-boss table; every table not named here is read and written. */
-const READ_ONLY_TABLES: ReadonlySet<string> = new Set(['version']);
+/**
+ * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
+ * columns (`maintained_on`, `cron_on`, ...) the maintenance and cron loops update to take their turn. No insert or delete there.
+ */
+const TABLE_PRIVILEGES: ReadonlyMap<string, string> = new Map([['version', 'select, update']]);
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
@@ -68,7 +71,7 @@ export async function grantRuntimeRole(db: Queryable, role: string, schema: stri
   );
   const granted: string[] = [];
   for (const { name } of tables) {
-    const privileges = READ_ONLY_TABLES.has(name) ? 'select' : 'select, insert, update, delete';
+    const privileges = TABLE_PRIVILEGES.get(name) ?? 'select, insert, update, delete';
     await db.query(`grant ${privileges} on table ${s}.${ident(name)} to ${r}`);
     granted.push(name);
   }
