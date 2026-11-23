@@ -9,7 +9,7 @@ describe('the one writer of a page row with Markdown and no state', () => {
     const page = SEED_PAGES[0]!;
     await insertMarkdownOnlyPageUnsafeForUserText({ query: (sql, params) => { calls.push({ sql, params }); return Promise.resolve(); } }, page);
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.sql).toContain('insert into pages');
+    expect(calls[0]!.sql).toMatch(/insert\s+into\s+pages/);
     expect(calls[0]!.sql).not.toContain('ydoc');
     expect(calls[0]!.params).toContain(page.markdown);
   });

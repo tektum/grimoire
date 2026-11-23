@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import * as Y from 'yjs';
 import { afterAll, beforeAll, describe, it } from 'vitest';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin, startServer } from '../server/support/harness.js';
 import type { ServerProcess } from '../server/support/harness.js';
 import { eventually, DEV_COLLECTION, devFixtures, newPage } from '../collab/support.js';
@@ -48,7 +49,7 @@ const savedLines = (page: string) => server.events.filter((e) => e['event'] === 
 describe('save latency', { timeout: 600_000 }, () => {
   it('measures', async () => {
     const out: Record<string, unknown> = { debounceMs: DEBOUNCE };
-    const small = newPage(); await devFixtures(DB); await sqlAdmin(DB, `insert into pages (collection_id, id, markdown) values ('${DEV_COLLECTION}', '${small}', 'hello world')`);
+    const small = newPage(); await devFixtures(DB); await insertPage((sql) => sqlAdmin(DB, sql), { collection_id: DEV_COLLECTION, id: small, markdown: 'hello world' });
     const cs = await open(small);
     const smallRuns: number[] = [];
     for (let i = 0; i < 5; i++) smallRuns.push(await editAndMeasure(small, cs, ` s${String(i)}x`));
@@ -60,7 +61,7 @@ describe('save latency', { timeout: 600_000 }, () => {
     const line = 'The quick brown fox jumps over the lazy dog, again and again, with *emphasis* and `code` and a [link](https://example.com).\n\n';
     const md = line.repeat(Math.ceil((sizeKb * 1024) / line.length));
     await devFixtures(DB);
-    await sqlAdmin(DB, `insert into pages (collection_id, id, markdown) values ('${DEV_COLLECTION}', '${big}', $md$${md}$md$)`);
+    await insertPage((sql) => sqlAdmin(DB, sql), { collection_id: DEV_COLLECTION, id: big, markdown: md });
     const t0 = performance.now();
     const cb = await open(big);
     out['big_open_seed_ms'] = Math.round(performance.now() - t0);

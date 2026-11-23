@@ -1,3 +1,4 @@
+// The raw `insert into pages` statements below stay as written: this test runs before the migration that drops the column defaults, and checks what those defaults did.
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';

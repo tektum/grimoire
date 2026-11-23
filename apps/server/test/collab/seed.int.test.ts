@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin, startServer } from '../server/support/harness.js';
 import type { ServerProcess } from '../server/support/harness.js';
 import { eventually, DEV_COLLECTION, devFixtures, newPage } from './support.js';
@@ -22,7 +23,7 @@ describe('seeding from Markdown', () => {
     const s = await start();
     const page = newPage();
     await devFixtures(DB);
-    await sqlAdmin(DB, `insert into pages (collection_id, id, markdown) values ('${DEV_COLLECTION}', '${page}', $md$${MD}$md$)`);
+    await insertPage((sql) => sqlAdmin(DB, sql), { collection_id: DEV_COLLECTION, id: page, markdown: MD });
     const c = connectDoc(s.port, page, ALICE); clients.push(c);
     await eventually(() => (c.provider.synced ? true : undefined), 10_000, 'synced');
     const row = await columnsOf(DB, page);
@@ -37,7 +38,7 @@ describe('seeding from Markdown', () => {
     const s = await start();
     const page = newPage();
     await devFixtures(DB);
-    await sqlAdmin(DB, `insert into pages (collection_id, id, markdown) values ('${DEV_COLLECTION}', '${page}', $md$${MD}$md$)`);
+    await insertPage((sql) => sqlAdmin(DB, sql), { collection_id: DEV_COLLECTION, id: page, markdown: MD });
     const many = Array.from({ length: 20 }, () => connectDoc(s.port, page, ALICE));
     clients.push(...many);
     await eventually(() => (many.every((c) => c.provider.synced) ? true : undefined), 15_000, 'all synced');
@@ -50,7 +51,7 @@ describe('seeding from Markdown', () => {
     const s = await start();
     const page = newPage();
     await devFixtures(DB);
-    await sqlAdmin(DB, `insert into pages (collection_id, id, markdown) values ('${DEV_COLLECTION}', '${page}', $md$${'<' + 'a'.repeat(2_000_000)}$md$)`);
+    await insertPage((sql) => sqlAdmin(DB, sql), { collection_id: DEV_COLLECTION, id: page, markdown: '<' + 'a'.repeat(2_000_000) });
     const c = connectDoc(s.port, page, ALICE); clients.push(c);
     await eventually(() => (c.failures.length > 0 ? true : undefined), 15_000, 'refused');
     expect(c.failures[0]).toBe('seed-failed');

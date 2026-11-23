@@ -3,9 +3,11 @@ import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPageStore } from '../src/page-store.js';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from './page-store-support.js';
 
 const DB = `grimoire_m2t04_store_${String(process.pid)}`;
+const run = (sql: string): Promise<unknown> => sqlAdmin(DB, sql);
 const clock = { now: () => Date.now() };
 const expectedHash = (title: string, markdown: string): Buffer => createHash('sha256').update(title, 'utf8').update('\0').update(markdown, 'utf8').digest();
 /** `last_edited_by` has a foreign key since 0004: an editor must be a user row. */
@@ -16,7 +18,7 @@ const newUser = async (): Promise<string> => {
 };
 const newRow = async (): Promise<string> => {
   const id = randomUUID();
-  await sqlAdmin(DB, `insert into pages (id, markdown) values ('${id}', null)`); // the page store ignores the collection: the default (Unfiled) is fine
+  await insertPage(run, { id, markdown: null }); // the page store ignores the collection: Unfiled is fine
   return id;
 };
 const row = async (id: string) => (await sqlAdmin<{ ydoc: Buffer | null; markdown: string | null; text_content: string | null; markdown_hash: Buffer | null; last_edited_by: string | null; updated_at: string; epoch: number }>(
@@ -50,7 +52,7 @@ it('save hashes include the row title (page-store move regression)', async () =>
 describe('seed', () => {
   it('20 concurrent seeds of one row call build exactly once and return the same state', async () => {
     const id = randomUUID();
-    await sqlAdmin(DB, `insert into pages (id, markdown) values ('${id}', '# Seeded')`);
+    await insertPage(run, { id, markdown: '# Seeded' });
     const sent: string[] = [];
     const store = createPageStore(counted(db, sent), clock);
     let builds = 0;
@@ -76,7 +78,7 @@ describe('seed', () => {
   it('a row with state, or with neither state nor Markdown, is not built', async () => {
     const store = createPageStore(db, clock);
     const withState = randomUUID();
-    await sqlAdmin(DB, `insert into pages (id, ydoc, markdown) values ('${withState}', '\\x0102', 'md')`);
+    await insertPage(run, { id: withState, ydoc: new Uint8Array([1, 2]), markdown: 'md' });
     const empty = await newRow();
     const build = (): Promise<Uint8Array> => Promise.reject(new Error('must not be called'));
     expect(await store.seed(withState, build)).toMatchObject({ seeded: false, state: new Uint8Array([1, 2]) });
@@ -86,7 +88,7 @@ describe('seed', () => {
 
   it('with a lock held by another connection and a lock timeout of 1 s the seed fails with a lock-timeout error', async () => {
     const id = randomUUID();
-    await sqlAdmin(DB, `insert into pages (id, markdown) values ('${id}', 'md')`);
+    await insertPage(run, { id, markdown: 'md' });
     const other = createDatabase(appUrl(DB), { maxConnections: 1 });
     let release: () => void = () => undefined;
     const held = new Promise<void>((r) => { release = r; });
@@ -221,7 +223,7 @@ describe('review fixes', () => {
   });
 
   it('F3: 20 heavy first-opens (build takes 400 ms) hold no connection or open transaction while converting, and each row is seeded once', async () => {
-    const ids = await Promise.all(Array.from({ length: 20 }, async () => { const id = randomUUID(); await sqlAdmin(DB, `insert into pages (id, markdown) values ('${id}', 'heavy')`); return id; }));
+    const ids = await Promise.all(Array.from({ length: 20 }, async () => { const id = randomUUID(); await insertPage(run, { id, markdown: 'heavy' }); return id; }));
     // A pool of 2: a connection held during a build would serialise the builds (20 x 400 ms / 2 = 4 s).
     const small = createDatabase(appUrl(DB), { maxConnections: 2 });
     const store = createPageStore(small, clock);
@@ -243,7 +245,7 @@ describe('review fixes', () => {
 
   it('F3: a row whose Markdown changed while it was converted is not written with the old result', async () => {
     const id = randomUUID();
-    await sqlAdmin(DB, `insert into pages (id, markdown) values ('${id}', 'old')`);
+    await insertPage(run, { id, markdown: 'old' });
     const seen: string[] = [];
     const r = await createPageStore(db, clock).seed(id, async (md) => {
       seen.push(md);

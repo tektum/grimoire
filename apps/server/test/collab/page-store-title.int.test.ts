@@ -3,6 +3,7 @@ import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPageStore } from '@tektum/grimoire-adapter-db-kysely';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
 const DB = 'grimoire_m3t03_title';
@@ -13,7 +14,7 @@ const converted = (over: { markdown?: string; state?: Uint8Array } = {}) => ({
 });
 const newRow = async (title = ''): Promise<string> => {
   const id = randomUUID();
-  await sqlAdmin(DB, `insert into pages (id, title) values ('${id}', '${title}')`);
+  await insertPage((sql) => sqlAdmin(DB, sql), { id, title });
   return id;
 };
 const hashOf = async (id: string): Promise<Buffer | null> => (await sqlAdmin<{ markdown_hash: Buffer | null }>(DB, `select markdown_hash from pages where id = '${id}'`))[0]?.markdown_hash ?? null;

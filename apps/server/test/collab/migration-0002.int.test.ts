@@ -1,3 +1,4 @@
+// The raw `insert into pages` statements below stay as written: they run against the schema as of migrations 0001 and 0002, before pages have a collection or an author.
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';

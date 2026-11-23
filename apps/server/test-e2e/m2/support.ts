@@ -8,6 +8,7 @@ import * as encoding from 'lib0/encoding';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { convertInProcess, reseedInProcess } from '@tektum/grimoire-adapter-markdown-milkdown';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import * as Y from 'yjs';
 import { createReferenceEditor, installDom } from './reference-editor.mjs';
 import type { ReferenceEditor } from './reference-editor.mjs';
@@ -60,7 +61,7 @@ export async function rowOf(id: string): Promise<Row | undefined> {
 /** Inserts a page that has Markdown and no Yjs state (the shape of an imported page); returns its id. */
 export async function insertSeededPage(id: string, markdown: string): Promise<void> {
   await ensureDevCollection();
-  await db.query('insert into pages (id, collection_id, markdown) values ($1, $2, $3)', [id, DEV_COLLECTION, markdown]);
+  await insertPage((sql) => db.query(sql), { id, collection_id: DEV_COLLECTION, markdown });
 }
 
 // ---- the converter the server uses, in process --------------------------------------------------------------------------------------

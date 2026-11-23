@@ -17,6 +17,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { ALLOWED_ORIGIN, originSocket } from '@tektum/grimoire-test-support';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 import { createIssuer, KeyService, PROJECT_ID } from '../server/support/descope-double.js';
 import type { Issuer } from '../server/support/descope-double.js';
@@ -95,7 +96,7 @@ async function user(sub: string, role = 'member'): Promise<string> {
 }
 async function page(collection = DEV_COLLECTION): Promise<string> {
   const id = randomUUID();
-  await sqlAdmin(DB, `insert into pages (id, collection_id) values ('${id}', '${collection}')`);
+  await insertPage((sql) => sqlAdmin(DB, sql), { id, collection_id: collection });
   return id;
 }
 const grant = (collection: string, userId: string, permission: 'read' | 'read_write'): Promise<unknown[]> =>
@@ -302,7 +303,9 @@ describe('re-check on the real server and database (1 s interval)', () => {
     await user('T7many');
     const token = await issuer.token('T7many');
     const ids = Array.from({ length: 300 }, () => randomUUID());
-    await sqlAdmin(DB, `insert into pages (id, collection_id) select unnest(array[${ids.map((i) => `'${i}'::uuid`).join(',')}]), '${DEV_COLLECTION}'`);
+    const statements: string[] = [];
+    for (const id of ids) await insertPage((sql) => { statements.push(sql); return Promise.resolve(); }, { id, collection_id: DEV_COLLECTION });
+    await sqlAdmin(DB, statements.join(';\n')); // one round trip for the 300 rows
     const providers: HocuspocusProvider[] = [];
     for (let s = 0; s < 6; s++) {
       const shared = new HocuspocusProviderWebsocket({ url: r.url, WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
