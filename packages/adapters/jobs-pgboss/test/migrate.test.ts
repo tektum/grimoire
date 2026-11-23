@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import { grantRuntimeRole, migratePgBoss, requireSchemaAccess } from '../src/migrate.js';
 
+const functions = ['create_queue', 'delete_queue', 'job_table_run'];
+
 function recorder(tables: string[], access: { owns: boolean | null; can_create?: boolean } = { owns: true }) {
   const sql: string[] = [];
   const db: Queryable = {
     query: async <Row>(text: string) => {
       sql.push(text.replace(/\s+/g, ' ').trim());
       if (text.includes('current_user')) return [{ me: 'grimoire_migrator', can_create: false, ...access }] as Row[];
+      if (text.includes('pg_proc')) return functions.map((name) => ({ signature: `pgboss.${name}(text)`, name })) as Row[];
       return (text.includes('pg_class') ? tables.map((name) => ({ name })) : []) as Row[];
     },
   };
@@ -16,17 +19,21 @@ function recorder(tables: string[], access: { owns: boolean | null; can_create?:
 
 describe('grantRuntimeRole', () => {
   it('grants table by table (partitions included) from the tables found, select and update only on the version table', async () => {
-    const { db, sql } = recorder(['bam', 'job', 'version']);
-    expect(await grantRuntimeRole(db, 'grimoire_app')).toEqual(['bam', 'job', 'version']);
+    const { db, sql } = recorder(['bam', 'job', 'queue', 'version']);
+    expect(await grantRuntimeRole(db, 'grimoire_app')).toEqual(['bam', 'job', 'queue', 'version']);
     expect(sql).toContain('grant usage on schema "pgboss" to "grimoire_app"');
     expect(sql).toContain('grant select, insert, update, delete on table "pgboss"."job" to "grimoire_app"');
     expect(sql).toContain('grant select, update on table "pgboss"."version" to "grimoire_app"');
     expect(sql).toContain('grant usage, select on all sequences in schema "pgboss" to "grimoire_app"');
-    expect(sql).toContain('grant execute on all functions in schema "pgboss" to "grimoire_app"');
-    expect(sql.slice(-3)).toEqual([
+    expect(sql).toContain('grant execute on function pgboss.job_table_run(text) to "grimoire_app"');
+    expect(sql).toContain('revoke execute on function pgboss.create_queue(text) from public');
+    expect(sql).toContain('revoke execute on function pgboss.create_queue(text) from "grimoire_app"');
+    expect(sql).toContain('revoke execute on function pgboss.delete_queue(text) from "grimoire_app"');
+    expect(sql.some((q) => q.startsWith('grant execute') && /create_queue|delete_queue/.test(q))).toBe(false);
+    expect(sql).toContain('grant select, update on table "pgboss"."queue" to "grimoire_app"');
+    expect(sql.slice(-2)).toEqual([
       'alter default privileges in schema "pgboss" grant select, insert, update, delete on tables to "grimoire_app"',
       'alter default privileges in schema "pgboss" grant usage, select on sequences to "grimoire_app"',
-      'alter default privileges in schema "pgboss" grant execute on functions to "grimoire_app"',
     ]);
   });
 

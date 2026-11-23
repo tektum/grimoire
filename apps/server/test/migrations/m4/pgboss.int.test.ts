@@ -48,9 +48,20 @@ describe('grimoire migrate installs pg-boss', () => {
     expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['job', 'job_common', 'queue', 'version']));
     for (const t of tables) {
       expect({ name: t.name, sel: t.sel }).toEqual({ name: t.name, sel: true });
-      const full = t.name !== 'version'; // version: the loops update its timestamps, nothing else
+      const full = t.name !== 'version' && t.name !== 'queue'; // version and queue: updates only (timestamps, statistics); queues are made and dropped by the migration role
       expect({ name: t.name, ins: t.ins, upd: t.upd, del: t.del }).toEqual({ name: t.name, ins: full, upd: true, del: full });
     }
+  }, 120_000);
+
+  it('lets the runtime role run no function that creates or drops a queue', async () => {
+    const rows = await sqlAdmin<{ name: string; allowed: boolean }>(DB,
+      `select p.proname as name, has_function_privilege('grimoire_app', p.oid, 'execute') as allowed
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'pgboss' order by 1`);
+    const byName = new Map(rows.map((r) => [r.name, r.allowed]));
+    expect(byName.get('create_queue')).toBe(false);
+    expect(byName.get('delete_queue')).toBe(false);
+    expect(rows.filter((r) => r.allowed).map((r) => r.name)).toEqual(expect.arrayContaining(['job_table_run']));
+    console.log(`runtime role may execute: ${rows.filter((r) => r.allowed).map((r) => r.name).join(', ')}`);
   }, 120_000);
 
   it('is repeatable: a second run succeeds and changes no grant', async () => {

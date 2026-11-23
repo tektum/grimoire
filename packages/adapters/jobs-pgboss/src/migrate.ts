@@ -6,7 +6,14 @@ import { PGBOSS_SCHEMA } from './index.js';
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
  * columns (`maintained_on`, `cron_on`, ...) the maintenance and cron loops update to take their turn. No insert or delete there.
  */
-const TABLE_PRIVILEGES: ReadonlyMap<string, string> = new Map([['version', 'select, update']]);
+const TABLE_PRIVILEGES: ReadonlyMap<string, string> = new Map([
+  ['version', 'select, update'],
+  // Queues are made and dropped by the migration role; the runtime role only reads them and updates their statistics.
+  ['queue', 'select, update'],
+]);
+
+/** Functions that create or drop queues (DDL): the runtime role must not run them. Everything else it may. */
+const DDL_FUNCTIONS: ReadonlySet<string> = new Set(['create_queue', 'delete_queue']);
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
@@ -82,10 +89,17 @@ export async function grantRuntimeRole(db: Queryable, role: string, schema: stri
     granted.push(name);
   }
   await db.query(`grant usage, select on all sequences in schema ${s} to ${r}`);
-  await db.query(`grant execute on all functions in schema ${s} to ${r}`);
+  // Functions carry EXECUTE for PUBLIC by default, so every one is revoked from PUBLIC first and then granted back one by one.
+  const functions = await db.query<{ signature: string; name: string }>(
+    `select p.oid::regprocedure::text as signature, p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = $1 order by 1`,
+    [schema],
+  );
+  for (const f of functions) {
+    await db.query(`revoke execute on function ${f.signature} from public`);
+    await db.query(`${DDL_FUNCTIONS.has(f.name) ? 'revoke' : 'grant'} execute on function ${f.signature} ${DDL_FUNCTIONS.has(f.name) ? 'from' : 'to'} ${r}`);
+  }
   // Tables, sequences and functions the migration role creates later (a queue's partition, made when the queue is created) get the same rights.
   await db.query(`alter default privileges in schema ${s} grant select, insert, update, delete on tables to ${r}`);
   await db.query(`alter default privileges in schema ${s} grant usage, select on sequences to ${r}`);
-  await db.query(`alter default privileges in schema ${s} grant execute on functions to ${r}`);
   return granted;
 }
