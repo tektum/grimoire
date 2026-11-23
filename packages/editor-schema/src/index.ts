@@ -99,12 +99,13 @@ function normalisedOnce(node: Node, inCell: boolean, taskFirst: boolean): Node {
       const safe = child.marks.filter((mark) => mark.type.name !== "link" || isSafeUrl(mark.attrs["href"]));
       source.push(child.mark(starMarks(safe)));
     } else if (child.type.name === "image") {
+      // Every image, whatever its source: a link mark with a refused address is dropped from it.
+      const keep = child.marks.filter((mark) => mark.type.name !== "link" || isSafeUrl(mark.attrs["href"]));
       if (!isSafeUrl(child.attrs["src"], "image")) {
         const alt = String(child.attrs["alt"] ?? "");
-        const keep = child.marks.filter((mark) => mark.type.name !== "link" || isSafeUrl(mark.attrs["href"]));
         if (alt !== "") source.push(schema.text(alt, keep));
-      } else if (child.attrs["href"] !== "" && !isSafeUrl(child.attrs["href"])) source.push(child.type.create({ ...child.attrs, href: "", linkTitle: "" }, null, child.marks));
-      else source.push(child);
+      } else if (child.attrs["href"] !== "" && !isSafeUrl(child.attrs["href"])) source.push(child.type.create({ ...child.attrs, href: "", linkTitle: "" }, null, keep));
+      else source.push(keep.length === child.marks.length ? child : child.type.create(child.attrs, null, keep));
     } else source.push(child);
   });
   // A stored raw `<br>` node (also padded, or several in a row) is hard breaks: that is what the reader makes of it
@@ -716,7 +717,7 @@ const starMarker = <Id extends string>(schema: $MarkSchema<Id>) =>
 export const emphasisStar = starMarker(emphasisSchema);
 export const strongStar = starMarker(strongSchema);
 
-type MarkdownTree = { type: string; children?: MarkdownTree[]; value?: string; checked?: boolean | null };
+type MarkdownTree = { type: string; children?: MarkdownTree[]; value?: string; checked?: boolean | null; position?: { start: { offset?: number }; end: { offset?: number } } };
 const BREAK_ELEMENT = /^<br\s*\/?>$/i;
 const MARK_NODES = new Set(["emphasis", "strong", "delete"]);
 
@@ -755,7 +756,10 @@ export const tidyReading = $remark("grimoire-tidy-reading", () => () => (root) =
       const [first] = node.children;
       const only = first?.type === "paragraph" && first.children?.length === 1 ? first.children[0] : undefined;
       const marker = only?.type === "text" ? /^\[([ xX])\]$/.exec(only.value ?? "") : null;
-      if (first && marker) {
+      // Only a bare checkbox in the source: an escaped bracket (`\[ ]`) decodes to the same three characters but is 4 characters of source, and is text.
+      const start = only?.position?.start.offset; const end = only?.position?.end.offset;
+      const bare = start === undefined || end === undefined || end - start === (only?.value ?? "").length;
+      if (first && marker && bare) {
         node.checked = marker[1] !== " ";
         first.children = [];
       }

@@ -79,6 +79,21 @@ describe("isSafeUrl", () => {
   });
 });
 
+describe("a link mark on an image with an allowed source is dropped when its address is refused", () => {
+  it.each(HOSTILE.slice(0, 12).map((url, index) => [index, url] as const))("hostile spelling %i", async (_index, url) => {
+    const editor = await makeEditor({ markdown: "x\n" });
+    const schema = editor.editor.action((ctx) => ctx.get(schemaCtx));
+    const imageWithMark = { ...(image("https://example.com/ok.png") as object), marks: marks(url) };
+    const live = schema.nodeFromJSON({ type: "doc", content: [paragraph({ type: "text", text: "a ", marks: [] }, imageWithMark)] });
+    const normal = normaliseForMarkdown(live);
+    expect(linkHrefs(normal).filter((href) => !isSafeUrl(href)), "no refused link survives on the image").toEqual([]);
+    expect(imageSrcs(normal)).toEqual(["https://example.com/ok.png"]);
+    const markdown = editor.serialize(live);
+    expect(markdown).not.toContain(url.trim());
+    expect(markdown).toContain("![pic](https://example.com/ok.png)");
+  });
+});
+
 describe("a refused address is inert in the document, in the DOM and in the stored Markdown", () => {
   it.each(HOSTILE.map((url, index) => [index, url] as const))("hostile spelling %i", async (_index, url) => {
     const editor = await makeEditor({ markdown: "x\n" });
