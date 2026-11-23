@@ -56,6 +56,29 @@ export interface HttpConfig {
   readonly addressCeilingPerMinute: number;
 }
 
+/** The file store (S3 protocol). Present when the store variables are set; the admin key is never part of it. */
+export interface FilesConfig {
+  /** Internal URL the server uses. */
+  readonly endpoint: string;
+  /** URL the browser uses, put into signed URLs; the internal endpoint when unset. */
+  readonly publicEndpoint: string;
+  /** Origin of `publicEndpoint`: what the Content-Security-Policy lists as the store origin. */
+  readonly publicOrigin: string;
+  readonly bucket: string;
+  readonly accessKey: string;
+  readonly secretKey: string;
+  readonly region: string;
+  readonly addressing: 'path' | 'virtual';
+  /** Header that makes a signed PUT create-only. */
+  readonly createOnlyHeader: 'if-none-match' | 'x-goog-if-generation-match';
+  /** `api`: the setup step configures the store's CORS; `external`: the operator does. */
+  readonly corsMode: 'api' | 'external';
+  readonly maxBytes: number;
+  readonly allowedTypes: readonly string[];
+  /** Pending uploads one user may hold; above it the API answers 429 rate_limited. */
+  readonly pendingMaxPerUser: number;
+}
+
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
   readonly database: { readonly url?: string; readonly migrationUrl?: string };
@@ -74,6 +97,7 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   /** Local mode may bind a non-loopback address only when this is set (GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK). */
   readonly localAllowNonLoopback: boolean;
   readonly collab: CollabConfig;
+  readonly files?: FilesConfig;
   readonly http: HttpConfig;
   /** The address browsers use for live editing (GRIMOIRE_PUBLIC_COLLAB_URL); absent when unset. */
   readonly publicCollabUrl?: string;

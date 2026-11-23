@@ -17,6 +17,13 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: 'the default limit suits the local stack',
   GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: 'the default limit suits the local stack',
   GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: 'the default limit suits the local stack',
+  GRIMOIRE_S3_ADMIN_ACCESS_KEY: 'the running server never holds the admin key',
+  GRIMOIRE_S3_ADMIN_SECRET_KEY: 'the running server never holds the admin key',
+  GRIMOIRE_S3_CREATE_ONLY_HEADER: 'M5-T02a passes it',
+  GRIMOIRE_S3_CORS_MODE: 'M5-T02a passes it',
+  GRIMOIRE_FILES_MAX_BYTES: 'M5-T02a passes it',
+  GRIMOIRE_FILES_ALLOWED_TYPES: 'M5-T02a passes it',
+  GRIMOIRE_FILES_PENDING_MAX_PER_USER: 'M5-T02a passes it',
 };
 
 it('every GRIMOIRE_* setting the loader reads appears in compose.yaml or is listed above with a reason', () => {

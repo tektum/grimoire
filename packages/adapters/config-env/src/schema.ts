@@ -2,7 +2,7 @@ import { BlockList, isIP } from 'node:net';
 import { z } from 'zod';
 import { isDescopeProjectId } from '@tektum/grimoire-core/ports/auth-verifier';
 import { parseVersion } from '@tektum/grimoire-core/version';
-import type { Config } from '@tektum/grimoire-core/ports/config';
+import type { Config, FilesConfig } from '@tektum/grimoire-core/ports/config';
 
 const P = 'GRIMOIRE_';
 const MAX_INT = Number.MAX_SAFE_INTEGER;
@@ -88,6 +88,21 @@ type S3Required = 'ENDPOINT' | 'BUCKET' | 'ACCESS_KEY' | 'SECRET_KEY';
 const S3_ANY = ['ENDPOINT', 'PUBLIC_ENDPOINT', 'BUCKET', 'ACCESS_KEY', 'SECRET_KEY', 'REGION', 'ADDRESSING_STYLE'] as const;
 const SERVER_ONLY = 'is required to run the server';
 
+const MIME_RULE = 'must be a comma list of lowercase type/subtype names';
+const FORBIDDEN_TYPES = ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/xml', 'application/xml', 'text/javascript', 'application/javascript'];
+// The 15 types of R9.14: images, documents, archives and video that a browser never runs inline.
+const DEFAULT_TYPES = [
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip', 'video/mp4', 'video/webm',
+];
+// Script and XML families as well as the exact names: a browser runs (or renders as XML, with scripts) every one of them inline.
+const executableType = (t: string): boolean => FORBIDDEN_TYPES.includes(t) || /(^|\/)(x-)?(java|ecma)script$|^text\/(javascript1\.[0-5]|jscript|livescript)$|[+/]xml$/.test(t);
+const mime = z.string(msg(MIME_RULE)).regex(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/, msg(MIME_RULE));
+
+
 const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_LOCAL: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
   GRIMOIRE_ROLE: field(z.enum(['all', 'api', 'collab'], msg('must be one of: all, api, collab'))).default('all'),
@@ -147,6 +162,13 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_SECRET_KEY: field(text),
   GRIMOIRE_S3_REGION: field(text),
   GRIMOIRE_S3_ADDRESSING_STYLE: field(z.enum(['path', 'virtual'], msg('must be one of: path, virtual'))),
+  GRIMOIRE_S3_ADMIN_ACCESS_KEY: field(text),
+  GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text),
+  GRIMOIRE_S3_CREATE_ONLY_HEADER: field(z.enum(['if-none-match', 'x-goog-if-generation-match'], msg('must be one of: if-none-match, x-goog-if-generation-match'))).default('if-none-match'),
+  GRIMOIRE_S3_CORS_MODE: field(z.enum(['api', 'external'], msg('must be one of: api, external'))).default('api'),
+  GRIMOIRE_FILES_MAX_BYTES: field(int(1, MAX_INT)).default(26_214_400),
+  GRIMOIRE_FILES_ALLOWED_TYPES: field(list(mime, MIME_RULE), undefined, true).default(DEFAULT_TYPES),
+  GRIMOIRE_FILES_PENDING_MAX_PER_USER: field(int(1, MAX_INT)).default(10),
   GRIMOIRE_REQUIRE_HANDSHAKE: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
   GRIMOIRE_MIN_CLIENT_VERSION: field(z.string(msg(VERSION_RULE)).refine((v) => parseVersion(v) !== null, msg(VERSION_RULE))).default('0.0.0'),
   GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(1000),
@@ -170,6 +192,14 @@ LOOPBACK.addSubnet('127.0.0.0', 8, 'ipv4');
 LOOPBACK.addAddress('::1', 'ipv6');
 /** Loopback by `net.BlockList` (which also matches IPv4-mapped IPv6); an unparsable host is not loopback. */
 const isLoopback = (host: string): boolean => (isIP(host) === 4 ? LOOPBACK.check(host, 'ipv4') : isIP(host) === 6 && LOOPBACK.check(host, 'ipv6'));
+/** Whether the public store endpoint shares an origin with an allowed app origin (a stored file would then run as the app). */
+const publicEndpointIsAnAppOrigin = (raw: Raw): boolean => {
+  const endpoint = raw['GRIMOIRE_S3_PUBLIC_ENDPOINT'] ?? raw['GRIMOIRE_S3_ENDPOINT']; // the one Config.files will use
+  if (endpoint === undefined || !URL.canParse(endpoint)) return false; // the URL rule reports a bad value
+  const storeOrigin = new URL(endpoint).origin.toLowerCase();
+  return (raw['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',').some((o) => o.trim().toLowerCase() === storeOrigin);
+};
+
 const envSchema = (purpose: Purpose, raw: Raw) => {
   const set = (name: string): boolean => raw[name] !== undefined;
   const s3Missing = (n: S3Required) => ({
@@ -251,12 +281,44 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ENDPOINT'), s3Missing('ENDPOINT'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_BUCKET'), s3Missing('BUCKET'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ACCESS_KEY'), s3Missing('ACCESS_KEY'))
-    .refine(() => !s3Any() || set('GRIMOIRE_S3_SECRET_KEY'), s3Missing('SECRET_KEY'));
+    .refine(() => !s3Any() || set('GRIMOIRE_S3_SECRET_KEY'), s3Missing('SECRET_KEY'))
+    .refine(() => set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') === set('GRIMOIRE_S3_ADMIN_SECRET_KEY'), {
+      path: [set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') ? 'GRIMOIRE_S3_ADMIN_SECRET_KEY' : 'GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
+      error: () => `is required when the other ${P}S3_ADMIN_* key is set`,
+    })
+    // The running server never holds the admin key; only a local development stack may pass it (the test harness does).
+    .refine(() => !(server && !local && set('GRIMOIRE_S3_ADMIN_ACCESS_KEY')), {
+      path: ['GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
+      error: () => 'must not be set for the server outside local mode: only the files-setup step holds the admin key',
+    })
+    .refine((v) => { const t: unknown = v.GRIMOIRE_FILES_ALLOWED_TYPES; return !Array.isArray(t) || t.every((x) => typeof x !== 'string' || !executableType(x)); }, {
+      path: ['GRIMOIRE_FILES_ALLOWED_TYPES'], when: always,
+      error: () => `must not include a type a browser would run inline: script and XML types such as ${FORBIDDEN_TYPES.join(', ')}`,
+    })
+    .refine(() => !publicEndpointIsAnAppOrigin(raw), {
+      path: [set('GRIMOIRE_S3_PUBLIC_ENDPOINT') ? 'GRIMOIRE_S3_PUBLIC_ENDPOINT' : 'GRIMOIRE_S3_ENDPOINT'], when: always,
+      error: () => `must have an origin different from every origin in ${P}ALLOWED_ORIGINS (files are served from the store, not the app)`,
+    });
 };
 
 /** Empty string counts as unset. */
 const cleaned = (env: Readonly<Record<string, string | undefined>>): Raw =>
   Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''));
+
+const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>): { readonly files?: FilesConfig } => {
+  const endpoint = v.GRIMOIRE_S3_ENDPOINT;
+  if (endpoint === undefined || v.GRIMOIRE_S3_BUCKET === undefined || v.GRIMOIRE_S3_ACCESS_KEY === undefined || v.GRIMOIRE_S3_SECRET_KEY === undefined) {
+    return {}; // all-or-nothing: the rules above guarantee all four or none
+  }
+  const publicEndpoint = v.GRIMOIRE_S3_PUBLIC_ENDPOINT ?? endpoint;
+  return { files: {
+    endpoint, publicEndpoint, publicOrigin: new URL(publicEndpoint).origin,
+    bucket: v.GRIMOIRE_S3_BUCKET, accessKey: v.GRIMOIRE_S3_ACCESS_KEY, secretKey: v.GRIMOIRE_S3_SECRET_KEY,
+    region: v.GRIMOIRE_S3_REGION ?? 'us-east-1', addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path',
+    createOnlyHeader: v.GRIMOIRE_S3_CREATE_ONLY_HEADER, corsMode: v.GRIMOIRE_S3_CORS_MODE,
+    maxBytes: v.GRIMOIRE_FILES_MAX_BYTES, allowedTypes: v.GRIMOIRE_FILES_ALLOWED_TYPES, pendingMaxPerUser: v.GRIMOIRE_FILES_PENDING_MAX_PER_USER,
+  } };
+};
 
 const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   local: v.GRIMOIRE_LOCAL === '1',
@@ -275,6 +337,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>): Config => ({
   ...(v.GRIMOIRE_DESCOPE_BASE_URL !== undefined ? { descopeBaseUrl: v.GRIMOIRE_DESCOPE_BASE_URL } : {}),
   ...(v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY !== undefined ? { descopeManagementKey: v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY } : {}),
   firstAdminEmails: v.GRIMOIRE_FIRST_ADMIN_EMAILS,
+  ...filesConfig(v),
   descopeMaxTokenLifetimeSeconds: v.GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS,
   allowedEmailDomains: v.GRIMOIRE_ALLOWED_EMAIL_DOMAINS,
   allowedOrigins: v.GRIMOIRE_ALLOWED_ORIGINS ?? [],
