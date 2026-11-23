@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
 import { checkMove, forestOf } from '../tree/move.js';
-import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo } from '../ports/page-repo.js';
+import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -11,11 +11,19 @@ interface Row extends PageMeta {
   readonly state: Uint8Array | null;
   readonly hash: Buffer | null;
   readonly staleSince: number | null;
+  readonly batch?: string | null;
+  readonly deletedBy?: string | null;
 }
 
 /** In-memory PageRepo for tests. Collections are the `World`'s (so a delete there is seen here); pages are mirrored into it. */
 export class FakePageRepo implements PageRepo {
   private readonly rows: Row[] = [];
+  /** The batch a deleted page carries, or undefined when it is not deleted (or unknown). */
+  batchOf(id: string): string | null | undefined {
+    const row = this.rows.find((r) => r.id === id);
+    return row?.deleted === true ? (row.batch ?? null) : undefined;
+  }
+
   /** Test setup: ran inside `create` after the collection check; a test deletes the collection here to play the race. */
   beforeInsert: (() => void) | undefined;
 
@@ -53,6 +61,7 @@ export class FakePageRepo implements PageRepo {
     if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });
     this.beforeInsert?.();
     if (this.world.collections.find((c) => c.id === input.collectionId)?.deleted === true) return Promise.resolve({ kind: 'collection-deleted' });
+    if (input.content !== undefined && input.content.state.length === 0) throw new Error('the editor state of a page with Markdown cannot be empty');
     const live = this.rows.filter((r) => !r.deleted && r.collectionId === input.collectionId);
     const parent = input.parentId === null ? undefined : live.find((r) => r.id === input.parentId);
     if (input.parentId !== null && parent === undefined) return Promise.resolve({ kind: 'no-parent' });
@@ -102,6 +111,19 @@ export class FakePageRepo implements PageRepo {
       if (fact !== undefined) fact.collectionId = target;
     }
     return Promise.resolve({ kind: 'moved', page: this.meta(moved) });
+  }
+
+  softDelete(id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult> {
+    const row = this.livePage(id);
+    if (row === undefined) return Promise.resolve({ kind: 'not-found' });
+    if (row.collectionId !== expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
+    const live = this.subtree(id).filter((r) => !r.deleted);
+    for (const r of live) {
+      this.rows[this.rows.indexOf(r)] = { ...r, deleted: true, batch: id, deletedBy };
+      const fact = this.world.pages.find((w) => w.id === r.id);
+      if (fact !== undefined) fact.deleted = true;
+    }
+    return Promise.resolve({ kind: 'deleted', pages: live.length });
   }
 
   /** The page and every descendant, deleted ones included. */

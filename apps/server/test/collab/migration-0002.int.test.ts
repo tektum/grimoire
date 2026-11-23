@@ -1,4 +1,4 @@
-// The raw `insert into pages` statements below stay as written: they run against the schema as of migrations 0001 and 0002, before pages have a collection or an author.
+// The raw `insert into pages` at schema 0001 stays as written: it runs before pages have a collection or an author. The inserts on a fully migrated database name both columns (0008 removed their defaults).
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -45,7 +45,7 @@ describe('migration 0002 (page markdown)', () => {
   it('the runtime role can select, insert, update and delete, cannot create tables (42501) or truncate', async () => {
     const app = createDatabase(appUrl(EMPTY), { maxConnections: 1 });
     try {
-      await app.query("insert into pages (id, markdown) values ('1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10', 'x')");
+      await app.query("insert into pages (id, markdown, collection_id, created_by) values ('1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10', 'x', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')");
       expect(await app.query("select markdown from pages where id = '1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10'")).toEqual([{ markdown: 'x' }]);
       await app.query("update pages set text_content = 't' where id = '1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10'");
       await app.query("delete from pages where id = '1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10'");
@@ -60,7 +60,7 @@ describe('migration 0002 (page markdown)', () => {
   });
 
   it('a markdown_hash of 31 bytes is rejected, one of 32 bytes is accepted', async () => {
-    await expect(sqlAdmin(EMPTY, "insert into pages (markdown_hash) values (decode(repeat('ab', 31), 'hex'))")).rejects.toMatchObject({ code: '23514' });
-    await sqlAdmin(EMPTY, "insert into pages (markdown_hash) values (decode(repeat('ab', 32), 'hex'))");
+    await expect(sqlAdmin(EMPTY, "insert into pages (markdown_hash, collection_id, created_by) values (decode(repeat('ab', 31), 'hex'), '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')")).rejects.toMatchObject({ code: '23514' });
+    await sqlAdmin(EMPTY, "insert into pages (markdown_hash, collection_id, created_by) values (decode(repeat('ab', 32), 'hex'), '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')");
   });
 });

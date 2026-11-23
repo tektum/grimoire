@@ -527,3 +527,81 @@ describe('POST /v1/pages/{id}/move', () => {
     expect((await move(b, page.id, { parentId: null })).status).toBe(404);
   });
 });
+
+describe('DELETE /v1/pages/{id}', () => {
+  it('is 403 to a reader without write and 404 to a user who cannot read', async () => {
+    const b = build();
+    const open = b.pages.seed({ collectionId: b.open.id });
+    const hidden = b.pages.seed({ collectionId: b.closed.id });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${open.id}`)).status).toBe(403);
+    expect((await b.call('outsider', 'DELETE', `/v1/pages/${hidden.id}`)).status).toBe(404);
+    expect(b.pages.batchOf(open.id)).toBeUndefined();
+  });
+
+  it('deletes the page and its live descendants with the page id as the batch, keeps an earlier batch, and the pages are gone', async () => {
+    const b = build();
+    const top = b.pages.seed({ collectionId: b.shared.id });
+    const kid = b.pages.seed({ collectionId: b.shared.id, parentId: top.id });
+    const grandkid = b.pages.seed({ collectionId: b.shared.id, parentId: kid.id });
+    const earlier = b.pages.seed({ collectionId: b.shared.id, parentId: top.id });
+    const sibling = b.pages.seed({ collectionId: b.shared.id });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${earlier.id}`)).status).toBe(204);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${top.id}`)).status).toBe(204);
+    expect([top, kid, grandkid].map((p) => b.pages.batchOf(p.id))).toEqual([top.id, top.id, top.id]);
+    expect(b.pages.batchOf(earlier.id)).toBe(earlier.id);
+    expect(b.pages.batchOf(sibling.id)).toBeUndefined();
+    for (const p of [top, kid, grandkid]) expect((await b.call('admin', 'GET', `/v1/pages/${p.id}`)).status).toBe(404);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${top.id}`)).status).toBe(404);
+    expect(b.pages.count()).toBe(5);
+  });
+
+  it('answers 404 when the page disappears between the check and the delete', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    b.pages.softDelete = () => Promise.resolve({ kind: 'not-found' });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(404);
+    b.pages.softDelete = () => Promise.resolve({ kind: 'conflict' });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(409);
+    b.pages.get = () => Promise.resolve(undefined);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(404);
+  });
+});
+
+describe('DELETE /v1/pages/{id} racing a move', () => {
+  it('checks write access on the collection the page is in when the delete starts, and deletes nothing where the caller cannot write', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const get = b.pages.get.bind(b.pages);
+    // After the page check another user moves the page into a collection the caller can only read.
+    b.pages.get = async (id) => {
+      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(id);
+    };
+    const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
+    expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
+    expect(b.pages.batchOf(page.id)).toBeUndefined();
+  });
+
+  it('is a 409 and deletes nothing when the page leaves the checked collection after the check', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const original = b.pages.softDelete.bind(b.pages);
+    b.pages.softDelete = async (id, by, expected) => {
+      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return original(id, by, expected);
+    };
+    const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
+    expect([res.status, await code(res)]).toEqual([409, 'conflict']);
+    expect(b.pages.batchOf(page.id)).toBeUndefined();
+  });
+});
+
+describe('POST /v1/pages with an empty editor state', () => {
+  it('stores nothing: Markdown never goes in without its state', async () => {
+    const b = build();
+    b.converter.enqueueSeed({ ok: true, state: new Uint8Array(0) });
+    const res = await make(b, { collectionId: b.shared.id, markdown: 'x' });
+    expect(res.status).toBe(503);
+    expect(b.pages.count()).toBe(0);
+  });
+});

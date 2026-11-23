@@ -79,6 +79,11 @@ export type MovePageResult =
   /** The page changed collection after the caller was checked, or concurrent changes kept the transaction from committing after its retries. */
   | { readonly kind: 'conflict' };
 
+export type SoftDeleteResult =
+  | { readonly kind: 'deleted'; readonly pages: number }
+  | { readonly kind: 'not-found' }
+  | { readonly kind: 'conflict' };
+
 /** Pages and the page tree. */
 export interface PageRepo {
   /**
@@ -104,4 +109,11 @@ export interface PageRepo {
    * counts), and a target collection the subtree would take above `maxPages`.
    */
   move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult>;
+  /**
+   * Soft-deletes a live page and every live descendant in one transaction, all with `deleted_batch` = the page's own id; no row is
+   * removed. Descendants deleted earlier keep their own batch. The collection row is locked first, as create and move do, and the page
+   * must still be in `expectedCollectionId`, the collection the caller's access check was made against: a page that moved since is not
+   * deleted on that check (`conflict`).
+   */
+  softDelete(id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult>;
 }

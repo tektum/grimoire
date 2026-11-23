@@ -110,6 +110,12 @@ export const movePage = defineRoute({
   responses: { 200: json(PageMetaSchema, 'The page in its new place'), 409: json(ErrorBody, 'Under itself, too deep, the target collection is full or deleted, or a concurrent change') },
 });
 
+export const deletePage = defineRoute({
+  method: 'delete', path: '/v1/pages/{id}', operationId: 'deletePage', summary: 'Delete a page and its descendants as one trash batch', tags: ['pages'],
+  policy: { kind: 'page', param: 'id', need: 'write' }, request: { params: IdParam },
+  responses: { 204: { description: 'The page and its descendants are in the trash' }, 409: json(ErrorBody, 'The page moved to another collection since the access check') },
+});
+
 /**
  * A retry of a create with the same Idempotency-Key replays the stored answer; before it does, the caller's right to write in that
  * collection is checked again, so access taken away (or a collection deleted) since the first answer is refused now, not replayed.
@@ -202,6 +208,20 @@ router.openapi(movePage, async (c) => {
     case 'collection-full': return fail('collection_full');
     case 'conflict': return fail('conflict');
   }
+});
+
+router.openapi(deletePage, async (c) => {
+  const { id } = c.req.valid('param');
+  await guardPage(c, id, 'write');
+  const { pages } = c.get('deps');
+  const current = await pages.get(id);
+  if (current === undefined) return fail('not_found');
+  // The page may have changed collection since the page check: write access is checked on the collection read here, the one the delete is bound to.
+  await guardCollection(c, current.collectionId, 'write');
+  const result = await pages.softDelete(id, caller(c).id, current.collectionId);
+  if (result.kind === 'not-found') return fail('not_found');
+  if (result.kind === 'conflict') return fail('conflict');
+  return c.body(null, 204);
 });
 
 export default router;
