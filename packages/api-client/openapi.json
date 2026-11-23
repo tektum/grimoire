@@ -148,6 +148,38 @@
         ],
         "type": "object"
       },
+      "Me": {
+        "properties": {
+          "email": {
+            "description": "The sign-in email address",
+            "type": "string"
+          },
+          "id": {
+            "description": "The user id",
+            "type": "string"
+          },
+          "name": {
+            "description": "The display name",
+            "type": "string"
+          },
+          "role": {
+            "description": "The role of the user",
+            "enum": [
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role"
+        ],
+        "type": "object"
+      },
       "PatchCollection": {
         "additionalProperties": false,
         "properties": {
@@ -693,6 +725,96 @@
         ],
         "x-grimoire-policy": {
           "kind": "public"
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "The signed-in user"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, malformed or expired token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request is not valid"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The service is unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The signed-in user; the first call creates the user",
+        "tags": [
+          "me"
+        ],
+        "x-grimoire-policy": {
+          "kind": "authenticated",
+          "provision": true
         }
       }
     }
