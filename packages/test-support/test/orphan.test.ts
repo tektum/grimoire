@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { freePort } from '../src/harness.ts';
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const gone = (pid: number): Promise<void> => vi.waitFor(() => { if (alive(pid)) throw new Error(`process ${String(pid)} is still running`); }, { timeout: 5000, interval: 50 });
@@ -13,9 +14,9 @@ afterEach(() => {
     try { process.kill(childPid, 'SIGKILL'); } catch { /* already gone */ }
   }
 });
-function startParent(mode = 'idle'): Promise<{ parent: ReturnType<typeof spawn>; childPid: number }> {
+async function startParent(mode = 'idle'): Promise<{ parent: ReturnType<typeof spawn>; childPid: number }> {
+  const port = await freePort(); // asked of the kernel: a random number in a range the system also hands out for outgoing connections was once already in use (EADDRINUSE)
   return new Promise((resolve, reject) => {
-    const port = 20000 + Math.floor(Math.random() * 20000);
     const parent = spawn(process.execPath, [new URL('./orphan-parent.mjs', import.meta.url).pathname, String(port), mode], { stdio: ['ignore', 'pipe', 'inherit'] });
     let out = '';
     parent.stdout.on('data', (d: Buffer) => {
