@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation test-m3-live
+.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation test-m3-live test-m4
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -127,3 +127,21 @@ test-m3-live:
 	@if [ -n "$$CI" ]; then echo "test-m3-live: refused, CI is set (the live check never runs in CI)" >&2; exit 2; fi
 	@if [ ! -f .env.m3 ]; then echo "test-m3-live: .env.m3 is missing" >&2; exit 2; fi
 	@set -a; . ./.env.m3; set +a; node tools/m3-live/check.mjs
+
+# The milestone 4 exit test: the whole of milestone 4 against the Compose app in local mode with development tokens (alice administrator, bob member, carol viewer).
+# It checks the generated API surface and the compile time, runs the unit tests and the conformance tests, checks the source rules of the scenarios, then runs the
+# scenarios of apps/server/test-e2e/m4 one after another (each prints `PASS <name>` or `FAIL <name>: <reason>` and writes test-results/m4/<name>.json).
+# Covered requirements: R13.8 (the API through the generated client, its limits and its configuration route), R13.27 (the exit test of the milestone).
+test-m4: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	bun run openapi:check
+	bun run typecheck
+	bun run check:tsc-time
+	bun run test
+	node --test apps/server/test-e2e/m4/guards.test.mjs
+	$(MAKE) up
+	bun run test:conformance
+	rm -f test-results/m4/*.json
+	node apps/server/test-e2e/m4/run.ts
