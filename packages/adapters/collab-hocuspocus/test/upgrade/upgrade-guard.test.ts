@@ -381,7 +381,7 @@ describe('pre-sign-in window (U1)', () => {
     const r = request(peer);
     const written: Buffer[] = [];
     const destroyed = vi.fn();
-    Object.assign(r.socket, { write: (b: Buffer) => { written.push(b); return true; }, destroy: () => { destroyed(); r.socket.emit('close'); } });
+    Object.assign(r.socket, { write: (b: Buffer, cb?: () => void) => { written.push(b); cb?.(); return true; }, destroy: () => { destroyed(); r.socket.emit('close'); } });
     const v = await guard.checkUpgrade(r.req, r.socket);
     if (v.ok) guard.onOpen(peerId, v.address, v.ticket);
     return { verdict: v, written, destroyed };
@@ -408,6 +408,51 @@ describe('pre-sign-in window (U1)', () => {
     expect((await attempt(guard, addr(0), 'fail')).ok).toBe(true);
     expect(await attempt(guard, addr(0), 'fail')).toMatchObject({ ok: false, status: 429 });
     expect((await attempt(guard, addr(1), 'fail')).ok).toBe(true); // another address is unaffected
+  });
+
+  it('the socket is destroyed only after the 4408 frame has been handed to the kernel (write callback), never in the same tick as the write', async () => {
+    const { guard } = make({ unauthTimeoutMs: 5000 });
+    const r = request(addr(3));
+    const order: string[] = [];
+    let flushed: (() => void) | undefined;
+    Object.assign(r.socket, {
+      write: (_b: Buffer, cb?: () => void) => { order.push('write'); flushed = cb; return true; }, // a write the kernel has not taken yet: the callback comes later
+      destroy: () => { order.push('destroy'); r.socket.emit('close'); },
+    });
+    const v = await guard.checkUpgrade(r.req, r.socket);
+    if (v.ok) guard.onOpen('slow', v.address, v.ticket);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(order).toEqual(['write']); // destroy() now would discard the unflushed frame: the client would see a bare end
+    flushed?.();
+    expect(order).toEqual(['write', 'destroy']);
+  });
+
+  it('the socket stops reading before the frame is written: no input is accepted after the timeout while the write is pending', async () => {
+    const { guard } = make({ unauthTimeoutMs: 5000 });
+    const r = request(addr(5));
+    const order: string[] = [];
+    Object.assign(r.socket, {
+      pause: () => { order.push('pause'); return r.socket; },
+      write: () => { order.push('write'); return true; },
+      destroy: () => { order.push('destroy'); r.socket.emit('close'); },
+    });
+    const v = await guard.checkUpgrade(r.req, r.socket);
+    if (v.ok) guard.onOpen('reader', v.address, v.ticket);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(order.slice(0, 2)).toEqual(['pause', 'write']);
+  });
+
+  it('a write that never completes does not keep the socket forever: it is destroyed one second after the timeout', async () => {
+    const { guard } = make({ unauthTimeoutMs: 5000 });
+    const r = request(addr(4));
+    const destroyed = vi.fn();
+    Object.assign(r.socket, { write: () => true, destroy: () => { destroyed(); r.socket.emit('close'); } });
+    const v = await guard.checkUpgrade(r.req, r.socket);
+    if (v.ok) guard.onOpen('stuck', v.address, v.ticket);
+    await vi.advanceTimersByTimeAsync(5999);
+    expect(destroyed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(destroyed).toHaveBeenCalledOnce();
   });
 
   it('the slot is free the moment the timeout fires, even when the socket takes a while to report its close', async () => {
