@@ -41,6 +41,8 @@ export interface HttpDeps {
   readonly revisions: RevisionRepo;
   readonly admin: AdminRepo;
   readonly pageState: PageStateRepo;
+  /** Removes the objects of attachments from the file store (the purge calls it before it deletes any row). */
+  readonly deleteFiles: (keys: readonly string[]) => Promise<void>;
 }
 
 export type AppEnv = { Variables: { deps: HttpDeps; identity?: Identity; user?: UserRecord; devRole?: Role } };

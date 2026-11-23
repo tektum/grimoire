@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import { purgeBatch } from '../../src/pages/purge.js';
+import { FakeTrashRepo } from '../../src/testing/fake-trash-repo.js';
+
+const ADMIN = '00000000-0000-4000-8000-000000000001';
+const COLLECTION = '00000000-0000-4000-8000-0000000000c1';
+
+/** A batch of a root and a child, the child with two attachments; and a second, unrelated batch. */
+function build(deleteFiles: (keys: readonly string[]) => Promise<void>) {
+  const trash = new FakeTrashRepo();
+  const root = trash.seedDeleted({ collectionId: COLLECTION, title: 'root' });
+  const child = trash.seedDeleted({ collectionId: COLLECTION, parentId: root, batch: root, attachments: ['attachments/a/1/x.png', 'attachments/a/2/y.png'] });
+  const other = trash.seedDeleted({ collectionId: COLLECTION, attachments: ['attachments/b/1/z.png'] });
+  const events: string[] = [];
+  const traced: typeof deleteFiles = async (keys) => {
+    events.push(`files:${keys.join(',')}:rows-still-there=${String(trash.state(root) === 'deleted')}`);
+    await deleteFiles(keys);
+  };
+  return { trash, root, child, other, events, deps: { trash, deleteFiles: traced } };
+}
+
+describe('purgeBatch', () => {
+  it('removes the objects first and then every page row of the batch, and no other batch', async () => {
+    const b = build(() => Promise.resolve());
+    const out = await purgeBatch(b.deps, b.root, ADMIN);
+    expect(out).toEqual({ pages: 2, files: 2 });
+    expect(b.events).toEqual(['files:attachments/a/1/x.png,attachments/a/2/y.png:rows-still-there=true']);
+    expect([b.trash.state(b.root), b.trash.state(b.child), b.trash.state(b.other)]).toEqual(['gone', 'gone', 'deleted']);
+  });
+
+  it('writes exactly one audit row with ids only', async () => {
+    const b = build(() => Promise.resolve());
+    await purgeBatch(b.deps, b.root, ADMIN);
+    expect(b.trash.audit.events).toEqual([
+      { actorId: ADMIN, action: 'page.purged', targetType: 'page', targetId: b.root, detail: { batch: b.root, pages: 2 } },
+    ]);
+  });
+
+  it('leaves every row and writes no audit row when the objects cannot be removed, so it can be run again', async () => {
+    let fail = true;
+    const b = build(() => (fail ? Promise.reject(new Error('store down')) : Promise.resolve()));
+    await expect(purgeBatch(b.deps, b.root, ADMIN)).rejects.toThrow('store down');
+    expect([b.trash.state(b.root), b.trash.state(b.child)]).toEqual(['deleted', 'deleted']);
+    expect(b.trash.audit.events).toEqual([]);
+    fail = false;
+    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
+  });
+
+  it('is a no-op for a batch that is already gone: no files asked for, no second audit row', async () => {
+    const b = build(() => Promise.resolve());
+    await purgeBatch(b.deps, b.root, ADMIN);
+    b.events.length = 0;
+    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 0, files: 0 });
+    expect(b.events).toEqual([]);
+    expect(b.trash.audit.events).toHaveLength(1);
+  });
+
+  it('does not ask the file store anything for a batch without attachments', async () => {
+    const trash = new FakeTrashRepo();
+    const root = trash.seedDeleted({ collectionId: COLLECTION });
+    const calls: (readonly string[])[] = [];
+    expect(
+      await purgeBatch(
+        {
+          trash,
+          deleteFiles: (keys) => {
+            calls.push(keys);
+            return Promise.resolve();
+          },
+        },
+        root,
+        ADMIN,
+      ),
+    ).toEqual({ pages: 1, files: 0 });
+    expect(calls).toEqual([]);
+  });
+});

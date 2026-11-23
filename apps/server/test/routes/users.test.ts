@@ -176,6 +176,7 @@ describe('every route with the admin policy', () => {
     'GET /v1/groups/{id}/members': undefined, 'PUT /v1/groups/{id}/members/{userId}': undefined, 'DELETE /v1/groups/{id}/members/{userId}': undefined,
     'POST /v1/collections': { name: 'x' },
     'POST /v1/pages/{id}/reset-state': undefined,
+    'DELETE /v1/trash/{id}': undefined,
   };
 
   // A page the caller cannot read is 404 before the role is looked at, and this build has no pages: its 403 on a readable page is in reset-state.test.ts.
