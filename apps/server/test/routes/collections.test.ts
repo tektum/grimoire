@@ -248,6 +248,29 @@ describe('collection access routes', () => {
     expect((await call('member', 'GET', `/v1/collections/${closed.id}`)).status).toBe(200);
   });
 
+  it('PUT then DELETE removes access even where the world already held a row for the same principal', async () => {
+    const { call, collections, closed, rows } = build();
+    const outsider = rows[3]?.id as string;
+    collections.world.access.push({ collectionId: closed.id, userId: outsider, permission: 'read' });
+    const put = (await (await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(outsider, 'read_write'))).json()) as { id: string };
+    expect(collections.world.access.filter((a) => a.userId === outsider)).toHaveLength(1);
+    await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${put.id}`);
+    expect((await call('outsider', 'GET', `/v1/collections/${closed.id}`)).status).toBe(404);
+  });
+
+  it('record the entry id and the replaced permission in the audit rows', async () => {
+    const { call, collections, closed, rows } = build();
+    const who = rows[3]?.id as string;
+    const first = (await (await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(who, 'read_write'))).json()) as { id: string };
+    await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(who, 'read'));
+    await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${first.id}`);
+    expect(collections.audit.events.map((e) => e.detail)).toEqual([
+      { principalType: 'user', principalId: who, permission: 'read_write', entryId: first.id, previousPermission: null },
+      { principalType: 'user', principalId: who, permission: 'read', entryId: first.id, previousPermission: 'read_write' },
+      { entryId: first.id, principalType: 'user', principalId: who, permission: 'read' },
+    ]);
+  });
+
   it('give a group access by its id and name it in the list', async () => {
     const { call, closed, group } = build();
     const res = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(group, 'read', 'group'));
@@ -262,7 +285,7 @@ describe('collection access routes', () => {
       [rows[0]?.id, 'collection.access_upserted', 'collection', closed.id],
       [rows[0]?.id, 'collection.access_removed', 'collection', closed.id],
     ]);
-    expect(collections.audit.events[1]?.detail).toEqual({ principalType: 'group', principalId: group, permission: 'read' });
+    expect(collections.audit.events[1]?.detail).toEqual({ entryId: put.id, principalType: 'group', principalId: group, permission: 'read' });
   });
 
   it('refuse an unknown principal, a bad body and a malformed id with 422, and an entry of another collection with 404', async () => {

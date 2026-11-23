@@ -68,6 +68,15 @@ describe('the audit row of a collection change', () => {
     expect((await events(c.id)).map((e) => e.action)).toEqual(['collection.access_upserted', 'collection.access_removed']);
     expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(false);
     expect(await events(c.id)).toHaveLength(2);
+    const again = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read_write' }, admin);
+    const changed = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    if (again.kind !== 'saved' || changed.kind !== 'saved') throw new Error('not saved');
+    const details = await t.admin.query<{ detail: unknown }>(`select detail from audit_events where target_id = $1 and action = 'collection.access_upserted' order by id`, [c.id]);
+    expect(details.map((d) => d.detail)).toEqual([
+      { principalType: 'group', principalId: group, permission: 'read', entryId: saved.entry.id, previousPermission: null },
+      { principalType: 'group', principalId: group, permission: 'read_write', entryId: again.entry.id, previousPermission: null },
+      { principalType: 'group', principalId: group, permission: 'read', entryId: again.entry.id, previousPermission: 'read_write' },
+    ]);
   });
 
   it('a failed upsert leaves no audit row', async () => {

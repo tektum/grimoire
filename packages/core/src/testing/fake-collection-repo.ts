@@ -15,6 +15,8 @@ export class FakeCollectionRepo implements CollectionRepo {
   private readonly entries: (AccessEntry & { collectionId: string })[] = [];
   /** Test setup: display names of users and groups (the id is the name otherwise). */
   private mirrored: World['access'] = [];
+  /** Principals whose entry was just removed: a row for them in the world goes too, as the one row of the table does. */
+  private changed: World['access'] = [];
   private written = new Set<World['access'][number]>();
   readonly names = new Map<string, string>();
 
@@ -90,12 +92,14 @@ export class FakeCollectionRepo implements CollectionRepo {
     if (!this.rows.has(collectionId)) return Promise.resolve({ kind: 'not-found' });
     const known = grant.principalType === 'user' ? this.world.users : this.world.groups;
     if (!known.some((p) => p.id === grant.principalId)) return Promise.resolve({ kind: 'no-principal' });
+    const previous = this.entries.find((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId)?.permission ?? null;
     const at = this.entries.findIndex((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId);
     const entry = { id: at < 0 ? randomUUID() : (this.entries[at] as AccessEntry).id, collectionId, ...grant, name: this.names.get(grant.principalId) ?? grant.principalId };
     if (at < 0) this.entries.push(entry);
     else this.entries[at] = entry;
+    this.changed = [];
     this.mirrorEntries();
-    this.audit.events.push({ actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant } });
+    this.audit.events.push({ actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant, entryId: entry.id, previousPermission: previous } });
     return Promise.resolve({ kind: 'saved', entry: visible(entry) });
   }
 
@@ -104,10 +108,11 @@ export class FakeCollectionRepo implements CollectionRepo {
     const entry = this.entries[at];
     if (entry === undefined || !this.rows.has(collectionId)) return Promise.resolve(false);
     this.entries.splice(at, 1);
+    this.changed = [{ collectionId, permission: entry.permission, ...(entry.principalType === 'user' ? { userId: entry.principalId } : { groupId: entry.principalId }) }];
     this.mirrorEntries();
     this.audit.events.push({
       actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
-      detail: { principalType: entry.principalType, principalId: entry.principalId, permission: entry.permission },
+      detail: { entryId: entry.id, principalType: entry.principalType, principalId: entry.principalId, permission: entry.permission },
     });
     return Promise.resolve(true);
   }
@@ -115,7 +120,9 @@ export class FakeCollectionRepo implements CollectionRepo {
   /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
   private mirrorEntries(): void {
     this.mirrored = this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) }));
-    this.world.access = [...this.world.access.filter((a) => !this.written.has(a)), ...this.mirrored];
+    const same = (a: World['access'][number], b: World['access'][number]): boolean => a.collectionId === b.collectionId && a.userId === b.userId && a.groupId === b.groupId;
+    const touched = [...this.mirrored, ...this.changed];
+    this.world.access = [...this.world.access.filter((a) => !this.written.has(a) && !touched.some((m) => same(a, m))), ...this.mirrored];
     this.written = new Set(this.mirrored);
   }
 

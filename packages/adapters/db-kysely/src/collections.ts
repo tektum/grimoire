@@ -96,13 +96,16 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
           const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for share`, [collectionId]);
           if (live.length === 0) return { kind: 'not-found' as const };
           const column = grant.principalType === 'user' ? 'user_id' : 'group_id';
+          const previous = (await tx.query<{ permission: StoredPermission }>(
+            `select permission from collection_access where collection_id = $1 and ${column} = $2 for update`, [collectionId, grant.principalId],
+          ))[0]?.permission ?? null;
           const saved = await tx.query<{ id: string }>(
             `insert into collection_access (collection_id, ${column}, permission) values ($1, $2, $3)
              on conflict (collection_id, ${column}) where ${column} is not null do update set permission = excluded.permission returning id`,
             [collectionId, grant.principalId, grant.permission],
           );
           const id = (saved[0] as { id: string }).id;
-          await insertAuditEvent(tx, { actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant } });
+          await insertAuditEvent(tx, { actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant, entryId: id, previousPermission: previous } });
           const rows = await tx.query<EntryRow>(`${ENTRY_SELECT} where a.id = $1`, [id]);
           return { kind: 'saved' as const, entry: entry(rows[0] as EntryRow) };
         });
@@ -113,16 +116,16 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
     },
     async removeAccess(collectionId, entryId, actorId) {
       return db.transaction(async (tx) => {
-        const removed = await tx.query<{ user_id: string | null; group_id: string | null; permission: StoredPermission }>(
+        const removed = await tx.query<{ id: string; user_id: string | null; group_id: string | null; permission: StoredPermission }>(
           `delete from collection_access a using collections c where a.id = $1 and a.collection_id = $2 and c.id = a.collection_id and c.deleted_at is null
-           returning a.user_id, a.group_id, a.permission`,
+           returning a.user_id, a.group_id, a.permission, a.id`,
           [entryId, collectionId],
         );
         const row = removed[0];
         if (row === undefined) return false;
         await insertAuditEvent(tx, {
           actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
-          detail: { principalType: row.user_id === null ? 'group' : 'user', principalId: row.user_id ?? row.group_id, permission: row.permission },
+          detail: { entryId: row.id, principalType: row.user_id === null ? 'group' : 'user', principalId: row.user_id ?? row.group_id, permission: row.permission },
         });
         return true;
       });
