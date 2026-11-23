@@ -226,6 +226,14 @@ describe('the database is down: fail closed, but not fragile', () => {
     expect(r.events('collab.recheck_skipped').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('a database whose query HANGS (never errors) still reaches the failed-round limit: the session is closed try-again, not kept for ever', async () => {
+    const r = started(rig({ intervalSeconds: 60 }));
+    const c = await r.open();
+    r.store.facts = () => new Promise(() => undefined);
+    await r.elapse(60_000 * (maxFailedRounds(60) + 2));
+    expect(c.closes).toEqual([{ code: 4503, reason: 'try-again' }]);
+  });
+
   it('a query that hangs past its 5 s limit is never stacked: while it is unanswered no second query starts', async () => {
     const r = started(rig({ intervalSeconds: 1 }));
     await r.open();

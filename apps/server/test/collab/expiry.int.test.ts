@@ -255,10 +255,12 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const c = open(r, p, await issuer.token('T7outage'));
     await authed(c);
     proxy.stall();
+    // One failed round takes up to the interval (1 s, see rig) plus the re-check's 5 s database limit; slack for a loaded runner under coverage.
+    const roundBudgetMs = 1000 + 5000 + 30_000;
     const failures = (): number => r.logger.entries.filter((e) => e.event === 'collab.recheck_skipped').length;
-    await eventually(() => failures() >= 1, 15_000, 'a round failed');
+    await eventually(() => failures() >= 1, roundBudgetMs, 'a round failed');
     const callsDuringOutage = r.facts.length;
-    await eventually(() => r.facts.length >= callsDuringOutage + 2, 15_000, 'two more rounds tried');
+    await eventually(() => r.facts.length >= callsDuringOutage + 2, 2 * roundBudgetMs, 'two more rounds tried');
     expect(c.reasons).toEqual([]);
     expect(c.client.provider.isAuthenticated).toBe(true);
     proxy.release();
