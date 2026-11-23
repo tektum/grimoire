@@ -1,3 +1,5 @@
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   fileStorageConformance,
@@ -22,6 +24,11 @@ const capabilities: FileStorageCapabilities = {
 
 const store = createFileStorage(filesConfig());
 
+// Socket buffers are garbage until the collector runs, and RSS counts them: the memory case asks for a collection
+// while it streams, so that it sees what the store keeps and not what has only not been collected yet.
+v8.setFlagsFromString('--expose-gc');
+const collect = vm.runInNewContext('gc') as () => void;
+
 async function send(request: SignedRequest): Promise<SignedResponse> {
   const response = await fetch(request.url, {
     method: request.method,
@@ -42,6 +49,7 @@ const harness: FileStorageHarness = {
   publicOrigin: new URL(publicEndpoint).origin,
   corsOrigin: allowedOrigins[0] as string,
   send,
+  collectGarbage: collect,
   // Signed URLs expire on the store's clock: let the real clock run.
   advance: async (seconds) => {
     const end = Date.now() + seconds * 1000;
