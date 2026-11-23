@@ -233,3 +233,17 @@ describe('replay rebuild hook', () => {
     expect(await json(await post(plain, { v: 1 }, 'k1'))).toEqual({ n: 1 });
   });
 });
+
+describe('stored form of an answer', () => {
+  it('sends the first answer whole and keeps (so replays) what the route\'s shape function returns', async () => {
+    const b = build({ storedShape: { 'POST /v1/things': (body) => ({ n: (body as { n: number }).n, shaped: true }) } });
+    expect(await (await post(b, { v: 1 }, 'k1')).json()).toEqual({ n: 1 });
+    expect(await json(await post(b, { v: 1 }, 'k1'))).toEqual({ n: 1, shaped: true });
+  });
+
+  it('keeps the whole body for a route without a shape function', async () => {
+    const b = build({ storedShape: { 'POST /v1/other': () => ({}) } });
+    await post(b, { v: 1 }, 'k1');
+    expect(await json(await post(b, { v: 1 }, 'k1'))).toEqual({ n: 1 });
+  });
+});

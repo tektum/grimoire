@@ -11,3 +11,6 @@ export const routeReplays: Readonly<Record<string, ReplayRebuild>> = {
   'POST /v1/pages/:id/reset-state': replayResetState,
   'POST /v1/pages': replayCreatePage,
 };
+
+/** What an idempotent route keeps of its answer, when that is not the whole body (a route whose answer holds a signed URL keeps it without). */
+export const routeStored: Readonly<Record<string, (body: unknown) => unknown>> = {};
