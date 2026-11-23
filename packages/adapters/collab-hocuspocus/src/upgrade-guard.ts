@@ -162,12 +162,27 @@ function closeFrame(code: number, reason: string): Buffer {
   return Buffer.concat([Buffer.from([0x88, 2 + text.length, code >> 8, code & 255]), text]);
 }
 
-/** After the upgrade completed the client gets the contract's close code (4408), then the socket is destroyed; before it, the socket is just destroyed. An idle socket flushes the small frame at once. */
-function refuseAndDestroy(socket: { write(chunk: Buffer): unknown; destroy(): unknown }, upgraded: boolean): void {
-  if (upgraded) {
-    try { socket.write(closeFrame(codeFor(REFUSAL_CLOSE_CODES, 'preauth-timeout'), 'preauth-timeout')); } catch { /* a socket that is already dead cannot be told */ }
-  }
-  socket.destroy();
+/** How long a close frame may take to be handed to the kernel before the socket is destroyed anyway. */
+const CLOSE_FLUSH_GRACE_MS = 1000;
+
+/**
+ * After the upgrade completed the client gets the contract's close code (4408), then the socket is destroyed; before it, the socket is just destroyed.
+ * destroy() discards a write the kernel has not taken yet, and the client would see a bare end, so the socket is destroyed from the write callback,
+ * with a bounded fallback for a write that never completes.
+ */
+function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unknown; destroy(): unknown }, upgraded: boolean): void {
+  if (!upgraded) { socket.destroy(); return; }
+  let done = false;
+  let fallback: NodeJS.Timeout | undefined;
+  const destroy = (): void => {
+    if (done) return;
+    done = true;
+    if (fallback) clearTimeout(fallback);
+    socket.destroy();
+  };
+  fallback = setTimeout(destroy, CLOSE_FLUSH_GRACE_MS);
+  fallback.unref();
+  try { socket.write(closeFrame(codeFor(REFUSAL_CLOSE_CODES, 'preauth-timeout'), 'preauth-timeout'), destroy); } catch { destroy(); /* a socket that is already dead cannot be told */ }
 }
 
 export function createUpgradeGuard(o?: UpgradeGuardOptions): UpgradeGuard {
