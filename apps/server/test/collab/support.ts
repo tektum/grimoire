@@ -62,6 +62,7 @@ export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeou
  */
 export class StallProxy {
   private stalled = false;
+  private lastTrafficAt = Date.now();
   private readonly held: (() => void)[] = [];
   private readonly sockets = new Set<net.Socket>();
   private readonly server: net.Server;
@@ -73,6 +74,7 @@ export class StallProxy {
       this.sockets.add(client).add(upstream);
       const forward = (from: net.Socket, to: net.Socket): void => {
         from.on('data', (chunk: Buffer) => {
+          this.lastTrafficAt = Date.now();
           const send = (): void => { if (!to.destroyed) to.write(chunk); };
           if (this.stalled) this.held.push(send); else send();
         });
@@ -91,6 +93,8 @@ export class StallProxy {
     return p;
   }
 
+  /** Milliseconds since bytes last passed through in either direction. */
+  quietForMs(): number { return Date.now() - this.lastTrafficAt; }
   stall(): void { this.stalled = true; }
   release(): void {
     this.stalled = false;
