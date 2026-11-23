@@ -31,11 +31,13 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
         return listed(await db.query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 order by r.created_at desc, r.id limit $2`, [pageId, query.limit]));
       }
       const at = `timestamptz 'epoch' + $3::bigint * interval '1 microsecond'`;
+      // The union is ordered in a wrapping select: directly on a union only output names are allowed, and the sort key is text there.
       return listed(await db.query<Row>(
-        `(select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
-         union all
-         (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at < ${at} order by r.created_at desc, r.id limit $2)
-         order by sort_key::bigint desc, id limit $2`,
+        `select * from (
+           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
+           union all
+           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at < ${at} order by r.created_at desc, r.id limit $2)
+         ) u order by u.sort_key::bigint desc, u.id limit $2`,
         [pageId, query.limit, query.after[0], query.after[1]],
       ));
     },

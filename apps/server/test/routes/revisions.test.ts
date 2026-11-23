@@ -102,7 +102,7 @@ describe('GET /v1/pages/{id}/revisions', () => {
   it('refuses a bad limit, a cursor that is not ours and a hand-made key with 422', async () => {
     const b = build();
     const url = (query: string) => `/v1/pages/${b.page.id}/revisions?${query}`;
-    for (const query of ['limit=0', 'limit=101', 'cursor=not-a-cursor', `cursor=${encodeCursor('users', [1, b.page.id])}`, `cursor=${encodeCursor('revisions', [1.5, b.page.id])}`, `cursor=${encodeCursor('revisions', [1, 'nope'])}`, `cursor=${encodeCursor('revisions', [1])}`]) {
+    for (const query of ['limit=0', 'limit=101', 'cursor=not-a-cursor', `cursor=${encodeCursor('users', [1, b.page.id])}`, `cursor=${encodeCursor('revisions', [1.5, b.page.id])}`, `cursor=${encodeCursor('revisions', [-1e15, b.page.id])}`, `cursor=${encodeCursor('revisions', [-1, b.page.id])}`, `cursor=${encodeCursor('revisions', [1, 'nope'])}`, `cursor=${encodeCursor('revisions', [1])}`]) {
       const res = await b.call('member', url(query));
       expect([query, res.status, await code(res)]).toEqual([query, 422, 'invalid']);
     }

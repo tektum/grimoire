@@ -44,8 +44,8 @@ router.openapi(listRevisions, async (c) => {
   const { limit, cursor } = c.req.valid('query');
   await guardPage(c, id, 'read');
   const keys = decodeCursor('revisions', cursor, 2);
-  // A hand-made key must not reach the database cast.
-  if (keys !== undefined && (!Number.isSafeInteger(keys[0]) || !z.string().uuid().safeParse(keys[1]).success)) return fail('invalid');
+  // A hand-made key must not reach the database: a time is a non-negative whole number of microseconds, an id is a UUID.
+  if (keys !== undefined && (!Number.isSafeInteger(keys[0]) || (keys[0] as number) < 0 || !z.string().uuid().safeParse(keys[1]).success)) return fail('invalid');
   const rows = await c.get('deps').revisions.list(id, { limit: limit + 1, ...(keys === undefined ? {} : { after: [keys[0] as number, keys[1] as string] as const }) });
   const page = toPage('revisions', rows, limit, (r) => [r.sortKey, r.id]);
   // The sort position is for the cursor only: the answer carries the summary.

@@ -14,7 +14,7 @@ const HASH = `decode(repeat('ab', 32), 'hex')`;
 const add = async (pageId: string, ms: number, title: string, authors: string[], last: string | null, reason = 'idle'): Promise<string> =>
   ((await t.app.query<{ id: string }>(
     `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
-     values ($1, $2, $3, ${HASH}, $4::uuid[], $5, $6, to_timestamp($7::double precision / 1000.0)) returning id`,
+     values ($1, $2, $3, ${HASH}, $4::uuid[], $5, $6, timestamptz 'epoch' + $7::bigint * interval '1 millisecond') returning id`,
     [pageId, title, `text of ${title}`, authors, last, reason, ms],
   ))[0] as { id: string }).id;
 
@@ -36,7 +36,7 @@ describe('the PostgreSQL RevisionRepo', () => {
     const list = await createRevisions(t.app).list(page, { limit: 10 });
     expect(list.map((r) => r.id)).toEqual([recent, old]);
     expect(list[0]).toEqual({
-      id: recent, createdAt: 1_700_000_020_123, title: 'Recent', reason: 'last_editor_left',
+      id: recent, createdAt: 1_700_000_020_123, sortKey: 1_700_000_020_123_000, title: 'Recent', reason: 'last_editor_left',
       lastAuthor: { id: bob, name: 'bob' }, authors: [{ id: ana, name: 'ana' }, { id: bob, name: 'bob' }],
     });
     expect(list[0]).not.toHaveProperty('markdown');
