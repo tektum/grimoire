@@ -29,7 +29,7 @@
     "licence:pending": "node tools/licence-report/run.mjs --allow-pending",
     "openapi": "bun run build && node apps/server/dist/openapi/emit.js && bunx openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/schema.d.ts",
     "openapi:check": "bun run openapi && git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/schema.d.ts",
-    "test:conformance": "vitest run conformance",
+    "test:conformance": "vitest run --project unit --project integration --passWithNoTests conformance",
     "check:tsc-time": "node tools/check-tsc-time.mjs"
   },
   "trustedDependencies": [],

@@ -153,3 +153,14 @@ describe("repository layout", () => {
     expect(duplicates.map(([name, files]) => `${name}: ${[...files].join(", ")}`)).toEqual([]);
   });
 });
+
+describe("test:conformance script", () => {
+  const script = (JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts["test:conformance"] ?? "";
+
+  it("filters on the word, passes with no match yet, and never runs the container or benchmark projects", () => {
+    expect(script).toMatch(/\bconformance$/);
+    expect(script).toContain("--passWithNoTests");
+    expect(script).toContain("--project unit");
+    expect(script).not.toMatch(/container|benchmark/);
+  });
+});
