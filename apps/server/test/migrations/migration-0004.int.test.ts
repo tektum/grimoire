@@ -48,9 +48,10 @@ describe('migration 0004 (permissions)', () => {
     expect(rows.map((r) => r.id)).toEqual(ROWS);
     for (const r of rows) {
       expect(r.url_id).toMatch(/^[0-9A-Za-z]{10}$/);
-      expect(r).toMatchObject({ collection_id: UNFILED, created_by: SYSTEM, position: 'a0', last_edited_by: null, markdown_hash: null, title: '', deleted_at: null });
+      expect(r).toMatchObject({ collection_id: UNFILED, created_by: SYSTEM, last_edited_by: null, markdown_hash: null, title: '', deleted_at: null });
     }
     expect(new Set(rows.map((r) => r.url_id)).size).toBe(3);
+    expect(new Set(rows.map((r) => r.position)).size).toBe(3); // renumbered by 0006 (the full chain ran)
   });
 
   it('creates the system user (suspended viewer) and the private "Unfiled" collection', async () => {
@@ -71,7 +72,7 @@ describe('migration 0004 (permissions)', () => {
 
   it('on an empty database the full chain applies', async () => {
     expect((await migrate(EMPTY)).code).toBe(0);
-    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0005_history_files_imports_audit' }]);
+    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0006_page_search_and_positions' }]);
     const tables = await sqlAdmin<{ table_name: string }>(EMPTY, "select table_name from information_schema.tables where table_schema = 'public'");
     expect(tables.map((t) => t.table_name)).toEqual(expect.arrayContaining(TABLES));
   });

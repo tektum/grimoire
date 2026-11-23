@@ -1,7 +1,7 @@
 import type { Generated, Selectable } from 'kysely';
 
 /**
- * Hand-written shape of the tables of migrations 0001 to 0005. `test/schema.int.test.ts` compares it with the migrated database:
+ * Hand-written shape of the tables of migrations 0001 to 0006. `test/schema.int.test.ts` compares it with the migrated database:
  * a declared table or column that is missing, a different nullability, or a database column that is not declared fails the test.
  */
 export interface PagesTable {
@@ -27,6 +27,8 @@ export interface PagesTable {
   deleted_at: Date | null;
   deleted_by: string | null;
   deleted_batch: string | null;
+  tsv: Generated<string>;
+  search_partial: Generated<boolean>;
 }
 
 export interface UsersTable {
@@ -181,6 +183,7 @@ export const declaredColumns = {
     markdown: 'nullable', text_content: 'nullable', markdown_hash: 'nullable', last_edited_by: 'nullable', last_edited_at: 'nullable',
     markdown_stale_since: 'nullable', url_id: 'required', collection_id: 'required', parent_id: 'nullable', position: 'required',
     title: 'required', icon: 'nullable', created_by: 'required', deleted_at: 'nullable', deleted_by: 'nullable', deleted_batch: 'nullable',
+    tsv: 'required', search_partial: 'required',
   },
   users: {
     id: 'required', descope_user_id: 'required', email: 'required', name: 'required', avatar_url: 'nullable', role: 'required',
