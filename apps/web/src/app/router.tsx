@@ -15,6 +15,9 @@ const screens: Record<string, ReturnType<typeof lazy>> = {
   notfound: lazy(() => import('../screens/notfound')),
 };
 
+/** The sample content page exists in development and test builds only. `__GRIMOIRE_DEV_SIGNIN__` is replaced by a constant at build time, so in a production build the `import()` below is dead code and the page is not emitted. */
+const SamplePage = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__ ? lazy(() => import('../ui/SamplePage')) : null;
+
 export function routeObjects(): RouteObject[] {
   const children = ROUTES.map<RouteObject>((r) => {
     const Screen = screens[r.screen]!;
@@ -27,7 +30,21 @@ export function routeObjects(): RouteObject[] {
       ),
     };
   });
-  return [{ path: '/', element: <Shell />, children: [{ index: true, element: <p>Opening your last collection</p> }, ...children] }];
+  const Sample = SamplePage;
+  const sample: RouteObject[] =
+    Sample !== null
+      ? [
+          {
+            path: '/design-sample',
+            element: (
+              <Suspense fallback={null}>
+                <Sample />
+              </Suspense>
+            ),
+          },
+        ]
+      : [];
+  return [{ path: '/', element: <Shell />, children: [{ index: true, element: <p>Opening your last collection</p> }, ...sample, ...children] }];
 }
 
 export const createAppRouter = () => createBrowserRouter(routeObjects());
