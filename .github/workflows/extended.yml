@@ -2,7 +2,7 @@ name: Extended
 # Informational jobs: nightly, on demand, or on a pull request labelled `extended`. Not part of CI Required.
 on:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '41 4 * * *'
   workflow_dispatch:
   pull_request:
     types: [labeled]
