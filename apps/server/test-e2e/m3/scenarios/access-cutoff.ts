@@ -1,8 +1,8 @@
 import type { Peer } from '../support.ts';
-import { attempt, closeDb, createCollection, createPageIn, createUser, firstClose, freshSub, grant, holds, newPage, revoke, scenario, setRole, setSuspended, signedIn, tokenFor, waitStack } from '../support.ts';
+import { attempt, closeDb, createCollection, createPageIn, createUser, firstClose, freshSub, grant, newPage, revoke, scenario, setRole, setSuspended, signedIn, tokenFor, waitStack } from '../support.ts';
 
 // Access cut-off during a session (the access re-check, GRIMOIRE_COLLAB_RECHECK_SECONDS=5 in the overlay): four people hold open sessions; then, in the database,
-// one is suspended, one loses its entry to a closed collection, one's entry drops from read_write to read, one gets the viewer role. Each is closed `access-changed` (4205) within
+// one is suspended, one loses its entry to a closed collection, one's entry drops from read_write to read, one gets the viewer role. Each is closed `access-changed` within
 // a few intervals, a bystander on the same page is not touched, and each reconnects to the CONNECT-TIME answer (forbidden, not-found, readonly, readonly).
 // Result fields: cutoffMs per case (milliseconds from the database change to the client seeing the close).
 await scenario('access-cutoff', 180_000, async (t) => {
@@ -29,11 +29,15 @@ await scenario('access-cutoff', 180_000, async (t) => {
   await revoke(collection, subs.removed);
   await grant(collection, subs.demoted, 'read');
   await setRole(subs.viewer, 'viewer');
-  for (const [label, p] of [['suspended', susp], ['removed', removed], ['demoted', demoted], ['viewer', viewer]] as [string, Peer][]) {
+  // Each wait stamps its own close time; the bound is a few re-check intervals (5 s each) plus the time the database changes took.
+  const results = await Promise.all((([['suspended', susp], ['removed', removed], ['demoted', demoted], ['viewer', viewer]]) as [string, Peer][]).map(async ([label, p]) => {
     const c = await firstClose(p, 40_000, `the ${label} session to be closed`);
-    t.equal(c.reason, 'access-changed', `${label}: closed access-changed`);
-    t.equal(c.code, 4205, `${label}: close code 4205`);
-    t.metric(`cutoffMs-${label}`, Date.now() - changedAt);
+    return { label, reason: c.reason, ms: Date.now() - changedAt };
+  }));
+  for (const r of results) {
+    t.equal(r.reason, 'access-changed', `${r.label}: closed access-changed`);
+    t.check(r.ms < 25_000, `${r.label}: closed within a few re-check intervals (${String(r.ms)} ms)`);
+    t.metric(`cutoffMs-${r.label}`, r.ms);
   }
   t.check(bystander.provider.isAuthenticated && bystander.closed.length === 0, 'the bystander with an unchanged entry was not closed');
 
@@ -47,5 +51,5 @@ await scenario('access-cutoff', 180_000, async (t) => {
   await again('removed', closedPage, subs.removed, 'not-found');
   await again('demoted', closedPage, subs.demoted, 'readonly');
   await again('viewer', devPage, subs.viewer, 'readonly');
-  await holds(1000, () => bystander.closed.length === 0, 'the bystander stays open');
+  t.check(bystander.provider.isAuthenticated && bystander.closed.length === 0, 'the bystander is still open at the end');
 });

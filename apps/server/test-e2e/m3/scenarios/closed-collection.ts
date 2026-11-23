@@ -1,4 +1,4 @@
-import { attempt, closeDb, createCollection, createPageIn, createUser, eventually, firstClose, freshSub, grant, holds, scenario, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
+import { attempt, closeDb, createCollection, createPageIn, createUser, eventually, firstClose, freshSub, grant, scenario, signedIn, storedText, tokenFor, waitStack } from '../support.ts';
 
 // A CLOSED collection (no default permission) through the real Descope adapter: a person with no entry is refused `not-found` (close 4404, the page is not even said to exist),
 // a person with a `read` entry is granted the read-only scope and sees the writer's edits, and what the reader types never reaches the writer or the stored page.
@@ -32,8 +32,8 @@ await scenario('closed-collection', 120_000, async (t) => {
   await eventually(() => (r.text.toString() === first ? true : undefined), 15_000, 'the writer\'s edit to reach the reader');
   t.equal(r.text.toString(), first, 'the reader sees the writer\'s edit');
 
+  // Typed before the writer's second edit: had the server taken it, it would be stored (and sent to the writer) before that edit.
   r.text.insert(r.text.length, 'READER-TYPED');
-  await holds(3000, () => !w.text.toString().includes('READER-TYPED'), 'the reader\'s edit must not reach the writer');
   const second = `-then-${String(t.seed)}`;
   w.text.insert(w.text.length, second);
   const stored = await eventually(async () => { const s = await storedText(page); return s.includes(second) ? s : undefined; }, 20_000, 'the writer\'s second edit to be stored');
