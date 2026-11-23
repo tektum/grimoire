@@ -83,14 +83,17 @@ describe('API wrapper', () => {
   });
   it('waits for the Retry-After of a 503 before retrying a GET, and falls back to the backoff without one', async () => {
     const a = setup([err(503, 'unavailable', { 'Retry-After': '5' }), json(200)]);
-    await a.api.GET('/v1/me' as never);
+    const ra = await a.api.GET('/v1/me' as never);
     expect(a.sleep).toHaveBeenCalledWith(5000);
+    expect([a.calls.length, ra.response.status]).toEqual([2, 200]);
     const b = setup([err(503, 'unavailable'), json(200)]);
-    await b.api.GET('/v1/me' as never);
+    const rb = await b.api.GET('/v1/me' as never);
     expect(b.sleep).toHaveBeenCalledWith(1000);
+    expect([b.calls.length, rb.response.status]).toEqual([2, 200]);
     const c = setup([err(503, 'unavailable', { 'Retry-After': '999' }), json(200)]);
-    await c.api.GET('/v1/me' as never);
+    const rc = await c.api.GET('/v1/me' as never);
     expect(c.sleep).toHaveBeenCalledWith(30000);
+    expect([c.calls.length, rc.response.status]).toEqual([2, 200]);
   });
   it('caps the wait at 30 s and the retries at 3', async () => {
     const t = setup(Array.from({ length: 6 }, () => err(429, 'rate_limited', { 'Retry-After': '999' })));
@@ -169,13 +172,35 @@ describe('Retry-After', () => {
     try {
       vi.setSystemTime(now);
       const a = setup([err(503, 'unavailable', { 'Retry-After': 'Mon, 23 Nov 2026 22:00:09 GMT' }), json(200)]);
-      await a.api.GET('/v1/me' as never);
+      const ra = await a.api.GET('/v1/me' as never);
       expect(a.sleep).toHaveBeenCalledWith(9000);
+      expect(a.calls).toHaveLength(2);
+      expect(ra.response.status).toBe(200);
       const b = setup([err(429, 'rate_limited', { 'Retry-After': 'Mon, 23 Nov 2026 22:00:03 GMT' }), json(200)]);
-      await b.api.GET('/v1/me' as never);
+      const rb = await b.api.GET('/v1/me' as never);
       expect(b.sleep).toHaveBeenCalledWith(3000);
+      expect(b.calls).toHaveLength(2);
+      expect(rb.response.status).toBe(200);
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('cancelled requests', () => {
+  it('rethrows an aborted GET at once: one call, no sleep, no notice', async () => {
+    const t = setup([new DOMException('aborted', 'AbortError')]);
+    await expect(t.api.GET('/v1/me' as never)).rejects.toThrow('aborted');
+    expect(t.calls).toHaveLength(1);
+    expect(t.sleep).not.toHaveBeenCalled();
+    expect(t.notify).not.toHaveBeenCalled();
+  });
+  it('stops on an abort signal that fired, whatever the error', async () => {
+    const t = setup([new TypeError('Failed to fetch')]);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(t.api.GET('/v1/me' as never, { signal: controller.signal } as never)).rejects.toBeTruthy();
+    expect(t.sleep).not.toHaveBeenCalled();
+    expect(t.notify).not.toHaveBeenCalled();
   });
 });

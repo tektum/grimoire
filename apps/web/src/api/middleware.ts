@@ -74,6 +74,8 @@ export function wrapFetch(o: WrapOptions): (request: Request) => Promise<Respons
       try {
         response = await o.fetch(send);
       } catch (error) {
+        // A cancelled request (the user left the screen) is not a network failure: no retry, no notice.
+        if (send.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error;
         if (method === 'GET' && attempt < MAX_RETRIES) {
           await sleep((BACKOFF_S[attempt] ?? 4) * 1000);
           continue;

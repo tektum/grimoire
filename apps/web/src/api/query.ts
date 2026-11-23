@@ -21,8 +21,9 @@ export function useApiQuery<T = unknown>(api: ApiLike, path: string, init?: Init
   return useQuery<T>({
     ...options,
     queryKey: queryKey('GET', path, init),
-    queryFn: async () => {
-      const { data, response } = await api.GET(path as never, init as never);
+    queryFn: async ({ signal }) => {
+      // The signal lets React Query cancel the read when nothing uses the query any more.
+      const { data, response } = await api.GET(path as never, { ...init, signal } as never);
       if (!response.ok) throw new Error(`GET ${path}: ${response.status}`);
       return data as T;
     },

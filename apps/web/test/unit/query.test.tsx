@@ -22,6 +22,14 @@ describe('useApiQuery / useApiMutation', () => {
     expect(client.getQueryCache().getAll()[0]?.queryKey).toEqual(['GET', '/v1/pages/{id}', init]);
     expect(queryKey('GET', '/x', undefined)).toEqual(['GET', '/x', null]);
   });
+  it('passes the abort signal of the query to the read', async () => {
+    const GET = ok(1);
+    const { result } = renderHook(() => useApiQuery(fake({ GET }), '/x', { params: { query: { a: 1 } } }), { wrapper: wrapper(new QueryClient()) });
+    await waitFor(() => expect(result.current.data).toBe(1));
+    const init = (GET.mock.calls[0] as unknown as [string, { signal: AbortSignal; params: unknown }])[1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.params).toEqual({ query: { a: 1 } });
+  });
   it('drops a query of document content as soon as nothing uses it (gcTime 0)', async () => {
     const client = new QueryClient();
     const { result, unmount } = renderHook(() => useApiQuery(fake({ GET: ok('# text') }), '/v1/pages/{id}/markdown', undefined, NO_CACHE), { wrapper: wrapper(client) });
