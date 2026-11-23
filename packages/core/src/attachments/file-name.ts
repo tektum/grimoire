@@ -19,18 +19,26 @@ function fit(text: string, limit: number): string {
   return out;
 }
 
-/**
- * The name a file is kept and offered under (contracts section 4): normalised (NFC), with `/`, `\`, control characters and `:*?"<>|` replaced by `_`, leading
- * dots and spaces stripped, `file` when nothing is left, at most 255 UTF-8 bytes with the extension kept, and `.txt` appended to an extension a browser could run
- * or show as a page. The name is data: the key of the object never contains it.
- */
-export function cleanFileName(name: string): string {
-  const cleaned = name.normalize('NFC').replace(/\p{Cs}/gu, '\ufffd').replace(/[/\\\p{Cc}:*?"<>|]/gu, '_').replace(/^[. ]+/, '');
-  if (cleaned === '') return 'file';
+/** The cleaned name cut to 255 bytes, its extension kept when it is short enough to be one. */
+function limit(cleaned: string): string {
   const dot = cleaned.lastIndexOf('.');
   const extension = dot > 0 ? cleaned.slice(dot) : '';
-  const suffix = SCRIPTABLE.has(extension.slice(1).toLowerCase()) ? `${extension}.txt` : extension;
-  if (bytesOf(suffix) > MAX_SUFFIX_BYTES) return fit(cleaned, MAX_BYTES);
-  const stem = dot > 0 ? cleaned.slice(0, dot) : cleaned;
-  return `${fit(stem, MAX_BYTES - bytesOf(suffix))}${suffix}`;
+  if (bytesOf(extension) > MAX_SUFFIX_BYTES) return fit(cleaned, MAX_BYTES);
+  return `${fit(dot > 0 ? cleaned.slice(0, dot) : cleaned, MAX_BYTES - bytesOf(extension))}${extension}`;
+}
+
+/**
+ * The name a file is kept and offered under (contracts section 4): normalised (NFC), with `/`, `\`, control characters and `:*?"<>|` replaced by `_`, leading and
+ * trailing dots and spaces stripped (a download sanitiser drops the trailing ones, and would uncover an extension), `file` when nothing is left, at most 255 UTF-8
+ * bytes with the extension kept, and `.txt` appended to an extension a browser could run or show as a page. That last check is made on the name as it ends up, after the
+ * cut, so a cut cannot leave such an extension at the end. The name is data: the key of the object never contains it.
+ */
+export function cleanFileName(name: string): string {
+  const cleaned = name.normalize('NFC').replace(/\p{Cs}/gu, '\ufffd').replace(/[/\\\p{Cc}:*?"<>|]/gu, '_').replace(/^[. ]+|[. ]+$/g, '');
+  if (cleaned === '') return 'file';
+  const limited = limit(cleaned);
+  const dot = limited.lastIndexOf('.');
+  const extension = dot > 0 ? limited.slice(dot) : '';
+  if (!SCRIPTABLE.has(extension.slice(1).toLowerCase())) return limited;
+  return `${fit(limited.slice(0, dot), MAX_BYTES - bytesOf(extension) - '.txt'.length)}${extension}.txt`;
 }

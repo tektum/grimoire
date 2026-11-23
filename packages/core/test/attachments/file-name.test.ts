@@ -53,4 +53,22 @@ describe('cleanFileName', () => {
     const out = cleanFileName(name);
     expect([bytes(out), out.startsWith('a.xxx')]).toEqual([255, true]);
   });
+
+  it('strips trailing dots and spaces, which a download sanitiser would drop and so uncover an extension', () => {
+    expect(cleanFileName('x.html.')).toBe('x.html.txt');
+    expect(cleanFileName('x.html ')).toBe('x.html.txt');
+    expect(cleanFileName('x.svg. . ')).toBe('x.svg.txt');
+    expect(cleanFileName('a. ')).toBe('a');
+    expect(cleanFileName('report .pdf')).toBe('report .pdf');
+  });
+
+  it('checks the extension the name ends in after the cut: a cut that leaves .html or .js at the end gets its .txt', () => {
+    const exposed = cleanFileName(`${'x'.repeat(250)}.html${'y'.repeat(70)}`);
+    expect([bytes(exposed), exposed.endsWith('.html.txt')]).toEqual([255, true]);
+    const script = cleanFileName(`${'\u00e9'.repeat(126)}.js${'z'.repeat(80)}`);
+    expect(bytes(script)).toBeLessThanOrEqual(255);
+    expect(script.endsWith('.js.txt')).toBe(true);
+    // A long extension that is not one of the list stays as it is.
+    expect(cleanFileName(`a.${'q'.repeat(100)}`).startsWith('a.qqq')).toBe(true);
+  });
 });
