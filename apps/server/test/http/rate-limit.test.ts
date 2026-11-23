@@ -197,6 +197,26 @@ describe('the client version gate', () => {
   });
 });
 
+describe('requests that end early', () => {
+  it('counts an oversized request: the body limit answers 413 and the flood ceiling still counts it', async () => {
+    const t = makeContext();
+    const config = makeFakeConfig({ http: { addressCeilingPerMinute: 5 } });
+    const app = createApp({ ...t.ctx, config, http: { ...t.ctx.http, config } }, { bodyLimitBytes: 4 });
+    const big = () => app.request('/v1/things', { method: 'POST', body: 'far too long', headers: { 'content-length': '12', authorization: 'Bearer u1' } }, from('203.0.113.5'));
+    for (let i = 0; i < 5; i += 1) expect((await big()).status).toBe(413);
+    expect((await big()).status).toBe(429);
+  });
+
+  it('does not count the health probes, however many there are, and does not let them spend the credential counter', async () => {
+    const { app } = build();
+    for (let i = 0; i < 200; i += 1) {
+      expect((await hit(app, '203.0.113.5', {}, '/healthz')).status).toBe(200);
+      expect((await hit(app, '203.0.113.5', {}, '/readyz')).status).toBe(200);
+    }
+    expect((await hit(app, '203.0.113.5')).status).toBe(401);
+  });
+});
+
 describe('user limiter', () => {
   it('refuses the 1,001st request of a user in 60 seconds and leaves another user alone', async () => {
     const { app, t } = build();
