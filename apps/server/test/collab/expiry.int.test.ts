@@ -109,6 +109,9 @@ afterEach(async () => {
 });
 afterAll(async () => { await dropTestDatabase(DB); });
 
+// One failed round takes up to the interval (1 s) plus the re-check's 5 s database limit; slack for a loaded runner under coverage.
+const ROUND_BUDGET_MS = 1000 + 5000 + 30_000;
+
 describe('re-check on the real server and database (1 s interval)', () => {
   it('a user suspended while connected is closed within the interval; a neighbour on the same page is not', async () => {
     const r = await rig();
@@ -258,17 +261,17 @@ describe('re-check on the real server and database (1 s interval)', () => {
     await authed(c);
     proxy.stall();
     // One failed round takes up to the interval (1 s, see rig) plus the re-check's 5 s database limit; slack for a loaded runner under coverage.
-    const roundBudgetMs = RECHECK_INTERVAL_SECONDS * 1000 + RECHECK_DATABASE_TIMEOUT_MS + SLACK_MS;
+    const ROUND_BUDGET_MS = RECHECK_INTERVAL_SECONDS * 1000 + RECHECK_DATABASE_TIMEOUT_MS + SLACK_MS;
     const failures = (): number => r.logger.entries.filter((e) => e.event === 'collab.recheck_skipped').length;
-    await eventually(() => failures() >= 1, roundBudgetMs, 'a round failed');
+    await eventually(() => failures() >= 1, ROUND_BUDGET_MS, 'a round failed');
     const callsDuringOutage = r.facts.length;
-    await eventually(() => r.facts.length >= callsDuringOutage + 2, 2 * roundBudgetMs, 'two more rounds tried');
+    await eventually(() => r.facts.length >= callsDuringOutage + 2, 2 * ROUND_BUDGET_MS, 'two more rounds tried');
     expect(c.reasons).toEqual([]);
     expect(c.client.provider.isAuthenticated).toBe(true);
     proxy.release();
     await sqlAdmin(DB, "update users set suspended_at = now() where descope_user_id = 'T7outage'");
     expect(await closedBy(c)).toBe('access-changed');
-  }, 60_000);
+  }, 3 * ROUND_BUDGET_MS + 30_000);
 
   it('300 open documents: a round costs a small bounded number of queries, not one per connection', async () => {
     const r = await rig({ collab: { maxOpenDocuments: 400, maxDocumentsPerUser: 400, maxSocketsPerUser: 400, maxConnections: 400, maxConnectionsPerPage: 400 } });
