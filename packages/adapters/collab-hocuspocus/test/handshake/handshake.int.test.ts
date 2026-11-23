@@ -115,6 +115,7 @@ describe('connect-time handshake over real sockets', () => {
     const first = connect(l, PAGE, wrap({ e: 4 })); clients.push(first);
     await eventually(() => first.provider.synced, 3000, 'the one allowed document opens after five refusals');
     first.destroy();
+    await eventually(() => (l.host.hocuspocus?.documents.get(PAGE)?.getConnectionsCount() ?? 0) === 0 && l.host.hocuspocus?.documents.has(PAGE) !== true, 5000, 'the server released the first page');
     const second = connect(l, other, wrap({})); clients.push(second);
     await eventually(() => second.provider.synced, 5000, 'a second page opens once the first is closed');
     expect(second.failures).toEqual([]);

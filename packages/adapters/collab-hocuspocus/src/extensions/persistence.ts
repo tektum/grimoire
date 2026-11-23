@@ -4,7 +4,8 @@ import * as Y from 'yjs';
 import type { CollabLog } from '../events.js';
 import { readContext } from '../context.js';
 import { createEditorTracker, editorColumn } from '../editors.js';
-import { REFUSAL_CLOSE_CODES, Refusal } from '../refusal.js';
+import { REFUSAL_CLOSE_CODES, Refusal, codeFor } from '../refusal.js';
+import type { RefusalTable } from '../refusal.js';
 import { createConversionGate, createSaver, hashMarkdown, isBusy, reidentify } from '../save.js';
 import type { BreakerOptions } from '../save.js';
 import type { Conversion } from '../save.js';
@@ -14,6 +15,8 @@ export const STORE_ALARM_AFTER = 5;
 
 export interface PersistenceOptions {
   readonly deps: CollabDeps;
+  /** The host's refusal table (the defaults and its overrides): the stale-epoch close uses the code the reconnect is refused with. */
+  readonly refusals?: RefusalTable;
   readonly log: CollabLog;
   /** Waits `ms`, rejecting when `signal` aborts. Own seam because the Clock port has no timers; tests pass a fake. */
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
@@ -164,7 +167,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
           cancelTimer(pageId);
           o.log.emit('collab.save_refused_epoch', { pageId, loaded: epochs.get(pageId) ?? 0, reason: outcome.reason });
           // The clients see the stale-epoch close (4409), the code a reconnect with the old epoch is refused with, so they reload instead of retrying.
-          for (const c of instance?.documents.get(pageId)?.getConnections() ?? []) c.close({ code: REFUSAL_CLOSE_CODES['stale-epoch'] as number, reason: 'stale-epoch' });
+          for (const c of instance?.documents.get(pageId)?.getConnections() ?? []) c.close({ code: codeFor(o.refusals ?? REFUSAL_CLOSE_CODES, 'stale-epoch'), reason: 'stale-epoch' });
         }
         saved.set(pageId, version);
         failures.delete(pageId);

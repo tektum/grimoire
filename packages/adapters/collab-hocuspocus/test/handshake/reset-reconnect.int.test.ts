@@ -67,6 +67,20 @@ describe('the stale tab after a reset or restore', { timeout: 30_000 }, () => {
   });
 });
 
+describe('the epoch-refused save close uses the host\'s refusal table', () => {
+  it('a host that overrides stale-epoch closes the page with its code, the one the reconnect is refused with', async () => {
+    const l = await startLive('member', { refusals: { 'stale-epoch': 4999 } }); lives.push(l);
+    l.t.pages.seed(PAGE); setEpoch(l, 1);
+    const a = tab(l);
+    await eventually(() => a.c.provider.synced && a.recorded() === 1, 3000, 'synced');
+    const seen = spyCloses(l);
+    setEpoch(l, 2);
+    a.c.text.insert(0, 'edit');
+    await eventually(() => seen.length > 0, 5000, 'closed by the refused save');
+    expect(seen).toEqual([{ code: 4999, reason: 'stale-epoch' }]);
+  });
+});
+
 describe('closeConnections with a refusal reason', () => {
   it('closes a page\'s connections with the reason\'s code, and the client sees the reason', async () => {
     const l = await startLive('member'); lives.push(l);

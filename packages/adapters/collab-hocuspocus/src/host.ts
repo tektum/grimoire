@@ -122,7 +122,7 @@ export function createCollabHost(options: CollabHostOptions = {}): HocuspocusCol
         });
       }
       const { extensions, persistence, recheck } = buildExtensions({
-        deps, log, peers, guard,
+        deps, log, peers, guard, refusals: refusalCodes,
         sleep: options.sleep ?? ((ms, signal) => delay(ms, undefined, { signal })),
         ...(options.onChange ? { onChange: options.onChange } : {}),
         ...(options.extensions ? { extra: options.extensions } : {}),
