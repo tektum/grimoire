@@ -9,7 +9,7 @@ const expectedNames = [
   "@tektum/grimoire-editor-schema",
   "@tektum/grimoire-api-client",
   "@tektum/grimoire-web",
-  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss"].map(
+  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss", "files-s3"].map(
 
     (a) => `@tektum/grimoire-adapter-${a}`,
   ),
@@ -163,5 +163,28 @@ describe("test:conformance script", () => {
     expect(script).toContain("--passWithNoTests");
     expect(script).toContain("--project unit");
     expect(script).not.toMatch(/container|benchmark/);
+  });
+});
+
+describe("file storage dependencies", () => {
+  const expected: [string, string, string][] = [
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/client-s3", "3.1175.0"],
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/s3-request-presigner", "3.1175.0"],
+    ["packages/adapters/files-s3/package.json", "content-disposition", "3.1.0"],
+    ["apps/server/package.json", "file-type", "22.3.0"],
+    ["package.json", "@playwright/test", "1.65.1"],
+  ];
+  const lock = readFileSync(path.join(repoRoot, "bun.lock"), "utf8");
+
+  it("declares each package in the one manifest that owns it, at the exact version", () => {
+    for (const [file, name, version] of expected) {
+      const manifest = JSON.parse(readFileSync(path.join(repoRoot, file), "utf8")) as Manifest;
+      const found = declared(manifest).find(([, n]) => n === name);
+      expect(found?.[2], `${file} ${name}`).toBe(version);
+    }
+  });
+
+  it("resolves each package to that exact version in the lockfile", () => {
+    for (const [, name, version] of expected) expect(lock, name).toContain(`"${name}": ["${name}@${version}"`);
   });
 });

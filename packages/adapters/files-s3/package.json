@@ -1,0 +1,21 @@
+{
+  "name": "@tektum/grimoire-adapter-files-s3",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@tektum/grimoire-core": "*",
+    "@aws-sdk/client-s3": "3.1175.0",
+    "@aws-sdk/s3-request-presigner": "3.1175.0",
+    "content-disposition": "3.1.0"
+  }
+}

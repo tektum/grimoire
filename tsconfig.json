@@ -44,6 +44,9 @@
       "path": "./packages/adapters/jobs-pgboss"
     },
     {
+      "path": "./packages/adapters/files-s3"
+    },
+    {
       "path": "./db/migrations"
     },
     {
