@@ -319,6 +319,19 @@ describe('the token round', () => {
     }
   });
 
+  it('(boundary guard) a token that fails verification just BEFORE the connection\'s expiry is still invalid-token, and another person\'s valid token after expiry is still invalid-token', async () => {
+    const r = started(rig());
+    subjectVerifier(r);
+    const early = await r.open({ expiresInMs: 5000 });
+    r.t.clock.advance(4999); // one millisecond before expiry
+    await r.tokenSync(early, 'garbage');
+    expect(early.closes).toEqual([{ code: 4401, reason: 'invalid-token' }]);
+    const late = await r.open({ expiresInMs: 5000 });
+    r.t.clock.advance(5500);
+    await r.tokenSync(late, `sub:u2:${String(r.t.clock.now() + 3_600_000)}`); // valid, but another user: the identity check is not a staleness matter
+    expect(late.closes).toEqual([{ code: 4401, reason: 'invalid-token' }]);
+  });
+
   it('a verifier outage is not an invalid token: the connection is kept to its own expiry, collab.auth_unavailable is logged, and a later token is accepted', async () => {
     const r = started(rig());
     r.t.verifier.result = { kind: 'service-unavailable' };

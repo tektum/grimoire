@@ -214,8 +214,9 @@ export function createRecheck(o: RecheckOptions): Recheck {
     /**
      * A token presented on an open connection (the answer to `requestToken`, or unprompted). Same verifier and same rules as at connect;
      * the SAME subject is required, and nothing about the connection but its expiry can change. A token for another user closes the
-     * connection (an attack, or a client mixing sessions); a token that does not verify is refused and the connection keeps its own
-     * expiry; an unreachable verifier changes nothing. The token is never logged or kept.
+     * connection (an attack, or a client mixing sessions); a token that does not verify closes it `invalid-token`, or `session-expired` when the
+     * connection's own expiry has already passed (R4.14: the session is over, the stale credential is not the news); an unreachable verifier
+     * changes nothing and the connection keeps its own expiry. The token is never logged or kept.
      */
     async onTokenSync(data: HookPayloadByName['onTokenSync']): Promise<void> {
       const t = tracked.get(data.connection);
