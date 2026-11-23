@@ -80,7 +80,11 @@ jobs:
         run: |
           set -eu
           code=true
-          if [ -n "${BASE_SHA:-}" ] && ! git diff --name-only "$BASE_SHA"...HEAD | grep -qvE '^(docs/|.*\.md$|LICENSE$)'; then code=false; fi
+          # Documentation-only changes skip the code jobs, except docs/api-surface.txt: it is checked against the build, so editing it is a code change.
+          if [ -n "${BASE_SHA:-}" ]; then
+            changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+            if ! printf '%s\n' "$changed" | grep -qvE '^(docs/|.*\.md$|LICENSE$)' && ! printf '%s\n' "$changed" | grep -qx 'docs/api-surface.txt'; then code=false; fi
+          fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
   static:
