@@ -43,7 +43,7 @@ The first four change a setting of the running server, so they break the server'
 
 ## Measured times
 
-Wall time per scenario from one CI run of `make test-m3` (4-CPU runner; difference between the result lines, so it includes each scenario's process start). The whole job took 4 min 44 s, including the image build and the stack start.
+Wall time per scenario from one CI run of `make test-m3` (CI workflow run 45141568015, job "Exit test M3") (4-CPU runner; difference between the result lines, so it includes each scenario's process start). The whole job took 4 min 44 s, including the image build and the stack start.
 
 | Scenario | Seconds |
 |---|---|
