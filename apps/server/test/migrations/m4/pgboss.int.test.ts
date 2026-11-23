@@ -3,7 +3,7 @@ import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import { createJobQueue } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { adminUrl, appUrl, createTestDatabase, dropTestDatabase, migratorUrl, requireBuild, runToEnd, serverDir, sqlAdmin } from '../../server/support/harness.js';
+import { appUrl, createTestDatabase, dropTestDatabase, migratorUrl, requireBuild, runToEnd, serverDir, sqlAdmin } from '../../server/support/harness.js';
 
 const DB = 'grimoire_m4t11_pgboss';
 const migrate = () => runToEnd([path.join(serverDir, 'dist/cli.js'), 'migrate'], { GRIMOIRE_DATABASE_MIGRATION_URL: migratorUrl(DB) });
@@ -32,7 +32,7 @@ const privileges = () => sqlAdmin<{ name: string; sel: boolean; ins: boolean; up
           has_table_privilege('grimoire_app', c.oid, 'select') as sel, has_table_privilege('grimoire_app', c.oid, 'insert') as ins,
           has_table_privilege('grimoire_app', c.oid, 'update') as upd, has_table_privilege('grimoire_app', c.oid, 'delete') as del
      from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'pgboss' and c.relkind in ('r', 'p') and not c.relispartition order by c.relname`);
+    where n.nspname = 'pgboss' and c.relkind in ('r', 'p') order by c.relname`);
 
 beforeAll(async () => {
   requireBuild();
@@ -45,7 +45,7 @@ describe('grimoire migrate installs pg-boss', () => {
     const run = await migrate();
     expect(run.code, run.out).toBe(0);
     const tables = await privileges();
-    expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['job', 'queue', 'version']));
+    expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['job', 'job_common', 'queue', 'version']));
     for (const t of tables) {
       expect({ name: t.name, sel: t.sel }).toEqual({ name: t.name, sel: true });
       const full = t.name !== 'version'; // version: the loops update its timestamps, nothing else
@@ -61,7 +61,8 @@ describe('grimoire migrate installs pg-boss', () => {
   }, 120_000);
 
   it('lets the runtime role enqueue and read a job on a queue made by the migration role', async () => {
-    const admin = new PgBoss({ connectionString: adminUrl(DB), schema: 'pgboss', migrate: false, supervise: false, schedule: false, registerInstance: false });
+    // Made by the migration role AFTER the migrate command ran: the runtime role gets its partition through default privileges.
+    const admin = new PgBoss({ connectionString: migratorUrl(DB), schema: 'pgboss', migrate: false, supervise: false, schedule: false, registerInstance: false });
     admin.on('error', () => undefined);
     await admin.start();
     await admin.createQueue('m4-grants');

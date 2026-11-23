@@ -15,14 +15,19 @@ function recorder(tables: string[], access: { owns: boolean | null; can_create?:
 }
 
 describe('grantRuntimeRole', () => {
-  it('grants table by table from the tables found, select and update only on the version table', async () => {
+  it('grants table by table (partitions included) from the tables found, select and update only on the version table', async () => {
     const { db, sql } = recorder(['bam', 'job', 'version']);
     expect(await grantRuntimeRole(db, 'grimoire_app')).toEqual(['bam', 'job', 'version']);
     expect(sql).toContain('grant usage on schema "pgboss" to "grimoire_app"');
     expect(sql).toContain('grant select, insert, update, delete on table "pgboss"."job" to "grimoire_app"');
     expect(sql).toContain('grant select, update on table "pgboss"."version" to "grimoire_app"');
-    expect(sql.at(-2)).toBe('grant usage, select on all sequences in schema "pgboss" to "grimoire_app"');
-    expect(sql.at(-1)).toBe('grant execute on all functions in schema "pgboss" to "grimoire_app"');
+    expect(sql).toContain('grant usage, select on all sequences in schema "pgboss" to "grimoire_app"');
+    expect(sql).toContain('grant execute on all functions in schema "pgboss" to "grimoire_app"');
+    expect(sql.slice(-3)).toEqual([
+      'alter default privileges in schema "pgboss" grant select, insert, update, delete on tables to "grimoire_app"',
+      'alter default privileges in schema "pgboss" grant usage, select on sequences to "grimoire_app"',
+      'alter default privileges in schema "pgboss" grant execute on functions to "grimoire_app"',
+    ]);
   });
 
   it('refuses a role or table name that is not a plain identifier', async () => {

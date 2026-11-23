@@ -30,7 +30,7 @@ export interface MigrateOptions {
  * Installs or upgrades pg-boss's schema with the migration role, then grants the runtime role what each table
  * needs. The table list is read from the schema after the migration, because the library's list is not verified.
  * Safe to run again: the library's migration is a no-op when current, and GRANT is idempotent.
- * Returns the tables it granted on, in order.
+ * Partitions are included: the common job partition is written directly. Objects the migration role creates later get default privileges. Returns the tables it granted on, in order.
  */
 export async function migratePgBoss(options: MigrateOptions): Promise<readonly string[]> {
   await requireSchemaAccess(options.database);
@@ -72,7 +72,7 @@ export async function grantRuntimeRole(db: Queryable, role: string, schema: stri
   await db.query(`grant usage on schema ${s} to ${r}`);
   const tables = await db.query<{ name: string }>(
     `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = $1 and c.relkind in ('r', 'p') and not c.relispartition order by c.relname`,
+      where n.nspname = $1 and c.relkind in ('r', 'p') order by c.relname`,
     [schema],
   );
   const granted: string[] = [];
@@ -83,5 +83,9 @@ export async function grantRuntimeRole(db: Queryable, role: string, schema: stri
   }
   await db.query(`grant usage, select on all sequences in schema ${s} to ${r}`);
   await db.query(`grant execute on all functions in schema ${s} to ${r}`);
+  // Tables, sequences and functions the migration role creates later (a queue's partition, made when the queue is created) get the same rights.
+  await db.query(`alter default privileges in schema ${s} grant select, insert, update, delete on tables to ${r}`);
+  await db.query(`alter default privileges in schema ${s} grant usage, select on sequences to ${r}`);
+  await db.query(`alter default privileges in schema ${s} grant execute on functions to ${r}`);
   return granted;
 }
