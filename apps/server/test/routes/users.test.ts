@@ -167,3 +167,30 @@ describe('POST /v1/users/names', () => {
     expect((await call('viewer', 'POST', '/v1/users/names', { ids: [id(1)] })).status).toBe(429);
   });
 });
+
+describe('every route with the admin policy', () => {
+  // A new route with `x-grimoire-policy` `admin` must be added here with a valid body, so a forgotten role check cannot ship.
+  const VALID: Record<string, unknown> = {
+    'GET /v1/users': undefined, 'PATCH /v1/users/{id}': { role: 'viewer' },
+    'GET /v1/groups': undefined, 'POST /v1/groups': { name: 'x' }, 'PATCH /v1/groups/{id}': { name: 'y' }, 'DELETE /v1/groups/{id}': undefined,
+    'GET /v1/groups/{id}/members': undefined, 'PUT /v1/groups/{id}/members/{userId}': undefined, 'DELETE /v1/groups/{id}/members/{userId}': undefined,
+    'POST /v1/collections': { name: 'x' },
+  };
+
+  it('is listed in the table, and answers a member and a viewer 403', async () => {
+    const doc = JSON.parse(readFileSync(new URL('../../../../packages/api-client/openapi.json', import.meta.url), 'utf8')) as {
+      paths: Record<string, Record<string, { 'x-grimoire-policy'?: { kind: string } }>>;
+    };
+    const admin: string[] = [];
+    for (const [path, ops] of Object.entries(doc.paths)) {
+      for (const [method, op] of Object.entries(ops)) if (op['x-grimoire-policy']?.kind === 'admin') admin.push(`${method.toUpperCase()} ${path}`);
+    }
+    expect(admin.sort()).toEqual(Object.keys(VALID).sort());
+    const { call } = build();
+    for (const key of admin) {
+      const [method, template] = key.split(' ') as [string, string];
+      const path = template.replace('{id}', id(1)).replace('{userId}', id(2));
+      for (const who of ['member', 'viewer']) expect((await call(who, method, path, VALID[key])).status, `${key} ${who}`).toBe(403);
+    }
+  });
+});

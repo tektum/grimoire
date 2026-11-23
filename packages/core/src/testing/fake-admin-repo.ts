@@ -1,4 +1,5 @@
-import type { AdminRepo, AdminUser, PatchUserResult, UserListQuery, UserPatch } from '../ports/admin-repo.js';
+import { randomUUID } from 'node:crypto';
+import type { AdminGroup, AdminRepo, AdminUser, GroupSaveResult, MemberAddResult, PatchUserResult, UserListQuery, UserPatch } from '../ports/admin-repo.js';
 import type { AuditEvent } from '../ports/audit-log.js';
 
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -7,6 +8,7 @@ const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 export class FakeAdminRepo implements AdminRepo {
   readonly audit: AuditEvent[] = [];
   private readonly users: AdminUser[];
+  private readonly groups: { id: string; name: string; members: string[] }[] = [];
 
   constructor(users: readonly AdminUser[] = []) {
     this.users = users.map((u) => ({ ...u }));
@@ -44,5 +46,67 @@ export class FakeAdminRepo implements AdminRepo {
 
   userNames(ids: readonly string[]): Promise<readonly { id: string; name: string }[]> {
     return Promise.resolve(this.users.filter((u) => ids.includes(u.id)).map((u) => ({ id: u.id, name: u.name })));
+  }
+
+  private shown(g: { id: string; name: string; members: string[] }): AdminGroup {
+    return { id: g.id, name: g.name, memberCount: g.members.length };
+  }
+
+  private taken(name: string, except?: string): boolean {
+    return this.groups.some((g) => g.id !== except && g.name.toLowerCase() === name.toLowerCase());
+  }
+
+  listGroups(): Promise<readonly AdminGroup[]> {
+    return Promise.resolve([...this.groups].sort((a, b) => compare(a.name.toLowerCase(), b.name.toLowerCase()) || compare(a.id, b.id)).map((g) => this.shown(g)));
+  }
+
+  createGroup(name: string, actorId: string): Promise<GroupSaveResult> {
+    if (this.taken(name)) return Promise.resolve({ kind: 'name-taken' });
+    const group = { id: randomUUID(), name, members: [] };
+    this.groups.push(group);
+    this.audit.push({ actorId, action: 'group.created', targetType: 'group', targetId: group.id });
+    return Promise.resolve({ kind: 'saved', group: this.shown(group) });
+  }
+
+  renameGroup(id: string, name: string, actorId: string): Promise<GroupSaveResult> {
+    const group = this.groups.find((g) => g.id === id);
+    if (group === undefined) return Promise.resolve({ kind: 'not-found' });
+    if (this.taken(name, id)) return Promise.resolve({ kind: 'name-taken' });
+    group.name = name;
+    this.audit.push({ actorId, action: 'group.renamed', targetType: 'group', targetId: id });
+    return Promise.resolve({ kind: 'saved', group: this.shown(group) });
+  }
+
+  deleteGroup(id: string, actorId: string): Promise<boolean> {
+    const index = this.groups.findIndex((g) => g.id === id);
+    if (index < 0) return Promise.resolve(false);
+    this.groups.splice(index, 1);
+    this.audit.push({ actorId, action: 'group.deleted', targetType: 'group', targetId: id });
+    return Promise.resolve(true);
+  }
+
+  listMembers(groupId: string): Promise<readonly AdminUser[] | undefined> {
+    const group = this.groups.find((g) => g.id === groupId);
+    if (group === undefined) return Promise.resolve(undefined);
+    const rows = this.users.filter((u) => group.members.includes(u.id)).sort((a, b) => compare(a.email.toLowerCase(), b.email.toLowerCase()) || compare(a.id, b.id));
+    return Promise.resolve(rows.map((u) => ({ ...u })));
+  }
+
+  addMember(groupId: string, userId: string, actorId: string): Promise<MemberAddResult> {
+    const group = this.groups.find((g) => g.id === groupId);
+    if (group === undefined) return Promise.resolve('no-group');
+    if (!this.users.some((u) => u.id === userId)) return Promise.resolve('no-user');
+    if (group.members.includes(userId)) return Promise.resolve('already-member');
+    group.members.push(userId);
+    this.audit.push({ actorId, action: 'group.member_added', targetType: 'group', targetId: groupId, detail: { userId } });
+    return Promise.resolve('added');
+  }
+
+  removeMember(groupId: string, userId: string, actorId: string): Promise<boolean> {
+    const group = this.groups.find((g) => g.id === groupId);
+    if (group === undefined || !group.members.includes(userId)) return Promise.resolve(false);
+    group.members = group.members.filter((m) => m !== userId);
+    this.audit.push({ actorId, action: 'group.member_removed', targetType: 'group', targetId: groupId, detail: { userId } });
+    return Promise.resolve(true);
   }
 }
