@@ -95,6 +95,11 @@ export interface PageRepo {
   create(input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
   /** A live page of a live collection with its breadcrumb, or undefined. */
   get(id: string): Promise<PageDetail | undefined>;
+  /**
+   * What the Markdown export serves: the saved Markdown (null when none was ever saved) and whether the row has an editor state, for a
+   * live page of a live collection; undefined otherwise. Never converts anything.
+   */
+  markdownOf(id: string): Promise<{ readonly markdown: string | null; readonly hasState: boolean } | undefined>;
   /** The id of the page with this URL id, deleted or not (the caller decides access from the id), or undefined. */
   idOfUrlId(urlId: string): Promise<string | undefined>;
   /**

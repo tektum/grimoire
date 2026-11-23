@@ -1,3 +1,61 @@
-import { createRouter } from '../http/factory.js';
+import { z } from '@hono/zod-openapi';
+import { fail } from '../http/error.js';
+import { createRouter, defineRoute } from '../http/factory.js';
+import { guardPage } from '../http/page-guard.js';
 
-export default createRouter();
+const IdParam = z.object({ id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }) });
+
+export const getPageMarkdown = defineRoute({
+  method: 'get', path: '/v1/pages/{id}/markdown', operationId: 'getPageMarkdown', summary: 'The last saved Markdown of a page, as a download', tags: ['pages'],
+  policy: { kind: 'page', param: 'id', need: 'read' },
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: 'The Markdown the system last saved (empty for a page with none). It is stored text: nothing is converted for this call.',
+      headers: z.object({
+        'x-saved-at': z.string().describe('When the page was last written, ISO 8601 UTC with milliseconds (compare it with `savedAt` of the page)'),
+        'x-grimoire-markdown-stale': z.literal('true').optional().describe('Present when the editor state is newer than this Markdown'),
+        'x-grimoire-markdown-stale-since': z.string().optional().describe('With the stale header: since when, as an HTTP date'),
+      }),
+      content: { 'text/markdown': { schema: z.string() } },
+    },
+  },
+});
+
+/** A file name for the download: the page title with anything but plain characters replaced, so no title can end the header or add one. */
+function fileName(title: string): string {
+  const plain = title.replace(/[^A-Za-z0-9 ._-]/g, '_').trim().slice(0, 80);
+  return `${plain === '' ? 'page' : plain}.md`;
+}
+
+/** The `filename*` form, which carries the real title in UTF-8 (every character outside the token set percent-encoded). */
+function encodedFileName(title: string): string {
+  const base = (title.trim().slice(0, 80) || 'page').replace(/[\u0000-\u001f\u007f]/g, '');
+  return `${encodeURIComponent(base).replace(/['()*]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`)}.md`;
+}
+
+const router = createRouter();
+
+router.openapi(getPageMarkdown, async (c) => {
+  const { id } = c.req.valid('param');
+  await guardPage(c, id, 'read');
+  const { pages } = c.get('deps');
+  const [page, stored] = await Promise.all([pages.get(id), pages.markdownOf(id)]);
+  // Deleted between the access check and the reads: the same answer as a page that was never there.
+  if (page === undefined || stored === undefined) return fail('not_found');
+  const headers: Record<string, string> = {
+    'content-type': 'text/markdown; charset=utf-8',
+    'x-content-type-options': 'nosniff',
+    'content-disposition': `attachment; filename="${fileName(page.title)}"; filename*=UTF-8''${encodedFileName(page.title)}`,
+    'x-saved-at': new Date(page.savedAt).toISOString(),
+  };
+  // Stale: the state was saved and its Markdown could not be made (a recorded time), or the page has a state and no Markdown at all.
+  const staleSince = page.markdownStaleSince ?? (stored.markdown === null && stored.hasState ? page.savedAt : null);
+  if (staleSince !== null) {
+    headers['x-grimoire-markdown-stale'] = 'true';
+    headers['x-grimoire-markdown-stale-since'] = new Date(staleSince).toUTCString();
+  }
+  return c.body(stored.markdown ?? '', 200, headers);
+});
+
+export default router;

@@ -40,16 +40,16 @@ export class FakePageRepo implements PageRepo {
   }
 
   /** Test setup: a live page, also a fact of the world. */
-  seed(page: Partial<PageMeta> & { collectionId: string; markdown?: string; markdownStaleSince?: number }): PageMeta {
+  seed(page: Partial<PageMeta> & { collectionId: string; markdown?: string; markdownStaleSince?: number; hasState?: boolean }): PageMeta {
     const id = page.id ?? randomUUID();
     const meta: PageMeta = {
       id, urlId: page.urlId ?? id.slice(0, 8), collectionId: page.collectionId, parentId: page.parentId ?? null,
       position: page.position ?? `p${String(this.rows.length).padStart(5, '0')}`, title: page.title ?? '', icon: page.icon ?? null,
-      createdBy: page.createdBy ?? randomUUID(), lastEditedBy: null, lastEditedAt: null, savedAt: 0, stateEpoch: 0,
+      createdBy: page.createdBy ?? randomUUID(), lastEditedBy: null, lastEditedAt: null, savedAt: page.savedAt ?? 0, stateEpoch: 0,
     };
     const title = meta.title;
     this.rows.push({
-      ...meta, deleted: false, markdown: page.markdown ?? null, state: null,
+      ...meta, deleted: false, markdown: page.markdown ?? null, state: page.hasState === true ? new Uint8Array([1]) : null,
       hash: page.markdown === undefined ? null : markdownHash(title, page.markdown), staleSince: page.markdownStaleSince ?? null,
     });
     this.world.pages.push({ id, collectionId: page.collectionId, deleted: false, epoch: 0 });
@@ -152,6 +152,11 @@ export class FakePageRepo implements PageRepo {
     const breadcrumb: { id: string; title: string }[] = [];
     for (let up = this.rows.find((r) => r.id === row.parentId); up !== undefined; up = this.rows.find((r) => r.id === up?.parentId)) breadcrumb.unshift({ id: up.id, title: up.title });
     return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince });
+  }
+
+  markdownOf(id: string): Promise<{ markdown: string | null; hasState: boolean } | undefined> {
+    const row = this.livePage(id);
+    return Promise.resolve(row === undefined ? undefined : { markdown: row.markdown, hasState: row.state !== null });
   }
 
   idOfUrlId(urlId: string): Promise<string | undefined> {
