@@ -56,9 +56,10 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   });
   app.use(secureHeaders());
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
+  // CORS covers the API paths and comes before the body limit, so a 413 can be read from an allowed origin. The health routes stay plain.
+  app.use('/v1/*', corsMiddleware(ctx.config.allowedOrigins));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
-  app.use(corsMiddleware(ctx.config.allowedOrigins));
   app.use(clientVersionGate(ctx.config.minClientVersion));
   for (const router of routers) app.route('/', router);
   return app;

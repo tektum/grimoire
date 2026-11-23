@@ -38,6 +38,15 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('authorization');
   });
 
+  it('lets an allowed origin read a body-limit refusal', async () => {
+    const t = makeContext();
+    const app = createApp(t.ctx, { bodyLimitBytes: 4 });
+    app.post('/v1/probe', (c) => c.json({ ok: true }));
+    const res = await app.request('/v1/probe', { method: 'POST', body: 'too long a body', headers: { origin: ALLOWED, 'content-length': '15' } });
+    expect(res.status).toBe(413);
+    expect(res.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+  });
+
   it('never allows credentials, for allowed and disallowed origins and preflights', async () => {
     const app = build();
     for (const origin of [ALLOWED, 'https://evil.example']) {

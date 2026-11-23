@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { clientVersionGate } from '../../src/http/client-version.js';
 import { createApp } from '../../src/app.js';
 import { makeContext } from '../server/support/context.js';
 
@@ -48,5 +49,9 @@ describe('client version gate', () => {
       headers: { origin: 'http://127.0.0.1:8080', 'access-control-request-method': 'GET', 'access-control-request-headers': HEADER },
     });
     expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain(HEADER.toLowerCase());
+  });
+
+  it('refuses to start with a minimum that does not parse', () => {
+    for (const bad of ['1.02.0', '1.2', 'abc', '99999999999999999999.0.0']) expect(() => clientVersionGate(bad)).toThrow('minClientVersion');
   });
 });
