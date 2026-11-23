@@ -46,7 +46,6 @@ beforeAll(async () => {
 }, 60_000);
 
 const LOCAL_HOSTS = new Set(['postgres', 'seaweedfs', '127.0.0.1', 'localhost']);
-const CLOUD = /amazonaws\.com|amazonaws\.com\.cn|azure|windows\.net|googleapis\.com|googleusercontent|gcr\.io|pkg\.dev|ecr\.aws|cloudflare|digitaloceanspaces|backblazeb2|wasabisys|ibmcloud|aliyuncs/i;
 const published = (s: Resolved['services'][string]) => (s.ports ?? []).map((p) => `${p.host_ip ?? ''}:${String(p.published)}->${String(p.target)}`);
 
 describe('compose.yaml (R2.12, R13.1): the local stack', () => {
@@ -80,9 +79,11 @@ describe('compose.yaml (R2.12, R13.1): the local stack', () => {
   });
 });
 
-describe('compose.yaml (R1.7, R2.12, R2.14): nothing in the stack calls a cloud provider', () => {
-  it('names no cloud provider anywhere in the resolved configuration', () => {
-    expect(JSON.stringify(local)).not.toMatch(CLOUD);
+describe('compose.yaml (R1.7, R2.12, R2.14): nothing in the stack reaches outside it', () => {
+  it('gives every URL anywhere in the resolved configuration (environment, commands, health checks) a host of the stack or loopback', () => {
+    const hosts = new Set([...JSON.stringify(local).matchAll(/[a-z][a-z0-9+.-]*:\/\/(?:[^\s"\\/@]*@)?([^\s"\\/:,]+)/gi)].map((m) => m[1] as string));
+    expect(hosts.size).toBeGreaterThan(0);
+    expect([...hosts].filter((h) => !LOCAL_HOSTS.has(h))).toEqual([]);
   });
 
   it('takes every image from Docker Hub by name (no cloud registry host), or builds it', () => {
