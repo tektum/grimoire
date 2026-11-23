@@ -1,3 +1,4 @@
+import net from 'node:net';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -266,5 +267,22 @@ describe('Kysely adapter', () => {
     await db.close();
     expect(err?.message).toContain('password authentication failed');
     expect(err?.message).not.toContain('Wr0ng-s3cret');
+  });
+
+  it('a query that needs a new connection to a server that accepts and never answers fails within the connection timeout', async () => {
+    const sockets = new Set<net.Socket>();
+    const server = net.createServer((s) => { sockets.add(s); s.on('error', () => undefined); }); // accepts, then stays silent: the handshake hangs
+    await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+    const { port } = server.address() as net.AddressInfo;
+    const db = createDatabase(`postgresql://u:p@127.0.0.1:${String(port)}/x`, { connectionTimeoutMs: 300, queryTimeoutMs: 300, closeTimeoutMs: 100 });
+    try {
+      const startedAt = Date.now();
+      await expect(db.query('select 1')).rejects.toThrow();
+      expect(Date.now() - startedAt).toBeLessThan(300 + 700);
+    } finally {
+      await db.close();
+      for (const s of sockets) s.destroy();
+      await new Promise<void>((resolve) => { server.close(() => { resolve(); }); });
+    }
   });
 });
