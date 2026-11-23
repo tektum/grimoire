@@ -57,9 +57,9 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(secureHeaders());
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
+  app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(corsMiddleware(ctx.config.allowedOrigins));
   app.use(clientVersionGate(ctx.config.minClientVersion));
-  app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   for (const router of routers) app.route('/', router);
   return app;
 }

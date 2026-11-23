@@ -38,7 +38,7 @@ describe('client version gate', () => {
 
   it('never refuses the config and health routes', async () => {
     const { app } = build();
-    for (const path of ['/v1/config', '/healthz']) expect((await get(app, path, '0.0.1')).status).toBe(200);
+    for (const path of ['/v1/config', '/healthz', '/readyz']) expect((await get(app, path, '0.0.1')).status).toBe(200);
   });
 
   it('lists the header in the preflight', async () => {
