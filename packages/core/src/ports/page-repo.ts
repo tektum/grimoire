@@ -16,6 +16,19 @@ export interface PageMeta {
   readonly stateEpoch: number;
 }
 
+/** A page for `GET /v1/pages/{id}` (R6.23): no content. `breadcrumb` is the ancestors, root first, without the page itself. */
+export interface PageDetail extends PageMeta {
+  readonly breadcrumb: readonly { readonly id: string; readonly title: string }[];
+  /** When the saved Markdown fell behind the editor state, epoch milliseconds; null when it is current. */
+  readonly markdownStaleSince: number | null;
+}
+
+/** A change of a page's title and icon (R6.24). */
+export interface PageMetaPatch {
+  readonly title?: string | undefined;
+  readonly icon?: string | null | undefined;
+}
+
 /** Limits a create enforces under the collection's lock. */
 export interface PageLimits {
   /** Deepest level of the page tree (a top-level page is level 1). */
@@ -53,4 +66,13 @@ export interface PageRepo {
    * neighbours (null for an open end) and returns the new key.
    */
   create(input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
+  /** A live page of a live collection with its breadcrumb, or undefined. */
+  get(id: string): Promise<PageDetail | undefined>;
+  /** The id of the page with this URL id, deleted or not (the caller decides access from the id), or undefined. */
+  idOfUrlId(urlId: string): Promise<string | undefined>;
+  /**
+   * Changes the title and icon of a live page. A title change recomputes the stored Markdown hash from the stored Markdown in the same
+   * transaction, so an editor save with identical content that follows is a skip (R4.21). Undefined when the page is not live.
+   */
+  updateMeta(id: string, patch: PageMetaPatch): Promise<PageMeta | undefined>;
 }

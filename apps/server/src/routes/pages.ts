@@ -5,11 +5,14 @@ import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import type { ReplayRebuild } from '../http/idempotency.js';
 import { caller, guardCollection } from '../http/collection-guard.js';
+import { guardPage } from '../http/page-guard.js';
 import { seedRefusalToHttp } from '../http/seed-errors.js';
 
 /** Page tree limits (R5.8, R6.22, R6.54). */
 export const PAGE_LIMITS = { maxDepth: 32, maxPages: 10_000 } as const;
 const TITLE_MAX = 255;
+/** The id no page has: a lookup that found nothing is checked as this, and is refused as any unreadable page is. */
+const NO_PAGE = '00000000-0000-0000-0000-000000000000';
 
 export const PageMetaSchema = z
   .object({
@@ -27,6 +30,26 @@ export const PageMetaSchema = z
     stateEpoch: z.number().int(),
   })
   .openapi('PageMeta');
+
+export const PageSchema = PageMetaSchema.extend({
+  myPermission: z.enum(['read-write', 'read-only']).describe('What the caller may do with the page'),
+  breadcrumb: z.array(z.object({ id: z.string().uuid(), title: z.string() })).describe('Ancestors, root first, without the page itself'),
+  markdownStale: z.boolean().describe('True when the saved Markdown is older than the editor state'),
+  markdownStaleSince: z.number().nullable().describe('Epoch milliseconds the Markdown fell behind; null when current'),
+}).openapi('Page');
+
+const IdParam = z.object({ id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }) });
+const UrlIdParam = z.object({ urlId: z.string().min(1).max(64).openapi({ param: { name: 'urlId', in: 'path' } }) });
+
+const PatchBody = z
+  .object({
+    title: z.string().min(1).max(TITLE_MAX).refine((title) => !title.includes('\0'), 'The title cannot contain a NUL character'),
+    icon: z.string().max(64).refine((icon) => !icon.includes('\0'), 'The icon cannot contain a NUL character').nullable(),
+  })
+  .partial()
+  .strict()
+  .refine((body) => Object.keys(body).length > 0)
+  .openapi('PatchPage');
 
 const CreateBody = z
   .object({
@@ -50,6 +73,25 @@ export const createPage = defineRoute({
     201: json(PageMetaSchema, 'The new page'),
     409: json(ErrorBody, 'Too deep, the collection is full or deleted'),
   },
+});
+
+export const getPage = defineRoute({
+  method: 'get', path: '/v1/pages/{id}', operationId: 'getPage', summary: 'A page without its content', tags: ['pages'],
+  policy: { kind: 'page', param: 'id', need: 'read' }, request: { params: IdParam },
+  responses: { 200: json(PageSchema, 'The page, its breadcrumb and the caller\'s permission') },
+});
+
+export const getPageByUrlId = defineRoute({
+  method: 'get', path: '/v1/pages/by-url-id/{urlId}', operationId: 'getPageByUrlId', summary: 'A page by its URL id', tags: ['pages'],
+  policy: { kind: 'page', param: 'urlId', need: 'read' }, request: { params: UrlIdParam },
+  responses: { 200: json(PageSchema, 'The page, as for `GET /v1/pages/{id}`') },
+});
+
+export const patchPage = defineRoute({
+  method: 'patch', path: '/v1/pages/{id}', operationId: 'patchPage', summary: 'Change the title or the icon of a page', tags: ['pages'],
+  policy: { kind: 'page', param: 'id', need: 'write' },
+  request: { params: IdParam, body: { required: true, content: { 'application/json': { schema: PatchBody } } } },
+  responses: { 200: json(PageMetaSchema, 'The page after the change') },
 });
 
 /**
@@ -92,6 +134,28 @@ router.openapi(createPage, async (c) => {
     case 'too-deep': return fail('too_deep');
     case 'collection-full': return fail('collection_full');
   }
+});
+
+async function present(c: Parameters<typeof guardPage>[0], id: string) {
+  const mine = await guardPage(c, id, 'read');
+  const page = await c.get('deps').pages.get(id);
+  if (page === undefined) return fail('not_found');
+  return { ...page, myPermission: mine, markdownStale: page.markdownStaleSince !== null };
+}
+
+router.openapi(getPageByUrlId, async (c) => {
+  // An unknown URL id takes the same road as a page the caller cannot read, access check included, so the two cost the same.
+  const id = (await c.get('deps').pages.idOfUrlId(c.req.valid('param').urlId)) ?? NO_PAGE;
+  return c.json(await present(c, id), 200);
+});
+
+router.openapi(getPage, async (c) => c.json(await present(c, c.req.valid('param').id), 200));
+
+router.openapi(patchPage, async (c) => {
+  const { id } = c.req.valid('param');
+  await guardPage(c, id, 'write');
+  const page = await c.get('deps').pages.updateMeta(id, c.req.valid('json'));
+  return page === undefined ? fail('not_found') : c.json(page, 200);
 });
 
 export default router;

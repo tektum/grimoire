@@ -1,4 +1,5 @@
-import type { CreatePageResult, PageMeta, PageRepo } from '@tektum/grimoire-core/ports/page-repo';
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
+import type { CreatePageResult, PageDetail, PageMeta, PageRepo } from '@tektum/grimoire-core/ports/page-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -69,6 +70,52 @@ export function createPages(db: KyselyDatabase): PageRepo {
           ],
         );
         return { kind: 'created', page: meta(rows[0] as Row) };
+      });
+    },
+    async get(id) {
+      const rows = await db.query<Row & { stale_ms: string | null }>(
+        `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms
+           from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id],
+      );
+      const row = rows[0];
+      if (row === undefined) return undefined;
+      const up = await db.query<{ id: string; title: string }>(
+        `with recursive up as (select id, parent_id, title, 1 as d from pages where id = $1
+           union all select p.id, p.parent_id, p.title, up.d + 1 from pages p join up on p.id = up.parent_id)
+         select id, title from up where id <> $2 order by d desc`, [row.parent_id, id],
+      );
+      const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
+      return detail;
+    },
+    async idOfUrlId(urlId) {
+      return (await db.query<{ id: string }>(`select id from pages where url_id = $1`, [urlId]))[0]?.id;
+    },
+    updateMeta(id, patch) {
+      return db.transaction(async (tx) => {
+        const retitled = patch.title !== undefined;
+        // The Markdown is read, and the title and hash written, only when the title changes: an icon change must not rebuild the search vector.
+        const row = (await tx.query<{ markdown?: string | null }>(
+          `select ${retitled ? 'markdown' : '1 as one'} from pages p where id = $1 and deleted_at is null
+             and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update`, [id],
+        ))[0];
+        if (row === undefined) return undefined;
+        const sets = ['updated_at = now()'];
+        const params: unknown[] = [id];
+        if (patch.icon !== undefined) {
+          params.push(patch.icon);
+          sets.push(`icon = $${String(params.length)}`);
+        }
+        if (retitled && patch.title !== undefined) {
+          params.push(patch.title);
+          sets.push(`title = $${String(params.length)}`);
+          if (row.markdown !== undefined && row.markdown !== null) {
+            // The hash covers the title, so it moves with it: an editor save with identical content then compares equal and writes nothing.
+            params.push(markdownHash(patch.title, row.markdown));
+            sets.push(`markdown_hash = $${String(params.length)}`);
+          }
+        }
+        const rows = await tx.query<Row>(`update pages set ${sets.join(', ')} where id = $1 returning ${META_COLUMNS}`, params);
+        return meta(rows[0] as Row);
       });
     },
   };
