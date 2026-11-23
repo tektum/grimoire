@@ -227,12 +227,14 @@ export interface Peer {
   readonly stateless: string[];
   readonly failures: string[];
   readonly closes: number[];
+  /** Each close with its code and its reason string (the reasons the server sends: `access-changed`, `session-expired`, `invalid-token`, `try-again`, ...). */
+  readonly closed: { readonly code: number; readonly reason: string }[];
   destroy(): void;
 }
 export interface PeerOptions { readonly token?: string | (() => string); readonly origin?: string }
 /** One provider with its own Yjs document and its own Origin header (a distinct user per peer: the caps are per user and page). */
 export function peer(page: string, user: string, role = 'member', opts: PeerOptions = {}): Peer {
-  const stateless: string[] = []; const failures: string[] = []; const closes: number[] = [];
+  const stateless: string[] = []; const failures: string[] = []; const closes: number[] = []; const closed: { code: number; reason: string }[] = [];
   const doc = new Y.Doc();
   const socket = new HocuspocusProviderWebsocket({ url: WS_URL, WebSocketPolyfill: originSocket(opts.origin ?? ORIGIN) });
   const provider = new HocuspocusProvider({
@@ -240,10 +242,10 @@ export function peer(page: string, user: string, role = 'member', opts: PeerOpti
     websocketProvider: socket,
     onStateless: ({ payload }) => { stateless.push(payload); },
     onAuthenticationFailed: ({ reason }) => { failures.push(reason); },
-    onClose: ({ event }) => { closes.push(event.code); },
+    onClose: ({ event }) => { closes.push(event.code); closed.push({ code: event.code, reason: event.reason }); },
   });
   provider.attach();
-  return { user, provider, socket, doc, text: doc.getText('prosemirror'), stateless, failures, closes, destroy: () => { provider.destroy(); socket.destroy(); } };
+  return { user, provider, socket, doc, text: doc.getText('prosemirror'), stateless, failures, closes, closed, destroy: () => { provider.destroy(); socket.destroy(); } };
 }
 export const isSynced = (p: Peer): boolean => p.provider.synced;
 export const synced = (p: Peer, timeoutMs = 10_000): Promise<void> => eventually(() => (p.provider.synced ? true : undefined), timeoutMs, `${p.user} synced`).then(() => undefined);
