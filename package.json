@@ -32,7 +32,7 @@
     "test:tools": "node --test tools/licence-report/test/ tools/ci/test/ tools/m3-live/test/",
     "licence:pending": "node tools/licence-report/run.mjs --allow-pending",
     "openapi": "node apps/server/dist/openapi/emit.js && openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/schema.d.ts",
-    "openapi:surface": "node apps/server/dist/openapi/emit.js --write-surface",
+    "openapi:surface": "bun run build && node apps/server/dist/openapi/emit.js --write-surface",
     "openapi:check": "bun run build && node apps/server/dist/openapi/emit.js --check-surface",
     "test:conformance": "vitest run --project unit --project integration --passWithNoTests conformance",
     "check:tsc-time": "node tools/check-tsc-time.mjs"

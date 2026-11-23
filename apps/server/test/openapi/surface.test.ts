@@ -31,10 +31,14 @@ describe('the API surface file', () => {
     expect(readFileSync(SURFACE_FILE, 'utf8')).toBe(surface(buildDocument()));
   });
 
-  it('shows a route that is not recorded as one added line, with its policy, limits, body and response names', () => {
+  it('shows a route that is not recorded as added lines with its policy, limits, body and response names, and the shape of each new schema', () => {
     const recorded = readFileSync(SURFACE_FILE, 'utf8');
     const diff = surfaceDiff(recorded, surface(buildDocument([unrecorded()])));
-    expect(diff).toEqual(['+ POST /v1/unrecorded/{id} | op:unrecordedThing | policy:collection:write:id | query:- | req:UnrecordedBody | res:201:UnrecordedItem[] | rate:3/60s | idem:yes']);
+    expect(diff).toEqual([
+      '+ POST /v1/unrecorded/{id} | op:unrecordedThing | policy:collection:write:id | query:- | req:UnrecordedBody | res:201:UnrecordedItem[] | rate:3/60s | idem:yes',
+      '+ schema UnrecordedBody = {a:string}',
+      '+ schema UnrecordedItem = {b:string}',
+    ]);
   });
 
   it('shows a route that was removed from the record as one added line, and a recorded route that is gone as one removed line', () => {
@@ -53,12 +57,27 @@ describe('the API surface file', () => {
         '/a': { get: { operationId: 'a', 'x-grimoire-policy': { kind: 'public' }, parameters: [{ name: 'q', in: 'query' }, { name: 'cursor', in: 'query' }, { name: 'id', in: 'path' }], responses: { '204': {} } } },
       },
     });
-    expect(text.split('\n').slice(2)).toEqual([
+    expect(text.split('\n').slice(3)).toEqual([
       'GET /a | op:a | policy:public | query:cursor,q | req:- | res:204:- | rate:- | idem:no',
-      'POST /b | op:b | policy:admin | query:- | req:- | res:200:inline,409:Error | rate:- | idem:no',
+      'POST /b | op:b | policy:admin | query:- | req:- | res:200:{},409:Error | rate:- | idem:no',
       '',
     ]);
-    expect(surface({})).toMatch(/^#.*\n#.*\n$/);
+    expect(surface({})).toMatch(/^(#.*\n){3}$/);
+  });
+
+  it('writes shapes out, so a new required field, a changed bound or a changed enum shows as a changed line', () => {
+    const doc = (extra: object, required: string[], max: number) => ({
+      paths: { '/p': { post: { operationId: 'p', 'x-grimoire-policy': { kind: 'admin' }, requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Body' } } } }, responses: { '200': { content: { 'application/json': { schema: { type: 'object', required: ['n'], properties: { n: { type: 'integer' }, tags: { type: 'array', items: { type: 'string' }, minItems: 1 } } } } } } } } } },
+      components: { schemas: { Body: { type: 'object', required, properties: { role: { type: 'string', enum: ['a', 'b'] }, name: { type: 'string', minLength: 1, maxLength: max }, id: { type: 'string', format: 'uuid', nullable: true }, ...extra } } } },
+    });
+    const text = surface(doc({}, ['name'], 100));
+    expect(text).toContain('schema Body = {id?:string<uuid>|null,name:string(1..100),role?:a|b}');
+    expect(text).toContain('res:200:{n:integer,tags?:string[](1..)}');
+    for (const changed of [doc({ extra: { type: 'boolean' } }, ['name'], 100), doc({}, ['name', 'role'], 100), doc({}, ['name'], 200)]) {
+      expect(surfaceDiff(text, surface(changed)).length).toBeGreaterThan(0);
+    }
+    expect(surface({ components: { schemas: { M: { type: 'object', minProperties: 2, additionalProperties: { type: 'string' }, oneOf: undefined } } } })).toContain('schema M = {*:string}(min properties 2)');
+    expect(surface({ components: { schemas: { U: { oneOf: [{ type: 'string' }, { $ref: '#/components/schemas/M' }], nullable: true }, A: { allOf: [{ $ref: '#/components/schemas/M' }] }, L: { type: 'array' } } } })).toMatch(/schema A = M\nschema L = any\[\]\nschema U = string\|M\|null\n/);
   });
 
   it('gives every operation an operationId and a policy, and the document is the same on every build', () => {
