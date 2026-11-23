@@ -86,4 +86,18 @@ describe('defineRoute', () => {
     expect(op['x-grimoire-policy']).toEqual({ kind: 'public' });
     expect(op['security']).toBeUndefined();
   });
+
+  it('carries the route rate limit and the idempotency flag into the document, and only when declared', () => {
+    const app = createRouter();
+    const base = { method: 'post' as const, path: '/limited', summary: 's', tags: ['t'], policy: { kind: 'admin' as const }, responses: { 200: { description: 'ok' } } };
+    app.openapi(defineRoute({ ...base, rateLimit: { max: 5, windowSeconds: 60 }, idempotent: true }), (c) => c.body(null, 200));
+    app.openapi(defineRoute({ ...base, path: '/plain' }), (c) => c.body(null, 200));
+    const doc = app.getOpenAPI31Document({ openapi: '3.1.0', info: { title: 't', version: '1' } });
+    const limited = doc.paths?.['/limited']?.post as Record<string, unknown>;
+    expect(limited['x-grimoire-rate-limit']).toEqual({ max: 5, windowSeconds: 60 });
+    expect(limited['x-grimoire-idempotent']).toBe(true);
+    const plain = doc.paths?.['/plain']?.post as Record<string, unknown>;
+    expect(plain).not.toHaveProperty('x-grimoire-rate-limit');
+    expect(plain).not.toHaveProperty('x-grimoire-idempotent');
+  });
 });
