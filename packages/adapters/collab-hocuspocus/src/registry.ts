@@ -2,6 +2,7 @@ import type { Extension } from '@hocuspocus/server';
 import type { CollabDeps } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { CollabLog } from './events.js';
 import { createAuthExtension } from './extensions/auth.js';
+import { createHandshakeExtension } from './handshake.js';
 import { createLimitsExtension } from './extensions/limits.js';
 import { createPersistenceExtension } from './extensions/persistence.js';
 import type { PersistenceExtension } from './extensions/persistence.js';
@@ -39,6 +40,7 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
   o.peers.holdsAdmission((peerId) => limits.holdsReservation(peerId));
   const extensions: Extension[] = [
     createAuthExtension({ deps: o.deps, log: o.log, peers: o.peers, guard: o.guard, admit: (data, userId) => { limits.admit(data, userId); } }),
+    createHandshakeExtension(),
     limits,
     createPresenceExtension(),
     recheck.extension,

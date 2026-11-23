@@ -12,6 +12,10 @@ export interface ConnectionContext {
   expiresAt?: number;
   /** `state_epoch` of the page when access was decided; the re-check closes the connection when it changes. */
   epoch?: number;
+  /** The client sent the `g1.` wrapper (a bare-token client is never sent the epoch message). */
+  wrapped?: boolean;
+  /** A wrapper without `e`: the first sync message is inspected once (the belt in `handshake.ts`). */
+  epochUnknown?: boolean;
 }
 
 /** Hocuspocus hands contexts over as `any`; this is the one place that narrows them. */
@@ -26,11 +30,13 @@ export function readContext(value: unknown): Partial<ConnectionContext> {
   if (v['accessLevel'] === 'read-write' || v['accessLevel'] === 'read-only') out.accessLevel = v['accessLevel'];
   if (typeof v['expiresAt'] === 'number') out.expiresAt = v['expiresAt'];
   if (typeof v['epoch'] === 'number') out.epoch = v['epoch'];
+  if (v['wrapped'] === true) out.wrapped = true;
+  if (v['epochUnknown'] === true) out.epochUnknown = true;
   return out;
 }
 
 /** Applies a change to the per-document context in place: Hocuspocus keeps the object it created, and later hooks read that same one. */
-export function updateContext(value: unknown, patch: Partial<Pick<ConnectionContext, 'expiresAt'>>): void {
+export function updateContext(value: unknown, patch: Partial<Pick<ConnectionContext, 'expiresAt' | 'epochUnknown'>>): void {
   if (typeof value === 'object' && value !== null) Object.assign(value, patch);
 }
 
