@@ -11,7 +11,7 @@ import { defineRoute } from '../../src/http/factory.js';
 import { makeContext } from '../server/support/context.js';
 
 /** Tokens `u1`, `u2` and so on are valid for users `d1`, `d2`; `suspended` is a suspended user; `down` is an outage; anything else is garbage. */
-function build(opts: { http?: Partial<HttpConfig>; trustedProxies?: string[] } = {}) {
+function build(opts: { http?: Partial<HttpConfig>; trustedProxies?: string[]; minClientVersion?: string } = {}) {
   const t = makeContext();
   const calls: string[] = [];
   const verifier: AuthVerifier = {
@@ -28,7 +28,7 @@ function build(opts: { http?: Partial<HttpConfig>; trustedProxies?: string[] } =
   const users = new FakeUserStore(rows);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
-  const config = makeFakeConfig({ ...(opts.trustedProxies === undefined ? {} : { trustedProxies: opts.trustedProxies }), ...(opts.http === undefined ? {} : { http: opts.http }) });
+  const config = makeFakeConfig({ ...(opts.minClientVersion === undefined ? {} : { minClientVersion: opts.minClientVersion }), ...(opts.trustedProxies === undefined ? {} : { trustedProxies: opts.trustedProxies }), ...(opts.http === undefined ? {} : { http: opts.http }) });
   const app = createApp({ ...t.ctx, config, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, config, users, provisioner } });
   app.get('/v1/things', (c) => c.json({ ok: true }));
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer' });
@@ -186,6 +186,14 @@ describe('flood ceiling', () => {
     expect((await hit(app, '203.0.113.5', bearer('u1'))).status).toBe(429);
     expect((await hit(app, '203.0.113.6', bearer('u1'))).status).toBe(200);
     expect(t.logger.entries.find((e) => e.event === 'http.rate_limited')?.fields).toEqual({ scope: 'address', route: '/v1/things' });
+  });
+});
+
+describe('the client version gate', () => {
+  it('does not let a flood of outdated clients bypass the address limiter: refused requests count', async () => {
+    const { app } = build({ http: { addressCeilingPerMinute: 10 }, minClientVersion: '1.2.0' });
+    for (let i = 0; i < 10; i += 1) expect((await hit(app, '203.0.113.5', bearer('u1', { 'x-grimoire-client-version': '1.0.0' }))).status).toBe(426);
+    expect((await hit(app, '203.0.113.5', bearer('u1', { 'x-grimoire-client-version': '1.0.0' }))).status).toBe(429);
   });
 });
 
