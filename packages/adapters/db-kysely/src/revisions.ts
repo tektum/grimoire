@@ -23,14 +23,19 @@ const summary = (r: Row): RevisionSummary => ({
 export function createRevisions(db: KyselyDatabase): RevisionRepo {
   return {
     async list(pageId, query) {
-      const params: unknown[] = [pageId, query.limit];
-      let keyset = '';
-      if (query.after !== undefined) {
-        params.push(query.after[0], query.after[1]);
-        keyset = `and (${MS} < $3::bigint or (${MS} = $3::bigint and r.id > $4::uuid))`;
+      // `created_at` is whole milliseconds (the application writes it from epoch milliseconds), so a millisecond cursor is exact, and every
+      // branch reads `revisions_page_created_idx` (page, created_at desc, id) from the cursor on: a later page does not read the earlier ones.
+      if (query.after === undefined) {
+        const rows = await db.query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 order by r.created_at desc, r.id limit $2`, [pageId, query.limit]);
+        return rows.map(summary);
       }
+      const at = `timestamptz 'epoch' + $3::bigint * interval '1 millisecond'`;
       const rows = await db.query<Row>(
-        `select ${COLUMNS} ${FROM} where r.page_id = $1 ${keyset} order by ${MS} desc, r.id limit $2`, params,
+        `(select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
+         union all
+         (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at < ${at} order by r.created_at desc, r.id limit $2)
+         order by created_ms::bigint desc, id limit $2`,
+        [pageId, query.limit, query.after[0], query.after[1]],
       );
       return rows.map(summary);
     },

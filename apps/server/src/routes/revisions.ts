@@ -4,14 +4,16 @@ import { createRouter, defineRoute } from '../http/factory.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
 import { guardPage } from '../http/page-guard.js';
 
-const Author = z.object({ id: z.string().uuid(), name: z.string() }).openapi('RevisionAuthor');
+const AuthorFields = z.object({ id: z.string().uuid(), name: z.string() });
+/** One component for a person; `lastAuthor` repeats the fields inline so that only it is nullable. */
+const Author = AuthorFields.openapi('RevisionAuthor');
 
 export const RevisionSchema = z
   .object({
     id: z.string().uuid(),
     createdAt: z.number().describe('Epoch milliseconds: the time of the last edit the revision records'),
     title: z.string(),
-    lastAuthor: Author.nullable().describe('The last person who changed the page; null when that user is gone'),
+    lastAuthor: AuthorFields.nullable().describe('The last person who changed the page; null when that user is gone'),
     authors: z.array(Author).describe('Everyone who changed the page since the previous revision'),
     reason: z.enum(['idle', 'last_editor_left', 'before_restore', 'manual', 'import']),
   })

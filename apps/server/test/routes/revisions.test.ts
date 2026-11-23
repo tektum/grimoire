@@ -99,6 +99,23 @@ describe('GET /v1/pages/{id}/revisions', () => {
   });
 });
 
+describe('the revision documents', () => {
+  it('shows a last author of null once that user is gone, and still lists the authors', async () => {
+    const b = build();
+    b.revisions.seed({ pageId: b.page.id, createdAt: 50_000, title: 'Gone', authors: [ANA], lastAuthor: null });
+    const body = (await (await b.call('member', `/v1/pages/${b.page.id}/revisions`)).json()) as Listed;
+    expect(body.items[0]).toMatchObject({ title: 'Gone', lastAuthor: null, authors: [ANA] });
+  });
+
+  it('keeps the shared author component non-null: only lastAuthor may be null', async () => {
+    const doc = createApp(makeContext().ctx).getOpenAPIDocument({ openapi: '3.0.3', info: { title: 't', version: '1' } });
+    const schemas = doc.components?.schemas as Record<string, { nullable?: boolean; properties?: Record<string, { nullable?: boolean; items?: { $ref?: string } }> }>;
+    expect(schemas['RevisionAuthor']?.nullable).not.toBe(true);
+    expect(schemas['Revision']?.properties?.['lastAuthor']?.nullable).toBe(true);
+    expect(schemas['Revision']?.properties?.['authors']?.items?.$ref).toBe('#/components/schemas/RevisionAuthor');
+  });
+});
+
 describe('GET /v1/pages/{id}/revisions/{rid}', () => {
   it('returns the revision with its Markdown, to a viewer too', async () => {
     const b = build();

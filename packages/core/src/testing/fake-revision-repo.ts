@@ -22,7 +22,7 @@ export class FakeRevisionRepo implements RevisionRepo {
   seed(row: SeedRevision): Revision {
     const revision: Revision = {
       id: row.id ?? randomUUID(), createdAt: row.createdAt, title: row.title ?? 'Title', markdown: row.markdown ?? 'Text',
-      authors: row.authors ?? [], lastAuthor: row.lastAuthor ?? row.authors?.at(-1) ?? null, reason: row.reason ?? 'idle',
+      authors: row.authors ?? [], lastAuthor: row.lastAuthor !== undefined ? row.lastAuthor : (row.authors?.at(-1) ?? null), reason: row.reason ?? 'idle',
     };
     this.rows.push({ ...revision, pageId: row.pageId });
     return revision;
