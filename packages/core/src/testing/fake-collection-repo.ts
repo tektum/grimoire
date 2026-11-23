@@ -14,6 +14,8 @@ export class FakeCollectionRepo implements CollectionRepo {
   private readonly rows = new Map<string, CollectionRecord>();
   private readonly entries: (AccessEntry & { collectionId: string })[] = [];
   /** Test setup: display names of users and groups (the id is the name otherwise). */
+  private mirrored: World['access'] = [];
+  private written = new Set<World['access'][number]>();
   readonly names = new Map<string, string>();
 
   constructor(readonly world: World = emptyWorld(), readonly audit: FakeAuditLog = new FakeAuditLog()) {}
@@ -110,12 +112,11 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve(true);
   }
 
+  /** Replaces only the world rows this repo wrote earlier; facts a test put into the world itself stay. */
   private mirrorEntries(): void {
-    const ids = new Set(this.entries.map((e) => e.collectionId));
-    this.world.access = [
-      ...this.world.access.filter((a) => !ids.has(a.collectionId) && !this.rows.has(a.collectionId)),
-      ...this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) })),
-    ];
+    this.mirrored = this.entries.map((e) => ({ collectionId: e.collectionId, permission: e.permission, ...(e.principalType === 'user' ? { userId: e.principalId } : { groupId: e.principalId }) }));
+    this.world.access = [...this.world.access.filter((a) => !this.written.has(a)), ...this.mirrored];
+    this.written = new Set(this.mirrored);
   }
 
   private live(): CollectionRecord[] {

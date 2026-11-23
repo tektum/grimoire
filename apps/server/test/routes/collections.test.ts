@@ -240,6 +240,14 @@ describe('collection access routes', () => {
     expect((await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${a.id}`)).status).toBe(404);
   });
 
+  it('leave access facts the test put into the world untouched', async () => {
+    const { call, collections, closed, rows } = build();
+    collections.world.access.push({ collectionId: closed.id, userId: rows[1]?.id as string, permission: 'read' });
+    const put = (await (await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(rows[3]?.id as string))).json()) as { id: string };
+    await call('admin', 'DELETE', `/v1/collections/${closed.id}/access/${put.id}`);
+    expect((await call('member', 'GET', `/v1/collections/${closed.id}`)).status).toBe(200);
+  });
+
   it('give a group access by its id and name it in the list', async () => {
     const { call, closed, group } = build();
     const res = await call('admin', 'PUT', `/v1/collections/${closed.id}/access`, grant(group, 'read', 'group'));
