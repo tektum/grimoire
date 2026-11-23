@@ -3,6 +3,7 @@
 // users, collections and pages are created through the real tables (as the administrator or the runtime role), never by loosening authorisation.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { firstCloseFrame } from './ws-frames.ts';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
@@ -160,15 +161,13 @@ export interface RawSocket {
 export function rawSocket(): Promise<RawSocket> {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: 8080, path: '/collab', agent: false, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64'), Origin: ORIGIN } });
-    req.on('upgrade', (_res, socket) => {
+    req.on('upgrade', (_res, socket, head: Buffer) => {
       const closing = new Promise<{ code: number; reason: string }>((done) => {
-        let buf = Buffer.alloc(0);
-        socket.on('data', (d: Buffer) => {
-          buf = Buffer.concat([buf, d]);
-          const len = (buf[1] ?? 0) & 0x7f;
-          if (buf.length >= 4 && buf[0] === 0x88 && buf.length >= 2 + len) done({ code: buf.readUInt16BE(2), reason: buf.subarray(4, 2 + len).toString() });
-        });
-        socket.on('close', () => { done({ code: 0, reason: 'ended without a close frame' }); });
+        let buf: Buffer = Buffer.from(head); // bytes the HTTP parser read past the upgrade response belong to the WebSocket stream too
+        const check = (): void => { const c = firstCloseFrame(buf); if (c) done(c); };
+        check();
+        socket.on('data', (d: Buffer) => { buf = Buffer.concat([buf, d]); check(); });
+        socket.on('close', (hadError: boolean) => { done({ code: 0, reason: `ended without a close frame; hadError=${String(hadError)} bytes=${String(buf.length)} hex=${buf.subarray(0, 32).toString('hex')}` }); });
         socket.on('error', () => { done({ code: 0, reason: 'socket error' }); });
       });
       resolve({ status: 101, retryAfter: undefined, closing, destroy: () => { socket.destroy(); } });
