@@ -513,32 +513,43 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
     requires: 'flatMemory',
     async run({ store }) {
       const key = `${freshPrefix()}/big`;
-      const chunk = patternBytes(1024 * 1024);
+      const size = 1024 * 1024;
       const chunks = 200;
+      // Every chunk is new and different, so a store that keeps one chunk or repeats it cannot match the hash.
+      const chunkAt = (i: number): Uint8Array => patternBytes(size).map((byte) => (byte + i) & 0xff);
       const expected = createHash('sha256');
-      for (let i = 0; i < chunks; i++) expected.update(chunk);
+      for (let i = 0; i < chunks; i++) expected.update(chunkAt(i));
       const before = process.memoryUsage().rss;
       let peak = before;
       const sample = () => {
         peak = Math.max(peak, process.memoryUsage().rss);
       };
-      const generated = (async function* () {
-        for (let i = 0; i < chunks; i++) {
-          sample();
-          yield chunk;
-        }
-      })();
-      await store.put(key, generated, { size: chunk.length * chunks, contentType: binary });
-      const got = await store.get(key);
+      // Sampled on a timer for the whole of put and get (an adapter that joins the parts after the last chunk shows
+      // up while it holds them), and again at every chunk and when each call returns.
+      const timer = setInterval(sample, 5);
       const actual = createHash('sha256');
       let length = 0;
-      for await (const part of got.body) {
-        actual.update(part);
-        length += part.length;
+      try {
+        const generated = (async function* () {
+          for (let i = 0; i < chunks; i++) {
+            sample();
+            yield chunkAt(i);
+          }
+        })();
+        await store.put(key, generated, { size: size * chunks, contentType: binary });
         sample();
+        const got = await store.get(key);
+        for await (const part of got.body) {
+          actual.update(part);
+          length += part.length;
+          sample();
+        }
+        sample();
+      } finally {
+        clearInterval(timer);
       }
       await store.delete(key);
-      assert.equal(length, chunk.length * chunks);
+      assert.equal(length, size * chunks);
       assert.equal(actual.digest('hex'), expected.digest('hex'), 'the bytes read back are the bytes written');
       assert.ok(peak - before < 50 * 1024 * 1024, `RSS grew by ${Math.round((peak - before) / 1048576)} MB`);
     },
