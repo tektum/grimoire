@@ -93,7 +93,7 @@ test-m2: dev-secret
 	bun install --frozen-lockfile
 	bun run build
 	bun run tsc -b
-	node --test apps/server/test-e2e/m2/own-paragraph.test.mjs
+	node --test apps/server/test-e2e/m2/known-limit.test.mjs apps/server/test-e2e/m2/own-paragraph.test.mjs
 	rm -f test-results/m2/*.json
 	node apps/server/test-e2e/m2/run.ts
 
