@@ -57,9 +57,11 @@ export async function loadWorld(db: string, w: World): Promise<void> {
     await client.query(
       `insert into collection_access (collection_id, user_id, group_id, permission) select * from unnest($1::uuid[], $2::uuid[], $3::uuid[], $4::text[])`,
       [w.access.map((a) => a.collectionId), w.access.map((a) => a.userId ?? null), w.access.map((a) => a.groupId ?? null), w.access.map((a) => a.permission)]);
+    const statements: string[] = []; // one round trip: a big world has thousands of pages
     for (const p of w.pages) {
-      await insertPage((sql) => client.query(sql), { id: p.id, collection_id: p.collectionId, state_epoch: p.epoch, deleted_at: p.deleted ? raw('now()') : null });
+      await insertPage((sql) => { statements.push(sql); return Promise.resolve(); }, { id: p.id, collection_id: p.collectionId, state_epoch: p.epoch, deleted_at: p.deleted ? raw('now()') : null });
     }
+    if (statements.length > 0) await client.query(statements.join(';\n'));
     await client.query('commit');
   } finally {
     await client.end();
