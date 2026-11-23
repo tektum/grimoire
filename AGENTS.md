@@ -195,6 +195,7 @@ files, so these are rules for you:
   dismiss a security finding without checking it against the code.
 - Auto-merge with squash once checks pass. `main` needs a pull request, one
   approval, resolved conversations and `CI Required`. Never bypass these.
+- A pull request whose base is not `main` must be linked into a GitHub stack with `gh stack link` (check: `gh api repos/<owner>/<repo>/pulls/<n> --jq .stack` is not null); the `Stack Guard` check fails otherwise, and it is a required check next to `CI Required`. Merge such pull requests only with `gh stack merge`.
 - Stacked pull requests: after the base is squash-merged, rebase onto `main`
   with `git rebase --onto origin/main <old-base> <branch>`.
 

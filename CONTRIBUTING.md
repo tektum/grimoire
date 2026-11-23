@@ -6,8 +6,9 @@ Grimoire is developed in the open, through small pull requests into `main`.
 - Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
   and pull request titles (for example `feat: add page export`). Pull requests
   are squash-merged, so the title becomes the commit message on `main`.
-- Every change needs passing CI (the `CI Required` check) and one approval,
-  and all review threads must be resolved.
+- Every change needs passing CI (the `CI Required` and `Stack Guard` checks) and one approval,
+  and all review threads must be resolved. A pull request into a branch other than `main`
+  must be part of a GitHub stack (`gh stack link`).
 - Pull requests from outside the project are welcome, but reviews may take a
   while.
 - Workflow runs for pull requests from forks need a maintainer's approval and
