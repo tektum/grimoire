@@ -28,6 +28,7 @@ export function literal(value: ColumnValue): string {
 export function insertSql(table: string, columns: Columns): string {
   const names = Object.keys(columns);
   for (const name of [table, ...names]) if (!IDENTIFIER.test(name)) throw new Error(`Invalid SQL identifier: ${name}`);
+  if (names.length === 0) return `insert into ${table} default values`;
   return `insert into ${table} (${names.join(', ')}) values (${names.map((n) => literal(columns[n] as ColumnValue)).join(', ')})`;
 }
 

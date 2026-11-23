@@ -20,6 +20,9 @@ describe('literal', () => {
 });
 
 describe('insertSql', () => {
+  it('writes default values for no columns instead of an empty column list', () => {
+    expect(insertSql('pages', {})).toBe('insert into pages default values');
+  });
   it('rejects a table or column name that is not a plain identifier', () => {
     expect(() => insertSql('pages', { 'id; drop table pages': 'x' })).toThrow('Invalid SQL identifier');
     expect(() => insertSql('pages x', { id: 'x' })).toThrow('Invalid SQL identifier');
