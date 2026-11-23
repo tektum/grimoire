@@ -174,7 +174,7 @@ function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unkno
   if (!upgraded) { socket.destroy(); return; }
   socket.pause?.(); // the reservation is already released: no input (an auth message included) may be handled while the frame is pending
   let done = false;
-  const dbg = (m: string): void => { process.stderr.write(`DBG-PREAUTH ${m} writable=${String((socket as any).writable)} destroyed=${String((socket as any).destroyed)} wlen=${String((socket as any).writableLength)}\n`); };
+  const dbg = (m: string): void => { process.stderr.write(`DBG-PREAUTH ${m} writable=${String((socket as { writable?: boolean; destroyed?: boolean; writableLength?: number }).writable)} destroyed=${String((socket as { writable?: boolean; destroyed?: boolean; writableLength?: number }).destroyed)} wlen=${String((socket as { writable?: boolean; destroyed?: boolean; writableLength?: number }).writableLength)}\n`); };
   dbg('start');
   const destroy = (): void => {
     dbg(done ? 'destroy-again' : 'destroy');
