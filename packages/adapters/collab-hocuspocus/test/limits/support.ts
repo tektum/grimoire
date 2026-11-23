@@ -1,10 +1,10 @@
-import type { Extension } from '@hocuspocus/server';
 import type { CollabConfig } from '@tektum/grimoire-core/ports/config';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import * as Y from 'yjs';
 import { createCollabLog } from '../../src/events.js';
 import { createLimitsExtension } from '../../src/extensions/limits.js';
+import type { LimitsExtension } from '../../src/extensions/limits.js';
 
 export const pageName = (i: number): string => `0b6f4f0e-3c1d-4a53-9a62-5d1c2a7e${String(i).padStart(4, '0')}`;
 
@@ -32,7 +32,7 @@ export interface FakeConnection {
 }
 
 export interface Harness {
-  readonly ext: Extension;
+  readonly ext: LimitsExtension;
   readonly logger: FakeLogger;
   readonly documents: Map<string, unknown>;
   readonly unloaded: unknown[];
@@ -41,6 +41,7 @@ export interface Harness {
   /** A document with a name and the connections it should report. */
   doc(name: string, connections?: FakeConnection[]): Y.Doc & { name: string };
   conn(socketId: string, doc: unknown, readOnly?: boolean): FakeConnection;
+  open(payload: { documentName: string; socketId: string; connection: unknown; userId?: string; context?: unknown }): Promise<void>;
   connect(name: string, socketId: string): Promise<void>;
   disconnect(name: string, socketId: string, clientsCount?: number, document?: unknown): Promise<void>;
   tryConnect(name: string, socketId?: string): Promise<void>;
@@ -56,6 +57,7 @@ export function harness(collab: Partial<CollabConfig> = {}, clock = { now: () =>
     getDocumentsCount: () => documents.size,
     unloadDocument: (d: unknown) => { unloaded.push(d); return Promise.resolve(); },
   };
+  const closers = new Map<string, (() => void)[]>();
   const h: Harness = {
     ext: createLimitsExtension({ config: makeFakeConfig({ collab }).collab, clock, log: createCollabLog(logger), memoryUsed: () => h.memory }),
     logger, documents, unloaded, instance, memory: 0,
@@ -64,6 +66,9 @@ export function harness(collab: Partial<CollabConfig> = {}, clock = { now: () =>
       return d;
     },
     conn(socketId, doc, readOnly = false) {
+      const key = `${(doc as { name?: string } | null)?.name ?? ''}\0${socketId}`;
+      const closing = closers.get(key) ?? [];
+      closers.set(key, closing);
       const sent: string[] = [];
       const closes: { code: number; reason: string }[] = [];
       const socketCloses: { code: number; reason: string }[] = [];
@@ -76,15 +81,24 @@ export function harness(collab: Partial<CollabConfig> = {}, clock = { now: () =>
           handleMessage: (f: Uint8Array) => { replayed.push(f); },
           webSocket: { close: (code: number, reason: string) => { closes.push({ code, reason }); socketCloses.push({ code, reason }); } },
           close: (event?: { code: number; reason: string }) => { if (event) closes.push(event); },
+          onClose: (fn: () => void) => { closing.push(fn); },
         },
       };
+    },
+    /** What Hocuspocus does for one document opening: the admission at arrival (the auth extension calls it with the verified user), then `connected` once the page has loaded. */
+    async open(payload) {
+      const connectionConfig = {}; // Hocuspocus makes one per open and passes the same object to every hook of it
+      h.ext.admit({ context: payload.context ?? {}, socketId: payload.socketId, documentName: payload.documentName, connectionConfig }, payload.userId);
+      await h.ext.connected?.({ ...payload, connectionConfig } as never);
     },
     async connect(name, socketId) {
       const document = h.documents.get(name) ?? h.doc(name);
       h.documents.set(name, document);
-      await h.ext.connected?.({ documentName: name, socketId, connection: h.conn(socketId, document).connection } as never);
+      await h.open({ documentName: name, socketId, connection: h.conn(socketId, document).connection });
     },
     async disconnect(name, socketId, clientsCount = 0, document = h.documents.get(name)) {
+      const one = closers.get(`${name}\0${socketId}`)?.shift(); // one connection closes at a time
+      one?.(); // what Hocuspocus does first: the connection's own close handlers
       await h.ext.onDisconnect?.({ documentName: name, socketId, clientsCount, document, instance } as never);
     },
     async tryConnect(name, socketId = 'probe') {

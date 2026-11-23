@@ -51,6 +51,7 @@ services:
       GRIMOIRE_ROLE: all
       # TEST FACILITIES (M3-T01c): empty unless a test target sets them; the server refuses them outside local mode.
       GRIMOIRE_TEST_SLOW_CONVERT_MS: "${GRIMOIRE_TEST_SLOW_CONVERT_MS:-}"
+      GRIMOIRE_TEST_SLOW_LOAD: "${GRIMOIRE_TEST_SLOW_LOAD:-}"
       GRIMOIRE_TEST_DISABLE_BREAKER: "${GRIMOIRE_TEST_DISABLE_BREAKER:-}"
       GRIMOIRE_LOCAL: "1"
       # The server refuses local mode on a non-loopback bind unless told this is fine. It is fine here: inside the container the app must listen

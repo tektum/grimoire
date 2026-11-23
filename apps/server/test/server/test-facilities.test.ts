@@ -14,6 +14,8 @@ import { TEST_SLOW_MARKER, parseTestFacilities } from '@tektum/grimoire-adapter-
 const root = path.resolve(import.meta.dirname, '../../../..');
 const SLOW = 'GRIMOIRE_TEST_SLOW_CONVERT_MS';
 const NOBREAKER = 'GRIMOIRE_TEST_DISABLE_BREAKER';
+const SLOWLOAD = 'GRIMOIRE_TEST_SLOW_LOAD';
+const PAGE_ID = '0b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f11';
 
 describe('test-only facilities: parse', () => {
   it('unset or empty: nothing is enabled and nothing is refused', () => {
@@ -25,7 +27,14 @@ describe('test-only facilities: parse', () => {
     expect(parseTestFacilities({ [SLOW]: '15000', [NOBREAKER]: '1' }, true)).toEqual({ problems: [], slowConvert: { ms: 15000, marker: TEST_SLOW_MARKER }, breaker: { disabled: true } });
   });
 
-  it.each([[SLOW, '15000'], [NOBREAKER, '1']])('%s outside local mode is refused with a fixed line that shows no value', (name, value) => {
+  it('the slow-load switch names one page and a delay: <page id>:<ms>', () => {
+    expect(parseTestFacilities({ [SLOWLOAD]: `${PAGE_ID}:400` }, true)).toEqual({ problems: [], slowLoad: { pageId: PAGE_ID, ms: 400 } });
+    for (const bad of ['400', `${PAGE_ID}`, `${PAGE_ID}:0`, `${PAGE_ID}:600001`, `not-a-page:400`, `${PAGE_ID}:4x`]) {
+      expect(parseTestFacilities({ [SLOWLOAD]: bad }, true).problems, bad).toEqual([{ setting: SLOWLOAD, rule: 'must be <page id>:<milliseconds from 1 to 600000>' }]);
+    }
+  });
+
+  it.each([[SLOW, '15000'], [NOBREAKER, '1'], [SLOWLOAD, `${PAGE_ID}:400`]])('%s outside local mode is refused with a fixed line that shows no value', (name, value) => {
     const r = parseTestFacilities({ [name]: value }, false);
     expect(r.problems).toEqual([{ setting: name, rule: 'is a test facility: it is refused unless GRIMOIRE_LOCAL=1' }]);
     expect(r.slowConvert).toBeUndefined();

@@ -37,7 +37,7 @@ export interface AppContext {
   /** The collaboration host and what it needs; absent when the role has none (`api`). */
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
   /** Test-only facilities switched on (local mode only; `run.ts` logs one line at start-up when any is). */
-  readonly testFacilities: readonly ('slow-convert' | 'breaker-disabled')[];
+  readonly testFacilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[];
   /** Returned without registration: lifecycle/run.ts alone registers these and HTTP/collaboration hooks (S7). */
   readonly shutdownHooks: readonly ShutdownHook[];
 }
@@ -118,7 +118,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       : (_token, identity) => users.findByDescopeId(identity.userId);
     collab = {
       host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
-      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), pages: createPageStore(pageDb, systemClock), converter },
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
   const shutdownHooks: ShutdownHook[] = [
@@ -128,7 +128,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
   ];
-  const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : [])];
+  const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
   return { ok: true, ctx: { config, log, clock: systemClock, db, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(collab ? { collab } : {}) } };
 }
 
@@ -163,4 +163,11 @@ export function composeSeed(options: { readonly env?: Env } = {}): CommandCompos
     return { ok: false, code: 2, log };
   }
   return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}
+
+/** TEST FACILITY (local mode only, see config-env test-facilities): loading the one named page takes `ms` longer. Everything else is the store itself. */
+function withSlowLoad<S extends { load(id: string): Promise<unknown> }>(store: S, slow: { readonly pageId: string; readonly ms: number } | undefined): S {
+  if (slow === undefined) return store;
+  const load = store.load.bind(store);
+  return Object.assign(Object.create(store) as S, { load: async (id: string) => { if (id === slow.pageId) await new Promise<void>((resolve) => { setTimeout(resolve, slow.ms); }); return load(id); } });
 }

@@ -34,13 +34,24 @@ export function buildExtensions(o: RegistryOptions): { extensions: Extension[]; 
     deps: o.deps, log: o.log, sleep: o.sleep, convertConcurrency: o.deps.config.collab.convertPoolSize, ...(o.onChange ? { onChange: o.onChange } : {}), ...(o.breaker ? { breaker: o.breaker } : {}),
   });
   const recheck = createRecheck({ deps: o.deps, log: o.log });
+  const limits = createLimitsExtension({ config: o.deps.config.collab, log: o.log, clock: o.deps.clock, ...(o.memoryUsed ? { memoryUsed: o.memoryUsed } : {}) });
+  o.peers.onRemove((peerId) => { limits.abandonSocket(peerId); });
+  o.peers.holdsAdmission((peerId) => limits.holdsReservation(peerId));
   const extensions: Extension[] = [
-    createAuthExtension({ deps: o.deps, log: o.log, peers: o.peers, guard: o.guard }),
-    createLimitsExtension({ config: o.deps.config.collab, log: o.log, clock: o.deps.clock, ...(o.memoryUsed ? { memoryUsed: o.memoryUsed } : {}) }),
+    createAuthExtension({ deps: o.deps, log: o.log, peers: o.peers, guard: o.guard, admit: (data, userId) => { limits.admit(data, userId); } }),
+    limits,
     createPresenceExtension(),
     recheck.extension,
     persistence,
     ...(o.extra ?? []),
-  ].map((e) => guardConnectHooks(e, o));
+  ].map((e) => guardConnectHooks(e, { ...o, onFailed: (d) => { limits.connectFailed(d); } }));
+  const names = new Set<string>();
+  for (const e of extensions) {
+    const name = e.extensionName;
+    if (name === undefined) continue;
+    // Two extensions with one name would be indistinguishable in logs and in any rule keyed by name: a configuration error, found at construction.
+    if (names.has(name)) throw new Error(`duplicate extension name: ${name}`);
+    names.add(name);
+  }
   return { extensions, persistence, recheck };
 }

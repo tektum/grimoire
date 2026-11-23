@@ -142,14 +142,13 @@ describe('the caps hold when connections arrive at the same moment', () => {
     const h = harness({ maxConnections: 2, maxConnectionsPerPage: 1 });
     const doc = h.doc(A);
     const a = h.conn('a', doc); const b = h.conn('b', doc);
-    await h.ext.connected?.({ documentName: A, socketId: 'a', connection: a.connection } as never);
-    await expect(h.ext.connected?.({ documentName: A, socketId: 'b', connection: b.connection } as never)).rejects.toMatchObject({ reason: 'page-full' });
-    expect(b.closes).toEqual([{ code: expect.any(Number) as number, reason: 'page-full' }]);
-    expect(b.socketCloses).toHaveLength(1); // its only document: the whole socket closes
+    await h.open({ documentName: A, socketId: 'a', connection: a.connection });
+    await expect(h.open({ documentName: A, socketId: 'b', connection: b.connection })).rejects.toMatchObject({ reason: 'page-full' });
+    expect(b.closes).toEqual([]); // the refusal is the thrown reason; a socket with nothing else on it is closed by the peer registry
     const other = pageName(2); const doc2 = h.doc(other);
     const c = h.conn('c', doc2); const d = h.conn('d', h.doc(pageName(3)));
-    await h.ext.connected?.({ documentName: other, socketId: 'c', connection: c.connection } as never);
-    await expect(h.ext.connected?.({ documentName: pageName(3), socketId: 'd', connection: d.connection } as never)).rejects.toMatchObject({ reason: 'server-full' });
+    await h.open({ documentName: other, socketId: 'c', connection: c.connection });
+    await expect(h.open({ documentName: pageName(3), socketId: 'd', connection: d.connection })).rejects.toMatchObject({ reason: 'server-full' });
   });
 });
 
@@ -229,12 +228,12 @@ describe('state cap and warning (R4.16, R4.47, R3.18)', () => {
     const h = harness({ maxStateBytes: 10_000, stateWarnPercent: 80 });
     const big = withState(h, pageOf(8_100)); h.documents.set(A, big);
     const late = h.conn('late', big);
-    await h.ext.connected?.({ documentName: A, socketId: 'late', connection: late.connection } as never);
+    await h.open({ documentName: A, socketId: 'late', connection: late.connection });
     const second = h.conn('late2', big);
-    await h.ext.connected?.({ documentName: A, socketId: 'late2', connection: second.connection } as never);
+    await h.open({ documentName: A, socketId: 'late2', connection: second.connection });
     expect([late.sent, second.sent]).toEqual([[statelessMessage('warning', 'state-warning')], [statelessMessage('warning', 'state-warning')]]);
     const small = h.doc(B); const quiet = h.conn('q', small);
-    await h.ext.connected?.({ documentName: B, socketId: 'q', connection: quiet.connection } as never);
+    await h.open({ documentName: B, socketId: 'q', connection: quiet.connection });
     expect(quiet.sent).toEqual([]);
   });
 

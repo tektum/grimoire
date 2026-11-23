@@ -9,7 +9,7 @@ import { Refusal } from './refusal.js';
  * is logged as one `collab.refused` event, the socket close is scheduled (unless another document on it is open), and what reaches
  * Hocuspocus is a `Refusal` carrying only a reason. An unexpected error becomes `internal-error`, and its message is never seen.
  */
-export function guardConnectHooks(ext: Extension, o: { log: CollabLog; peers: PeerRegistry }): Extension {
+export function guardConnectHooks(ext: Extension, o: { log: CollabLog; peers: PeerRegistry; onFailed?: (d: { open: object | undefined }) => void }): Extension {
   const failed = (context: unknown, e: unknown): Refusal => {
     const refusal = e instanceof Refusal ? e : new Refusal('internal-error');
     o.log.emit('collab.refused', { code: refusal.reason, ...(refusal.detail !== undefined ? { detail: refusal.detail } : {}) });
@@ -17,8 +17,11 @@ export function guardConnectHooks(ext: Extension, o: { log: CollabLog; peers: Pe
     if (peerId !== undefined) o.peers.refused(peerId, refusal.reason);
     return refusal;
   };
-  const wrap = <D extends { context: unknown }>(fn: (d: D) => Promise<unknown>) => async (d: D): Promise<unknown> => {
-    try { return await fn(d); } catch (e) { throw failed(d.context, e); }
+  const wrap = <D extends { context: unknown; connectionConfig?: object }>(fn: (d: D) => Promise<unknown>) => async (d: D): Promise<unknown> => {
+    try { return await fn(d); } catch (e) {
+      o.onFailed?.({ open: d.connectionConfig });
+      throw failed(d.context, e);
+    }
   };
   // The wrapped extension is the prototype: a class instance keeps every hook it defines on its own prototype (a spread would copy only own properties).
   const out = Object.create(ext) as Extension;

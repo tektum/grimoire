@@ -12,9 +12,12 @@ function session(h: Harness, userId: string, socketId: string, page: number, opt
   const base = h.conn(socketId, document);
   const connection = { ...base.connection, onClose: (fn: () => void) => { closers.push(fn); }, messageAddress: name };
   (document as unknown as { hasConnection: () => boolean }).hasConnection = () => !opts.gone;
-  const connect = () => h.ext.connected?.({ documentName: name, socketId, context: { userId }, connection } as never) ?? Promise.resolve();
-  return { base, connect, close: () => { for (const f of closers.splice(0)) f(); } };
+  const connect = () => h.open({ documentName: name, socketId, context: { userId }, userId, connection });
+  const config = {};
+  return { base, config, connection, connect, close: () => { for (const f of closers.splice(0)) f(); } };
 }
+
+const documents = (h: Harness): number => (h.ext as unknown as { counts(): { documents: number } }).counts().documents;
 
 describe('per-user caps on the limits extension', () => {
   it('refuses with the full-for-you reason and the BUSY close code, a fixed reason on the socket, and frees on close', async () => {
@@ -23,30 +26,35 @@ describe('per-user caps on the limits extension', () => {
     for (const s of live) await s.connect();
     const fourth = session(h, 'u', 's2', 4);
     await expect(fourth.connect()).rejects.toMatchObject({ reason: 'full-for-you' });
-    expect(fourth.base.closes).toEqual([{ code: 4503, reason: 'full-for-you' }]);
+    expect(fourth.base.closes).toEqual([]); // the refusal is the thrown reason: Hocuspocus answers permission-denied for this document and the host closes a socket with nothing else on it
     expect(h.limitHits().at(-1)).toEqual({ limit: 'user-documents', value: 3, max: 3 });
     await session(h, 'other', 's9', 4).connect(); // a second user still connects
     live[0]?.close();
     await expect(session(h, 'u', 's2', 4).connect()).resolves.toBeUndefined();
   });
 
-  it('a connection that is already gone takes no place in the server or page counts', async () => {
+  it('a connection that is already gone takes no place in the server or page counts: its close (onDisconnect) ran before `connected`, so only the user place is left to give back', async () => {
     const h = harness({ maxConnections: 1, maxConnectionsPerPage: 1 });
-    await session(h, 'u', 'sg', 1, { gone: true }).connect();
-    await expect(session(h, 'v', 's2', 1).connect()).resolves.toBeUndefined(); // the one place is still free
+    const gone = session(h, 'u', 'sg', 1, { gone: true });
+    h.ext.admit({ context: { peerId: 'g' }, socketId: 'sg', documentName: pageName(1), connectionConfig: gone.config }, 'u'); // the reservation made at arrival
+    await h.disconnect(pageName(1), 'sg', 0, h.documents.get(pageName(1))); // the document's close, which uncounts the page and the socket
+    await h.ext.connected?.({ documentName: pageName(1), socketId: 'sg', context: { userId: 'u', peerId: 'g' }, connectionConfig: gone.config, connection: gone.connection } as never);
+    expect(documents(h)).toBe(0);
+    await expect(session(h, 'v', 's2', 1).connect()).resolves.toBeUndefined(); // the one place is free
   });
 
-  it('a socket whose only document is refused closes whole; with admitted siblings only the refused document closes', async () => {
+  it('a refused document is refused at arrival whichever sockets carry its siblings, closes nothing itself, and takes no place', async () => {
     const h = harness({ maxDocumentsPerUser: 2 });
     const a = session(h, 'u', 's1', 1); const b = session(h, 'u', 's1', 2);
     await a.connect(); await b.connect();
     const third = session(h, 'u', 's1', 3);
     await expect(third.connect()).rejects.toMatchObject({ reason: 'full-for-you' });
-    expect(third.base.socketCloses).toEqual([]); // siblings on this socket: only the refused document closes
-    expect(third.base.closes).toEqual([{ code: 4503, reason: 'full-for-you' }]);
+    expect(third.base.socketCloses).toEqual([]); // siblings on this socket: only the refused document is answered
+    expect(third.base.closes).toEqual([]);
     const lone = session(h, 'u', 's2', 4);
     await expect(lone.connect()).rejects.toMatchObject({ reason: 'full-for-you' });
-    expect(lone.base.socketCloses).toEqual([{ code: 4503, reason: 'full-for-you' }]); // nothing else on it: the whole socket goes
+    expect(lone.base.socketCloses).toEqual([]); // a socket with nothing else on it is closed by the peer registry after the refusal (peers.test.ts), not here
+    expect((h.ext as unknown as { counts(): { documents: number } }).counts().documents).toBe(2); // the refused took no place
   });
 
   it('a connection that is already gone is never counted, and an unauthenticated context is not charged to anyone', async () => {
@@ -114,5 +122,73 @@ describe('per-user byte budget on the limits extension', () => {
     await expect(send(theirs)).resolves.toBeUndefined();
     clock.advance(1000);
     await expect(send(mine[1] as never)).resolves.toBeUndefined();
+  });
+});
+
+describe('admission taken at arrival: when it is given back', () => {
+  /** One open arriving: returns its connection config (the identity of the open: Hocuspocus passes the same object to every hook of it). */
+  const arrive = (h: Harness, peerId: string, socketId: string, page: number, userId = 'u'): object => {
+    const connectionConfig = {};
+    h.ext.admit({ context: { peerId }, socketId, documentName: pageName(page), connectionConfig }, userId);
+    return connectionConfig;
+  };
+
+  it('a socket that closes while its documents are still opening gives their places back', () => {
+    const h = harness({ maxDocumentsPerUser: 2 });
+    arrive(h, 'p1', 's1', 1); arrive(h, 'p1', 's1', 2);
+    expect(documents(h)).toBe(2);
+    h.ext.abandonSocket('p1');
+    expect(documents(h)).toBe(0);
+    expect(() => arrive(h, 'p2', 's2', 3)).not.toThrow();
+  });
+
+  it('a hook that fails for an open gives back what THAT open holds, whichever hook it was; an open that was not admitted yet holds nothing', () => {
+    const h = harness({ maxDocumentsPerUser: 1 });
+    for (const hook of ['onLoadDocument', 'afterLoadDocument', 'connected', 'a later onAuthenticate', 'an extension of the same priority as auth']) {
+      const open = arrive(h, 'p', 's', 1);
+      expect(documents(h), `${hook} (before)`).toBe(1);
+      h.ext.connectFailed({ open });
+      expect(documents(h), `${hook} (after)`).toBe(0);
+    }
+    h.ext.connectFailed({ open: {} }); // an open that was never admitted: nothing to give back
+    h.ext.connectFailed({ open: undefined });
+    expect(documents(h)).toBe(0);
+  });
+
+  it('a failure of ANOTHER open of the same document on the same socket gives nothing back: a place is released only by the open that holds it', () => {
+    const h = harness({ maxDocumentsPerUser: 2 });
+    const first = arrive(h, 'p', 's', 1); // the first open of the document is still loading
+    h.ext.connectFailed({ open: {} }); // a second open of the same document (another session) refused before it was admitted, say by an extension that runs before auth
+    expect(documents(h), 'the first open keeps its place').toBe(1);
+    h.ext.connectFailed({ open: first });
+    expect(documents(h)).toBe(0);
+  });
+
+  it('two opens of one document on one socket for different users keep their own places', () => {
+    const h = harness({ maxDocumentsPerUser: 1 });
+    const mine = arrive(h, 'p', 's', 1, 'u'); const yours = arrive(h, 'p', 's', 1, 'v');
+    h.ext.connectFailed({ open: yours });
+    expect(() => arrive(h, 'p', 's2', 2, 'v')).not.toThrow(); // v's place came back
+    expect(() => arrive(h, 'p', 's3', 3, 'u')).toThrow(); // u's place is still held by its own open
+    h.ext.connectFailed({ open: mine });
+  });
+
+  it('destroying the host gives every place back, and a release that comes later does nothing', async () => {
+    const h = harness({ maxDocumentsPerUser: 2 });
+    const s = session(h, 'u', 's1', 1);
+    await s.connect();
+    arrive(h, 'p', 's9', 2);
+    await h.ext.onDestroy?.({} as never);
+    expect(documents(h)).toBe(0);
+    s.close(); // the connection's own release arrives after the reset
+    expect(documents(h)).toBe(0);
+  });
+
+  it('page, socket and server counts of an admission that is given back are returned too', () => {
+    const h = harness({ maxConnections: 1, maxConnectionsPerPage: 1 });
+    arrive(h, 'p', 's1', 1);
+    expect(() => arrive(h, 'q', 's2', 1, 'v')).toThrow(); // the page has its one socket
+    h.ext.abandonSocket('p');
+    expect(() => arrive(h, 'q', 's2', 1, 'v')).not.toThrow();
   });
 });

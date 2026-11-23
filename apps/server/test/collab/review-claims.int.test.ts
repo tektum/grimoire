@@ -93,6 +93,62 @@ describe('the per-user document cap when the documents of one socket open at the
   }, 60_000);
 });
 
+describe('per-user admission follows arrival order with the real server and a page that loads slowly', () => {
+  const SLOW_MS = 1_500;
+  const slowServer = (cap: string) => startServer({ env: { GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_COLLAB_MAX_DOCUMENTS_PER_USER: cap, GRIMOIRE_COLLAB_MAX_SOCKETS_PER_USER: '5', GRIMOIRE_TEST_SLOW_LOAD: `${pages[1] as string}:${String(SLOW_MS)}` } });
+  const attach = (shared: HocuspocusProviderWebsocket, page: string, user = 'alice') => {
+    let everAuthenticated = false; let denied: string | undefined;
+    const p = new HocuspocusProvider({ websocketProvider: shared, document: new Y.Doc(), name: page, token: token(user), onAuthenticated: () => { everAuthenticated = true; }, onAuthenticationFailed: ({ reason }) => { denied = reason; } });
+    p.attach();
+    return { p, everAuthenticated: () => everAuthenticated, denied: () => denied };
+  };
+
+  it('the only admitted document of a socket is still loading and a second document of the socket is refused: the socket stays open and the first document syncs', async () => {
+    const server = await slowServer('1');
+    try {
+      const shared = new HocuspocusProviderWebsocket({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
+      const closes: number[] = [];
+      shared.on('close', ({ event }: { event: { code: number } }) => { closes.push(event.code); });
+      const slow = attach(shared, pages[1] as string); // takes 1.5 s to load: admitted, not connected
+      await eventually(() => (slow.p.isAuthenticated ? true : undefined), 5000, 'the slow page told authenticated on arrival');
+      const refused = attach(shared, pages[0] as string);
+      await eventually(() => refused.denied(), 5000, 'the second document refused');
+      await new Promise((resolve) => setTimeout(resolve, 700)); // past the 250 ms refusal close, before the slow load ends
+      expect(closes, 'the socket was not closed while its admitted document loads').toEqual([]);
+      await eventually(() => (slow.p.synced ? true : undefined), 10_000, 'the slow page synced once loaded');
+    } finally {
+      await server.kill();
+    }
+  }, 60_000);
+
+  it('cap of two, the second page slow to load: the third document is the one refused, at once and without ever being told it is authenticated; the first two stay and edit', async () => {
+    const server = await slowServer('2');
+    try {
+      const shared = new HocuspocusProviderWebsocket({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
+      const first = attach(shared, pages[0] as string);
+      await eventually(() => (first.p.isAuthenticated ? true : undefined), 5000, 'first authenticated');
+      const second = attach(shared, pages[1] as string); // its page takes 1.5 s to load
+      await eventually(() => (second.p.isAuthenticated ? true : undefined), 5000, 'second told authenticated on arrival, while its page still loads');
+      const third = attach(shared, pages[2] as string);
+      const refusedAt = Date.now();
+      await eventually(() => third.denied(), 5000, 'the third refused');
+      expect(Date.now() - refusedAt, 'refused on arrival, not after the slow page finished loading').toBeLessThan(SLOW_MS);
+      expect(third.denied()).toBe('full-for-you');
+      await eventually(() => (second.p.synced ? true : undefined), 10_000, 'second synced once loaded');
+      expect(third.everAuthenticated()).toBe(false);
+      expect(first.p.isAuthenticated && second.p.isAuthenticated).toBe(true);
+      const watcher = new Y.Doc();
+      const w = new HocuspocusProvider({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: pages[1] as string, token: token('bob') });
+      await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
+      const mark = `slow page edit ${randomUUID()}`;
+      second.p.document.getText('prosemirror').insert(0, mark);
+      await eventually(() => (watcher.getText('prosemirror').toString().includes(mark) ? true : undefined), 5000, 'an edit of the slow, admitted document reaches another client');
+      for (const x of [first.p, second.p, third.p, w]) x.destroy();
+      shared.destroy();
+    } finally { await server.kill(); }
+  }, 60_000);
+});
+
 describe('a refused per-user byte budget tells the client why before the socket closes', () => {
   it('the flooding client receives the rate-limited notice and then the 4429 close', async () => {
     const server = await startServer({ env: { GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_COLLAB_BYTES_PER_SECOND_PER_USER: '2000' } });

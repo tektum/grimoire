@@ -18,14 +18,24 @@ interface Entry {
 /** The sockets the host knows about. Hocuspocus rejects authentication without closing, and has no handle on sockets to close at shutdown. */
 export class PeerRegistry {
   private readonly entries = new Map<string, Entry>();
+  private readonly removeListeners: ((peerId: string) => void)[] = [];
+
+  private holds: (peerId: string) => boolean = () => false;
 
   constructor(private readonly codes: RefusalTable) {}
+
+  /** `fn` says whether a socket has a document admitted but still opening: such a socket is not closed for a refusal of another document. */
+  holdsAdmission(fn: (peerId: string) => boolean): void { this.holds = fn; }
 
   add(peerId: string, peer: Peer): void {
     this.entries.set(peerId, { peer, authenticated: false, documents: new Map() });
   }
 
+  /** `fn` runs whenever a socket is forgotten (it closed): the limits extension gives back what documents still opening on it had taken. */
+  onRemove(fn: (peerId: string) => void): void { this.removeListeners.push(fn); }
+
   remove(peerId: string): void {
+    for (const fn of this.removeListeners) fn(peerId);
     const e = this.entries.get(peerId);
     if (e?.timer) clearTimeout(e.timer);
     this.entries.delete(peerId);
@@ -46,13 +56,17 @@ export class PeerRegistry {
     this.entries.get(peerId)?.documents.delete(documentName);
   }
 
-  /** A connect-time refusal happened: close the socket shortly after, unless a document on it has authenticated. */
+  /** A connect-time refusal happened: close the socket shortly after, unless a document on it has connected or is admitted and still opening. */
   refused(peerId: string, reason: string): void {
     const e = this.entries.get(peerId);
     if (!e || e.authenticated || e.timer) return;
-    e.timer = setTimeout(() => {
-      if (!e.authenticated) e.peer.close(codeFor(this.codes, reason), reason);
-    }, REFUSAL_CLOSE_DELAY_MS);
+    const check = (): void => {
+      if (e.authenticated) return;
+      // A document admitted and still loading keeps the socket; when its reservation ends (connects, fails, expires) the check runs again, so a socket holding nothing is closed in the end.
+      if (this.holds(peerId)) { e.timer = setTimeout(check, REFUSAL_CLOSE_DELAY_MS); return; }
+      e.peer.close(codeFor(this.codes, reason), reason);
+    };
+    e.timer = setTimeout(check, REFUSAL_CLOSE_DELAY_MS);
   }
 
   /** Sends close 1001 "going away"; a socket whose client does not answer is terminated after a second so shutdown cannot wait on it. */

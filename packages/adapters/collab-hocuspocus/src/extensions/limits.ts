@@ -6,7 +6,8 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 import * as Y from 'yjs';
 import { readContext } from '../context.js';
 import type { CollabLog, LimitName } from '../events.js';
-import { Refusal, codeFor, REFUSAL_CLOSE_CODES } from '../refusal.js';
+import { DEFAULT_CONVERT_WAIT_MS } from '../save.js';
+import { codeFor, REFUSAL_CLOSE_CODES, Refusal } from '../refusal.js';
 import { createUserAccounting } from '../user-accounting.js';
 
 /** Close codes of in-session refusals (connect-time ones are in `refusal.ts`). 4429 and 4422 are the contract's; 4423 is ours: the contract gives `state-cap` no close code. */
@@ -107,7 +108,17 @@ function estimateAfter(doc: Y.Doc, update: Uint8Array): number {
   return Y.mergeUpdates([Y.encodeStateAsUpdate(doc), update]).byteLength;
 }
 
-export interface LimitsExtension extends Extension { readonly counts: () => { users: number; sockets: number; documents: number; windows: number } }
+export interface LimitsExtension extends Extension {
+  /** Takes the per-user, page and server admission of a document at arrival (throws the refusal); called by the auth extension. */
+  readonly admit: (data: { context: unknown; socketId: string; documentName: string; connectionConfig: object }, userId: string | undefined) => void;
+  readonly counts: () => { users: number; sockets: number; documents: number; windows: number };
+  /** Gives back every admission still pending for a socket that closed. */
+  readonly abandonSocket: (peerId: string) => void;
+  /** Whether this socket still has a live reservation (a document admitted and not yet connected). Expired ones are dropped first. */
+  readonly holdsReservation: (peerId: string) => boolean;
+  /** To be called for every error thrown by a connect hook of an open: gives back the admission THIS open holds (none, when the failure came before it was admitted). */
+  readonly connectFailed: (d: { open: object | undefined }) => void;
+}
 
 export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
   const c = o.config;
@@ -133,9 +144,105 @@ export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
   const presenceLogged = new Map<string, number>();
 
   // Own in-memory connection counts (R4.15, R4.45): Hocuspocus has none. Keyed by socket so a repeated hook cannot count twice.
-  const pageSockets = new Map<string, Set<string>>();
+  const pageSockets = new Map<string, Map<string, number>>(); // page -> socket -> sessions of that page on that socket (the socket counts once)
   const socketPages = new Map<string, number>();
   let total = 0;
+  /**
+   * THE RESERVATION LEDGER. An admission is taken at arrival (`admit`, from the auth extension's `onAuthenticate`) and is a reservation until `connected` binds it to the
+   * connection, whose close releases it. Explicit releases (a failing hook of that open, a closing socket) are the fast path; because the library does not tell us about
+   * every way an open can end (two sockets opening one unloaded page share one load, and the second open is answered by the library alone), every pending reservation also
+   * EXPIRES `PENDING_TTL_MS` after it was taken, and expired ones are dropped whenever the ledger is consulted. So the ledger guarantees that no place stays held longer than that
+   * after the open it was taken for ended, whatever way it ended; the residual is exactly that: a place may be held up to the TTL after an open the library dropped silently.
+   * An open that reaches `connected` with no live reservation (expired because its load was slower than the TTL, or never taken) is admitted there, against the same caps.
+   */
+  interface Reservation { readonly open: object; readonly peerKey: string; readonly documentName: string; readonly socketId: string; readonly release: (() => void) | undefined; readonly expiresAt: number }
+  /** The longest an open may legitimately take between authentication and `connected`: waiting at the conversion gate (bounded by its wait), reading the page (bounded by the store timeout), rebuilding or seeding its state (bounded by the larger of the two conversion limits) and writing it back. */
+  const PENDING_TTL_MS = DEFAULT_CONVERT_WAIT_MS + Math.max(c.seedTimeoutMs, c.reseedTimeoutMs) + 2 * c.storeTimeoutMs;
+  /** Per socket, for a socket that closes while documents are still opening; per OPEN (the connection config Hocuspocus makes for each one, the same object in every hook of it), so that a place is only ever released by the open that holds it; and in order of arrival, for the expiry. */
+  const pending = new Map<string, Set<Reservation>>();
+  const byOpen = new WeakMap<object, Reservation>();
+  const arrivals = new Set<Reservation>();
+  /** The opens whose page, socket and user counts are raised right now: a session is given back once, by whichever ends it first (expiry, failure, socket close, connection close). */
+  const counted = new WeakSet<object>();
+  const pendingKey = (context: unknown, socketId: string): string => readContext(context).peerId ?? socketId;
+  /** The reservation of this open, removed from both indexes. */
+  const take = (open: object | undefined): Reservation | undefined => {
+    const r = open === undefined ? undefined : byOpen.get(open);
+    if (r === undefined) return undefined;
+    byOpen.delete(r.open);
+    arrivals.delete(r);
+    const set = pending.get(r.peerKey);
+    set?.delete(r);
+    if (set?.size === 0) pending.delete(r.peerKey);
+    return r;
+  };
+  /** The page, socket and server counts of one session that ended: the socket counts once for the page, until its last session on it is gone. */
+  const uncount = (documentName: string, socketId: string): void => {
+    const sockets = pageSockets.get(documentName);
+    const n = sockets?.get(socketId);
+    if (sockets === undefined || n === undefined) return;
+    if (n > 1) { sockets.set(socketId, n - 1); return; }
+    sockets.delete(socketId);
+    total--;
+    if (sockets.size === 0) pageSockets.delete(documentName);
+    const left = (socketPages.get(socketId) ?? 1) - 1;
+    if (left > 0) socketPages.set(socketId, left);
+    else { socketPages.delete(socketId); limitedSockets.delete(socketId); presenceLogged.delete(socketId); void limiter.delete(socketId); void presenceLimiter.delete(socketId); }
+  };
+  /** Gives back everything a reservation took. */
+  const give = (r: Reservation | undefined): void => {
+    if (r === undefined || !counted.delete(r.open)) return;
+    r.release?.();
+    uncount(r.documentName, r.socketId);
+  };
+
+  /** Drops the reservations whose time is up (they are in order of arrival, so the first live one ends the walk). */
+  const sweep = (): void => {
+    const now = o.clock.now();
+    for (const r of [...arrivals]) {
+      if (r.expiresAt > now) break;
+      take(r.open);
+      give(r);
+      o.log.emit('collab.admission_expired', { pageId: r.documentName });
+    }
+  };
+
+  /** Raises the page, socket, server and per-user counts for one session, or throws the refusal. The caller registers the reservation or binds its release. */
+  const reserve = (data: { context: unknown; socketId: string; documentName: string }, userId: string | undefined, open: object): Reservation => {
+    let sockets = pageSockets.get(data.documentName);
+    if (!sockets) { sockets = new Map(); pageSockets.set(data.documentName, sockets); }
+    const first = !sockets.has(data.socketId);
+    if (first) {
+      // The checks in `onConnect` ran before authentication finished, so sockets that connected at the same moment all passed them: counted again here,
+      // where the count is raised, so the caps hold exactly.
+      const refused = total >= c.maxConnections
+        ? { limit: 'connections' as const, reason: 'server-full' as const, value: total, max: c.maxConnections }
+        : sockets.size >= c.maxConnectionsPerPage
+          ? { limit: 'page-connections' as const, reason: 'page-full' as const, value: sockets.size, max: c.maxConnectionsPerPage }
+          : undefined;
+      if (refused !== undefined) {
+        if (sockets.size === 0) pageSockets.delete(data.documentName);
+        throw limitHit(refused.limit, refused.reason, refused.value, refused.max, refused.limit === 'page-connections' ? data.documentName : undefined);
+      }
+    }
+    // Per-user caps, keyed by the verified user id.
+    let release: (() => void) | undefined;
+    if (userId !== undefined) {
+      const admission = accounting.admit(userId, data.socketId);
+      if (!admission.ok) {
+        if (sockets.size === 0) pageSockets.delete(data.documentName);
+        throw limitHit(admission.limit === 'sockets' ? 'user-sockets' : 'user-documents', 'full-for-you', admission.value, admission.max);
+      }
+      release = admission.release;
+    }
+    sockets.set(data.socketId, (sockets.get(data.socketId) ?? 0) + 1);
+    counted.add(open);
+    if (first) {
+      total++;
+      socketPages.set(data.socketId, (socketPages.get(data.socketId) ?? 0) + 1);
+    }
+    return { open, peerKey: pendingKey(data.context, data.socketId), documentName: data.documentName, socketId: data.socketId, release, expiresAt: o.clock.now() + PENDING_TTL_MS };
+  };
 
   const states = new WeakMap<Document, StateRecord>();
   const idleTimers = new Map<string, NodeJS.Timeout>();
@@ -177,9 +284,13 @@ export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
     extensionName: 'grimoire-limits',
     priority: 800,
     counts: () => accounting.counts(),
+    holdsReservation: (peerId) => { sweep(); return (pending.get(peerId)?.size ?? 0) > 0; },
+    abandonSocket: (peerId) => { sweep(); for (const r of [...(pending.get(peerId) ?? [])]) { take(r.open); give(r); } },
+    connectFailed: (d) => { sweep(); give(take(d.open)); },
 
     /** Runs before `onAuthenticate`: the cheapest checks first, and no database or verifier work for a refused connection. */
     async onConnect(data: HookPayloadByName['onConnect']): Promise<void> {
+      sweep(); // a leaked last place must not cost a wrongly refused attempt
       if (total >= c.maxConnections) throw limitHit('connections', 'server-full', total, c.maxConnections);
       const onPage = pageSockets.get(data.documentName)?.size ?? 0;
       if (onPage >= c.maxConnectionsPerPage) throw limitHit('page-connections', 'page-full', onPage, c.maxConnectionsPerPage, data.documentName);
@@ -190,48 +301,40 @@ export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
       if (used > memoryBytes) throw limitHit('memory', 'memory-guard', used, memoryBytes);
     },
 
+    /**
+     * Decides the per-user, per-page and server-wide admission of a document at ARRIVAL: called by the auth extension at the end of its `onAuthenticate` (the verified user
+     * is only known there: the context additions of one extension are not visible to the next), before Hocuspocus tells the client it is authenticated and before the page
+     * loads (a database read). In `connected` the order of admission would be the order of load completion: a document opened later but loaded sooner would be admitted
+     * first, and the earlier one, already told it was authenticated, would be the one refused. What is taken here is a reservation: bound to the connection in `connected`,
+     * or given back by `abandon`/`abandonSocket`/`connectFailed` on every path that never connects.
+     */
+    admit(data: { context: unknown; socketId: string; documentName: string; connectionConfig: object }, userId: string | undefined): void {
+      sweep();
+      const r = reserve(data, userId, data.connectionConfig);
+      byOpen.set(r.open, r);
+      arrivals.add(r);
+      pending.set(r.peerKey, (pending.get(r.peerKey) ?? new Set()).add(r));
+    },
+
     async connected(data: HookPayloadByName['connected']): Promise<void> {
-      // A connection the document has already dropped is counted nowhere: its close ran before this hook and nothing would release the slot.
+      sweep();
+      let reservation = take(data.connectionConfig);
+      // A connection the document has already dropped: its close ran before this hook, so nothing would give its reservation back; given back here (once: an expired one is already gone).
       const dropped = (data.connection.document as { hasConnection?: (c: unknown) => boolean }).hasConnection;
-      if (typeof dropped === 'function' && !dropped.call(data.connection.document, data.connection)) return;
-      /** A refused document closes alone when the socket carries other admitted documents; a socket whose only document is refused closes whole (it is signed in by now and no longer under the pre-sign-in limits). */
-      const refuse = (reason: 'server-full' | 'page-full' | 'full-for-you', otherDocuments: number): void => {
-        const code = codeFor(REFUSAL_CLOSE_CODES, reason);
-        if (otherDocuments > 0) data.connection.close({ code, reason }); else data.connection.webSocket.close(code, reason);
-      };
-      let counted = false;
-      let sockets = pageSockets.get(data.documentName);
-      if (!sockets) { sockets = new Set(); pageSockets.set(data.documentName, sockets); }
-      if (!sockets.has(data.socketId)) {
-        // The checks in `onConnect` ran before authentication finished, so sockets that connected at the same moment all passed them: counted again here,
-        // where the count is raised, so the caps hold exactly.
-        const refused = total >= c.maxConnections
-          ? { limit: 'connections' as const, reason: 'server-full' as const, value: total, max: c.maxConnections }
-          : sockets.size >= c.maxConnectionsPerPage
-            ? { limit: 'page-connections' as const, reason: 'page-full' as const, value: sockets.size, max: c.maxConnectionsPerPage }
-            : undefined;
-        if (refused !== undefined) {
-          if (sockets.size === 0) pageSockets.delete(data.documentName);
-          refuse(refused.reason, socketPages.get(data.socketId) ?? 0);
-          throw limitHit(refused.limit, refused.reason, refused.value, refused.max, refused.limit === 'page-connections' ? data.documentName : undefined);
+      if (typeof dropped === 'function' && !dropped.call(data.connection.document, data.connection)) { give(reservation); return; }
+      if (reservation === undefined) {
+        // No live reservation: it expired (this open took longer than the TTL) or was never taken. Admitted here against the same caps, the late check kept as the safety net;
+        // a refusal closes this document's connection, as it did before admission moved to arrival.
+        try {
+          reservation = reserve(data, readContext(data.context).userId, data.connectionConfig);
+        } catch (e) {
+          if (e instanceof Refusal) data.connection.close({ code: codeFor(REFUSAL_CLOSE_CODES, e.reason), reason: e.reason });
+          throw e;
         }
-        sockets.add(data.socketId);
-        total++;
-        socketPages.set(data.socketId, (socketPages.get(data.socketId) ?? 0) + 1);
-        counted = true;
       }
-      // Per-user caps, keyed by the verified user id, counted when the session is established. The release is bound to this connection's close,
-      // which Hocuspocus runs exactly once on every path (client close, error, shutdown); a connection that is already gone is not counted.
-      const userId = readContext(data.context).userId;
-      if (userId !== undefined && data.connection.document.hasConnection(data.connection)) {
-        const admission = accounting.admit(userId, data.socketId);
-        if (!admission.ok) {
-          // Only the refused document connection closes when the user's other documents on the same socket were admitted; they stay.
-          refuse('full-for-you', (socketPages.get(data.socketId) ?? 0) - (counted ? 1 : 0));
-          throw limitHit(admission.limit === 'sockets' ? 'user-sockets' : 'user-documents', 'full-for-you', admission.value, admission.max);
-        }
-        data.connection.onClose(admission.release);
-      }
+      // The reservation becomes the connection's: released when it closes, which Hocuspocus runs exactly once on every path (client close, error, shutdown).
+      const bound = reservation;
+      data.connection.onClose(() => { give(bound); });
       clearIdle(data.documentName);
       // An editor joining a page that is already past the warning point is told at once; the others were told when it passed.
       const r = record(data.connection.document);
@@ -241,14 +344,6 @@ export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
 
     async onDisconnect(data: HookPayloadByName['onDisconnect']): Promise<void> {
       backlogUntil.delete(`${data.socketId}\0${data.documentName}`);
-      const sockets = pageSockets.get(data.documentName);
-      if (sockets?.delete(data.socketId)) {
-        total--;
-        if (sockets.size === 0) pageSockets.delete(data.documentName);
-        const left = (socketPages.get(data.socketId) ?? 1) - 1;
-        if (left > 0) socketPages.set(data.socketId, left);
-        else { socketPages.delete(data.socketId); limitedSockets.delete(data.socketId); presenceLogged.delete(data.socketId); void limiter.delete(data.socketId); void presenceLimiter.delete(data.socketId); }
-      }
       if (data.clientsCount > 0) return;
       // Safety net behind Hocuspocus's own unload (it unloads at once after the last save): a page that stayed loaded without
       // connections is unloaded after the idle time. `unloadDocument` itself refuses while a save is pending.
@@ -274,6 +369,8 @@ export function createLimitsExtension(o: LimitsOptions): LimitsExtension {
       for (const t of flushTimers) clearTimeout(t);
       flushTimers.clear();
       accounting.reset();
+      pending.clear();
+      arrivals.clear();
     },
 
     /** Every frame of every document connection counts against its socket (R4.18); too many closes the whole socket so the client reconnects and resyncs. */
