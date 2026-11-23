@@ -57,6 +57,9 @@
     },
     {
       "path": "./apps/server/test-e2e"
+    },
+    {
+      "path": "./apps/server/tsconfig.test.json"
     }
   ]
 }

@@ -26,15 +26,15 @@ function build() {
 
 describe('handler errors', () => {
   it.each([
-    ['/boom/throw', 500, 'internal error', 'error', 'http.handler_error', 'Error'],
-    ['/boom/reject', 500, 'internal error', 'error', 'http.handler_error', 'TypeError'],
-    ['/boom/value', 500, 'internal error', 'error', 'http.handler_error', 'NonError'],
-    ['/boom/http', 418, 'error', 'warn', 'http.handler_rejected', 'Error'],
-  ])('%s gives %i with a clean body and exactly one named event', async (path, status, body, level, event, name) => {
+    ['/boom/throw', 503, 'error', 'http.handler_error', 'Error'],
+    ['/boom/reject', 503, 'error', 'http.handler_error', 'TypeError'],
+    ['/boom/value', 503, 'error', 'http.handler_error', 'NonError'],
+    ['/boom/http', 503, 'error', 'http.handler_error', 'Error'],
+  ])('%s gives %i with a clean body and exactly one named event', async (path, status, level, event, name) => {
     const { app, logger } = build();
     const res = await app.request(path);
     expect(res.status).toBe(status);
-    expect(await res.text()).toBe(body);
+    expect(await res.json()).toEqual({ error: { code: 'unavailable', message: 'The service is unavailable. Try again later.' } });
     expect(logger.entries).toHaveLength(1);
     expect(logger.entries[0]).toMatchObject({ level, event, fields: { errorName: name, method: 'GET', route: path, status } });
     expect(JSON.stringify(logger.entries)).not.toContain('hunter2');
@@ -48,7 +48,7 @@ describe('handler errors', () => {
     expect(JSON.stringify(logger.entries)).not.toMatch(/user-42|token=abc|hunter2/);
   });
 
-  it('timeouts keep the middleware status (504) and are logged as a named event', async () => {
+  it('timeouts answer 503 unavailable and are logged as a named event', async () => {
     vi.useFakeTimers();
     try {
       const t = makeContext();
@@ -56,7 +56,7 @@ describe('handler errors', () => {
       app.get('/slow', async (c) => { await new Promise(() => undefined); return c.text('late'); }); // never settles: slower than any timeout
       const pending = app.request('/slow');
       await vi.advanceTimersByTimeAsync(100);
-      expect((await pending).status).toBe(504);
+      expect((await pending).status).toBe(503);
       expect(t.logger.entries.map((e) => e.event)).toEqual(['http.handler_error']);
     } finally {
       vi.useRealTimers();
