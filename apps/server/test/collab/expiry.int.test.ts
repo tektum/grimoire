@@ -214,7 +214,7 @@ describe('re-check on the real server and database (1 s interval)', () => {
     const blocked = open(r, second, await issuer.token('T7release'));
     expect(await closedBy(blocked)).toBe('full-for-you');
     expect(Date.now(), 'the refusal was checked while the first session was still alive').toBeLessThan(exp * 1000);
-    expect(await closedBy(expiring)).toBe('session-expired');
+    expect(await eventually(() => expiring.reasons[0], 15_000, 'closed session-expired')).toBe('session-expired'); // the expiry is 8 s out plus up to one re-check tick: more than closedBy's 8 s from here
     // After the expiry the slot is released: the same user now gets the other page.
     const after = open(r, second, await issuer.token('T7release'));
     await authed(after);
