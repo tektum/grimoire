@@ -1,7 +1,9 @@
 import { Refusal } from './refusal.js';
 
-/** The longest handshake token accepted; the same figure as the session-token policy's cap. */
-export const MAX_HANDSHAKE_LENGTH = 8192;
+/** The longest session token (the policy's cap): a bare token, or the `t` inside a wrapper. */
+export const MAX_TOKEN_LENGTH = 8192;
+/** The longest wrapper: the prefix, plus the base64url of a maximal token with room for the JSON around it (`v`, `e`, quotes). */
+export const MAX_HANDSHAKE_LENGTH = 3 + Math.ceil(((MAX_TOKEN_LENGTH + 64) * 4) / 3);
 const PREFIX = 'g1.';
 const TRIPLE = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
 const BASE64URL = /^[A-Za-z0-9_-]*$/;
@@ -35,6 +37,7 @@ export function compareVersions(a: readonly [number, number, number], b: readonl
  */
 export function readHandshake(raw: unknown, options: { readonly requireHandshake: boolean; readonly minClientVersion: string }): Handshake {
   if (typeof raw !== 'string' || raw.length > MAX_HANDSHAKE_LENGTH) throw invalid();
+  if (!raw.startsWith(PREFIX) && raw.length > MAX_TOKEN_LENGTH) throw invalid();
   let h: Handshake;
   if (!raw.startsWith(PREFIX)) {
     if (options.requireHandshake) throw new Refusal('client-too-old');
@@ -42,9 +45,16 @@ export function readHandshake(raw: unknown, options: { readonly requireHandshake
   } else {
     h = decode(raw.slice(PREFIX.length));
   }
-  const min = parseVersion(options.minClientVersion);
-  if (h.version !== undefined && min !== undefined && compareVersions(h.version, min) < 0) throw new Refusal('client-too-old');
+  const min = parseMinimum(options.minClientVersion);
+  if (h.version !== undefined && compareVersions(h.version, min) < 0) throw new Refusal('client-too-old');
   return h;
+}
+
+/** The configured floor is validated by the settings as digits and dots; leading zeros are fine there. An unreadable floor fails closed. */
+function parseMinimum(text: string): [number, number, number] {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(text);
+  if (!m) throw new Error('minClientVersion is not a dotted triple');
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
 }
 
 function decode(body: string): Handshake {
@@ -57,7 +67,7 @@ function decode(body: string): Handshake {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw invalid();
   const { t, v, e } = parsed as Record<string, unknown>;
-  if (typeof t !== 'string' || t === '') throw invalid();
+  if (typeof t !== 'string' || t === '' || t.length > MAX_TOKEN_LENGTH) throw invalid();
   let version: [number, number, number] | undefined;
   if (v !== undefined) {
     version = typeof v === 'string' ? parseVersion(v) : undefined;

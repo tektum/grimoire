@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_HANDSHAKE_LENGTH, compareVersions, parseVersion, readHandshake } from '../../src/handshake.js';
+import { MAX_HANDSHAKE_LENGTH, MAX_TOKEN_LENGTH, compareVersions, parseVersion, readHandshake } from '../../src/handshake.js';
 import { createAuthExtension } from '../../src/extensions/auth.js';
 import { PAGE, makeDeps } from '../host/support.js';
 
@@ -7,8 +7,9 @@ const wrap = (o: unknown): string => `g1.${Buffer.from(JSON.stringify(o)).toStri
 const OPTIONS = { requireHandshake: false, minClientVersion: '1.2.0' };
 
 const BAD: [string, string][] = [
-  ['8,193 characters', 'x'.repeat(MAX_HANDSHAKE_LENGTH + 1)],
-  ['a wrapper over the cap', `g1.${'A'.repeat(MAX_HANDSHAKE_LENGTH)}`],
+  ['a bare token of 8,193 characters', 'x'.repeat(MAX_TOKEN_LENGTH + 1)],
+  ['a wrapped token of 8,193 characters', wrap({ t: 'x'.repeat(MAX_TOKEN_LENGTH + 1) })],
+  ['a wrapper over its cap', `g1.${'A'.repeat(MAX_HANDSHAKE_LENGTH)}`],
   ['bad base64url', 'g1.!!!'],
   ['base64url of non-JSON', `g1.${Buffer.from('not json').toString('base64url')}`],
   ['an array', wrap([1])],
@@ -32,6 +33,21 @@ describe('handshake wrapper', () => {
     const data = { token, documentName: PAGE, context: { peerId: 'p1', address: 'a' }, connectionConfig: { readOnly: false } };
     await expect(ext.onAuthenticate?.(data as never)).rejects.toMatchObject({ reason: 'invalid-token' });
     expect(t.verifier.calls).toBe(0);
+  });
+
+  it('a session token of exactly 8,192 characters passes bare and wrapped, with room for version and epoch', () => {
+    const t = 'x'.repeat(MAX_TOKEN_LENGTH);
+    expect(readHandshake(t, OPTIONS).token).toBe(t);
+    const wrapped = wrap({ t, v: '99.99.99', e: 2147483647 });
+    expect(wrapped.length).toBeLessThanOrEqual(MAX_HANDSHAKE_LENGTH);
+    expect(readHandshake(wrapped, OPTIONS).token).toBe(t);
+  });
+
+  it('a configured floor with leading zeros still gates, and an unreadable floor fails closed', () => {
+    const old = wrap({ t: 'x', v: '1.1.9' });
+    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: '1.02.0' })).toThrow(expect.objectContaining({ reason: 'client-too-old' }));
+    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: '1.20.03' })).toThrow(expect.objectContaining({ reason: 'client-too-old' }));
+    expect(() => readHandshake(old, { ...OPTIONS, minClientVersion: 'latest' })).toThrow('minClientVersion');
   });
 
   it('a non-string token is invalid', () => {
