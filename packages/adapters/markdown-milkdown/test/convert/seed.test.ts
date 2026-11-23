@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
-import { convertInProcess, seedInProcess } from '../../src/index.js';
+import { convertInProcess, reseedInProcess, seedInProcess } from '../../src/index.js';
 import { FRAGMENT_NAME } from '@tektum/grimoire-editor-schema';
 
 describe('seedInProcess', () => {
@@ -28,10 +28,33 @@ describe('seedInProcess', () => {
     expect(again).toEqual(converted);
   });
 
-  it('gives the same bytes for the same Markdown', async () => {
-    const a = await seedInProcess('# H\n\ntext\n');
-    const b = await seedInProcess('# H\n\ntext\n');
+  const FIXED = 3_000_000_000;
+  const clientsOf = (state: Uint8Array): number[] => [...new Set(Y.decodeUpdate(state).structs.map((s) => s.id.client))];
+
+  it('writes every seed of user Markdown under a fresh client id, never the fixed one, so two seeds of one text cannot share an identity', async () => {
+    const ids: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const seeded = await seedInProcess('# H\n\ntext\n');
+      if (!seeded.ok) throw new Error(seeded.detail);
+      expect(clientsOf(seeded.state)).toHaveLength(1);
+      ids.push(...clientsOf(seeded.state));
+    }
+    expect(ids).not.toContain(FIXED);
+    expect(new Set(ids).size).toBe(5);
+  });
+
+  it('still gives the same content for the same Markdown whatever the client id', async () => {
+    const [a, b] = await Promise.all([seedInProcess('# H\n\ntext\n'), seedInProcess('# H\n\ntext\n')]);
+    if (!a.ok || !b.ok) throw new Error('seed failed');
+    expect(await convertInProcess(a.state)).toEqual(await convertInProcess(b.state));
+  });
+
+  it('keeps the fixed client id and the same bytes for the system rebuild, which the collaboration host re-identifies from the page', async () => {
+    const a = await reseedInProcess('# H\n\ntext\n');
+    const b = await reseedInProcess('# H\n\ntext\n');
     expect(a).toEqual(b);
+    if (!a.ok) throw new Error(a.detail);
+    expect(clientsOf(a.state)).toEqual([FIXED]);
   });
 
   it('returns too-large over maxSeedMarkdownBytes (bytes, not characters)', async () => {

@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { prosemirrorToYXmlFragment } from 'y-prosemirror';
 import * as Y from 'yjs';
 import type { SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -8,8 +9,18 @@ import { getHeadless } from './headless.js';
 import { resolveLimits } from './limits.js';
 import type { ConverterLimits } from './limits.js';
 
-/** Fixed so the same Markdown always gives the same bytes; two seeds of one page then merge as one (Yjs ignores repeats). */
+/**
+ * The identity of the system rebuild (`reseedInProcess`), fixed so the same stored Markdown always gives the same bytes: the collaboration host
+ * then re-identifies it from the page, so servers that rebuild one row at once agree.
+ */
 const SEED_CLIENT_ID = 3_000_000_000;
+
+/** A fresh identity for one seed of user Markdown: a state that is stored as it is must never share an identity (and so a clock) with any other seed. */
+function freshClientId(): number {
+  let id = SEED_CLIENT_ID;
+  while (id === SEED_CLIENT_ID) id = randomInt(1, 2 ** 32);
+  return id;
+}
 
 /** The pre-check limits of one entry point. */
 type Precheck = Pick<ConverterLimits, 'maxSeedMarkdownBytes' | 'maxSeedLines' | 'maxSeedLineMarkers'>;
@@ -19,7 +30,7 @@ type Precheck = Pick<ConverterLimits, 'maxSeedMarkdownBytes' | 'maxSeedLines' | 
  * The size, line and marker limits are the user's (`maxSeed*`). Never throws.
  */
 export function seedInProcess(markdown: string, limits?: Partial<ConverterLimits>): Promise<SeedResult> {
-  return build(markdown, limits, (resolved) => resolved);
+  return build(markdown, limits, (resolved) => resolved, freshClientId);
 }
 
 /**
@@ -32,10 +43,10 @@ export function reseedInProcess(markdown: string, limits?: Partial<ConverterLimi
     maxSeedMarkdownBytes: resolved.maxReseedMarkdownBytes,
     maxSeedLines: Number.MAX_SAFE_INTEGER,
     maxSeedLineMarkers: resolved.maxReseedLineMarkers,
-  }));
+  }), () => SEED_CLIENT_ID);
 }
 
-async function build(markdown: string, limits: Partial<ConverterLimits> | undefined, precheck: (resolved: ConverterLimits) => Precheck): Promise<SeedResult> {
+async function build(markdown: string, limits: Partial<ConverterLimits> | undefined, precheck: (resolved: ConverterLimits) => Precheck, clientId: () => number): Promise<SeedResult> {
   try {
     const resolved = resolveLimits(limits);
     if (typeof markdown !== 'string') return { ok: false, reason: 'invalid-markdown', detail: 'input is not a string' };
@@ -51,7 +62,7 @@ async function build(markdown: string, limits: Partial<ConverterLimits> | undefi
       return { ok: false, reason: 'invalid-markdown', detail: 'the Markdown could not be parsed' };
     }
     const doc = new Y.Doc();
-    doc.clientID = SEED_CLIENT_ID;
+    doc.clientID = clientId();
     prosemirrorToYXmlFragment(node, doc.getXmlFragment(FRAGMENT_NAME));
     const state = Y.encodeStateAsUpdate(doc);
     if (state.byteLength > resolved.maxStateBytes) {
