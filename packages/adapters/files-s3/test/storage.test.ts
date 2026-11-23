@@ -178,6 +178,17 @@ describe('objects', () => {
     expect(await kindOf(s.delete('k'))).toBe('unavailable');
   });
 
+  it('does not mistake a missing bucket for a missing key, and does not count it as a delete', async () => {
+    const s = store();
+    reply = {
+      status: 404,
+      headers: { 'content-type': 'application/xml' },
+      body: '<Error><Code>NoSuchBucket</Code></Error>',
+    };
+    expect(await kindOf(s.get('k'))).toBe('unavailable');
+    expect(await kindOf(s.delete('k'))).toBe('unavailable');
+  });
+
   it('deletes, and counts an absent key as deleted', async () => {
     const s = store();
     reply = { status: 204 };
@@ -303,6 +314,7 @@ describe('mapError', () => {
     [{ name: 'Other', $metadata: { httpStatusCode: 416 } }, 'range-not-satisfiable'],
     [{ name: 'PreconditionFailed' }, 'already-exists'],
     [{ name: 'Other', $metadata: { httpStatusCode: 412 } }, 'already-exists'],
+    [{ name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }, 'unavailable'],
     [{ name: 'AccessDenied', $metadata: { httpStatusCode: 403 } }, 'unavailable'],
     [{ name: 'InternalError', $metadata: { httpStatusCode: 500 } }, 'unavailable'],
     [new Error('connect ECONNREFUSED'), 'unavailable'],

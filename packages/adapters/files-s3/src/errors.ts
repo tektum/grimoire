@@ -15,6 +15,9 @@ export function mapError(error: unknown): FileStorageError {
   const shape = (typeof error === 'object' && error !== null ? error : {}) as SdkErrorShape;
   const name = typeof shape.name === 'string' ? shape.name : '';
   const status = shape.$metadata?.httpStatusCode;
+  if (name === 'NoSuchBucket') {
+    return new FileStorageError('unavailable', `the file store has no such bucket (${String(status ?? 404)})`);
+  }
   if (name === 'NoSuchKey' || name === 'NotFound' || status === 404) {
     return new FileStorageError('not-found', 'the object does not exist');
   }
