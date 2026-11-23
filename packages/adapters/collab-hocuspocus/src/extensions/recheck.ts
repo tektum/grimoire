@@ -214,8 +214,9 @@ export function createRecheck(o: RecheckOptions): Recheck {
     /**
      * A token presented on an open connection (the answer to `requestToken`, or unprompted). Same verifier and same rules as at connect;
      * the SAME subject is required, and nothing about the connection but its expiry can change. A token for another user closes the
-     * connection (an attack, or a client mixing sessions); a token that does not verify is refused and the connection keeps its own
-     * expiry; an unreachable verifier changes nothing. The token is never logged or kept.
+     * connection (an attack, or a client mixing sessions); a token that does not verify closes it `invalid-token`, or `session-expired` when the
+     * connection's own expiry has already passed (R4.14: the session is over, the stale credential is not the news); an unreachable verifier
+     * changes nothing and the connection keeps its own expiry. The token is never logged or kept.
      */
     async onTokenSync(data: HookPayloadByName['onTokenSync']): Promise<void> {
       const t = tracked.get(data.connection);
@@ -235,7 +236,10 @@ export function createRecheck(o: RecheckOptions): Recheck {
       if (v.kind === 'unavailable') { log.emit('collab.auth_unavailable', { source: 'verifier' }); return; }
       if (v.kind !== 'ok') {
         log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'invalid' });
-        closeOne(data.connection, t, 'invalid-token'); // the client must sign in again
+        // The provider answers the server's request at the boundary with the token it has, which may have expired in the meantime: once the connection's
+        // own expiry has passed the session is over, whatever the stale token was (R4.14), and the sweep's reason is the true one.
+        if (t.expiresAt <= deps.clock.now()) closeOne(data.connection, t, 'session-expired', 'session-expired');
+        else closeOne(data.connection, t, 'invalid-token'); // the client must sign in again
         return;
       }
       if (v.userId !== t.descopeUserId) {
