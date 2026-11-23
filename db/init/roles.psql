@@ -11,5 +11,8 @@ ALTER SCHEMA public OWNER TO grimoire_migrator;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO grimoire_app;
 
+-- The job queue keeps its tables in its own schema, owned by the migration role: it needs no CREATE on the database.
+CREATE SCHEMA IF NOT EXISTS pgboss AUTHORIZATION grimoire_migrator;
+
 -- Runtime role: no default grants. Each migration grants the runtime role exactly what it needs on the tables it creates;
 -- Kysely's own bookkeeping tables (kysely_migration, kysely_migration_lock) get no grant.

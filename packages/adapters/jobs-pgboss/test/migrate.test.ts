@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import { grantRuntimeRole, migratePgBoss } from '../src/migrate.js';
+import { grantRuntimeRole, migratePgBoss, requireSchemaAccess } from '../src/migrate.js';
 
-function recorder(tables: string[]) {
+function recorder(tables: string[], access: { owns: boolean | null; can_create: boolean } = { owns: true, can_create: false }) {
   const sql: string[] = [];
   const db: Queryable = {
     query: async <Row>(text: string) => {
       sql.push(text.replace(/\s+/g, ' ').trim());
+      if (text.includes('current_user')) return [{ me: 'grimoire_migrator', ...access }] as Row[];
       return (text.includes('pg_class') ? tables.map((name) => ({ name })) : []) as Row[];
     },
   };
@@ -64,11 +65,35 @@ describe('migratePgBoss', () => {
     b.start.mockImplementation((async () => { handlers.error?.(new Error('migration broke')); return b; }) as never);
     const { db, sql } = recorder(['job']);
     await expect(migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never })).rejects.toThrow('migration broke');
-    expect(sql).toEqual([]);
+    expect(sql.filter((q) => q.startsWith('grant'))).toEqual([]);
   });
 
   it('builds a real PgBoss by default', async () => {
     const { db } = recorder([]);
     await expect(migratePgBoss({ connectionString: 'postgresql://127.0.0.1:1/none', database: db, runtimeRole: 'grimoire_app' })).rejects.toThrow();
+  });
+});
+
+describe('requireSchemaAccess', () => {
+  it('passes when the migration role owns the schema, or may create it', async () => {
+    await requireSchemaAccess(recorder([], { owns: true, can_create: false }).db);
+    await requireSchemaAccess(recorder([], { owns: null, can_create: true }).db);
+  });
+
+  it('names the fix when the schema is missing and cannot be created, or belongs to someone else', async () => {
+    const fix = /create schema pgboss authorization grimoire_migrator;/;
+    await expect(requireSchemaAccess(recorder([], { owns: null, can_create: false }).db)).rejects.toThrow(fix);
+    await expect(requireSchemaAccess(recorder([], { owns: false, can_create: true }).db)).rejects.toThrow(fix);
+  });
+
+  it('stops migratePgBoss before pg-boss starts', async () => {
+    const make = vi.fn();
+    await expect(migratePgBoss({ connectionString: 'postgresql://example/db', database: recorder([], { owns: null, can_create: false }).db, runtimeRole: 'grimoire_app', make: make as never })).rejects.toThrow(/cannot manage the "pgboss" schema/);
+    expect(make).not.toHaveBeenCalled();
+  });
+
+  it('still names a fix when the check returns no row', async () => {
+    const empty = { query: async () => [] } as never;
+    await expect(requireSchemaAccess(empty)).rejects.toThrow(/authorization the migration role;/);
   });
 });

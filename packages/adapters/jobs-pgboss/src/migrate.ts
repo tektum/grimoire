@@ -30,6 +30,7 @@ export interface MigrateOptions {
  * Returns the tables it granted on, in order.
  */
 export async function migratePgBoss(options: MigrateOptions): Promise<readonly string[]> {
+  await requireSchemaAccess(options.database);
   const make = options.make ?? ((o: ConstructorOptions) => new PgBoss(o));
   const boss = make({ connectionString: options.connectionString, schema: PGBOSS_SCHEMA, migrate: true, supervise: false, schedule: false, registerInstance: false });
   let failure: Error | undefined;
@@ -38,6 +39,22 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
   await boss.stop({ graceful: true, close: true, timeout: 2000 });
   if (failure) throw failure;
   return grantRuntimeRole(options.database, options.runtimeRole);
+}
+
+/**
+ * The migration role must own the pgboss schema (or be able to create it) before the library runs; otherwise the
+ * library fails with a bare "permission denied". Fails early with the statement that fixes it.
+ */
+export async function requireSchemaAccess(db: Queryable, schema: string = PGBOSS_SCHEMA): Promise<void> {
+  const [row] = await db.query<{ me: string; can_create: boolean; owns: boolean | null }>(
+    `select current_user::text as me,
+            has_database_privilege(current_user, current_database(), 'create') as can_create,
+            (select pg_has_role(current_user, nspowner, 'usage') from pg_namespace where nspname = $1) as owns`,
+    [schema],
+  );
+  if (row && (row.owns === true || (row.owns === null && row.can_create))) return;
+  const who = row?.me ?? 'the migration role';
+  throw new Error(`the migration role cannot manage the "${schema}" schema: run once, as a role that may: create schema ${schema} authorization ${who};`);
 }
 
 export async function grantRuntimeRole(db: Queryable, role: string, schema: string = PGBOSS_SCHEMA): Promise<readonly string[]> {
