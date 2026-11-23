@@ -53,6 +53,7 @@ export class FakeJobQueue implements JobQueue {
       await tx.query('insert into fake_job_pending (id, name, payload, options) values ($1, $2, $3, $4)', [id, name, JSON.stringify(payload), JSON.stringify(options)]);
       return id;
     }
+    await this.adoptPending(); // committed transactional jobs count for the singleton check
     return this.add(name, payload, options);
   }
 

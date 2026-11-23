@@ -82,4 +82,17 @@ describe('FakeJobQueue extras', () => {
     await q.advance(10);
     expect(runs).toBe(1);
   });
+
+  it('treats a committed transactional singleton as live for a later plain enqueue', async () => {
+    const db = new FakeDatabase();
+    const q = new FakeJobQueue(db);
+    const first = await db.transaction((tx) => q.enqueue('a', 1, { singletonKey: 'k' }, tx));
+    expect(first).toEqual(expect.any(String));
+    expect(await q.enqueue('a', 2, { singletonKey: 'k' })).toBeNull();
+    const seen: number[] = [];
+    await q.work<number>('a', async (v) => { seen.push(v); });
+    await q.advance(0);
+    expect(seen).toEqual([1]);
+    expect(q.all.map((j) => j.id)).toEqual([first]);
+  });
 });
