@@ -189,6 +189,15 @@ describe('RevisionRepo.createFromPage, concurrently and with ids that are not UU
 
 describe('RevisionRepo.catchUp', () => {
   const NOW = 1_700_000_900_000;
+  it('dates the catch-up revision of a renamed page after the revision it follows', async () => {
+    const id = await savedPage({ title: 'Old name', markdown: 'unchanged text', editedMs: NOW - 12 * 60_000, editedBy: ana });
+    const repo = createRevisions(t.app);
+    await repo.catchUp(NOW - 5 * 60_000, 100);
+    await t.admin.query(`update pages set title = 'New name', markdown_hash = $2 where id = $1`, [id, markdownHash('New name', 'unchanged text')]);
+    await repo.catchUp(NOW - 5 * 60_000, 100);
+    expect((await repo.list(id, { limit: 10 })).map((r) => r.title)).toEqual(['New name', 'Old name']);
+  });
+
   const rows = () => t.admin.query<{ id: string }>(`select id from revisions`);
 
   it('makes the missing revisions of pages last edited before the cut, dated at the last edit and naming the last editor, once', async () => {
@@ -252,6 +261,21 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     const results = await Promise.all([1, 2, 3, 4].map(() => createRevisions(t.app).snapshotBeforeRestore(id)));
     expect(results.map((r) => r.kind).sort()).toEqual(['created', 'existing', 'existing', 'existing']);
     expect(await revisionsOf(id)).toHaveLength(1);
+  });
+
+  it('sorts the safety copy of a renamed page as the newest revision, so the next restore finds it and writes no second copy', async () => {
+    const id = await savedPage({ title: 'Before rename', markdown: 'same text', editedMs: 1_700_001_300_000, editedBy: ana });
+    const repo = createRevisions(t.app);
+    const first = await repo.snapshotBeforeRestore(id);
+    // A rename changes the title and the hash, not the time of the last edit.
+    await t.admin.query(`update pages set title = 'After rename', markdown_hash = $2 where id = $1`, [id, markdownHash('After rename', 'same text')]);
+    const second = await repo.snapshotBeforeRestore(id);
+    expect([first.kind, second.kind]).toEqual(['created', 'created']);
+    const listed = await repo.list(id, { limit: 10 });
+    expect(listed.map((r) => r.title)).toEqual(['After rename', 'Before rename']);
+    expect(listed[0]?.createdAt).toBeGreaterThan(listed[1]?.createdAt ?? 0);
+    expect(await repo.snapshotBeforeRestore(id)).toEqual({ kind: 'existing', id: second.kind === 'created' ? second.id : '' });
+    expect(await revisionsOf(id)).toHaveLength(2);
   });
 
   it('writes another when the title or Markdown changed since the latest revision', async () => {

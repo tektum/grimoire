@@ -72,7 +72,7 @@ export class FakeRevisionRepo implements RevisionRepo {
     const ids = savedBy !== null && !request.authorIds.includes(savedBy) ? [...request.authorIds, savedBy] : request.authorIds;
     const lastId = savedBy ?? request.lastAuthorId;
     const created = this.seed({
-      pageId: request.pageId, createdAt: later ? (page.lastEditedAt as number) : request.at, title: page.title, markdown: page.markdown, authors: ids.map((id) => ({ id, name: id })),
+      pageId: request.pageId, createdAt: this.newest(request.pageId, later ? (page.lastEditedAt as number) : request.at), title: page.title, markdown: page.markdown, authors: ids.map((id) => ({ id, name: id })),
       lastAuthor: lastId === null ? null : { id: lastId, name: lastId }, reason: request.reason,
     });
     return Promise.resolve({ kind: 'created', id: created.id });
@@ -89,7 +89,7 @@ export class FakeRevisionRepo implements RevisionRepo {
     if (latest !== undefined && latest.hash.equals(markdownHash(page.title, page.markdown))) return Promise.resolve({ kind: 'existing', id: latest.id });
     const by = page.lastEditedBy ?? null;
     const created = this.seed({
-      pageId, createdAt: page.lastEditedAt ?? Date.now(), title: page.title, markdown: page.markdown,
+      pageId, createdAt: this.newest(pageId, page.lastEditedAt ?? Date.now()), title: page.title, markdown: page.markdown,
       authors: by === null ? [] : [{ id: by, name: by }], lastAuthor: by === null ? null : { id: by, name: by }, reason: 'before_restore',
     });
     return Promise.resolve({ kind: 'created', id: created.id });
@@ -106,10 +106,16 @@ export class FakeRevisionRepo implements RevisionRepo {
       const latest = this.rows.filter((r) => r.pageId === pageId).sort((a, b) => b.micros - a.micros)[0];
       if (latest !== undefined && latest.hash.equals(markdownHash(p.title, p.markdown as string))) continue;
       const by = p.lastEditedBy ?? null;
-      const revision = this.seed({ pageId, createdAt: p.lastEditedAt as number, title: p.title, markdown: p.markdown as string, authors: by === null ? [] : [{ id: by, name: by }], lastAuthor: by === null ? null : { id: by, name: by }, reason: 'idle' });
+      const revision = this.seed({ pageId, createdAt: this.newest(pageId, p.lastEditedAt as number), title: p.title, markdown: p.markdown as string, authors: by === null ? [] : [{ id: by, name: by }], lastAuthor: by === null ? null : { id: by, name: by }, reason: 'idle' });
       out.push({ pageId, revisionId: revision.id });
     }
     return Promise.resolve(out);
+  }
+
+  /** A new revision sorts as the newest of its page, as in the database: never at or before the latest revision's time. */
+  private newest(pageId: string, wanted: number): number {
+    const latest = this.rows.filter((r) => r.pageId === pageId).reduce((m, r) => Math.max(m, r.createdAt), Number.NEGATIVE_INFINITY);
+    return Math.max(wanted, latest + 1);
   }
 
   list(pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]> {
