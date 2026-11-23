@@ -558,8 +558,41 @@ describe('DELETE /v1/pages/{id}', () => {
   it('answers 404 when the page disappears between the check and the delete', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.shared.id });
-    b.pages.softDelete = () => Promise.resolve(undefined);
+    b.pages.softDelete = () => Promise.resolve({ kind: 'not-found' });
     expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(404);
+    b.pages.softDelete = () => Promise.resolve({ kind: 'conflict' });
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(409);
+    b.pages.get = () => Promise.resolve(undefined);
+    expect((await b.call('member', 'DELETE', `/v1/pages/${page.id}`)).status).toBe(404);
+  });
+});
+
+describe('DELETE /v1/pages/{id} racing a move', () => {
+  it('checks write access on the collection the page is in when the delete starts, and deletes nothing where the caller cannot write', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const get = b.pages.get.bind(b.pages);
+    // After the page check another user moves the page into a collection the caller can only read.
+    b.pages.get = async (id) => {
+      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(id);
+    };
+    const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
+    expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
+    expect(b.pages.batchOf(page.id)).toBeUndefined();
+  });
+
+  it('is a 409 and deletes nothing when the page leaves the checked collection after the check', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const original = b.pages.softDelete.bind(b.pages);
+    b.pages.softDelete = async (id, by, expected) => {
+      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return original(id, by, expected);
+    };
+    const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
+    expect([res.status, await code(res)]).toEqual([409, 'conflict']);
+    expect(b.pages.batchOf(page.id)).toBeUndefined();
   });
 });
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
 import { checkMove, forestOf } from '../tree/move.js';
-import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo } from '../ports/page-repo.js';
+import type { CreatePageResult, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -113,16 +113,17 @@ export class FakePageRepo implements PageRepo {
     return Promise.resolve({ kind: 'moved', page: this.meta(moved) });
   }
 
-  softDelete(id: string, deletedBy: string): Promise<number | undefined> {
+  softDelete(id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult> {
     const row = this.livePage(id);
-    if (row === undefined) return Promise.resolve(undefined);
+    if (row === undefined) return Promise.resolve({ kind: 'not-found' });
+    if (row.collectionId !== expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     const live = this.subtree(id).filter((r) => !r.deleted);
     for (const r of live) {
       this.rows[this.rows.indexOf(r)] = { ...r, deleted: true, batch: id, deletedBy };
       const fact = this.world.pages.find((w) => w.id === r.id);
       if (fact !== undefined) fact.deleted = true;
     }
-    return Promise.resolve(live.length);
+    return Promise.resolve({ kind: 'deleted', pages: live.length });
   }
 
   /** The page and every descendant, deleted ones included. */

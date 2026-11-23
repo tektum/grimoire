@@ -1,6 +1,6 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import type { CreatePageResult, MovePageResult, PageDetail, PageMeta, PageRepo } from '@tektum/grimoire-core/ports/page-repo';
+import type { CreatePageResult, MovePageResult, PageDetail, PageMeta, PageRepo, SoftDeleteResult } from '@tektum/grimoire-core/ports/page-repo';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -198,20 +198,25 @@ export function createPages(db: KyselyDatabase): PageRepo {
       }
       return { kind: 'conflict' };
     },
-    softDelete(id, deletedBy) {
-      return db.transaction(async (tx) => {
+    softDelete(id, deletedBy, expectedCollectionId) {
+      return db.transaction(async (tx): Promise<SoftDeleteResult> => {
         const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
-        if (page === undefined) return undefined;
+        if (page === undefined) return { kind: 'not-found' };
+        // Access was checked against this collection; a page that left it since is not deleted on that check.
+        if (page.collection_id !== expectedCollectionId) return { kind: 'conflict' };
         // The collection first, as create and move take it: a delete of the collection, a move and a create cannot interleave with this.
-        const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for no key update`, [page.collection_id]);
-        if (live.length === 0) return undefined;
+        const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for no key update`, [expectedCollectionId]);
+        if (live.length === 0) return { kind: 'not-found' };
+        // A move that committed between the first read and the lock is seen here, under the lock.
+        const still = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null for update`, [id, expectedCollectionId]);
+        if (still.length === 0) return { kind: 'conflict' };
         const deleted = await tx.query(
           `with recursive down as (select id from pages where id = $1 and deleted_at is null
              union all select p.id from pages p join down on p.parent_id = down.id where p.deleted_at is null)
            update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $1 where id in (select id from down) and deleted_at is null returning 1`,
           [id, deletedBy],
         );
-        return deleted.length === 0 ? undefined : deleted.length;
+        return { kind: 'deleted', pages: deleted.length };
       });
     },
   };

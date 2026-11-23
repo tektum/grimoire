@@ -213,7 +213,15 @@ router.openapi(movePage, async (c) => {
 router.openapi(deletePage, async (c) => {
   const { id } = c.req.valid('param');
   await guardPage(c, id, 'write');
-  return (await c.get('deps').pages.softDelete(id, caller(c).id)) === undefined ? fail('not_found') : c.body(null, 204);
+  const { pages } = c.get('deps');
+  const current = await pages.get(id);
+  if (current === undefined) return fail('not_found');
+  // The page may have changed collection since the page check: write access is checked on the collection read here, the one the delete is bound to.
+  await guardCollection(c, current.collectionId, 'write');
+  const result = await pages.softDelete(id, caller(c).id, current.collectionId);
+  if (result.kind === 'not-found') return fail('not_found');
+  if (result.kind === 'conflict') return fail('conflict');
+  return c.body(null, 204);
 });
 
 export default router;

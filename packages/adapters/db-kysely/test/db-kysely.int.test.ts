@@ -88,7 +88,7 @@ describe('grimoire migrate', () => {
   it('applies on an empty database and is idempotent on a second run', async () => {
     const first = await migrate();
     expect(first.code).toBe(0);
-    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 7 }); // 0001 to 0007
+    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 8 }); // 0001 to 0008
     expect(await tables()).toEqual(expect.arrayContaining(['kysely_migration', 'pages']));
     const rows = await migrationRows();
     expect(rows).toEqual(['0001_pages', '0002_page_markdown', '0003_schema_version', '0004_permissions', '0005_history_files_imports_audit', '0006_page_search_and_positions', '0007_idempotency_created_index', '0008_drop_page_defaults']);

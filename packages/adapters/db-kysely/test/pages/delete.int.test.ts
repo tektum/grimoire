@@ -34,10 +34,10 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     const grandkid = await make(kid);
     const earlier = await make(top);
     const sibling = await make();
-    expect(await pages().softDelete(earlier, user)).toBe(1);
+    expect(await pages().softDelete(earlier, user, collection)).toEqual({ kind: 'deleted', pages: 1 });
     const before = Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages`))[0]?.n);
 
-    expect(await pages().softDelete(top, user)).toBe(3);
+    expect(await pages().softDelete(top, user, collection)).toEqual({ kind: 'deleted', pages: 3 });
     for (const id of [top, kid, grandkid]) expect(await row(id)).toMatchObject({ deleted_batch: top, deleted_by: user });
     expect((await row(earlier))?.deleted_batch).toBe(earlier);
     expect((await row(sibling))?.deleted_at).toBeNull();
@@ -46,15 +46,23 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     expect(await pages().get(kid)).toBeUndefined();
   });
 
-  it('is undefined for a page that is already deleted, unknown, or in a deleted collection', async () => {
+  it('is not-found for a page that is already deleted, unknown, or in a deleted collection', async () => {
     const page = await make();
-    await pages().softDelete(page, user);
-    expect(await pages().softDelete(page, user)).toBeUndefined();
-    expect(await pages().softDelete('00000000-0000-4000-8000-000000000000', user)).toBeUndefined();
+    await pages().softDelete(page, user, collection);
+    expect(await pages().softDelete(page, user, collection)).toEqual({ kind: 'not-found' });
+    expect(await pages().softDelete('00000000-0000-4000-8000-000000000000', user, collection)).toEqual({ kind: 'not-found' });
     const other = (await createCollections(t.app).append({ name: 'del2', createdBy: user }, (last) => ordering.between(last, null))).id;
     const inside = await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In', createdBy: user }, limits, (a, b) => ordering.between(a, b));
     if (inside.kind !== 'created') throw new Error(inside.kind);
     await createCollections(t.app).softDelete(other, user);
-    expect(await pages().softDelete(inside.page.id, user)).toBeUndefined();
+    expect(await pages().softDelete(inside.page.id, user, other)).toEqual({ kind: 'not-found' });
+  });
+
+  it('deletes nothing when the page is not in the collection the caller was checked against', async () => {
+    const elsewhere = (await createCollections(t.app).append({ name: 'del3', createdBy: user }, (last) => ordering.between(last, null))).id;
+    const page = await make();
+    const kid = await make(page);
+    expect(await pages().softDelete(page, user, elsewhere)).toEqual({ kind: 'conflict' });
+    expect([(await row(page))?.deleted_at, (await row(kid))?.deleted_at]).toEqual([null, null]);
   });
 });

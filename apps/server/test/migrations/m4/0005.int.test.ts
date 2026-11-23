@@ -27,7 +27,7 @@ beforeAll(async () => {
   mkdirSync(withProbe, { recursive: true });
   for (const name of readdirSync(path.join(repoRoot, 'db/migrations')).filter((n) => /^\d{4}_.*\.ts$/.test(n))) cpSync(path.join(repoRoot, 'db/migrations', name), path.join(withProbe, name));
   // A migration after 0006 in the same run: the parent foreign key of 0004 must be deferred again, so a child may be inserted before its parent.
-  writeFileSync(path.join(withProbe, '9999_probe.ts'), `import { sql } from 'kysely';\nimport type { Kysely } from 'kysely';\nexport async function up(db: Kysely<unknown>): Promise<void> {\n  await sql\`insert into pages (id, parent_id) values ('d1000000-3c1d-4a53-9a62-5d1c2a7e8f10', 'd2000000-3c1d-4a53-9a62-5d1c2a7e8f10')\`.execute(db);\n  await sql\`insert into pages (id) values ('d2000000-3c1d-4a53-9a62-5d1c2a7e8f10')\`.execute(db);\n}\n`);
+  writeFileSync(path.join(withProbe, '9999_probe.ts'), `import { sql } from 'kysely';\nimport type { Kysely } from 'kysely';\nexport async function up(db: Kysely<unknown>): Promise<void> {\n  await sql\`insert into pages (id, parent_id, collection_id, created_by) values ('d1000000-3c1d-4a53-9a62-5d1c2a7e8f10', 'd2000000-3c1d-4a53-9a62-5d1c2a7e8f10', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')\`.execute(db);\n  await sql\`insert into pages (id, collection_id, created_by) values ('d2000000-3c1d-4a53-9a62-5d1c2a7e8f10', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')\`.execute(db);\n}\n`);
   for (const db of [EMPTY, AT_0004, PROBE]) await createTestDatabase(db, false);
 }, 60_000);
 afterAll(async () => {
@@ -40,7 +40,7 @@ describe('migrations 0005 and 0006', () => {
   it('apply on an empty database, and a second run applies nothing', async () => {
     const first = await migrate(EMPTY);
     expect(first.code, first.output).toBe(0);
-    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 7 }]);
+    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 8 }]);
     const second = await migrate(EMPTY);
     expect(second.code, second.output).toBe(0);
     expect(second.output).toContain('migrate.nothing_pending');
