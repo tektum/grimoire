@@ -384,6 +384,22 @@ describe('the default timers', () => {
   });
 });
 
+describe('the default timers never hold the process open', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('are unref\'d: the handle the scheduler arms is not ref\'d', () => {
+    const handles: { hasRef(): boolean }[] = [];
+    vi.useFakeTimers();
+    const scheduler = createRevisionScheduler({ repo: new FakeRevisionRepo(), clock: new FakeClock(1), report: revisionReport(createCollabLog(new FakeLogger())) });
+    const real = globalThis.setTimeout;
+    globalThis.setTimeout = ((callback: () => void, ms?: number) => { const h = real(callback, ms); handles.push(h as unknown as { hasRef(): boolean }); return h; }) as typeof setTimeout;
+    try { scheduler.changed(PAGE, ANA); } finally { globalThis.setTimeout = real; }
+    expect(handles).toHaveLength(1);
+    expect(handles[0]?.hasRef()).toBe(false);
+    scheduler.stop();
+  });
+});
+
 describe('a failure that is not an Error', () => {
   it('is logged with a fixed name, for a page and for the catch-up', async () => {
     const b = build();

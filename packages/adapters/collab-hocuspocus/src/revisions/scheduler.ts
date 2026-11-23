@@ -15,7 +15,11 @@ export interface Timers {
   clearTimeout(handle: unknown): void;
 }
 
-const globalTimers: Timers = { setTimeout: (callback, ms) => setTimeout(callback, ms), clearTimeout: (handle) => { clearTimeout(handle as ReturnType<typeof setTimeout>); } };
+/** The global timers, unref'd: a revision timer is background work and must never be the reason the process stays alive. */
+const globalTimers: Timers = {
+  setTimeout: (callback, ms) => { const handle = setTimeout(callback, ms); handle.unref(); return handle; },
+  clearTimeout: (handle) => { clearTimeout(handle as ReturnType<typeof setTimeout>); },
+};
 
 type Reason = 'idle' | 'last_editor_left';
 
