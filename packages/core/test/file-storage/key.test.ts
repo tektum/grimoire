@@ -13,6 +13,9 @@ const invalid: [string, string][] = [
   ['NUL', 'a\u0000b'],
   ['newline', 'a\nb'],
   ['DEL', 'a\u007fb'],
+  ['C1 control (next line)', 'a\u0085b'],
+  ['lone high surrogate', 'a\ud800b'],
+  ['lone low surrogate', 'a\udc00b'],
   ['513 bytes', 'a'.repeat(513)],
   ['513 bytes from multi-byte characters', 'é'.repeat(257)],
 ];
@@ -34,6 +37,7 @@ describe('isValidKey', () => {
     ['a dot inside a name', 'a/b.c/..d'],
     ['512 bytes', 'a'.repeat(512)],
     ['512 bytes from multi-byte characters', 'é'.repeat(256)],
+    ['a valid surrogate pair', 'a/\u{1f600}'],
     ['a percent sign, which is kept literally', 'a/%2e/b'],
   ])('accepts %s', (_name, key) => {
     expect(isValidKey(key)).toBe(true);

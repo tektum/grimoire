@@ -64,12 +64,12 @@ export const LIST_LIMIT_MAX = 1000;
 
 /**
  * A key is 1 to 512 UTF-8 bytes, with no leading or trailing slash, no empty segment, no `.` or `..`
- * segment, no backslash and no control character.
+ * segment, no backslash and no control character (C0, DEL and C1) and no lone surrogate.
  */
 export function isValidKey(key: string): boolean {
   if (key.length === 0) return false;
   if (new TextEncoder().encode(key).length > MAX_KEY_BYTES) return false;
-  if (/[\\\u0000-\u001f\u007f]/u.test(key)) return false;
+  if (/[\\\p{Cc}\p{Cs}]/u.test(key)) return false;
   return key.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
 }
 
