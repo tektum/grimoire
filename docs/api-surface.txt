@@ -31,6 +31,7 @@ POST /v1/groups | op:createGroup | policy:admin | path:- | query:- | req:GroupNa
 POST /v1/pages | op:createPage | policy:collection-body:collectionId:write | path:- | query:- | req:CreatePage | res:201:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:yes
 POST /v1/pages/{id}/move | op:movePage | policy:page:write:id | path:id:string<uuid> | query:- | req:MovePage | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/pages/{id}/reset-state | op:resetPageState | policy:admin | path:id:string<uuid> | query:- | req:ResetPageState | res:200:PageStateReset,409:{error:{code:string,message:string}} | rate:5/60s | idem:yes
+POST /v1/pages/{id}/revisions/{rid}/restore | op:restoreRevision | policy:page:write:id | path:id:string<uuid>,rid:string<uuid> | query:- | req:- | res:200:RestoreRevision,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/trash/{id}/restore | op:restoreFromTrash | policy:trash:write:id | path:id:string<uuid> | query:- | req:- | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/users/names | op:userNames | policy:authenticated | path:- | query:- | req:UserNamesRequest | res:200:UserNames | rate:60/60s | idem:no
 PUT /v1/collections/{id}/access | op:putCollectionAccess | policy:collection:admin:id | path:id:string<uuid> | query:- | req:GrantCollectionAccess | res:200:CollectionAccessEntry | rate:- | idem:no
@@ -59,6 +60,7 @@ schema PatchCollection = {color?:string(..64)|null,defaultPermission?:read|read_
 schema PatchPage = {icon?:string(..64)|null,title?:string(1..255)}!
 schema PatchUser = {role?:admin|member|viewer,suspended?:boolean}!(min properties 1)
 schema ResetPageState = {confirmStale?:boolean,markdown?:string}!
+schema RestoreRevision = {markdown:string,safetyRevisionId:string<uuid>|null,title:string}
 schema Revision = {authors:RevisionAuthor[],createdAt:number,id:string<uuid>,lastAuthor:{id:string<uuid>,name:string}|null,reason:idle|last_editor_left|before_restore|manual|import,title:string}
 schema RevisionAuthor = {id:string<uuid>,name:string}
 schema RevisionWithMarkdown = Revision&{markdown:string}

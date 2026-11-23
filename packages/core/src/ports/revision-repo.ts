@@ -54,6 +54,17 @@ export type PageRevisionResult =
   | { readonly kind: 'no-markdown' }
   | { readonly kind: 'no-page' };
 
+export type BeforeRestoreResult =
+  /** A revision of the last saved state was written. */
+  | { readonly kind: 'created'; readonly id: string }
+  /** The last saved state equals the latest revision: that one is the safety copy. */
+  | { readonly kind: 'existing'; readonly id: string }
+  /** The saved Markdown is older than the editor state: a copy now would miss the newest edits. */
+  | { readonly kind: 'stale' }
+  /** The page has no saved Markdown yet: there is nothing to copy. */
+  | { readonly kind: 'nothing-saved' }
+  | { readonly kind: 'no-page' };
+
 /** A revision made by the catch-up after a restart. */
 export interface CaughtUpRevision {
   readonly pageId: string;
@@ -77,4 +88,10 @@ export interface RevisionRepo {
    * and naming the last editor. At most `limit` pages per call; returns what it created.
    */
   catchUp(editedBefore: number, limit: number): Promise<readonly CaughtUpRevision[]>;
+  /**
+   * The safety copy before a restore (R9.2, R9.6): a revision with reason `before_restore` of the page's last saved state, dated at its
+   * last edit and naming its last editor, in one transaction with the read. Identical to the latest revision: that one is returned and
+   * nothing is written. Refused while the saved Markdown is stale.
+   */
+  snapshotBeforeRestore(pageId: string): Promise<BeforeRestoreResult>;
 }

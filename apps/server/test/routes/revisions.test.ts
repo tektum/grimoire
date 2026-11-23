@@ -43,7 +43,8 @@ function build() {
   });
   const call = (who: string, path: string, headers: Record<string, string> = {}) => app.request(path, { headers: { authorization: `Bearer ${who}`, ...headers } });
   const four = [10, 20, 30, 40].map((at) => revisions.seed({ pageId: page.id, createdAt: at * 1000, title: `T${String(at)}`, markdown: `M${String(at)}`, authors: [ANA, BOB], lastAuthor: BOB, reason: at === 40 ? 'last_editor_left' : 'idle' }));
-  return { call, revisions, page, hidden, four };
+  const post = (who: string, path: string) => app.request(path, { method: 'POST', headers: { authorization: `Bearer ${who}` } });
+  return { call, post, revisions, page, hidden, four, pages };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -148,5 +149,90 @@ describe('GET /v1/pages/{id}/revisions/{rid}', () => {
     expect((await b.call('outsider', `/v1/pages/${b.page.id}/revisions/${b.four[0]?.id}`)).status).toBe(200);
     expect((await b.call('outsider', `/v1/pages/${b.hidden.id}/revisions/${other.id}`)).status).toBe(404);
     expect((await b.call('member', `/v1/pages/${b.page.id}/revisions/not-an-id`)).status).toBe(422);
+  });
+});
+
+describe('POST /v1/pages/{id}/revisions/{rid}/restore', () => {
+  const restore = (b: ReturnType<typeof build>, who: string, rid: string | undefined, pageId = b.page.id) => b.post(who, `/v1/pages/${pageId}/revisions/${rid ?? 'none'}/restore`);
+  const saved = (b: ReturnType<typeof build>, over: { markdown?: string | null; stale?: boolean } = {}) =>
+    b.revisions.setPage(b.page.id, { title: 'Current', markdown: over.markdown === undefined ? 'current text' : over.markdown, ...(over.stale === undefined ? {} : { stale: over.stale }), lastEditedAt: 99_000, lastEditedBy: ANA.id });
+
+  it('returns the old title and Markdown, and leaves exactly one extra revision: before_restore, holding the last saved state', async () => {
+    const b = build();
+    saved(b);
+    const before = b.revisions.made(b.page.id).length;
+    const res = await restore(b, 'member', b.four[1]?.id);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { title: string; markdown: string; safetyRevisionId: string };
+    expect([body.title, body.markdown]).toEqual(['T20', 'M20']);
+    const made = b.revisions.made(b.page.id);
+    expect(made).toHaveLength(before + 1);
+    expect(made.at(-1)).toMatchObject({ id: body.safetyRevisionId, reason: 'before_restore', title: 'Current', markdown: 'current text', createdAt: 99_000, lastAuthorId: ANA.id });
+  });
+
+  it('does not change the live document: no page is written', async () => {
+    const b = build();
+    saved(b);
+    const pageBefore = await b.pages.get(b.page.id);
+    await restore(b, 'member', b.four[0]?.id);
+    expect(await b.pages.get(b.page.id)).toEqual(pageBefore);
+  });
+
+  it('writes no second safety copy for a state the latest revision already holds, and names that revision', async () => {
+    const b = build();
+    b.revisions.setPage(b.page.id, { title: 'T40', markdown: 'M40' });
+    const res = await restore(b, 'member', b.four[0]?.id);
+    expect(await res.json()).toMatchObject({ safetyRevisionId: b.four[3]?.id });
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+  });
+
+  it('answers 409 markdown_stale in plain words and writes nothing while the saved Markdown is stale', async () => {
+    const b = build();
+    saved(b, { stale: true });
+    const res = await restore(b, 'member', b.four[0]?.id);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect([res.status, body.error.code, body.error.message]).toEqual([409, 'markdown_stale', 'The page is still being saved. Try again in a moment.']);
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+  });
+
+  it('restores a page that has no saved Markdown yet, with no safety revision', async () => {
+    const b = build();
+    saved(b, { markdown: null });
+    const res = await restore(b, 'member', b.four[0]?.id);
+    expect(await res.json()).toEqual({ title: 'T10', markdown: 'M10', safetyRevisionId: null });
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+  });
+
+  it('answers 409 save_failed when the safety copy cannot be written, and returns nothing', async () => {
+    const b = build();
+    saved(b);
+    b.revisions.failNext = new Error('database down');
+    const res = await restore(b, 'member', b.four[0]?.id);
+    expect([res.status, await code(res)]).toEqual([409, 'save_failed']);
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+  });
+
+  it('is 403 to a viewer and 404 to a user without access, and writes nothing for either', async () => {
+    const b = build();
+    saved(b);
+    const viewer = await restore(b, 'viewer', b.four[0]?.id);
+    expect([viewer.status, await code(viewer)]).toEqual([403, 'forbidden']);
+    const other = b.revisions.seed({ pageId: b.hidden.id, createdAt: 1 });
+    const outsider = await restore(b, 'outsider', other.id, b.hidden.id);
+    expect([outsider.status, await code(outsider)]).toEqual([404, 'not_found']);
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+    expect(b.revisions.calls).toEqual([]);
+  });
+
+  it('is 404 for an unknown revision and for one of another page, with no safety copy, and 404 when the page vanished meanwhile', async () => {
+    const b = build();
+    saved(b);
+    const other = b.revisions.seed({ pageId: b.hidden.id, createdAt: 1 });
+    expect((await restore(b, 'member', '00000000-0000-4000-8000-000000000999')).status).toBe(404);
+    expect((await restore(b, 'member', other.id)).status).toBe(404);
+    expect((await restore(b, 'member', 'not-an-id')).status).toBe(422);
+    expect(b.revisions.calls).toEqual([]);
+    b.revisions.snapshotBeforeRestore = () => Promise.resolve({ kind: 'no-page' });
+    expect((await restore(b, 'member', b.four[0]?.id)).status).toBe(404);
   });
 });
