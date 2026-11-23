@@ -3,7 +3,7 @@
 // users, collections and pages are created through the real tables (as the administrator or the runtime role), never by loosening authorisation.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { firstCloseFrame } from './ws-frames.js';
+import { firstCloseFrame } from './ws-frames.ts';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';

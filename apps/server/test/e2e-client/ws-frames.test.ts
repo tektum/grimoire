@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstCloseFrame } from '../../test-e2e/m3/ws-frames.js';
+import { firstCloseFrame } from '../../test-e2e/m3/ws-frames.ts';
 
 const close = (code: number, reason: string): Buffer => Buffer.concat([Buffer.from([0x88, 2 + reason.length, code >> 8, code & 255]), Buffer.from(reason)]);
 const ping = Buffer.from([0x89, 0x00]);
