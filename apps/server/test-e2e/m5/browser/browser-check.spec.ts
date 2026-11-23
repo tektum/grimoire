@@ -25,7 +25,8 @@ test.describe('the check that the browser is installed', () => {
   });
 
   test('passes silently when the browser is there', () => {
-    const result = run();
+    // The browser this run launches: the override when the run was pointed at a custom one, Playwright's own otherwise.
+    const result = run(process.env['GRIMOIRE_E2E_CHROMIUM_PATH']);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
   });
