@@ -55,6 +55,13 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
   });
 
+  it('exposes the replay and retry headers to a browser on an allowed origin', async () => {
+    const res = await build().request('/v1/config', { headers: { origin: ALLOWED } });
+    const exposed = (res.headers.get('access-control-expose-headers') ?? '').toLowerCase();
+    expect(exposed).toContain('idempotent-replay');
+    expect(exposed).toContain('retry-after');
+  });
+
   it('never allows credentials, for allowed and disallowed origins and preflights', async () => {
     const app = build();
     for (const origin of [ALLOWED, 'https://evil.example']) {
