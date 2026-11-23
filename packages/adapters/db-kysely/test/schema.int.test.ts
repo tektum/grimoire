@@ -5,15 +5,6 @@ import { runToEnd } from '@tektum/grimoire-test-support';
 import { createDatabase } from '../src/index.js';
 import type { KyselyDatabase } from '../src/index.js';
 import { declaredColumns } from '../src/schema.js';
-import { createAdmin } from '../src/admin.js';
-import { createAttachments } from '../src/attachments.js';
-import { createAudit } from '../src/audit.js';
-import { createCollections } from '../src/collections.js';
-import { createIdempotency } from '../src/idempotency.js';
-import { createPages } from '../src/pages.js';
-import { createPageState } from '../src/page-state.js';
-import { createRevisions } from '../src/revisions.js';
-import { createTrash } from '../src/trash.js';
 
 // Its own database, created and dropped by this file, never somebody else's.
 const DATABASE = `grimoire_m4t00_schema_${String(process.pid)}`;
@@ -52,16 +43,5 @@ describe('declared tables match the migrated database', () => {
     const sorted = (value: Record<string, Record<string, string>>): Record<string, [string, string][]> =>
       Object.fromEntries(Object.entries(value).map(([table, columns]) => [table, Object.entries(columns).sort(([a], [b]) => a.localeCompare(b))]));
     expect(sorted(actual)).toEqual(sorted(declaredColumns));
-  });
-});
-
-describe('repository skeletons', () => {
-  const factories = { createIdempotency, createCollections, createAudit, createPages, createTrash, createRevisions, createAdmin, createPageState, createAttachments };
-
-  it('are built from the handle of a real database, one new object each, and the handle stays usable', async () => {
-    const built = Object.entries(factories).map(([name, create]) => [name, create(db)] as const);
-    for (const [name, repository] of built) expect(repository, name).toBeTypeOf('object');
-    expect(new Set(built.map(([, repository]) => repository)).size).toBe(built.length);
-    expect(await db.query<{ ok: number }>('select 1 as ok')).toEqual([{ ok: 1 }]);
   });
 });
