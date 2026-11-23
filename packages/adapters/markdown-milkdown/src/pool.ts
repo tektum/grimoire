@@ -23,7 +23,8 @@ export interface ConverterOptions extends Partial<ConverterLimits> {
   reseedTimeoutMs?: number;
   /**
    * The most a call waits for a free worker before it answers `queue-timeout`. Default: a quarter of the call's total limit. The run then gets
-   * the rest of the total (never less than three quarters of it by default), so queue wait plus run never exceeds the total.
+   * the rest of the total, so queue wait plus run never exceeds it. Only a run that started at once, with the full total, can answer `timeout`;
+   * a run that waited first and ran out of time answers `queue-timeout` (the page may have fitted with the full allowance).
    */
   queueWaitMs?: number;
   /** `resourceLimits.maxOldGenerationSizeMb` of each worker. */
@@ -214,7 +215,10 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
     const waitSignal = AbortSignal.timeout(waitLimitMs);
     let signal: AbortSignal | undefined;
     let slot = false;
+    let waited = false;
     try {
+      // A job that started at once had its FULL allowance (the total). One that waited had it cut by the wait.
+      waited = running >= poolSize;
       slot = await acquire(waitSignal);
       if (!slot) {
         if (closing !== undefined) return closedFailure;
@@ -225,6 +229,8 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
       const reply = await pool.run(request, { signal, transferList: transferList as never });
       return accept(reply) ?? fail('internal', 'worker-bad-reply');
     } catch (error: unknown) {
+      // Out of time after a shortened run says nothing about the page: it may have fitted with the full allowance. Only a run that had it all is `timeout`.
+      if (waited && signal?.aborted === true && closing === undefined) return fail('queue-timeout', 'the run was cut short by the wait for a worker', 'The converter is busy with other pages. Try again in a moment.');
       return mapPoolError(error, signal ?? AbortSignal.abort(), closing !== undefined, timedOut);
     } finally {
       if (slot) release();
