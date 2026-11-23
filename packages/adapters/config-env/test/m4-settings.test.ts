@@ -41,7 +41,7 @@ describe('GRIMOIRE_MIN_CLIENT_VERSION', () => {
   it('keeps a valid triple as written', () => {
     expect(load({ GRIMOIRE_MIN_CLIENT_VERSION: '1.20.3' }).minClientVersion).toBe('1.20.3');
   });
-  it.each(['1.2', '1.2.3.4', 'v1.2.3', '1.2.x', '1.2.3-beta', '-1.2.3', '1.2.3 '])('refuses %j and names the variable', (value) => {
+  it.each(['1.2', '1.2.3.4', 'v1.2.3', '1.2.x', '1.2.3-beta', '-1.2.3', '1.2.3 ', '1.02.0', '01.2.3', '1.2.03', '99999999999999999999.0.0'])('refuses %j and names the variable', (value) => {
     const issues = issuesOf({ GRIMOIRE_MIN_CLIENT_VERSION: value });
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatch(/^GRIMOIRE_MIN_CLIENT_VERSION: /);
