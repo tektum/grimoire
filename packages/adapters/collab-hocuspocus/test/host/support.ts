@@ -5,6 +5,7 @@ import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
+import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
@@ -78,7 +79,7 @@ export function makeDeps(role?: Role) {
     resolve.calls++;
     return resolve.fail ? Promise.reject(resolve.fail) : users.findByDescopeId(identity.userId);
   };
-  const deps: CollabDeps = { config: makeFakeConfig(), logger, clock, verifier, resolveUser: byId, access: createPageAccess(accessStore), pages, converter };
+  const deps: CollabDeps = { config: makeFakeConfig(), logger, clock, verifier, resolveUser: byId, access: createPageAccess(accessStore), pages, converter, revisions: new FakeRevisionRepo() };
   const peers = new PeerRegistry(REFUSAL_CLOSE_CODES);
   const closes: { code: number; reason: string }[] = [];
   peers.add('p1', { close: (code: number, reason: string) => { closes.push({ code, reason }); } } as never);

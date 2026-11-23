@@ -14,11 +14,13 @@ import { createDevAuth } from '@tektum/grimoire-adapter-auth-dev';
 import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
-import { createAccessStore, createDatabase, createPageStore, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createAdmin, createAudit, createCollections, createDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
+import { createOrdering } from './tree/position.js';
+import type { HttpDeps } from './http/env.js';
 import { createEventLog } from './events.js';
 import type { EventLog } from './events.js';
 import { Shutdown } from './lifecycle/shutdown.js';
@@ -36,6 +38,8 @@ export interface AppContext {
   readonly shutdown: Shutdown;
   /** The collaboration host and what it needs; absent when the role has none (`api`). */
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
+  /** Every port the routes use, built here and nowhere else. */
+  readonly http: HttpDeps;
   /** Test-only facilities switched on (local mode only; `run.ts` logs one line at start-up when any is). */
   readonly testFacilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[];
   /** Returned without registration: lifecycle/run.ts alone registers these and HTTP/collaboration hooks (S7). */
@@ -100,9 +104,18 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const collabRole = config.role !== 'api';
   const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
   const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
-  const converter = pageDb ? createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) }) : undefined;
+  const converter = createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) });
+  const httpUsers = createUserStore(db);
+  const http: HttpDeps = {
+    config, log, clock: systemClock, users: httpUsers,
+    access: overrides.access ?? createPageAccess(createAccessStore(db)),
+    provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
+    ordering: createOrdering(), converter,
+    idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
+    pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
+  };
   let collab: AppContext['collab'];
-  if (pageDb && authDb && converter) {
+  if (pageDb && authDb) {
     const users = createUserStore(authDb);
     const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger });
     const roles = dev?.roles;
@@ -117,18 +130,18 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       : (_token, identity) => users.findByDescopeId(identity.userId);
     collab = {
       host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
-      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: http.revisions, pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
   const shutdownHooks: ShutdownHook[] = [
     ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
-    ...(converter ? [markdownPoolHook(converter)] : []),
+    markdownPoolHook(converter),
     ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
-  return { ok: true, ctx: { config, log, clock: systemClock, db, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(collab ? { collab } : {}) } };
+  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(collab ? { collab } : {}) } };
 }
 
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
