@@ -56,6 +56,7 @@ describe('the runtime key', () => {
       () => elsewhere.get('x'),
       () => elsewhere.put('x', new Uint8Array(1), { size: 1, contentType: 'image/png' }),
       () => elsewhere.list(''),
+      () => elsewhere.delete('x'),
     ]) {
       // Each call starts only when it is awaited, so no rejection waits unhandled.
       expect((await refusal(action())).kind).toBe('unavailable');
