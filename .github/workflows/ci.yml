@@ -176,12 +176,19 @@ jobs:
       - name: Build (workspace packages resolve through their built output)
         run: bun run build
       - run: bun run test:coverage:ci
+      - name: Record the workspace the coverage blob was made in
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p vitest-blob-roots
+          echo "$GITHUB_WORKSPACE" > vitest-blob-roots/unit.root
       - name: Upload coverage blob (merged with the integration coverage by the Coverage job)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-blob-unit
-          path: vitest-blobs/unit.json
+          path: |
+            vitest-blobs/unit.json
+            vitest-blob-roots/unit.root
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload coverage report
@@ -276,12 +283,19 @@ jobs:
       - run: make db-up
       - run: bun run build
       - run: bun run test:integration:coverage:ci
+      - name: Record the workspace the coverage blob was made in
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p vitest-blob-roots
+          echo "$GITHUB_WORKSPACE" > vitest-blob-roots/integration.root
       - name: Upload coverage blob (merged with the unit coverage by the Coverage job)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-blob-integration
-          path: vitest-blobs/integration.json
+          path: |
+            vitest-blobs/integration.json
+            vitest-blob-roots/integration.root
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload coverage to Codecov
@@ -335,7 +349,9 @@ jobs:
         with:
           pattern: coverage-blob-*
           merge-multiple: true
-          path: vitest-blobs
+          path: .
+      - name: Point the blobs at this workspace (they carry the paths of the runners that made them)
+        run: node tools/ci/rebase-blobs.mjs vitest-blobs vitest-blob-roots
       - name: Check the floors on the merged coverage
         run: bun run test:coverage:merged
       - name: Check that every floor matched files of the merged report, all under this workspace
