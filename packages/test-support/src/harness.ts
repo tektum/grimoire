@@ -114,9 +114,15 @@ export class ServerProcess {
   }
   get output(): string { return this.out; }
   get events(): LogEvent[] {
-    // `out` mixes stdout and stderr and may end in a half-written line: only complete JSON lines are events.
-    return this.out.split('\n').filter(Boolean).flatMap((line) => {
-      try { return [JSON.parse(line) as LogEvent]; } catch { return []; }
+    // `out` mixes stdout and stderr. A trailing half-written line is not yet an event; a COMPLETE line that looks like JSON but does not parse is a
+    // corrupted event (for example two streams interleaved mid-line) and fails loudly with the line, instead of silently vanishing.
+    const lines = this.out.split('\n');
+    lines.pop();
+    return lines.filter(Boolean).flatMap((line) => {
+      try { return [JSON.parse(line) as LogEvent]; } catch {
+        if (line.trimStart().startsWith('{')) throw new Error(`unparsable JSON event line in the server output: ${line}`);
+        return [];
+      }
     });
   }
   get url(): string { return `http://127.0.0.1:${this.port}`; }

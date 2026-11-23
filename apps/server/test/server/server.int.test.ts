@@ -211,10 +211,16 @@ describe('shutdown of the real entry point', () => {
     const names = s.events.map((e) => e['event']);
     expect(names).toEqual(expect.arrayContaining(['server.starting', 'http.listening', 'shutdown.started', 'shutdown.phase_started', 'shutdown.hook_done', 'shutdown.completed']));
     expect(names.indexOf('shutdown.hook_done')).toBeGreaterThan(-1);
-    const doneHooks = s.events.filter((e) => e['event'] === 'shutdown.hook_done').map((e) => e['hook']);
-    expect(doneHooks.slice(0, 3)).toEqual(['collab-stop-accepting', 'http-server', 'collab-save-pages']); // the collab hooks are 's
-    expect(doneHooks[3]).toBe('markdown-pool'); // released after the final saves, before the pools
-    expect(doneHooks.slice(4).sort()).toEqual(['auth-pool', 'database-pool', 'page-store-pool']); // the pools close last
+    // The promise is the order of PHASES (hooks within a phase run in parallel, shutdown.ts): save-pages, then release-jobs, then close-database.
+    const done = s.events.filter((e) => e['event'] === 'shutdown.hook_done').map((e) => ({ hook: String(e['hook']), phase: String(e['phase']) }));
+    const phaseOf = (hook: string): string | undefined => done.find((d) => d.hook === hook)?.phase;
+    for (const h of ['collab-stop-accepting', 'http-server']) expect(phaseOf(h), h).toBe('stop-accepting');
+    expect(phaseOf('collab-save-pages')).toBe('save-pages');
+    expect(phaseOf('markdown-pool')).toBe('release-jobs');
+    for (const h of ['auth-pool', 'database-pool', 'page-store-pool']) expect(phaseOf(h), h).toBe('close-database');
+    const at = (hook: string): number => done.findIndex((d) => d.hook === hook);
+    for (const h of ['auth-pool', 'database-pool', 'page-store-pool']) expect(at('markdown-pool'), `${h} closes after the markdown pool`).toBeLessThan(at(h)); // no save can still need the page store
+    expect(at('collab-save-pages')).toBeLessThan(at('markdown-pool'));
     for (const e of s.events) {
       expect(typeof e['ts']).toBe('string');
       expect(typeof e['event']).toBe('string');
