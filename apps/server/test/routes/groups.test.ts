@@ -43,10 +43,10 @@ function build() {
       access: createPageAccess(store), authorizer: createAuthorizer(store),
     },
   });
-  const call = (who: string | undefined, method: string, path: string, body?: unknown) =>
+  const call = (who: string | undefined, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) =>
     app.request(path, {
       method,
-      headers: { ...(who === undefined ? {} : { authorization: `Bearer ${who}` }), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: { ...(who === undefined ? {} : { authorization: `Bearer ${who}` }), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   return { call, admin };
@@ -69,7 +69,7 @@ describe('admin routes of groups: who may call', () => {
     const group = await makeGroup(call, 'Writers');
     const routes: [string, string, unknown?][] = [
       ['GET', '/v1/groups'], ['POST', '/v1/groups', { name: 'x' }], ['PATCH', `/v1/groups/${group}`, { name: 'y' }], ['DELETE', `/v1/groups/${group}`],
-      ['GET', `/v1/groups/${group}/members`], ['PUT', `/v1/groups/${group}/members`, { userId: id(1) }], ['DELETE', `/v1/groups/${group}/members/${id(1)}`],
+      ['GET', `/v1/groups/${group}/members`], ['PUT', `/v1/groups/${group}/members/${id(1)}`], ['DELETE', `/v1/groups/${group}/members/${id(1)}`],
     ];
     for (const [method, path, payload] of routes) {
       expect((await call(undefined, method, path, payload)).status, `${method} ${path} anonymous`).toBe(401);
@@ -104,7 +104,7 @@ describe('groups', () => {
     const { call } = build();
     for (const [method, path, payload] of [
       ['PATCH', `/v1/groups/${NIL}`, { name: 'x' }], ['DELETE', `/v1/groups/${NIL}`], ['GET', `/v1/groups/${NIL}/members`],
-      ['PUT', `/v1/groups/${NIL}/members`, { userId: id(1) }], ['DELETE', `/v1/groups/${NIL}/members/${id(1)}`],
+      ['PUT', `/v1/groups/${NIL}/members/${id(1)}`], ['DELETE', `/v1/groups/${NIL}/members/${id(1)}`],
     ] as [string, string, unknown?][]) expect(await code(await call('admin', method, path, payload)), `${method} ${path}`).toBe('not_found');
     for (const name of ['', '   ', 'x'.repeat(101), 7]) expect((await call('admin', 'POST', '/v1/groups', { name })).status).toBe(422);
   });
@@ -114,7 +114,7 @@ describe('group members', () => {
   it('adds, lists with emails in email order, counts, and removes, one audit row each with ids only', async () => {
     const { call, admin } = build();
     const group = await makeGroup(call, 'Team');
-    for (const user of [id(3), id(4)]) expect((await call('admin', 'PUT', `/v1/groups/${group}/members`, { userId: user })).status).toBe(204);
+    for (const user of [id(3), id(4)]) expect((await call('admin', 'PUT', `/v1/groups/${group}/members/${user}`)).status).toBe(204);
     expect((await body(await call('admin', 'GET', `/v1/groups/${group}/members`))).items.map((m) => m.email)).toEqual(['amy@example.com', 'zed@example.com']);
     expect((await body(await call('admin', 'GET', '/v1/groups'))).items[0]?.memberCount).toBe(2);
     expect((await call('admin', 'DELETE', `/v1/groups/${group}/members/${id(3)}`)).status).toBe(204);
@@ -127,10 +127,36 @@ describe('group members', () => {
   it('adding a member twice changes nothing and writes one row; an unknown user is 404; removing a non-member is 404', async () => {
     const { call, admin } = build();
     const group = await makeGroup(call, 'Team');
-    for (let i = 0; i < 2; i += 1) expect((await call('admin', 'PUT', `/v1/groups/${group}/members`, { userId: id(1) })).status).toBe(204);
+    for (let i = 0; i < 2; i += 1) expect((await call('admin', 'PUT', `/v1/groups/${group}/members/${id(1)}`)).status).toBe(204);
     expect(admin.audit.filter((e) => e.action === 'group.member_added')).toHaveLength(1);
-    expect(await code(await call('admin', 'PUT', `/v1/groups/${group}/members`, { userId: NIL }))).toBe('not_found');
+    expect(await code(await call('admin', 'PUT', `/v1/groups/${group}/members/${NIL}`))).toBe('not_found');
     expect(await code(await call('admin', 'DELETE', `/v1/groups/${group}/members/${id(2)}`))).toBe('not_found');
-    expect((await call('admin', 'PUT', `/v1/groups/${group}/members`, { userId: 'nope' })).status).toBe(422);
+    expect((await call('admin', 'PUT', `/v1/groups/${group}/members/nope`)).status).toBe(422);
+  });
+});
+
+describe('a create of a group with an Idempotency-Key', () => {
+  it('makes one group for the same key and replays the answer', async () => {
+    const { call, admin } = build();
+    const post = () => call('admin', 'POST', '/v1/groups', { name: 'Once' }, { 'idempotency-key': 'k1' });
+    const first = await post();
+    const second = await post();
+    expect([first.status, second.status, second.headers.get('idempotent-replay')]).toEqual([201, 201, 'true']);
+    expect(await second.json()).toEqual(await first.json());
+    expect((await admin.listGroups()).filter((g) => g.name === 'Once')).toHaveLength(1);
+    expect(admin.audit.filter((e) => e.action === 'group.created')).toHaveLength(1);
+  });
+
+  it('is refused when the caller is no longer an administrator or the group is gone, and replays while both hold', async () => {
+    const { call } = build();
+    const post = (key: string) => call('admin', 'POST', '/v1/groups', { name: key }, { 'idempotency-key': key });
+    const made = (await (await post('gone')).json()) as { id: string };
+    expect((await post('gone')).headers.get('idempotent-replay')).toBe('true');
+    await call('admin', 'DELETE', `/v1/groups/${made.id}`);
+    expect((await post('gone')).status).toBe(404);
+    await post('kept');
+    await call('admin', 'PATCH', `/v1/users/${id(1)}`, { role: 'admin' });
+    await call('admin', 'PATCH', `/v1/users/${id(0)}`, { role: 'member' });
+    expect((await post('kept')).status).toBe(403);
   });
 });

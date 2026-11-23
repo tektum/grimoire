@@ -155,8 +155,7 @@ export interface paths {
         };
         /** Members of a group (administrators) */
         get: operations["listGroupMembers"];
-        /** Add a user to a group; adding a member again changes nothing (administrators) */
-        put: operations["addGroupMember"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -172,7 +171,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** Add a user to a group; adding a member again changes nothing (administrators) */
+        put: operations["addGroupMember"];
         post?: never;
         /** Remove a user from a group (administrators) */
         delete: operations["removeGroupMember"];
@@ -418,10 +418,6 @@ export interface components {
         };
         GroupList: {
             items: components["schemas"]["Group"][];
-        };
-        GroupMember: {
-            /** Format: uuid */
-            userId: string;
         };
         GroupMembers: {
             items: components["schemas"]["AdminUser"][];
@@ -1688,14 +1684,11 @@ export interface operations {
             header?: never;
             path: {
                 id: string;
+                userId: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GroupMember"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description The user is a member */
             204: {

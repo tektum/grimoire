@@ -1,5 +1,6 @@
 import { z } from '@hono/zod-openapi';
 import { fail } from '../http/error.js';
+import type { ReplayRebuild } from '../http/idempotency.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { caller } from '../http/collection-guard.js';
 import { AdminUserSchema, requireAdmin } from './users.js';
@@ -13,7 +14,6 @@ const GroupSchema = z.object({ id: z.string().uuid(), name: z.string(), memberCo
 const GroupListSchema = z.object({ items: z.array(GroupSchema) }).openapi('GroupList');
 const MembersSchema = z.object({ items: z.array(AdminUserSchema) }).openapi('GroupMembers');
 const NameBody = z.object({ name: z.string().trim().min(1).max(100) }).strict().openapi('GroupName');
-const MemberBody = z.object({ userId: z.string().uuid() }).strict().openapi('GroupMember');
 const body = <T extends z.ZodType>(schema: T) => ({ required: true, content: { 'application/json': { schema } } }) as const;
 const policy = { kind: 'admin' } as const;
 
@@ -24,7 +24,7 @@ export const listGroups = defineRoute({
 
 export const createGroup = defineRoute({
   method: 'post', path: '/v1/groups', operationId: 'createGroup', summary: 'Create a group (administrators)', tags: ['groups'],
-  policy, request: { body: body(NameBody) }, responses: { 201: json(GroupSchema, 'The group'), 409: taken },
+  policy, idempotent: true, request: { body: body(NameBody) }, responses: { 201: json(GroupSchema, 'The group'), 409: taken },
 });
 
 export const patchGroup = defineRoute({
@@ -43,14 +43,22 @@ export const listGroupMembers = defineRoute({
 });
 
 export const addGroupMember = defineRoute({
-  method: 'put', path: '/v1/groups/{id}/members', operationId: 'addGroupMember', summary: 'Add a user to a group; adding a member again changes nothing (administrators)', tags: ['groups'],
-  policy, request: { params: IdParam, body: body(MemberBody) }, responses: { 204: { description: 'The user is a member' } },
+  method: 'put', path: '/v1/groups/{id}/members/{userId}', operationId: 'addGroupMember', summary: 'Add a user to a group; adding a member again changes nothing (administrators)', tags: ['groups'],
+  policy, request: { params: MemberParams }, responses: { 204: { description: 'The user is a member' } },
 });
 
 export const removeGroupMember = defineRoute({
   method: 'delete', path: '/v1/groups/{id}/members/{userId}', operationId: 'removeGroupMember', summary: 'Remove a user from a group (administrators)', tags: ['groups'],
   policy, request: { params: MemberParams }, responses: { 204: { description: 'The user is not a member' } },
 });
+
+/** A retry of a create replays the stored group only while the caller is still an administrator and the group is still there. */
+export const replayCreateGroup: ReplayRebuild = async (stored, c) => {
+  requireAdmin(c);
+  const groups = await c.get('deps').admin.listGroups();
+  if (!groups.some((g) => g.id === (stored.body as { id: string }).id)) return fail('not_found');
+  return Response.json(stored.body, { status: stored.status });
+};
 
 const router = createRouter();
 
@@ -85,7 +93,8 @@ router.openapi(listGroupMembers, async (c) => {
 
 router.openapi(addGroupMember, async (c) => {
   requireAdmin(c);
-  const result = await c.get('deps').admin.addMember(c.req.valid('param').id, c.req.valid('json').userId, caller(c).id);
+  const { id, userId } = c.req.valid('param');
+  const result = await c.get('deps').admin.addMember(id, userId, caller(c).id);
   return result === 'no-group' || result === 'no-user' ? fail('not_found') : c.body(null, 204);
 });
 

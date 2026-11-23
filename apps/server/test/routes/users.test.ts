@@ -173,7 +173,7 @@ describe('every route with the admin policy', () => {
   const VALID: Record<string, unknown> = {
     'GET /v1/users': undefined, 'PATCH /v1/users/{id}': { role: 'viewer' },
     'GET /v1/groups': undefined, 'POST /v1/groups': { name: 'x' }, 'PATCH /v1/groups/{id}': { name: 'y' }, 'DELETE /v1/groups/{id}': undefined,
-    'GET /v1/groups/{id}/members': undefined, 'PUT /v1/groups/{id}/members': { userId: id(1) }, 'DELETE /v1/groups/{id}/members/{userId}': undefined,
+    'GET /v1/groups/{id}/members': undefined, 'PUT /v1/groups/{id}/members/{userId}': undefined, 'DELETE /v1/groups/{id}/members/{userId}': undefined,
     'POST /v1/collections': { name: 'x' },
   };
 
