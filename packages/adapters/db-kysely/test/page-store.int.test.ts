@@ -1,3 +1,4 @@
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createHash, randomUUID } from 'node:crypto';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Database } from '@tektum/grimoire-core/ports/database';
@@ -47,6 +48,7 @@ it('save hashes include the row title (page-store move regression)', async () =>
   const store = createPageStore(db, clock);
   await store.store(id, { kind: 'converted', state: new Uint8Array([1]), markdown: 'Body', text: 'Body', epoch: 0, editedAt: Date.now() });
   expect((await row(id)).markdown_hash).toEqual(expectedHash('Saved title', 'Body'));
+  expect(Buffer.from((await row(id)).markdown_hash ?? '').equals(markdownHash('Saved title', 'Body'))).toBe(true);
 });
 
 describe('seed', () => {

@@ -29,6 +29,10 @@
       "types": "./dist/version.d.ts",
       "default": "./dist/version.js"
     },
+    "./pages/*": {
+      "types": "./dist/pages/*.d.ts",
+      "default": "./dist/pages/*.js"
+    },
     "./tree/*": {
       "types": "./dist/tree/*.d.ts",
       "default": "./dist/tree/*.js"
