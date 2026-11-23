@@ -92,19 +92,29 @@ export function createPages(db: KyselyDatabase): PageRepo {
     },
     updateMeta(id, patch) {
       return db.transaction(async (tx) => {
-        const row = (await tx.query<{ title: string; markdown: string | null }>(
-          `select title, markdown from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update`, [id],
+        const retitled = patch.title !== undefined;
+        // The Markdown is read, and the title and hash written, only when the title changes: an icon change must not rebuild the search vector.
+        const row = (await tx.query<{ markdown?: string | null }>(
+          `select ${retitled ? 'markdown' : '1 as one'} from pages p where id = $1 and deleted_at is null
+             and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update`, [id],
         ))[0];
         if (row === undefined) return undefined;
-        const title = patch.title ?? row.title;
-        // The hash covers the title, so it moves with it: an editor save with identical content then compares equal and writes nothing.
-        const hash = row.markdown === null ? null : markdownHash(title, row.markdown);
-        const rows = await tx.query<Row>(
-          `update pages set title = $2, icon = case when $3::boolean then $4 else icon end,
-             markdown_hash = case when markdown is null then markdown_hash else $5 end, updated_at = now()
-           where id = $1 returning ${META_COLUMNS}`,
-          [id, title, patch.icon !== undefined, patch.icon ?? null, hash],
-        );
+        const sets = ['updated_at = now()'];
+        const params: unknown[] = [id];
+        if (patch.icon !== undefined) {
+          params.push(patch.icon);
+          sets.push(`icon = $${String(params.length)}`);
+        }
+        if (retitled && patch.title !== undefined) {
+          params.push(patch.title);
+          sets.push(`title = $${String(params.length)}`);
+          if (row.markdown !== undefined && row.markdown !== null) {
+            // The hash covers the title, so it moves with it: an editor save with identical content then compares equal and writes nothing.
+            params.push(markdownHash(patch.title, row.markdown));
+            sets.push(`markdown_hash = $${String(params.length)}`);
+          }
+        }
+        const rows = await tx.query<Row>(`update pages set ${sets.join(', ')} where id = $1 returning ${META_COLUMNS}`, params);
         return meta(rows[0] as Row);
       });
     },

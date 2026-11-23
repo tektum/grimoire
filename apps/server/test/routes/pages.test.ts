@@ -35,12 +35,13 @@ function build() {
   const pages = new FakePageRepo(world);
   const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
   const store = createFakeAccessStore(world);
+  const access = createPageAccess(store);
   const app = createApp({
     ...t.ctx, auth: { verifier }, signInPolicy,
     http: {
       ...t.ctx.http, users, collections, pages, converter, idempotency: new FakeIdempotencyStore(t.clock),
       provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
-      access: createPageAccess(store), authorizer: createAuthorizer(store),
+      access, authorizer: createAuthorizer(store),
     },
   });
   const call = (who: string, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
@@ -49,7 +50,7 @@ function build() {
       headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, pages, collections, converter, world, open, shared, closed, rows };
+  return { call, pages, collections, converter, world, open, shared, closed, rows, access };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -325,6 +326,18 @@ describe('GET /v1/pages/by-url-id/{urlId}', () => {
     expect([unknown.status, unreadable.status]).toEqual([404, 404]);
     expect(await unknown.json()).toEqual(await unreadable.json());
   });
+
+  it('runs the same one access check for an unknown URL id as for an unreadable page', async () => {
+    const b = build();
+    const hidden = b.pages.seed({ collectionId: b.closed.id, urlId: 'hidden2' });
+    const checks: string[] = [];
+    const access = b.access;
+    const original = access.pageAccess.bind(access);
+    access.pageAccess = (r, o) => { checks.push(r.pageId); return original(r, o); };
+    await b.call('outsider', 'GET', `/v1/pages/by-url-id/${hidden.urlId}`);
+    await b.call('outsider', 'GET', '/v1/pages/by-url-id/unknown');
+    expect(checks).toHaveLength(2);
+  });
 });
 
 describe('PATCH /v1/pages/{id}', () => {
@@ -359,7 +372,7 @@ describe('PATCH /v1/pages/{id}', () => {
   it('refuses any other field, an empty patch, a long or NUL title and a long icon with 422', async () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.shared.id });
-    for (const body of [{ markdown: 'x' }, { collectionId: b.open.id }, { parentId: null }, {}, { title: '' }, { title: 'x'.repeat(256) }, { title: 'a\u0000b' }, { icon: 'x'.repeat(65) }]) {
+    for (const body of [{ markdown: 'x' }, { collectionId: b.open.id }, { parentId: null }, {}, { title: '' }, { title: 'x'.repeat(256) }, { title: 'a\u0000b' }, { icon: 'x'.repeat(65) }, { icon: 'a\u0000b' }]) {
       const res = await b.call('member', 'PATCH', `/v1/pages/${page.id}`, body);
       expect([res.status, await code(res)]).toEqual([422, 'invalid']);
     }

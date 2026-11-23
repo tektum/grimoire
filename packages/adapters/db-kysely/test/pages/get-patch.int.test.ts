@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Database } from '@tektum/grimoire-core/ports/database';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
@@ -30,7 +29,8 @@ const seeded = async (markdown: string, title: string) => {
   return out;
 };
 /** A database that records every statement sent, in or out of a transaction. */
-const counted = (d: KyselyDatabase, sent: string[]): Database => ({
+const counted = (d: KyselyDatabase, sent: string[]): KyselyDatabase => ({
+  ...d,
   query: (sql, params) => { sent.push(sql); return d.query(sql, params); },
   transaction: (fn) => d.transaction((tx) => fn({ query: (sql, params) => { sent.push(sql); return tx.query(sql, params); } })),
   ping: () => d.ping(),
@@ -98,6 +98,16 @@ describe('the PostgreSQL PageRepo updateMeta', () => {
     const outcome = await store.store(id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: 'canonical', text: 'canonical', epoch: 0, editedAt: Date.now() });
     expect(outcome).toEqual({ written: false, reason: 'unchanged' });
     expect(sent.some((s) => /^\s*update/i.test(s))).toBe(false);
+  });
+
+  it('an icon-only change neither reads the Markdown nor names the title in its update', async () => {
+    const id = await make('Icon', null, await seeded('body text', 'Icon'));
+    const sent: string[] = [];
+    await createPages(counted(t.app, sent)).updateMeta(id, { icon: 'star' });
+    const statements = sent.filter((q) => /\bpages\b/.test(q));
+    expect(statements.some((q) => /\bmarkdown\b(?!_)/.test(q))).toBe(false);
+    expect(statements.some((q) => /^\s*update pages set .*\btitle\b/i.test(q))).toBe(false);
+    expect((await pages().get(id))?.title).toBe('Icon');
   });
 
   it('keeps a page without Markdown without a hash, and does not touch a deleted page', async () => {

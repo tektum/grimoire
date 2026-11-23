@@ -11,6 +11,8 @@ import { seedRefusalToHttp } from '../http/seed-errors.js';
 /** Page tree limits (R5.8, R6.22, R6.54). */
 export const PAGE_LIMITS = { maxDepth: 32, maxPages: 10_000 } as const;
 const TITLE_MAX = 255;
+/** The id no page has: a lookup that found nothing is checked as this, and is refused as any unreadable page is. */
+const NO_PAGE = '00000000-0000-0000-0000-000000000000';
 
 export const PageMetaSchema = z
   .object({
@@ -42,7 +44,7 @@ const UrlIdParam = z.object({ urlId: z.string().min(1).max(64).openapi({ param: 
 const PatchBody = z
   .object({
     title: z.string().min(1).max(TITLE_MAX).refine((title) => !title.includes('\0'), 'The title cannot contain a NUL character'),
-    icon: z.string().max(64).nullable(),
+    icon: z.string().max(64).refine((icon) => !icon.includes('\0'), 'The icon cannot contain a NUL character').nullable(),
   })
   .partial()
   .strict()
@@ -142,9 +144,9 @@ async function present(c: Parameters<typeof guardPage>[0], id: string) {
 }
 
 router.openapi(getPageByUrlId, async (c) => {
-  const id = await c.get('deps').pages.idOfUrlId(c.req.valid('param').urlId);
-  // An unknown URL id answers like a page the caller cannot read.
-  return id === undefined ? fail('not_found') : c.json(await present(c, id), 200);
+  // An unknown URL id takes the same road as a page the caller cannot read, access check included, so the two cost the same.
+  const id = (await c.get('deps').pages.idOfUrlId(c.req.valid('param').urlId)) ?? NO_PAGE;
+  return c.json(await present(c, id), 200);
 });
 
 router.openapi(getPage, async (c) => c.json(await present(c, c.req.valid('param').id), 200));
