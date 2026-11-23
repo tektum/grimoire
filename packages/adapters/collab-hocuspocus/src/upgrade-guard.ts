@@ -170,8 +170,9 @@ const CLOSE_FLUSH_GRACE_MS = 1000;
  * destroy() discards a write the kernel has not taken yet, and the client would see a bare end, so the socket is destroyed from the write callback,
  * with a bounded fallback for a write that never completes.
  */
-function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unknown; destroy(): unknown }, upgraded: boolean): void {
+function refuseAndDestroy(socket: { write(chunk: Buffer, cb?: () => void): unknown; destroy(): unknown; pause?(): unknown }, upgraded: boolean): void {
   if (!upgraded) { socket.destroy(); return; }
+  socket.pause?.(); // the reservation is already released: no input (an auth message included) may be handled while the frame is pending
   let done = false;
   const destroy = (): void => {
     if (done) return;

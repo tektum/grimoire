@@ -427,6 +427,21 @@ describe('pre-sign-in window (U1)', () => {
     expect(order).toEqual(['write', 'destroy']);
   });
 
+  it('the socket stops reading before the frame is written: no input is accepted after the timeout while the write is pending', async () => {
+    const { guard } = make({ unauthTimeoutMs: 5000 });
+    const r = request(addr(5));
+    const order: string[] = [];
+    Object.assign(r.socket, {
+      pause: () => { order.push('pause'); return r.socket; },
+      write: () => { order.push('write'); return true; },
+      destroy: () => { order.push('destroy'); r.socket.emit('close'); },
+    });
+    const v = await guard.checkUpgrade(r.req, r.socket);
+    if (v.ok) guard.onOpen('reader', v.address, v.ticket);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(order.slice(0, 2)).toEqual(['pause', 'write']);
+  });
+
   it('a write that never completes does not keep the socket forever: it is destroyed one second after the timeout', async () => {
     const { guard } = make({ unauthTimeoutMs: 5000 });
     const r = request(addr(4));
