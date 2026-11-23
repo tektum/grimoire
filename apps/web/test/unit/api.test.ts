@@ -79,7 +79,7 @@ describe('API wrapper', () => {
   it('retries a GET with backoff 1, 2, 4 s on 503 and on network failure, then shows "Try again"', async () => {
     const t = setup([err(503, 'unavailable'), new TypeError('net'), err(503, 'unavailable'), err(503, 'unavailable')]);
     await t.api.GET('/v1/me' as never);
-    expect(t.sleep.mock.calls.map((c) => c[0])).toEqual([1000, 2000, 4000]);
+    expect(t.sleep.mock.calls.map((c) => (c as unknown as [number])[0])).toEqual([1000, 2000, 4000]);
     expect(t.notify).toHaveBeenCalledWith('Try again');
   });
   it('rethrows a network failure of a write with the notice', async () => {
