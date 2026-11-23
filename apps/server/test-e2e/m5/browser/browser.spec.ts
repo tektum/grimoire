@@ -15,10 +15,14 @@ test.beforeAll(async () => {
   await setCors([allowed.origin]);
 });
 test.afterAll(async () => {
-  for (const key of created) await store.delete(key);
-  await setCors(defaultOrigins);
-  await allowed.close();
-  await other.close();
+  // The rule goes back to the real origins and the servers close even when a delete fails or the set-up half failed.
+  try {
+    for (const key of created) await store.delete(key).catch(() => undefined);
+  } finally {
+    await setCors(defaultOrigins);
+    await allowed?.close();
+    await other?.close();
+  }
 });
 
 interface Sent {

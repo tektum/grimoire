@@ -28,9 +28,11 @@ const endpoint = setting('GRIMOIRE_S3_ENDPOINT', 'http://127.0.0.1:8333');
 export const publicEndpoint = endpoint.replace('127.0.0.1', 'localhost');
 const bucket = setting('GRIMOIRE_S3_BUCKET', 'grimoire');
 const admin = { accessKey: setting('GRIMOIRE_DEV_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_DEV_S3_SECRET_KEY') };
-export const defaultOrigins = setting('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.0.1:8080,http://localhost:8080').split(
-  ',',
-);
+/** The origins `files-setup` writes: split and trimmed the way the settings loader does. */
+export const defaultOrigins = setting('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.0.1:8080,http://localhost:8080')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin !== '');
 
 export const filesConfig = (): FilesConfig => ({
   endpoint,
