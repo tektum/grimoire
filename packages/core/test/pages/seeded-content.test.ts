@@ -40,6 +40,22 @@ describe('seedUserMarkdown', () => {
     expect(r).toEqual({ ok: false, stage: 'convert', reason: 'content-lost', detail: 'x' });
   });
 
+  it('holds the user until the conversion back has finished: a second call is refused at once, and the user is free afterwards', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => { release = r; });
+    class Gated extends FakeMarkdownConverter {
+      override async toMarkdown(state: Uint8Array) { await gate; return super.toMarkdown(state); }
+    }
+    const converter = new Gated({ seed: { ok: true, state: STATE }, convert: { ok: true, markdown: 'a', text: 'a' } });
+    const first = seedUserMarkdown(converter, 'busy-user', 'T', 'x');
+    await new Promise((r) => setImmediate(r));
+    expect(await seedUserMarkdown(converter, 'busy-user', 'T', 'y')).toEqual({ ok: false, stage: 'seed', reason: 'internal', detail: 'one-at-a-time' });
+    expect(converter.seedCalls).toEqual(['x']);
+    release();
+    expect(isSeedRefusal(await first)).toBe(false);
+    expect(isSeedRefusal(await seedUserMarkdown(converter, 'busy-user', 'T', 'z'))).toBe(false);
+  });
+
   it('is the only way to get a SeededContent: a plain string is not one', () => {
     // @ts-expect-error a string is not seeded content
     const bad: SeededContent = '# raw';

@@ -34,6 +34,20 @@ export async function seedUserMarkdown(
   title: string,
   markdown: string,
 ): Promise<SeededContent | SeedRefusal> {
+  // The pool's one-at-a-time rule covers `seed` only; `toMarkdown` has no key. Hold the user across both steps so one user never
+  // occupies two workers, and refuse a second call at once, as the pool does.
+  if (inFlight.has(userId)) return { ok: false, stage: 'seed', reason: 'internal', detail: 'one-at-a-time' };
+  inFlight.add(userId);
+  try {
+    return await run(converter, userId, title, markdown);
+  } finally {
+    inFlight.delete(userId);
+  }
+}
+
+const inFlight = new Set<string>();
+
+async function run(converter: MarkdownConverter, userId: string, title: string, markdown: string): Promise<SeededContent | SeedRefusal> {
   const seed = await converter.seed(markdown, userId);
   if (!seed.ok) return refusal('seed', seed);
   const back = await converter.toMarkdown(seed.state);
