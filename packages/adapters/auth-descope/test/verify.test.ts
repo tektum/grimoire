@@ -161,7 +161,9 @@ describe('verify: signature and algorithm attacks are invalid-token', () => {
     } finally { await decoy.stop(); }
   });
   it.each(['', 'abc', 'a.b.c', '....', 'a.b', '\u0000.\u0000.\u0000', `${b64({ alg: 'RS256' })}.${b64('[]')}.AAAA`])('malformed %j', async (t) => {
+    const before = server.requests;
     expect(await verifier().v.verify(t)).toEqual({ kind: 'invalid-token' });
+    expect(server.requests).toBe(before); // bytes that are not a token cost no network request (M3-T02 146)
   });
   it('a non-string token', async () => {
     expect(await verifier().v.verify(undefined as unknown as string)).toEqual({ kind: 'invalid-token' });
