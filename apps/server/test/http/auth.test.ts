@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AuthVerifier, VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
@@ -20,6 +20,7 @@ function build(s: Setup = {}) {
     verify: (token) => { calls.push(token); return Promise.resolve(s.result ?? { kind: 'ok', userId: 'd1', expiresAt: 9e12 }); },
   };
   const users = new FakeUserStore(s.rows ?? [row()]);
+  const lookups = vi.spyOn(users, 'findByDescopeId');
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
   const ctx = { ...t.ctx, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, users, provisioner } };
@@ -32,7 +33,7 @@ function build(s: Setup = {}) {
   app.get('/v1/config', handler);
   app.get('/v1/me', handler);
   app.get('/v1/things', handler);
-  return { app, t, calls, seen };
+  return { app, t, calls, seen, lookups };
 }
 
 const get = (app: ReturnType<typeof build>['app'], path: string, authorization?: string) =>
@@ -136,6 +137,13 @@ describe('suspended and returning users', () => {
   it('lets a returning user of an allowed domain through, whatever the case of the stored address', async () => {
     const { app } = build({ rows: [row({ email: 'Ann@Example.COM' })] });
     expect((await get(app, '/v1/things', `Bearer ${TOKEN}`)).status).toBe(200);
+  });
+
+  it('reads the row once per request, including the returning-user check', async () => {
+    const { app, lookups } = build();
+    expect((await get(app, '/v1/things', `Bearer ${TOKEN}`)).status).toBe(200);
+    expect(lookups).toHaveBeenCalledTimes(1);
+    expect(lookups).toHaveBeenCalledWith('d1');
   });
 
   it('does not create a row for an unknown identity on a plain route', async () => {

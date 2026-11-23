@@ -50,7 +50,7 @@ export interface InfoEvents {
 
 export interface WarnEvents {
   'http.rate_limited': { scope: 'user' | 'address' | 'route'; route: string };
-  'http.auth_rejected': { reason: 'missing' | 'invalid' | 'expired' | 'suspended' | 'no-user' };
+  'http.auth_rejected': { reason: 'missing' | 'invalid' | 'suspended' | 'no-user' };
   'config.collab_url_missing': Record<string, never>;
   'server.local_mode_exposed': { host: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */

@@ -13,7 +13,7 @@ describe('milestone 4 events', () => {
     log.debug('http.request', { method: 'GET', route: '/v1/pages/{id}', status: 200, ms: 3 });
     log.debug('http.validation_failed', { route: '/v1/pages', issues: 2 });
     log.warn('http.rate_limited', { scope: 'user', route: '/v1/pages' });
-    log.warn('http.auth_rejected', { reason: 'expired' });
+    log.warn('http.auth_rejected', { reason: 'suspended' });
     log.warn('config.collab_url_missing', {});
     log.info('http.idempotent_replay', { route: '/v1/pages' });
     log.info('collections.created', { collectionId: 'c1' });
