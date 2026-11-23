@@ -80,5 +80,8 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       end if;
     end $$`.execute(db);
 
+  // `set constraints` lasts until the transaction ends, and the migrator may run later migrations in it: restore the mode 0004 declared.
+  await sql`set constraints pages_parent_same_collection_fk deferred`.execute(db);
+
   await sql`grant usage, select on sequence pages_position_seq to grimoire_app`.execute(db);
 }

@@ -53,6 +53,8 @@ function randomWorld(rand: () => number, unfiledPosition: string): World {
     const c = w.collections[int(w.collections.length)];
     if (c) w.pages.push({ id: uuidOf('page', i + 1), collectionId: c.id, deleted: chance(0.15), epoch: int(50) });
   }
+  // The store lists collections by position (byte order, collate "C"): so does the model.
+  w.collections.sort((a, b) => ((a.position ?? '') < (b.position ?? '') ? -1 : (a.position ?? '') > (b.position ?? '') ? 1 : 0));
   return w;
 }
 

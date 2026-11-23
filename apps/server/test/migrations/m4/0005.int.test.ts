@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { insertCollection, insertPage, SYSTEM_USER_ID, UNFILED_COLLECTION_ID } from '@tektum/grimoire-test-support/database';
@@ -8,7 +8,9 @@ import { appUrl, createTestDatabase, dropTestDatabase, migratorUrl, repoRoot, re
 // Migrations 0005 (tables) and 0006 (search columns, indexes, unique positions) on an empty database and on one at 0004 holding rows.
 const EMPTY = 'grimoire_m4t01_mig_empty';
 const AT_0004 = 'grimoire_m4t01_mig_0004';
+const PROBE = 'grimoire_m4t01_mig_probe';
 const upTo0004 = path.join(repoRoot, 'test-results', 'm4t01-migrations-0004');
+const withProbe = path.join(repoRoot, 'test-results', 'm4t01-migrations-probe');
 const PARENT = 'b0000000-3c1d-4a53-9a62-5d1c2a7e8f10';
 
 const migrate = (db: string, dir?: string) => runToEnd([path.join(serverDir, 'dist/cli.js'), 'migrate', ...(dir ? ['--dir', dir] : [])], { GRIMOIRE_DATABASE_MIGRATION_URL: migratorUrl(db) });
@@ -22,11 +24,16 @@ beforeAll(async () => {
   requireBuild();
   mkdirSync(upTo0004, { recursive: true });
   for (const name of ['0001_pages.ts', '0002_page_markdown.ts', '0003_schema_version.ts', '0004_permissions.ts']) cpSync(path.join(repoRoot, 'db/migrations', name), path.join(upTo0004, name));
-  for (const db of [EMPTY, AT_0004]) await createTestDatabase(db, false);
+  mkdirSync(withProbe, { recursive: true });
+  for (const name of readdirSync(path.join(repoRoot, 'db/migrations')).filter((n) => /^\d{4}_.*\.ts$/.test(n))) cpSync(path.join(repoRoot, 'db/migrations', name), path.join(withProbe, name));
+  // A migration after 0006 in the same run: the parent foreign key of 0004 must be deferred again, so a child may be inserted before its parent.
+  writeFileSync(path.join(withProbe, '9999_probe.ts'), `import { sql } from 'kysely';\nimport type { Kysely } from 'kysely';\nexport async function up(db: Kysely<unknown>): Promise<void> {\n  await sql\`insert into pages (id, parent_id) values ('d1000000-3c1d-4a53-9a62-5d1c2a7e8f10', 'd2000000-3c1d-4a53-9a62-5d1c2a7e8f10')\`.execute(db);\n  await sql\`insert into pages (id) values ('d2000000-3c1d-4a53-9a62-5d1c2a7e8f10')\`.execute(db);\n}\n`);
+  for (const db of [EMPTY, AT_0004, PROBE]) await createTestDatabase(db, false);
 }, 60_000);
 afterAll(async () => {
   rmSync(upTo0004, { recursive: true, force: true });
-  for (const db of [EMPTY, AT_0004]) await dropTestDatabase(db);
+  rmSync(withProbe, { recursive: true, force: true });
+  for (const db of [EMPTY, AT_0004, PROBE]) await dropTestDatabase(db);
 });
 
 describe('migrations 0005 and 0006', () => {
@@ -63,6 +70,12 @@ describe('migrations 0005 and 0006', () => {
     expect(collections.find((r) => r.id === UNFILED_COLLECTION_ID)).toBeDefined();
     const again = await migrate(AT_0004);
     expect(again.output).toContain('migrate.nothing_pending');
+  });
+
+  it('leave the parent foreign key deferred for a migration that runs after 0006 in the same run', async () => {
+    const result = await migrate(PROBE, withProbe);
+    expect(result.code, result.output).toBe(0);
+    expect(await sqlAdmin(PROBE, `select count(*)::int as n from pages where id like 'd_000000-%'`)).toEqual([{ n: 2 }]);
   });
 
   it('keep two siblings from sharing a position, top-level pages included, but allow it once a page is deleted', async () => {
