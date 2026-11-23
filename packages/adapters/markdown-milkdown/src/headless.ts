@@ -6,6 +6,7 @@ import {
   init,
   parser,
   parserCtx,
+  remarkCtx,
   schema,
   schemaCtx,
   serializer,
@@ -14,6 +15,7 @@ import {
 import { Clock, Container, Ctx } from '@milkdown/ctx';
 import { escapeClosingBracketsCtx, grimoireEditorPlugins, hasTooManyClosingBrackets } from '@tektum/grimoire-editor-schema';
 import { installEventGlobals } from './polyfill.js';
+import { SerializerState } from './serializer.js';
 
 const readHeadless = (ctx: Ctx) => {
   const serialize = ctx.get(serializerCtx);
@@ -36,7 +38,7 @@ export type Headless = ReturnType<typeof readHeadless>;
  * docs/proof/m2-conversion.md). The caller starts waiting before the plugins run because the ready signals are events and a missed one
  * never fires.
  */
-export async function createHeadless(plugins = grimoireEditorPlugins): Promise<Headless> {
+export async function createHeadless(plugins = grimoireEditorPlugins, serializerOf: 'copy' | 'upstream' = 'copy'): Promise<Headless> {
   installEventGlobals();
   const ctx = new Ctx(new Container(), new Clock());
   // `init` only stores the editor object in a slice that nothing here reads; an unstarted Editor satisfies its type.
@@ -49,6 +51,8 @@ export async function createHeadless(plugins = grimoireEditorPlugins): Promise<H
     if (typeof handler === 'function') void Promise.resolve(handler()).catch(() => undefined);
   }
   await ready; // the ready signals come from the three core plugins always included above, so a failing extra plugin cannot leave them pending
+  // Milkdown's own writer is quadratic in the children of one block (see serializer.ts); `upstream` is for the test that compares the two.
+  if (serializerOf === 'copy') ctx.set(serializerCtx, SerializerState.create(ctx.get(schemaCtx), ctx.get(remarkCtx)));
   return readHeadless(ctx);
 }
 
