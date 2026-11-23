@@ -25,7 +25,7 @@ const record = (r: Row): AttachmentRow => ({
 });
 
 const isForeignKeyViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23503';
-/** The `deleted_at` column of the table is never read or written: an attachment is deleted with its row. */
+/** `deleted_at` is set by the trash purge on a row whose object it already removed but whose page was restored in between: `get` and `getMany` do not return such a row. */
 
 /** The PostgreSQL AttachmentRepo over `attachments`. */
 export function createAttachments(db: KyselyDatabase): AttachmentRepo {
@@ -55,12 +55,12 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
       }
     },
     async get(id) {
-      const rows = await db.query<Row>(`select ${COLUMNS} from attachments where id = $1`, [id]);
+      const rows = await db.query<Row>(`select ${COLUMNS} from attachments where id = $1 and deleted_at is null`, [id]);
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
     async getMany(ids) {
       if (ids.length === 0) return [];
-      return (await db.query<Row>(`select ${COLUMNS} from attachments where id = any($1::uuid[])`, [ids])).map(record);
+      return (await db.query<Row>(`select ${COLUMNS} from attachments where id = any($1::uuid[]) and deleted_at is null`, [ids])).map(record);
     },
     async markReady(id, now) {
       const rows = await db.query<Row>(

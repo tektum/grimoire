@@ -78,7 +78,7 @@ describe('what only the database does', () => {
     expect(await repo.get(id)).toMatchObject({ uploaderId: null, status: 'ready' });
   });
 
-  it('refuses a size that no number holds exactly, and never reads or writes the unused deleted_at column', async () => {
+  it('refuses a size that no number holds exactly, and hides a row the trash purge marked deleted', async () => {
     const repo = createAttachments(t.app);
     const huge = randomUUID();
     await t.admin.query(
@@ -89,6 +89,7 @@ describe('what only the database does', () => {
     const marked = randomUUID();
     await repo.insertReady(ready(marked, pageId));
     await t.admin.query(`update attachments set deleted_at = now() where id = $1`, [marked]);
-    expect(await repo.get(marked)).toMatchObject({ id: marked, status: 'ready' });
+    expect(await repo.get(marked)).toBeUndefined();
+    expect(await repo.getMany([marked])).toEqual([]);
   });
 });
