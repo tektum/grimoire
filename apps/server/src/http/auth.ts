@@ -14,22 +14,28 @@ const isProvisioning = (method: string, path: string): boolean => method === 'GE
 
 const BEARER = /^Bearer ([^\s]+)$/i;
 
+const REFUSALS = ['domain-not-allowed', 'email-taken', 'profile-unavailable', 'profile-missing'] as const;
+type Refusal = (typeof REFUSALS)[number];
+const isRefusal = (value: unknown): value is Refusal => REFUSALS.some((r) => r === value);
+
 /**
- * The provisioner reports through the plain logger port (its `users.refused` line, a short reason only). The event log forwards every
- * call to the same logger, so this hands it the app's log and an operator still sees one `users.refused` for a domain refusal.
+ * The provisioner reports through the plain logger port. On this path only its refusal line can occur (the row exists, nothing is
+ * created), and it is re-emitted as the declared `users.refused` event, so an operator still sees one line for a domain refusal.
  */
-const providerLogger = (log: HttpDeps['log']): Logger => {
-  const forward = (level: 'debug' | 'info' | 'warn' | 'error') => (event: string, fields?: Record<string, unknown>): void => (log[level] as (e: string, f?: Record<string, unknown>) => void)(event, fields);
-  const logger: Logger = { debug: forward('debug'), info: forward('info'), warn: forward('warn'), error: forward('error'), child: () => logger };
+const refusalLogger = (log: HttpDeps['log']): Logger => {
+  const emit = (event: string, fields?: Record<string, unknown>): void => {
+    /* v8 ignore else -- the provisioner writes nothing else on this path: the row exists and nothing is created */
+    if (event === 'users.refused' && isRefusal(fields?.reason)) log.warn('users.refused', { reason: fields.reason });
+  };
+  /* v8 ignore next -- the logger port requires `child`; the provisioner never calls it */
+  const child = (): Logger => logger;
+  const logger: Logger = { debug: emit, info: emit, warn: emit, error: emit, child };
   return logger;
 };
 
 /** A store that answers the one row already read, so the rule runs on it without a second query. */
-const readOnce = (users: UserStore, row: UserRecord): UserStore => ({
-  findByDescopeId: () => Promise.resolve(row),
-  createIfAbsent: (n) => users.createIfAbsent(n),
-  updateRole: (id, role) => users.updateRole(id, role),
-});
+const readOnce = (users: UserStore, row: UserRecord): UserStore =>
+  Object.assign(Object.create(users) as UserStore, { findByDescopeId: () => Promise.resolve(row) });
 
 /**
  * Bearer authentication for every API route but the public one. The token is verified by the `AuthVerifier` port (the token policy is
@@ -37,7 +43,7 @@ const readOnce = (users: UserStore, row: UserRecord): UserStore => ({
  * row on every route, so a user whose domain was removed stops working at once. A suspended user is refused everywhere.
  */
 export function authenticate(verifier: AuthVerifier, policy: SignInPolicy, deps: Pick<HttpDeps, 'users' | 'log'>): MiddlewareHandler<AppEnv> {
-  const logger = providerLogger(deps.log);
+  const logger = refusalLogger(deps.log);
   return async (c, next) => {
     const method = c.req.method;
     const path = c.req.path;

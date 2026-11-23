@@ -51,6 +51,8 @@ export interface InfoEvents {
 export interface WarnEvents {
   'http.rate_limited': { scope: 'user' | 'address' | 'route'; route: string };
   'http.auth_rejected': { reason: 'missing' | 'invalid' | 'suspended' | 'no-user' };
+  /** Sign-in or a returning-user check was refused: the fixed reason of the provisioner, never an email or a domain. */
+  'users.refused': { reason: 'domain-not-allowed' | 'email-taken' | 'profile-unavailable' | 'profile-missing' };
   'config.collab_url_missing': Record<string, never>;
   'server.local_mode_exposed': { host: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */

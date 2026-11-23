@@ -14,6 +14,7 @@ describe('milestone 4 events', () => {
     log.debug('http.validation_failed', { route: '/v1/pages', issues: 2 });
     log.warn('http.rate_limited', { scope: 'user', route: '/v1/pages' });
     log.warn('http.auth_rejected', { reason: 'suspended' });
+    log.warn('users.refused', { reason: 'domain-not-allowed' });
     log.warn('config.collab_url_missing', {});
     log.info('http.idempotent_replay', { route: '/v1/pages' });
     log.info('collections.created', { collectionId: 'c1' });
@@ -25,7 +26,7 @@ describe('milestone 4 events', () => {
     log.info('admin.user_changed', { userId: 'u1' });
     log.info('admin.group_changed', { groupId: 'g1' });
     expect(logger.entries.map((e) => `${e.level} ${e.event}`)).toEqual([
-      'debug http.request', 'debug http.validation_failed', 'warn http.rate_limited', 'warn http.auth_rejected', 'warn config.collab_url_missing',
+      'debug http.request', 'debug http.validation_failed', 'warn http.rate_limited', 'warn http.auth_rejected', 'warn users.refused', 'warn config.collab_url_missing',
       'info http.idempotent_replay', 'info collections.created', 'info collections.deleted', 'info collections.access_changed',
       'info pages.created', 'info pages.moved', 'info pages.deleted', 'info pages.restored', 'info pages.purged', 'info pages.state_reset',
       'info admin.user_changed', 'info admin.group_changed',
