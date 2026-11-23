@@ -174,22 +174,28 @@ describe('TrashRepo.restore', () => {
     expect(moved.page.position > position).toBe(true);
   });
 
-  it('sends a root to the top level when under its live parent the batch would be deeper than allowed', async () => {
+  it('sends a root to the top level when under its live parent the batch would be deeper than allowed, and keeps the parent when it fits', async () => {
     const top = await make('top');
     const mid = await make('mid', top);
     const root = await make('root', mid);
     await make('leaf', root);
     await remove(root);
-    const tight = { maxDepth: 4, maxPages: 10_000 };
+    // top (1), mid (2), root (3), leaf (4): four levels under the parent's two do not fit three, and the same tree fits four.
+    const tight = { maxDepth: 3, maxPages: 10_000 };
     const out = await trash().restore(root, collection, tight, place);
     if (out.kind !== 'restored') throw new Error(out.kind);
     expect(out.page.parentId).toBeNull();
-    const fits = await make('fits', mid);
-    await make('fits-leaf', fits);
-    await remove(fits);
-    const ok = await trash().restore(fits, collection, tight, place);
+    const single = await make('single', mid);
+    await remove(single);
+    const ok = await trash().restore(single, collection, tight, place);
     if (ok.kind !== 'restored') throw new Error(ok.kind);
     expect(ok.page.parentId).toBe(mid);
+    const edge = await make('edge', mid);
+    await make('edge-leaf', edge);
+    await remove(edge);
+    const exact = await trash().restore(edge, collection, { maxDepth: 4, maxPages: 10_000 }, place);
+    if (exact.kind !== 'restored') throw new Error(exact.kind);
+    expect(exact.page.parentId).toBe(mid);
   });
 
   it('restores nothing when the page is in another collection than the one that was checked', async () => {
