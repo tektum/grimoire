@@ -28,7 +28,8 @@ await scenario('user-caps', 180_000, async (t) => {
   const stored = await eventually(async () => { const s = await storedText(page); return s.includes(marker) ? s : undefined; }, 20_000, 'an earlier socket\'s edit to be stored');
   t.equal(stored, marker, 'the stored page holds the earlier session\'s edit and nothing from the refused one');
 
-  // A freed place is usable again.
+  // A freed place is usable again. The refused client is destroyed first: it would otherwise reconnect with backoff and compete for the freed place.
+  late.peer.destroy();
   held[2]?.destroy();
   let reused: Peer | undefined;
   await eventually(async () => {
