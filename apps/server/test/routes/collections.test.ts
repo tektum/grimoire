@@ -135,6 +135,19 @@ describe('POST /v1/collections', () => {
   });
 });
 
+describe('the audit row of a collection created with a default permission', () => {
+  it('is written, and none is written when there is no default permission', async () => {
+    const { call, collections, rows } = build();
+    const none = (await (await call('admin', 'POST', '/v1/collections', { name: 'Plain' })).json()) as { id: string };
+    expect(collections.audit.events).toEqual([]);
+    const made = (await (await call('admin', 'POST', '/v1/collections', { name: 'Shared', defaultPermission: 'read_write' })).json()) as { id: string };
+    expect(made.id).not.toBe(none.id);
+    expect(collections.audit.events).toEqual([
+      { actorId: rows[0]?.id, action: 'collection.default_permission_changed', targetType: 'collection', targetId: made.id, detail: { from: null, to: 'read_write' } },
+    ]);
+  });
+});
+
 describe('PATCH /v1/collections/{id}', () => {
   it('answers 403 to a reader who is not an administrator and 404 to one who cannot read', async () => {
     const { call, open, closed } = build();

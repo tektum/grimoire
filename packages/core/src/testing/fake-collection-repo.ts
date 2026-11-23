@@ -41,6 +41,12 @@ export class FakeCollectionRepo implements CollectionRepo {
       name: input.name, description: input.description ?? null, icon: input.icon ?? null, color: input.color ?? null,
       position: positionAfter(last?.position ?? null), defaultPermission: input.defaultPermission ?? null,
     });
+    if (record.defaultPermission !== null) {
+      this.audit.events.push({
+        actorId: input.createdBy, action: 'collection.default_permission_changed', targetType: 'collection', targetId: record.id,
+        detail: { from: null, to: record.defaultPermission },
+      });
+    }
     return Promise.resolve(record);
   }
 

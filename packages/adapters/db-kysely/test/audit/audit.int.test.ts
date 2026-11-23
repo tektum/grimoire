@@ -49,6 +49,14 @@ describe('the audit row of a collection change', () => {
     expect(await events(c.id)).toHaveLength(1);
   });
 
+  it('creating with a default permission writes one row, and without one none', async () => {
+    const repo = createCollections(t.app);
+    const plain = await repo.append({ name: 'plain', createdBy: admin }, after);
+    const shared = await repo.append({ name: 'shared', defaultPermission: 'read', createdBy: admin }, after);
+    expect(await events(plain.id)).toEqual([]);
+    expect(await events(shared.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: shared.id, actor_id: admin }]);
+  });
+
   it('a change that fails leaves no audit row and no change: both are one transaction', async () => {
     const repo = createCollections(t.app);
     const x = await repo.append({ name: 'tx1', createdBy: admin }, after);

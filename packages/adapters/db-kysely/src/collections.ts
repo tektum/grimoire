@@ -37,7 +37,15 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
           `insert into collections (name, description, icon, color, position, default_permission, created_by) values ($1, $2, $3, $4, $5, $6, $7) returning ${COLUMNS}`,
           [input.name, input.description ?? null, input.icon ?? null, input.color ?? null, positionAfter(last?.position ?? null), input.defaultPermission ?? null, input.createdBy],
         );
-        return record(rows[0] as Row);
+        const created = record(rows[0] as Row);
+        // A default permission set at creation grants access just as a later change does, so it leaves the same audit row.
+        if (created.defaultPermission !== null) {
+          await insertAuditEvent(tx, {
+            actorId: input.createdBy, action: 'collection.default_permission_changed', targetType: 'collection', targetId: created.id,
+            detail: { from: null, to: created.defaultPermission },
+          });
+        }
+        return created;
       });
     },
     async update(id, patch: CollectionPatch, actorId) {
