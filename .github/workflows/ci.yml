@@ -80,7 +80,11 @@ jobs:
         run: |
           set -eu
           code=true
-          if [ -n "${BASE_SHA:-}" ] && ! git diff --name-only "$BASE_SHA"...HEAD | grep -qvE '^(docs/|.*\.md$|LICENSE$)'; then code=false; fi
+          # Documentation-only changes skip the code jobs, except docs/api-surface.txt: it is checked against the build, so editing it is a code change.
+          if [ -n "${BASE_SHA:-}" ]; then
+            changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+            if ! printf '%s\n' "$changed" | grep -qvE '^(docs/|.*\.md$|LICENSE$)' && ! printf '%s\n' "$changed" | grep -qx 'docs/api-surface.txt'; then code=false; fi
+          fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
 
   static:
@@ -104,9 +108,10 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # The build comes first: it writes the OpenAPI document and the client types the other two read.
+      - run: bun run build
       - run: bun run lint
       - run: bun run typecheck
-      - run: bun run build
 
   openapi:
     name: OpenAPI check
@@ -129,8 +134,16 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - name: Regenerate the OpenAPI document and client types; any difference fails
+      - name: Build, then compare the API surface with docs/api-surface.txt; any difference fails
         run: bun run openapi:check
+      - name: Upload the full OpenAPI document
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openapi
+          path: packages/api-client/openapi.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   unit:
     name: Unit tests

@@ -33,7 +33,9 @@ Run from the repository root. Each line works on `main` today.
 | --- | --- |
 | Lint (ESLint, then the sleep check) | `bun run lint` |
 | Typecheck | `bun run typecheck` |
-| Build | `bun run build` |
+| Build (also writes the OpenAPI document and the client types, no network) | `bun run build` |
+| Record the API surface after a route change | `bun run openapi:surface` |
+| Check the API surface file is current | `bun run openapi:check` |
 | Unit tests | `bun run test` |
 | Unit tests with coverage (enforces the unit floors in `vitest.config.js`; no Docker) | `bun run test:coverage` |
 | Integration tests with coverage (enforces the integration floors in `vitest.integration-coverage.config.js`; needs `make db-up`) | `bun run test:integration:coverage` |
@@ -190,6 +192,13 @@ files, so these are rules for you:
   on `main`.
 - Never edit `bun.lock` by hand. Change `package.json` and run
   `bun install`. Never edit generated output (`dist/`).
+- **The API document is generated, not committed.** `bun run build` writes
+  `packages/api-client/openapi.json` and `src/schema.d.ts` (both ignored by git)
+  on a fresh clone after `bun install`. What is committed is
+  `docs/api-surface.txt`, one line per operation (policy, query names, request
+  and response schema names, limits). A route change fails `openapi:check` until
+  you run `bun run openapi:surface` and commit that file. CI uploads the full
+  document as the `openapi` artifact.
 
 ## Pull requests
 
