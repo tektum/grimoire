@@ -215,6 +215,13 @@ describe('requests that end early', () => {
     }
     expect((await hit(app, '203.0.113.5')).status).toBe(401);
   });
+
+  it('counts any other method on a probe path, which is a 404 and not a probe', async () => {
+    const { app } = build({ http: { addressCeilingPerMinute: 5 } });
+    for (let i = 0; i < 5; i += 1) expect((await hit(app, '203.0.113.5', {}, '/healthz', 'POST')).status).toBe(404);
+    expect((await hit(app, '203.0.113.5', {}, '/readyz', 'DELETE')).status).toBe(429);
+    expect((await hit(app, '203.0.113.6', {}, '/healthz', 'HEAD')).status).toBe(200);
+  });
 });
 
 describe('user limiter', () => {

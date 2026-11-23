@@ -10,7 +10,7 @@ import type { AppEnv, HttpDeps } from './env.js';
 import type { RouteRateLimit } from './policy.js';
 
 const WINDOW_SECONDS = 60;
-/** Orchestrator probes carry no credentials and come from one address all day: they are not counted (their answers are plain text and cost nothing). */
+/** Orchestrator probes (GET, or HEAD served by the same handler) carry no credentials and come from one address all day: they are not counted (their answers are plain text and cost nothing). */
 const PROBES = new Set(['/healthz', '/readyz']);
 const BEARER = /^Bearer [^\s]+$/i;
 
@@ -39,7 +39,7 @@ export function addressLimiter(http: HttpConfig, trustedProxies: readonly string
   const credentials = new RateLimiterMemory({ points: http.addressLimitPerMinute, duration: WINDOW_SECONDS });
   const trusted = trustedProxyList(trustedProxies);
   return async (c, next) => {
-    if (PROBES.has(c.req.path)) return next();
+    if ((c.req.method === 'GET' || c.req.method === 'HEAD') && PROBES.has(c.req.path)) return next();
     const address = clientAddress(c, trusted);
     const flooded = await consume(ceiling, address);
     if (flooded !== undefined) return refuse(log, c, 'address', flooded);
