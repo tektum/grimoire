@@ -10,7 +10,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const AUTHORIZER_DIR = path.join('packages', 'core', 'src', 'authorize');
 /** Calls named `check` that are not the authoriser: Node's `net.BlockList.check(address, family)`. File and receiver must both match. */
 const ALLOWED = [
-  { file: 'packages/adapters/collab-hocuspocus/src/upgrade-guard.ts', receiver: 'list', reason: 'net.BlockList of trusted proxies' },
+  { file: 'packages/core/src/users/client-address.ts', receiver: 'list', reason: 'net.BlockList of trusted proxies' },
   { file: 'packages/adapters/config-env/src/schema.ts', receiver: 'LOOPBACK', reason: 'net.BlockList of loopback ranges' },
 ];
 
