@@ -4,7 +4,7 @@ import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import { createCollabLog } from '../../src/events.js';
 import { revisionReport } from '../../src/extensions/revisions.js';
-import { createRevisionScheduler } from '../../src/revisions/scheduler.js';
+import { CATCH_UP_BATCH, createRevisionScheduler } from '../../src/revisions/scheduler.js';
 import { ANA, BOB, MINUTE, PAGE, build } from './support.js';
 
 const saved = (b: ReturnType<typeof build>, markdown: string, over: { title?: string; stale?: boolean } = {}) =>
@@ -366,10 +366,10 @@ describe('the catch-up after a restart (R9.3)', () => {
 
   it('works through more pages than one batch holds, and logs a failure without giving up the server', async () => {
     const b = build();
-    for (let n = 0; n < 501; n += 1) b.repo.setPage(`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, { title: 'T', markdown: `m${String(n)}`, lastEditedAt: b.clock.now() - 6 * MINUTE - n, lastEditedBy: ANA });
+    for (let n = 0; n < CATCH_UP_BATCH + 1; n += 1) b.repo.setPage(`00000000-0000-4000-8000-${String(n).padStart(12, '0')}`, { title: 'T', markdown: `m${String(n)}`, lastEditedAt: b.clock.now() - 6 * MINUTE - n, lastEditedBy: ANA });
     b.scheduler.opened();
     await b.scheduler.whenIdle();
-    expect(b.events('collab.revision_created')).toHaveLength(501);
+    expect(b.events('collab.revision_created')).toHaveLength(CATCH_UP_BATCH + 1);
     expect(b.repo.calls).toEqual(['catchUp', 'catchUp']);
     const failing = build();
     failing.repo.failNext = new Error('database down');

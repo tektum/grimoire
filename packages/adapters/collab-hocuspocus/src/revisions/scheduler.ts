@@ -7,7 +7,7 @@ export const IDLE_MS = 5 * 60 * 1000;
 /** After a failed catch-up the next page open tries again, but not sooner than this. */
 export const CATCH_UP_RETRY_MS = 60 * 1000;
 /** Pages the catch-up after a restart handles per statement. */
-export const CATCH_UP_BATCH = 500;
+export const CATCH_UP_BATCH = 100;
 
 /** The timers the scheduler uses; tests pass fake ones. */
 export interface Timers {
