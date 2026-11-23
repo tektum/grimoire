@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
@@ -64,5 +64,29 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     const kid = await make(page);
     expect(await pages().softDelete(page, user, elsewhere)).toEqual({ kind: 'conflict' });
     expect([(await row(page))?.deleted_at, (await row(kid))?.deleted_at]).toEqual([null, null]);
+  });
+
+  it('answers not-found, not conflict, for a page another request deleted while this one waited for the collection lock', async () => {
+    const page = await make();
+    let release!: () => void;
+    let held!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    // Another transaction holds the collection and deletes the page; the delete is started meanwhile and queues behind it.
+    const first = t.app.transaction(async (tx) => {
+      await tx.query(`select 1 from collections where id = $1 for update`, [collection]);
+      held();
+      await gate;
+      await tx.query(`update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $1 where id = $1`, [page, user]);
+    });
+    await locked;
+    const second = pages().softDelete(page, user, collection);
+    await vi.waitFor(async () => {
+      const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+      expect(Number(waiting[0]?.n)).toBe(1);
+    });
+    release();
+    await first;
+    expect(await second).toEqual({ kind: 'not-found' });
   });
 });

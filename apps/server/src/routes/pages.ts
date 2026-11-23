@@ -113,7 +113,7 @@ export const movePage = defineRoute({
 export const deletePage = defineRoute({
   method: 'delete', path: '/v1/pages/{id}', operationId: 'deletePage', summary: 'Delete a page and its descendants as one trash batch', tags: ['pages'],
   policy: { kind: 'page', param: 'id', need: 'write' }, request: { params: IdParam },
-  responses: { 204: { description: 'The page and its descendants are in the trash' } },
+  responses: { 204: { description: 'The page and its descendants are in the trash' }, 409: json(ErrorBody, 'The page moved to another collection since the access check') },
 });
 
 /**

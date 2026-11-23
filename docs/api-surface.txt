@@ -5,6 +5,7 @@ DELETE /v1/collections/{id} | op:deleteCollection | policy:collection:admin:id |
 DELETE /v1/collections/{id}/access/{entryId} | op:deleteCollectionAccess | policy:collection:admin:id | path:entryId:string<uuid>,id:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
 DELETE /v1/groups/{id} | op:deleteGroup | policy:admin | path:id:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
 DELETE /v1/groups/{id}/members/{userId} | op:removeGroupMember | policy:admin | path:id:string<uuid>,userId:string<uuid> | query:- | req:- | res:204:- | rate:- | idem:no
+DELETE /v1/pages/{id} | op:deletePage | policy:page:write:id | path:id:string<uuid> | query:- | req:- | res:204:-,409:{error:{code:string,message:string}} | rate:- | idem:no
 GET /v1/collections | op:listCollections | policy:authenticated | path:- | query:- | req:- | res:200:{items:Collection[]} | rate:- | idem:no
 GET /v1/collections/{id} | op:getCollection | policy:collection:read:id | path:id:string<uuid> | query:- | req:- | res:200:Collection | rate:- | idem:no
 GET /v1/collections/{id}/access | op:listCollectionAccess | policy:collection:admin:id | path:id:string<uuid> | query:- | req:- | res:200:CollectionAccess | rate:- | idem:no

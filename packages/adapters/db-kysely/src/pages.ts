@@ -208,8 +208,10 @@ export function createPages(db: KyselyDatabase): PageRepo {
         const live = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for no key update`, [expectedCollectionId]);
         if (live.length === 0) return { kind: 'not-found' };
         // A move that committed between the first read and the lock is seen here, under the lock.
-        const still = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null for update`, [id, expectedCollectionId]);
-        if (still.length === 0) return { kind: 'conflict' };
+        const still = (await tx.query<{ collection_id: string; deleted_at: Date | null }>(`select collection_id, deleted_at from pages where id = $1 for update`, [id]))[0];
+        // Deleted by another request while this one waited: it is in the trash, not moved. Only a changed collection is a conflict.
+        if (still === undefined || still.deleted_at !== null) return { kind: 'not-found' };
+        if (still.collection_id !== expectedCollectionId) return { kind: 'conflict' };
         const deleted = await tx.query(
           `with recursive down as (select id from pages where id = $1 and deleted_at is null
              union all select p.id from pages p join down on p.parent_id = down.id where p.deleted_at is null)
