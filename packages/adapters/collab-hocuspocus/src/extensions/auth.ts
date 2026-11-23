@@ -27,6 +27,8 @@ export interface AuthOptions {
   readonly log: CollabLog;
   readonly peers: PeerRegistry;
   readonly guard: UpgradeGuard;
+  /** Takes the per-user, page and server admission of the document at arrival (the limits extension); throws the refusal. Called last, so a refusal before it leaves nothing taken. */
+  readonly admit?: (data: { context: unknown; socketId: string; documentName: string; connectionConfig: object }, userId: string) => void;
 }
 
 export type Verified = { kind: 'ok'; userId: string; expiresAt: number; profile?: Extract<VerifyResult, { kind: 'ok' }>['profile'] } | { kind: 'invalid' } | { kind: 'unavailable' };
@@ -105,6 +107,7 @@ export function createAuthExtension(o: AuthOptions): Extension {
       }
       if (r.kind !== 'allowed') throw r.refusal;
       data.connectionConfig.readOnly = r.access.access !== 'read-write';
+      o.admit?.(data, r.user.id); // decided now, in arrival order, before the client is told it is authenticated and before the page loads
       return { userId: r.user.id, descopeUserId: v.userId, accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch };
     },
 

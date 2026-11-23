@@ -1,6 +1,8 @@
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { describe, expect, it, vi } from 'vitest';
+import { PeerRegistry } from '../../src/peers.js';
+import { REFUSAL_CLOSE_CODES } from '../../src/refusal.js';
 import { buildExtensions } from '../../src/registry.js';
 import { makeDeps, PAGE } from '../host/support.js';
 import { seedDoc, textOf } from './support.js';
@@ -19,7 +21,7 @@ describe('the conversion gate follows the pool size (the host passes it from the
     t.pages.seed(PAGE);
     t.pages.seed(OTHER_PAGE);
     expect(t.deps.config.collab.convertPoolSize).toBe(2);
-    const { persistence } = buildExtensions({ deps: { ...t.deps, converter }, log: t.log, peers: {} as never, guard: {} as never, sleep: () => new Promise(() => undefined) });
+    const { persistence } = buildExtensions({ deps: { ...t.deps, converter }, log: t.log, peers: new PeerRegistry(REFUSAL_CLOSE_CODES), guard: {} as never, sleep: () => new Promise(() => undefined) });
     const docs = [seedDoc('one'), seedDoc('two')];
     void persistence.onStoreDocument?.({ document: docs[0]!, documentName: PAGE } as never);
     void persistence.onStoreDocument?.({ document: docs[1]!, documentName: OTHER_PAGE } as never);

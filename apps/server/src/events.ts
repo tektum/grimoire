@@ -36,7 +36,7 @@ export interface InfoEvents {
 export interface WarnEvents {
   'server.local_mode_exposed': { host: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */
-  'server.test_facilities_active': { facilities: readonly ('slow-convert' | 'breaker-disabled')[] };
+  'server.test_facilities_active': { facilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[] };
   'http.handler_rejected': { errorName: string; method: RequestMethod; route: string; status: number };
   'console.error_output': { method: ConsoleMethod };
   'shutdown.hook_timeout': { hook: string; phase: ShutdownPhaseName; deadlineMs: number };

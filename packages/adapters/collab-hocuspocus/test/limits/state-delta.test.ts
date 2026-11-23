@@ -23,7 +23,7 @@ describe('near-cap check compares deltas', () => {
     for (const [name, cap, warnPercent] of [['near the cap', result, 100], ['past the warning', result + 10_000, 1]] as const) {
       const h = harness({ maxStateBytes: cap, stateWarnPercent: warnPercent });
       const doc = withState(h, base); const c = h.conn('s', doc);
-      await h.ext.connected?.({ documentName: A, socketId: 's', connection: c.connection } as never); // the document's size is recorded here, once per document
+      await h.open({ documentName: A, socketId: 's', connection: c.connection }); // the document's size is recorded here, once per document
       const encode = vi.mocked(Y.encodeStateAsUpdate);
       const apply = vi.mocked(Y.applyUpdate);
       encode.mockClear(); apply.mockClear();

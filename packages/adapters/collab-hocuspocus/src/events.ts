@@ -6,6 +6,8 @@ export interface CollabEvents {
   'collab.connected': { level: 'info'; fields: { pageId: string; accessLevel: 'read-write' | 'read-only' } };
   /** `detail`: a fixed string for a user-level refusal (`no-user`, `suspended`); a page refusal never carries one, so the log cannot tell a missing page from a forbidden one either. */
   'collab.refused': { level: 'warn'; fields: { code: string; detail?: RefusalDetail } };
+  /** An admission taken at arrival was dropped because its open never reached `connected` in time: the library ended the open without telling us. */
+  'collab.admission_expired': { level: 'warn'; fields: { pageId: string } };
   /** The verifier or the database could not answer: the client is told `try-again` and nobody is let in (R4.9). */
   'collab.auth_unavailable': { level: 'error'; fields: { source: 'verifier' | 'database' } };
   /** A connection whose context is not read-write had `readOnly` unset when a message arrived; the host set it before applying anything. A bug alarm. */
@@ -60,6 +62,7 @@ const LEVELS: { [E in keyof CollabEvents]: CollabEvents[E]['level'] } = {
   'server.stats': 'info',
   'collab.connected': 'info',
   'collab.refused': 'warn',
+  'collab.admission_expired': 'warn',
   'collab.auth_unavailable': 'error',
   'collab.read_only_mismatch': 'error',
   'collab.store_failed': 'error',

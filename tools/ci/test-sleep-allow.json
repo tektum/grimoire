@@ -168,5 +168,20 @@
     "file": "apps/server/test/collab/limits-rates.int.test.ts",
     "line": "if (i % 50 === 49) await sleep(Math.max(0, ((i + 1) / 10_000) * 2000 - (performance.now() - t0)));",
     "reason": "Paces the sender to a fixed message rate: the delay is the time left in the current rate window, a rate and not a wait for a condition."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/host/admission-order.test.ts",
+    "line": "await new Promise((resolve) => setTimeout(resolve, 900)); // well past the 250 ms refusal close",
+    "reason": "A negative check: the socket must NOT be closed after the product's real 250 ms refusal-close timer has had time to fire; nothing marks the timer's non-firing, so the test waits past it (a wrong close shows as a 4503 close in the recorded list)."
+  },
+  {
+    "file": "packages/adapters/collab-hocuspocus/test/host/admission-order.test.ts",
+    "line": "await new Promise((resolve) => setTimeout(resolve, 600));",
+    "reason": "A negative check: the socket must NOT be closed after the product's real 250 ms refusal-close timer has had time to fire; nothing marks the timer's non-firing, so the test waits past it (a wrong close shows as a 4503 close in the recorded list)."
+  },
+  {
+    "file": "apps/server/test/collab/review-claims.int.test.ts",
+    "line": "await new Promise((resolve) => setTimeout(resolve, 700)); // past the 250 ms refusal close, before the slow load ends",
+    "reason": "A negative check: the socket must NOT be closed after the product's real 250 ms refusal-close timer has had time to fire; nothing marks the timer's non-firing, so the test waits past it (a wrong close shows as a 4503 close in the recorded list)."
   }
 ]

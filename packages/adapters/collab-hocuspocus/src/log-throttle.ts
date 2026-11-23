@@ -28,6 +28,7 @@ const KEY_FIELD: Partial<Record<keyof CollabEvents, string | null>> = {
   'collab.recheck_skipped': null,
   'collab.token_sync_failed': 'reason',
   'collab.seed_failed': 'pageId',
+  'collab.admission_expired': 'pageId',
 };
 
 /** Lines let through before the counting starts, per event (default 1): a handful of users arriving together is information, a reconnect storm is not. */
