@@ -14,6 +14,7 @@ import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 import { createIssuer, KeyService, PROJECT_ID } from '../server/support/descope-double.js';
 import type { Issuer } from '../server/support/descope-double.js';
@@ -72,7 +73,7 @@ async function user(sub: string, role: string, extra = ''): Promise<string> {
 }
 async function page(collection = DEV_COLLECTION): Promise<string> {
   const id = randomUUID();
-  await sqlAdmin(DB, `insert into pages (id, collection_id) values ('${id}', '${collection}')`);
+  await insertPage((sql) => sqlAdmin(DB, sql), { id, collection_id: collection });
   return id;
 }
 const now = (): number => Math.floor(Date.now() / 1000);

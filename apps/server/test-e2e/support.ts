@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { eventually, originSocket, waitUntil } from '@tektum/grimoire-test-support/e2e';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import * as Y from 'yjs';
 
 const run = promisify(execFile);
@@ -196,7 +197,7 @@ export async function userIdOf(subject: string): Promise<string> {
 export async function newPage(): Promise<string> {
   const id = randomUUID();
   await ensureDevCollection();
-  await db.query('insert into pages (id, collection_id) values ($1, $2)', [id, DEV_COLLECTION]);
+  await insertPage((sql) => db.query(sql), { id, collection_id: DEV_COLLECTION });
   return id;
 }
 interface Row { ydoc: Uint8Array | null }

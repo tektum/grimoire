@@ -5,6 +5,7 @@ import path from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { databaseConformance } from '@tektum/grimoire-core/testing/database-conformance';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { createDatabase } from '../src/index.js';
 
 // Runs against the Compose PostgreSQL (`make db-up`). Dev-only credentials from the contracts file.
@@ -188,7 +189,7 @@ describe('database roles after migration', () => {
       }
       expect((await app.query("select to_regclass('kysely_migration') as r")).rows[0]?.r).toBe('kysely_migration'); // readiness check needs no table privilege
       const id = '11111111-1111-4111-8111-111111111111';
-      await app.query('insert into pages (id, ydoc) values ($1, $2)', [id, Buffer.from([1, 2, 3])]);
+      await insertPage((sql) => app.query(sql), { id, ydoc: Buffer.from([1, 2, 3]) });
       expect((await app.query('select ydoc, state_epoch from pages where id = $1', [id])).rows).toEqual([{ ydoc: Buffer.from([1, 2, 3]), state_epoch: 0 }]);
       await app.query('update pages set state_epoch = 1 where id = $1', [id]);
       expect((await app.query('delete from pages where id = $1', [id])).rowCount).toBe(1);

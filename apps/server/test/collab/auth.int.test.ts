@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, repoRoot, requireBuild, sqlAdmin, startServer } from '../server/support/harness.js';
 import type { ServerProcess } from '../server/support/harness.js';
 import { connect, eventually, newPage, seedPage, StallProxy, synced, wsUrl } from './support.js';
@@ -70,7 +71,7 @@ describe('local mode: dev tokens through provisioning and the database authorise
     const s = await start();
     await sqlAdmin(DB, "insert into collections (id, name, position, created_by) values ('00000000-0000-4000-8000-0000000000d9', 'Closed', 'b0', '00000000-0000-4000-8000-000000000001') on conflict do nothing");
     const hidden = newPage();
-    await sqlAdmin(DB, `insert into pages (id, collection_id) values ('${hidden}', '00000000-0000-4000-8000-0000000000d9')`);
+    await insertPage((sql) => sqlAdmin(DB, sql), { id: hidden, collection_id: '00000000-0000-4000-8000-0000000000d9' });
     const missing = await refusal(s, newPage(), tok('bob', 'member'));
     const forbidden = await refusal(s, hidden, tok('bob', 'member'));
     expect(missing.failures).toEqual(['not-found']);

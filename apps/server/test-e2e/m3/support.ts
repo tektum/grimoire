@@ -7,6 +7,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import * as Y from 'yjs';
 import { DEV_COLLECTION, ORIGIN, WS_URL, compose, eventually, newPage, originSocket, peer, repoRoot, storedText, closeDb, scenario, waitUntil } from '../support.ts';
 import type { Peer, T } from '../support.ts';
@@ -119,7 +120,7 @@ export async function createCollection(name: string, defaultPermission: 'read' |
 }
 export async function createPageIn(collection: string): Promise<string> {
   const id = randomUUID();
-  await psql(`insert into pages (id, collection_id) values ('${id}', '${collection}')`);
+  await insertPage(psql, { id, collection_id: collection });
   return id;
 }
 export async function grant(collection: string, sub: string, permission: 'read' | 'read_write'): Promise<void> {

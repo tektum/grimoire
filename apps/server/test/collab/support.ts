@@ -3,6 +3,7 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 
 import * as Y from 'yjs';
+import { insertPage } from '@tektum/grimoire-test-support/database';
 import { sqlAdmin } from '../server/support/harness.js';
 import { eventually } from '@tektum/grimoire-test-support';
 import type { Client } from '@tektum/grimoire-test-support';
@@ -27,7 +28,7 @@ export async function devFixtures(db: string): Promise<void> {
 /** A page in "Dev": since a page needs a collection the user can read (the earlier authorisation stub let anyone open any page). */
 export async function seedPage(db: string, id: string): Promise<void> {
   await devFixtures(db);
-  await sqlAdmin(db, `insert into pages (id, collection_id) values ('${id}', '${DEV_COLLECTION}')`);
+  await insertPage((sql) => sqlAdmin(db, sql), { id, collection_id: DEV_COLLECTION });
 }
 
 export interface Row { ydoc: Uint8Array | null; ydoc_size: number | null; updated_at: string }
