@@ -136,8 +136,8 @@ const scope = (files, imports, syntax, exempt = []) => [
 ];
 
 // apps/web: browser APIs live behind small modules, so each can be checked in one place (contracts section 4). Storage (`localStorage`,
-// `sessionStorage`, `indexedDB`, `document.cookie`) belongs to `src/storage` and `src/auth`; `fetch` to `src/api`, `src/auth` and `src/gate`
-// (the gate reads `config.json` and `GET /v1/config` before the client exists); `console` to `src/logging`.
+// `sessionStorage`, `indexedDB`, `document.cookie`) belongs to `src/storage` and `src/auth`; `fetch` to `src/api`, `src/auth`, `src/gate` and `src/config`
+// (the gate and the loader of `config.json` run before the client exists); `console` to `src/logging`.
 const webWindowObject = "/^(?:window|globalThis|self)$/";
 const webApis = {
   storage: {
@@ -184,7 +184,7 @@ const webBlock = (files, allowed, ignores = []) => {
     },
   };
 };
-const webAllowed = { storage: ["storage"], auth: ["storage", "fetch"], api: ["fetch"], gate: ["fetch"], logging: ["console"] };
+const webAllowed = { storage: ["storage"], auth: ["storage", "fetch"], api: ["fetch"], gate: ["fetch"], config: ["fetch"], logging: ["console"] };
 const webBrowserApiRules = [
   webBlock(["apps/web/src/**"], [], Object.keys(webAllowed).map((d) => `apps/web/src/${d}/**`)),
   ...Object.entries(webAllowed).map(([dir, allowed]) => webBlock([`apps/web/src/${dir}/**`], allowed)),

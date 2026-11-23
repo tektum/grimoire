@@ -30,7 +30,7 @@ const rules: { api: string; code: string[]; allowed: string[]; refused: string[]
   {
     api: 'fetch',
     code: ["void fetch('/v1/me');", "void window.fetch('/v1/me');", "void globalThis['fetch']('/v1/me');"],
-    allowed: ['api', 'auth', 'gate'],
+    allowed: ['api', 'auth', 'gate', 'config'],
     refused: ['ui', 'storage', 'logging', 'screens/login'],
   },
   { api: 'console', code: ["console.log('x');", "window.console.warn('x');"], allowed: ['logging'], refused: ['ui', 'api', 'auth', 'gate', 'storage'] },
