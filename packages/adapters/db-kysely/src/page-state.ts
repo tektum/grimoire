@@ -10,10 +10,6 @@ export function createPageState(db: KyselyDatabase): PageStateRepo {
   return {
     reset({ pageId, actorId, content, confirmStale }) {
       return db.transaction(async (tx): Promise<ResetResult> => {
-        // The actor is checked again under a lock that a demotion or a suspension (which takes the row for update) waits for: the right to reset is
-        // bound to the commit, not to the moment the request was admitted.
-        const actor = await tx.query(`select 1 from users where id = $1 and role = 'admin' and suspended_at is null for share`, [actorId]);
-        if (actor.length === 0) return { kind: 'not-admin' };
         const rows = await tx.query<Locked>(
           // A page with a state and no Markdown counts as stale: dropping its state would leave nothing to rebuild it from.
           `select p.title, p.state_epoch, (p.markdown_stale_since is not null or (p.markdown is null and p.ydoc is not null)) as stale from pages p
@@ -22,6 +18,10 @@ export function createPageState(db: KyselyDatabase): PageStateRepo {
         );
         const page = rows[0];
         if (page === undefined) return { kind: 'not-found' };
+        // The actor is checked again, after the page is locked (the order every path uses: pages, then users, so no cycle with a save or a demotion), under a
+        // lock that a demotion or a suspension waits for: the right to reset is bound to the commit, not to the moment the request was admitted.
+        const actor = await tx.query(`select 1 from users where id = $1 and role = 'admin' and suspended_at is null for share`, [actorId]);
+        if (actor.length === 0) return { kind: 'not-admin' };
         // Supplied Markdown replaces the old text, so what was older no longer matters; a kept one that is older than the state is lost work.
         const markdownStale = content === undefined && page.stale;
         if (markdownStale && !confirmStale) return { kind: 'stale-unconfirmed' };
