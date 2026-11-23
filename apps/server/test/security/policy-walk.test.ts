@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_STATUS } from '../../src/http/error.js';
 import { buildDocument } from '../../src/openapi/emit.js';
 import type { Operation } from './document.js';
-import { exampleBody, operations, operationsOf, withoutPolicy } from './document.js';
+import { bodyFields, exampleBody, operations, operationsOf, policyText, withoutPolicy } from './document.js';
 import { EXPECTED_OPERATIONS } from './expected-operations.js';
 import { bodyHints, buildWorld, pathFor } from './world.js';
 import type { Who, WorldBuilt } from './world.js';
@@ -16,8 +16,8 @@ const ops = operations();
 const KINDS = new Set(['public', 'authenticated', 'admin', 'collection', 'collection-body', 'page', 'page-body', 'attachment', 'uploader', 'import', 'trash']);
 
 describe('the document and its policies', () => {
-  it('has exactly the operations of the list in expected-operations.ts', () => {
-    expect(ops.map((o) => o.key)).toEqual([...EXPECTED_OPERATIONS].sort());
+  it('has exactly the operations of the list in expected-operations.ts, each with the policy the list gives it (a route moved to a weaker policy fails here)', () => {
+    expect(ops.map((o) => [o.key, policyText(o.policy)])).toEqual([...EXPECTED_OPERATIONS].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
   });
 
   it('gives every operation a policy of a known kind', () => {
@@ -110,6 +110,18 @@ describe.each(ops.filter((o) => o.policy.kind !== 'public'))('$key', (op) => {
       }
     }
   }, 30_000);
+});
+
+/** A body that names a collection to put a page in (the destination of a move) is checked against that collection too, whatever the policy of the route says about the page. */
+describe.each(ops.filter((o) => bodyFields(o).includes('collectionId') && o.policy.kind !== 'collection-body'))('$key, with a destination collection', (op) => {
+  it('is 404 for a member when the destination is a collection the member cannot read, and changes nothing', async () => {
+    const w = await buildWorld();
+    const body = { ...(exampleBody(op.bodySchema as never, bodyHints(w)) as object), collectionId: w.ids.closedCollection };
+    const before = JSON.stringify(w.pages.stored(w.ids.page));
+    const res = await seen(await w.call('member', op.method, pathFor(op, w), body), `${op.key} into the closed collection`);
+    expect([res.status, await codeOf(res)]).toEqual([404, 'not_found']);
+    expect(JSON.stringify(w.pages.stored(w.ids.page))).toBe(before);
+  });
 });
 
 describe('GET /v1/config, the one public operation', () => {

@@ -70,6 +70,12 @@ export function operationsOf(document: object): Operation[] {
 export const document = (): RawDocument => buildDocument() as RawDocument;
 export const operations = (): Operation[] => operationsOf(buildDocument());
 
+/** A policy written as in `docs/api-surface.txt`: its kind, then its other fields in the order of their names (`collection:admin:id`). */
+export function policyText(policy: Policy): string {
+  const fields = policy as unknown as Record<string, unknown>;
+  return [String(fields['kind']), ...Object.keys(fields).filter((k) => k !== 'kind').sort().map((k) => String(fields[k]))].join(':');
+}
+
 /** The operations that do not carry a policy (the factory refuses to build such a document, so this is what a bypass would leave). */
 export const withoutPolicy = (ops: readonly Operation[]): string[] => ops.filter((o) => o.policy === undefined || typeof (o.policy as { kind?: unknown }).kind !== 'string').map((o) => o.key);
 
