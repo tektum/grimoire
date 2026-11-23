@@ -47,7 +47,7 @@ const envRules = [
 ];
 
 // Server-only libraries: never in the browser client or the shared libraries (R11.1).
-const serverOnlyModules = ["hono", "@hono", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible"];
+const serverOnlyModules = ["hono", "@hono", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible", "@aws-sdk"];
 const serverOnlyPatterns = serverOnlyModules.flatMap((m) => [m, `${m}/*`]);
 const serverOnlyMessage = "Server-only library: not allowed here; the browser client and shared libraries stay provider-free (R11.1).";
 const adapterPackage = (name) => `@tektum/grimoire-adapter-${name}`;
@@ -68,7 +68,7 @@ const dynamicImportRules = dynamicRulesFor(forbiddenSourceRegex, importMessage);
 const serverOnlyRegex = `^(?:${serverOnlyModules.map(escapeRegex).join("|")})(?:$|[^\\w-])`;
 const appsRegex = "^@tektum\\/grimoire-(?:server|web)(?:$|\\/)";
 const allAdaptersRegex = "^@tektum\\/grimoire-adapter-";
-const adapterNames = ["auth-descope", "auth-dev", "auth-fake", "collab-hocuspocus", "config-env", "db-kysely", "logger-json", "markdown-milkdown", "jobs-pgboss"];
+const adapterNames = ["auth-descope", "auth-dev", "auth-fake", "collab-hocuspocus", "config-env", "db-kysely", "logger-json", "markdown-milkdown", "jobs-pgboss", "files-s3"];
 
 // Packages whose imports are restricted the same way: no adapters, no apps, no server-only libraries.
 const noAdaptersNoServerOnly = (message) => ({

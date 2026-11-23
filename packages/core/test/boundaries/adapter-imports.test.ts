@@ -18,7 +18,7 @@ const oneError = (rule = "no-restricted-imports") => [rule];
 
 // The adapter list of eslint.config.js itself, so that a new adapter is covered without editing this file.
 const adapters = JSON.parse(/const adapterNames = (\[[^\]]*\]);/.exec(readFileSync(path.join(repoRoot, "eslint.config.js"), "utf8"))?.[1] ?? "[]") as string[];
-const serverOnly = ["hono", "@hono/node-server", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible"];
+const serverOnly = ["hono", "@hono/node-server", "@hocuspocus/server", "kysely", "pg", "pino", "pg-boss", "crossws", "rate-limiter-flexible", "@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner"];
 
 describe("adapter packages", () => {
   it("covers every adapter that eslint.config.js restricts", () => {

@@ -9,7 +9,7 @@ const expectedNames = [
   "@tektum/grimoire-editor-schema",
   "@tektum/grimoire-api-client",
   "@tektum/grimoire-web",
-  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss"].map(
+  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss", "files-s3"].map(
 
     (a) => `@tektum/grimoire-adapter-${a}`,
   ),
@@ -163,5 +163,26 @@ describe("test:conformance script", () => {
     expect(script).toContain("--passWithNoTests");
     expect(script).toContain("--project unit");
     expect(script).not.toMatch(/container|benchmark/);
+  });
+});
+
+describe("file storage dependencies", () => {
+  // Versions are not repeated here: Renovate bumps the manifest and the lockfile, and this checks they agree.
+  const expected: [string, string][] = [
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/client-s3"],
+    ["packages/adapters/files-s3/package.json", "@aws-sdk/s3-request-presigner"],
+    ["packages/adapters/files-s3/package.json", "content-disposition"],
+    ["apps/server/package.json", "file-type"],
+    ["package.json", "@playwright/test"],
+  ];
+  const lock = readFileSync(path.join(repoRoot, "bun.lock"), "utf8");
+
+  it("declares each package in the one manifest that owns it, and the lockfile resolves it to the declared version", () => {
+    for (const [file, name] of expected) {
+      const manifest = JSON.parse(readFileSync(path.join(repoRoot, file), "utf8")) as Manifest;
+      const version = declared(manifest).find(([, n]) => n === name)?.[2];
+      expect(version, `${file} declares ${name}`).toBeDefined();
+      expect(lock, `${name}@${version} in bun.lock`).toContain(`"${name}": ["${name}@${version}"`);
+    }
   });
 });
