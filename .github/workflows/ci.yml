@@ -338,6 +338,9 @@ jobs:
           path: vitest-blobs
       - name: Check the floors on the merged coverage
         run: bun run test:coverage:merged
+      - name: Check that every floor matched files of the merged report, all under this workspace
+        if: ${{ !cancelled() }}
+        run: node tools/ci/check-floor-matches.mjs coverage/merged/coverage-summary.json
       - name: Coverage per package
         if: ${{ !cancelled() }}
         run: node tools/ci/coverage-summary.mjs coverage/merged/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
