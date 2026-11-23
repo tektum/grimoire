@@ -6,8 +6,13 @@ const DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 function middle(a: string, b: string | null): string {
   if (b !== null) {
     let shared = 0;
-    while ((a[shared] ?? '0') === b[shared]) shared += 1;
+    while (shared < a.length && a[shared] === b[shared]) shared += 1;
     if (shared > 0) return b.slice(0, shared) + middle(a.slice(shared), b.slice(shared));
+  }
+  if (a === '' && b !== null && b[0] === '0') {
+    // Nothing is below a lone "0"; below "0" followed by zeros the key "0" itself fits; otherwise keep the leading "0" and go below the rest.
+    if (/^0+$/.test(b)) return b.length > 1 ? '0' : '0V'; // "0V" is above "0": the caller's check refuses it
+    return '0' + middle('', b.slice(1));
   }
   const low = a === '' ? 0 : DIGITS.indexOf(a[0] as string);
   const high = b === null ? DIGITS.length : DIGITS.indexOf(b[0] as string);

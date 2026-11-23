@@ -29,6 +29,21 @@ describe('FakeOrdering', () => {
     expect(order.between('a', 'a1')).toSatisfy((k: string) => k > 'a' && k < 'a1');
   });
 
+  it('finds a key between hand-written neighbours that end in zeros', () => {
+    for (const [low, high] of [['a', 'a00'], ['a0', 'a000'], ['a00', 'a1'], ['a', 'a001']] as const) {
+      expect(order.between(low, high), `${low} ${high}`).toSatisfy((k: string) => k > low && k < high);
+    }
+  });
+
+  it('keeps room at the front after many inserts before the first key', () => {
+    let first = order.between(null, null);
+    for (let i = 0; i < 200; i += 1) {
+      const next = order.between(null, first);
+      expect(next < first, String(i)).toBe(true);
+      first = next;
+    }
+  });
+
   it('keeps a list strictly sorted through many inserts at a fixed place and at random places', () => {
     let seed = 7;
     const random = (n: number): number => { seed = (seed * 48271) % 2147483647; return seed % n; };
