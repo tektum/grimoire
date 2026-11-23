@@ -1,7 +1,7 @@
 import type { Generated, Selectable } from 'kysely';
 
 /**
- * Hand-written shape of the tables of migrations 0001 to 0004. `test/schema.int.test.ts` compares it with the migrated database:
+ * Hand-written shape of the tables of migrations 0001 to 0005. `test/schema.int.test.ts` compares it with the migrated database:
  * a declared table or column that is missing, a different nullability, or a database column that is not declared fails the test.
  */
 export interface PagesTable {
@@ -78,6 +78,82 @@ export interface CollectionAccessTable {
   created_at: Generated<Date>;
 }
 
+export interface RevisionsTable {
+  id: Generated<string>;
+  page_id: string;
+  title: string;
+  markdown: string;
+  markdown_hash: Buffer;
+  author_ids: Generated<string[]>;
+  last_author_id: string | null;
+  reason: 'idle' | 'last_editor_left' | 'before_restore' | 'manual' | 'import';
+  created_at: Date;
+}
+
+export interface AttachmentsTable {
+  id: Generated<string>;
+  page_id: string;
+  uploader_id: string | null;
+  file_name: string;
+  content_type: string;
+  size: string;
+  s3_key: string;
+  status: 'pending' | 'ready';
+  expires_at: Date | null;
+  created_at: Generated<Date>;
+  ready_at: Date | null;
+  deleted_at: Date | null;
+}
+
+export interface ImportsTable {
+  id: Generated<string>;
+  created_by: string | null;
+  target_collection_id: string;
+  source: 'notion_md_csv' | 'markdown_zip';
+  status: Generated<'created' | 'uploaded' | 'running' | 'done' | 'failed' | 'cancelled'>;
+  s3_key: string | null;
+  bytes: string | null;
+  counts: unknown;
+  error: string | null;
+  created_at: Generated<Date>;
+  started_at: Date | null;
+  finished_at: Date | null;
+}
+
+export interface ImportItemsTable {
+  id: Generated<string>;
+  import_id: string;
+  path: string;
+  kind: 'page' | 'attachment' | 'database_csv' | 'other';
+  page_id: string | null;
+  url_id: string | null;
+  status: Generated<'pending' | 'ok' | 'skipped' | 'failed'>;
+  message: string | null;
+  markdown_bytes: number | null;
+  state_bytes: number | null;
+  attempts: Generated<number>;
+  detail: unknown;
+}
+
+export interface AuditEventsTable {
+  id: Generated<string>;
+  actor_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  detail: unknown;
+  created_at: Generated<Date>;
+}
+
+export interface IdempotencyKeysTable {
+  user_id: string;
+  key: string;
+  request_hash: Buffer;
+  status: number | null;
+  response: unknown;
+  created_at: Generated<Date>;
+}
+
 export interface GrimoireTables {
   pages: PagesTable;
   users: UsersTable;
@@ -85,6 +161,12 @@ export interface GrimoireTables {
   group_members: GroupMembersTable;
   collections: CollectionsTable;
   collection_access: CollectionAccessTable;
+  revisions: RevisionsTable;
+  attachments: AttachmentsTable;
+  imports: ImportsTable;
+  import_items: ImportItemsTable;
+  audit_events: AuditEventsTable;
+  idempotency_keys: IdempotencyKeysTable;
 }
 
 type Nullability<T> = { [K in keyof Selectable<T>]-?: null extends Selectable<T>[K] ? 'nullable' : 'required' };
@@ -112,5 +194,28 @@ export const declaredColumns = {
   },
   collection_access: {
     id: 'required', collection_id: 'required', user_id: 'nullable', group_id: 'nullable', permission: 'required', created_at: 'required',
+  },
+  revisions: {
+    id: 'required', page_id: 'required', title: 'required', markdown: 'required', markdown_hash: 'required', author_ids: 'required',
+    last_author_id: 'nullable', reason: 'required', created_at: 'required',
+  },
+  attachments: {
+    id: 'required', page_id: 'required', uploader_id: 'nullable', file_name: 'required', content_type: 'required', size: 'required',
+    s3_key: 'required', status: 'required', expires_at: 'nullable', created_at: 'required', ready_at: 'nullable', deleted_at: 'nullable',
+  },
+  imports: {
+    id: 'required', created_by: 'nullable', target_collection_id: 'required', source: 'required', status: 'required', s3_key: 'nullable',
+    bytes: 'nullable', counts: 'nullable', error: 'nullable', created_at: 'required', started_at: 'nullable', finished_at: 'nullable',
+  },
+  import_items: {
+    id: 'required', import_id: 'required', path: 'required', kind: 'required', page_id: 'nullable', url_id: 'nullable', status: 'required',
+    message: 'nullable', markdown_bytes: 'nullable', state_bytes: 'nullable', attempts: 'required', detail: 'nullable',
+  },
+  audit_events: {
+    id: 'required', actor_id: 'nullable', action: 'required', target_type: 'nullable', target_id: 'nullable', detail: 'nullable',
+    created_at: 'required',
+  },
+  idempotency_keys: {
+    user_id: 'required', key: 'required', request_hash: 'required', status: 'nullable', response: 'nullable', created_at: 'required',
   },
 } as const satisfies { [T in keyof GrimoireTables]: Nullability<GrimoireTables[T]> };

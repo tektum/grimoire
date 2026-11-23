@@ -45,3 +45,76 @@ describe('declared tables match the migrated database', () => {
     expect(sorted(actual)).toEqual(sorted(declaredColumns));
   });
 });
+
+describe('migration 0005 tables: grants of the runtime role', () => {
+  const privileges = async (table: string): Promise<string[]> => {
+    const rows = await db.query<{ privilege: string; granted: boolean }>(
+      `select p as privilege, has_table_privilege('grimoire_app', $1, p) as granted
+         from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) as p`,
+      [table],
+    );
+    return rows.filter((r) => r.granted).map((r) => r.privilege);
+  };
+
+  it.each([
+    ['revisions', ['SELECT', 'INSERT']],
+    ['audit_events', ['SELECT', 'INSERT']],
+    ['attachments', ['SELECT', 'INSERT', 'UPDATE', 'DELETE']],
+    ['idempotency_keys', ['SELECT', 'INSERT', 'UPDATE', 'DELETE']],
+    ['imports', ['SELECT', 'INSERT', 'UPDATE']],
+    ['import_items', ['SELECT', 'INSERT', 'UPDATE']],
+  ])('%s grants exactly %j', async (table, expected) => {
+    expect((await privileges(table)).sort()).toEqual([...expected].sort());
+  });
+
+  it('grants usage and select on the two new sequences', async () => {
+    for (const sequence of ['audit_events_id_seq', 'import_items_id_seq']) {
+      const [row] = await db.query<{ usage: boolean; sel: boolean; upd: boolean }>(
+        `select has_sequence_privilege('grimoire_app', $1, 'USAGE') as usage, has_sequence_privilege('grimoire_app', $1, 'SELECT') as sel,
+                has_sequence_privilege('grimoire_app', $1, 'UPDATE') as upd`,
+        [sequence],
+      );
+      expect(row).toEqual({ usage: true, sel: true, upd: false });
+    }
+  });
+});
+
+describe('migration 0005 tables: constraints and delete behaviour', () => {
+  const insertPage = async (): Promise<string> => (await db.query<{ id: string }>('insert into pages default values returning id'))[0]!.id;
+  const hash = "decode(repeat('ab', 32), 'hex')";
+
+  it('rejects a revision with a short hash or an unknown reason', async () => {
+    const page = await insertPage();
+    await expect(db.query(`insert into revisions (page_id, title, markdown, markdown_hash, reason, created_at) values ($1, 't', 'm', decode('ab', 'hex'), 'idle', now())`, [page])).rejects.toThrow();
+    await expect(db.query(`insert into revisions (page_id, title, markdown, markdown_hash, reason, created_at) values ($1, 't', 'm', ${hash}, 'nope', now())`, [page])).rejects.toThrow();
+  });
+
+  it('deletes revisions and attachment rows with their page', async () => {
+    const page = await insertPage();
+    await db.query(`insert into revisions (page_id, title, markdown, markdown_hash, reason, created_at) values ($1, 't', 'm', ${hash}, 'manual', now())`, [page]);
+    await db.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'a.png', 'image/png', 1, 'k', 'pending')`, [page]);
+    await db.query('delete from pages where id = $1', [page]);
+    expect(await db.query('select 1 from revisions where page_id = $1', [page])).toEqual([]);
+    expect(await db.query('select 1 from attachments where page_id = $1', [page])).toEqual([]);
+  });
+
+  it('rejects an attachment of size 0 or an unknown status', async () => {
+    const page = await insertPage();
+    await expect(db.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'a', 'b', 0, 'k', 'ready')`, [page])).rejects.toThrow();
+    await expect(db.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'a', 'b', 1, 'k', 'done')`, [page])).rejects.toThrow();
+  });
+
+  it('restricts the removal of a collection that an import targets, and cascades import items', async () => {
+    const [collection] = await db.query<{ id: string }>(`insert into collections (name, position, created_by) values ('c', 'a1', '00000000-0000-4000-8000-000000000001') returning id`);
+    const [imp] = await db.query<{ id: string }>(`insert into imports (target_collection_id, source) values ($1, 'markdown_zip') returning id`, [collection!.id]);
+    await db.query(`insert into import_items (import_id, path, kind) values ($1, 'a.md', 'page')`, [imp!.id]);
+    await expect(db.query(`insert into import_items (import_id, path, kind) values ($1, 'a.md', 'page')`, [imp!.id])).rejects.toThrow(/unique/);
+    await expect(db.query('delete from collections where id = $1', [collection!.id])).rejects.toThrow(/foreign key/);
+    await db.query('delete from imports where id = $1', [imp!.id]);
+    expect(await db.query('select 1 from import_items where import_id = $1', [imp!.id])).toEqual([]);
+  });
+
+  it('keeps audit events without a foreign key on the actor', async () => {
+    await db.query(`insert into audit_events (actor_id, action) values (gen_random_uuid(), 'test')`);
+  });
+});

@@ -70,7 +70,7 @@ describe('migration 0004 (permissions)', () => {
 
   it('on an empty database the full chain applies', async () => {
     expect((await migrate(EMPTY)).code).toBe(0);
-    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0004_permissions' }]);
+    expect(await sqlAdmin(EMPTY, "select name from kysely_migration order by name desc limit 1")).toEqual([{ name: '0005_history_files_imports_audit' }]);
     const tables = await sqlAdmin<{ table_name: string }>(EMPTY, "select table_name from information_schema.tables where table_schema = 'public'");
     expect(tables.map((t) => t.table_name)).toEqual(expect.arrayContaining(TABLES));
   });
