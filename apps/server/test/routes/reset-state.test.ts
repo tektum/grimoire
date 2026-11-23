@@ -35,6 +35,10 @@ function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c)
   const pages = new FakePageRepo(world);
   const page = pages.seed({ collectionId: open.id, title: 'Doc', markdown: 'old text' });
   const hidden = pages.seed({ collectionId: closed.id, title: 'Secret', markdown: 'secret' });
+  // Two pages the access check knows and one repository does not: a page that was removed after the access check.
+  const ghost = '00000000-0000-4000-8000-000000000999';
+  world.pages.push({ id: ghost, collectionId: open.id, deleted: false, epoch: 0 });
+  const untracked = pages.seed({ collectionId: open.id, title: 'Untracked', markdown: 'm' }).id;
   const pageState = new FakePageStateRepo();
   pageState.track(page.id, { markdown: 'old text', epoch: 4 });
   pageState.track(hidden.id, { markdown: 'secret', epoch: 0 });
@@ -54,7 +58,7 @@ function build(wrap: (c: FakeMarkdownConverter) => MarkdownConverter = (c) => c)
       headers: { ...(who === undefined ? {} : { authorization: `Bearer ${who}` }), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-  return { call, page, hidden, pageState, fake, adminId: rows[0]?.id as string };
+  return { call, page, hidden, pageState, fake, ghost, untracked, adminId: rows[0]?.id as string };
 }
 
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
@@ -76,6 +80,16 @@ describe('POST /v1/pages/{id}/reset-state: who may call', () => {
     const sixth = await call('admin', page.id);
     expect(sixth.status).toBe(429);
     expect(Number(sixth.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+});
+
+describe('a page that goes away between the checks', () => {
+  it('is 404 when the page repository no longer has it, and when the state repository no longer has it', async () => {
+    const { call, ghost, untracked, pageState, fake } = build();
+    expect(await code(await call('admin', ghost))).toBe('not_found');
+    expect(await code(await call('admin', untracked))).toBe('not_found');
+    expect(pageState.audit).toEqual([]);
+    expect(fake.seedCalls).toEqual([]);
   });
 });
 

@@ -35,7 +35,7 @@ router.openapi(resetPageState, async (c) => {
   await guardPage(c, id, 'read');
   requireAdmin(c);
   const admin = caller(c);
-  const body = c.req.valid('json') ?? {};
+  const body = c.req.valid('json');
   const { converter, pages, pageState } = c.get('deps');
   const page = await pages.get(id);
   if (page === undefined) return fail('not_found');
