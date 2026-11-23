@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
@@ -11,6 +10,7 @@ import { FakeIdempotencyStore } from '@tektum/grimoire-core/testing/fake-idempot
 import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { createApp } from '../../src/app.js';
+import { buildDocument } from '../../src/openapi/emit.js';
 import { makeContext } from '../server/support/context.js';
 
 const id = (n: number) => `00000000-0000-4000-8000-0000000003${String(n).padStart(2, '0')}`;
@@ -99,7 +99,7 @@ describe('GET /v1/users', () => {
 
 describe('PATCH /v1/users/{id}', () => {
   it('publishes that a change needs at least one property', async () => {
-    const doc = JSON.parse(readFileSync(new URL('../../../../packages/api-client/openapi.json', import.meta.url), 'utf8')) as { components: { schemas: { PatchUser: { minProperties?: number } } } };
+    const doc = buildDocument() as { components: { schemas: { PatchUser: { minProperties?: number } } } };
     expect(doc.components.schemas.PatchUser.minProperties).toBe(1);
   });
 
@@ -178,9 +178,7 @@ describe('every route with the admin policy', () => {
   };
 
   it('is listed in the table, and answers a member and a viewer 403', async () => {
-    const doc = JSON.parse(readFileSync(new URL('../../../../packages/api-client/openapi.json', import.meta.url), 'utf8')) as {
-      paths: Record<string, Record<string, { 'x-grimoire-policy'?: { kind: string } }>>;
-    };
+    const doc = buildDocument() as { paths: Record<string, Record<string, { 'x-grimoire-policy'?: { kind: string } }>> };
     const admin: string[] = [];
     for (const [path, ops] of Object.entries(doc.paths)) {
       for (const [method, op] of Object.entries(ops)) if (op['x-grimoire-policy']?.kind === 'admin') admin.push(`${method.toUpperCase()} ${path}`);
