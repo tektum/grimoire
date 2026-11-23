@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eventually } from '@tektum/grimoire-test-support/harness';
 import { createAdmin } from '../../src/admin.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
@@ -9,7 +10,9 @@ afterAll(async () => { await t?.drop(); });
 
 const events = async (action: string) =>
   t.admin.query<{ actor_id: string; target_id: string; detail: Record<string, unknown> | null }>(`select actor_id, target_id, detail from audit_events where action = $1`, [action]);
-const reset = async () => { await t.admin.query(`delete from audit_events`); await t.admin.query(`delete from users`); };
+/** The migration's own user stays (collections refer to it); it is a viewer, so it never counts as an administrator. */
+const SYSTEM_USER = '00000000-0000-4000-8000-000000000001';
+const reset = async () => { await t.admin.query(`delete from audit_events`); await t.admin.query(`delete from users where id <> $1`, [SYSTEM_USER]); };
 
 describe('the PostgreSQL AdminRepo: users', () => {
   it('lists in email order by keyset and filters by a part of the name or the email, ignoring case and wildcards', async () => {
@@ -19,7 +22,7 @@ describe('the PostgreSQL AdminRepo: users', () => {
     const page = await repo.listUsers({ limit: 2 });
     expect(page.map((u) => u.name)).toEqual(['ann', 'Bea']);
     const next = await repo.listUsers({ limit: 2, after: [page[1]?.email as string, page[1]?.id as string] });
-    expect(next.map((u) => u.id)).toEqual([ids[2]]);
+    expect(next.map((u) => u.id).filter((i) => i !== SYSTEM_USER)).toEqual([ids[2]]);
     expect((await repo.listUsers({ limit: 10, q: 'BEA' })).map((u) => u.name)).toEqual(['Bea']);
     expect((await repo.listUsers({ limit: 10, q: '_' })).map((u) => u.name)).toEqual(['cy_x']);
     expect(await repo.listUsers({ limit: 10, q: '%' })).toEqual([]);
@@ -48,7 +51,23 @@ describe('the PostgreSQL AdminRepo: users', () => {
     const a = await addUser(t.app, 'a1', 'admin');
     const b = await addUser(t.app, 'a2', 'admin');
     const repo = createAdmin(t.app);
-    const results = await Promise.all([repo.patchUser(a, { role: 'member' }, b), repo.patchUser(b, { role: 'member' }, a)]);
+    // Hold the administrator rows in a transaction of our own, start both changes, and release only when both are waiting on that lock:
+    // the two changes overlap by construction, whatever the scheduler does.
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let held = (): void => undefined;
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    const holder = t.admin.transaction(async (tx) => {
+      await tx.query(`select id from users where role = 'admin' for update`);
+      held();
+      await gate;
+    });
+    await locked;
+    const both = Promise.all([repo.patchUser(a, { role: 'member' }, b), repo.patchUser(b, { role: 'member' }, a)]);
+    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks where not granted`))[0]?.n ?? 0) >= 2, 10_000, 'both changes waiting on the administrator rows');
+    release();
+    await holder;
+    const results = await both;
     expect(results.map((r) => r.kind).sort()).toEqual(['last-admin', 'saved']);
     expect(await t.admin.query(`select 1 from users where role = 'admin' and suspended_at is null`)).toHaveLength(1);
   });

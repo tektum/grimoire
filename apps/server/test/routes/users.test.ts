@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
@@ -83,10 +84,25 @@ describe('GET /v1/users', () => {
   it('refuses a cursor that is not one of its own', async () => {
     const { call } = build();
     expect((await call('admin', 'GET', '/v1/users?cursor=bm90')).status).toBe(422);
+    const forged = (keys: unknown[]) => Buffer.from(JSON.stringify({ l: 'users', k: keys }), 'utf8').toString('base64url');
+    for (const keys of [['a@x', 1, ''], ['a@x', 'not-a-uuid', ''], [7, id(1), '']]) expect((await call('admin', 'GET', `/v1/users?cursor=${forged(keys)}`)).status, JSON.stringify(keys)).toBe(422);
+  });
+
+  it('refuses a cursor used with another search than the one that issued it', async () => {
+    const { call } = build();
+    const first = await list(await call('admin', 'GET', '/v1/users?limit=1&q=example'));
+    expect(first.nextCursor).not.toBeNull();
+    for (const query of ['q=amy', '']) expect((await call('admin', 'GET', `/v1/users?limit=1&${query}&cursor=${first.nextCursor as string}`)).status).toBe(422);
+    expect((await call('admin', 'GET', `/v1/users?limit=1&q=example&cursor=${first.nextCursor as string}`)).status).toBe(200);
   });
 });
 
 describe('PATCH /v1/users/{id}', () => {
+  it('publishes that a change needs at least one property', async () => {
+    const doc = JSON.parse(readFileSync(new URL('../../../../packages/api-client/openapi.json', import.meta.url), 'utf8')) as { components: { schemas: { PatchUser: { minProperties?: number } } } };
+    expect(doc.components.schemas.PatchUser.minProperties).toBe(1);
+  });
+
   it('404 for an unknown user, 422 for a role outside the three and for an empty change', async () => {
     const { call } = build();
     expect(await code(await call('admin', 'PATCH', `/v1/users/${NIL}`, { role: 'viewer' }))).toBe('not_found');

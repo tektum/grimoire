@@ -17,7 +17,7 @@ const PatchBody = z
   .object({ role: Role.optional(), suspended: z.boolean().optional() })
   .strict()
   .refine((b) => b.role !== undefined || b.suspended !== undefined)
-  .openapi('PatchUser');
+  .openapi('PatchUser', { minProperties: 1 });
 const NamesBody = z.object({ ids: z.array(z.string().uuid()).min(1).max(50) }).strict().openapi('UserNamesRequest');
 const NamesSchema = z.object({ items: z.array(z.object({ id: z.string().uuid(), name: z.string() })) }).openapi('UserNames');
 
@@ -49,9 +49,11 @@ const requireAdmin = (c: Parameters<typeof caller>[0]): void => {
 router.openapi(listUsers, async (c) => {
   requireAdmin(c);
   const { limit, cursor, q } = c.req.valid('query');
-  const keys = decodeCursor('users', cursor, 2);
-  const rows = await c.get('deps').admin.listUsers({ limit: limit + 1, ...(q === undefined ? {} : { q }), ...(keys === undefined ? {} : { after: [String(keys[0]), String(keys[1])] as const }) });
-  return c.json(toPage('users', rows, limit, (u) => [u.email, u.id]), 200);
+  const keys = decodeCursor('users', cursor, 3);
+  // A cursor belongs to the search it came from: another `q` would skip rows, and a hand-made key must not reach the database cast.
+  if (keys !== undefined && (typeof keys[0] !== 'string' || !z.string().uuid().safeParse(keys[1]).success || keys[2] !== (q ?? ''))) return fail('invalid');
+  const rows = await c.get('deps').admin.listUsers({ limit: limit + 1, ...(q === undefined ? {} : { q }), ...(keys === undefined ? {} : { after: [keys[0] as string, keys[1] as string] as const }) });
+  return c.json(toPage('users', rows, limit, (u) => [u.email, u.id, q ?? '']), 200);
 });
 
 router.openapi(patchUser, async (c) => {
