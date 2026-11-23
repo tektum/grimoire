@@ -47,7 +47,9 @@ router.openapi(listRevisions, async (c) => {
   // A hand-made key must not reach the database cast.
   if (keys !== undefined && (!Number.isSafeInteger(keys[0]) || !z.string().uuid().safeParse(keys[1]).success)) return fail('invalid');
   const rows = await c.get('deps').revisions.list(id, { limit: limit + 1, ...(keys === undefined ? {} : { after: [keys[0] as number, keys[1] as string] as const }) });
-  return c.json(toPage('revisions', rows, limit, (r) => [r.createdAt, r.id]) as { items: typeof rows[number][]; nextCursor: string | null }, 200);
+  const page = toPage('revisions', rows, limit, (r) => [r.sortKey, r.id]);
+  // The sort position is for the cursor only: the answer carries the summary.
+  return c.json({ items: page.items.map((r) => ({ id: r.id, createdAt: r.createdAt, title: r.title, lastAuthor: r.lastAuthor, authors: r.authors, reason: r.reason })), nextCursor: page.nextCursor }, 200);
 });
 
 router.openapi(getRevision, async (c) => {

@@ -21,17 +21,22 @@ export interface Revision extends RevisionSummary {
   readonly markdown: string;
 }
 
+/** A listed revision with the exact sort position the next page starts after: whole microseconds since the epoch, however fine the stored time is. */
+export interface ListedRevision extends RevisionSummary {
+  readonly sortKey: number;
+}
+
 export interface RevisionListQuery {
   /** At most this many, newest first. */
   readonly limit: number;
-  /** The `[createdAt, id]` of the last row of the previous page. */
+  /** The `[sortKey, id]` of the last row of the previous page. */
   readonly after?: readonly [number, string] | undefined;
 }
 
 /** The history of pages. The runtime role can insert and read revisions, never change or remove one (R9.5). */
 export interface RevisionRepo {
   /** The revisions of a page, newest first (ties by id), after the cursor. */
-  list(pageId: string, query: RevisionListQuery): Promise<readonly RevisionSummary[]>;
+  list(pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]>;
   /** One revision of this page with its Markdown, or undefined. */
   get(pageId: string, revisionId: string): Promise<Revision | undefined>;
 }

@@ -54,12 +54,35 @@ describe('the PostgreSQL RevisionRepo', () => {
       if (rows.length === 0) break;
       seen.push(...rows.map((r) => r.id));
       const last = rows.at(-1);
-      after = [last?.createdAt as number, last?.id as string];
+      after = [last?.sortKey as number, last?.id as string];
     }
     expect(seen).toHaveLength(5);
     expect(new Set(seen)).toEqual(new Set(ids));
     const times = await Promise.all(seen.map(async (id) => (await repo.get(p, id))?.createdAt as number));
     expect(times).toEqual([5000, 5000, 5000, 4000, 3000]);
+  });
+
+  it('pages through stored times finer than a millisecond, and through a later page, without a gap or a repeat', async () => {
+    const p = (await t.app.query<{ id: string }>(`insert into pages (collection_id, created_by) select collection_id, created_by from pages where id = $1 returning id`, [page]))[0]?.id as string;
+    const ids: string[] = [];
+    for (const micros of [123_456, 123_457, 123_999, 124_000, 122_000]) {
+      ids.push(((await t.app.query<{ id: string }>(
+        `insert into revisions (page_id, title, markdown, markdown_hash, reason, created_at)
+         values ($1, $2, 'm', ${HASH}, 'idle', timestamptz 'epoch' + $3::bigint * interval '1 microsecond') returning id`,
+        [p, `t${String(micros)}`, 1_700_000_000_000_000 + micros],
+      ))[0] as { id: string }).id);
+    }
+    const repo = createRevisions(t.app);
+    const seen: string[] = [];
+    let after: readonly [number, string] | undefined;
+    for (let guard = 0; guard < 10; guard += 1) {
+      const rows = await repo.list(p, { limit: 1, ...(after === undefined ? {} : { after }) });
+      if (rows.length === 0) break;
+      seen.push(...rows.map((r) => r.title));
+      after = [rows[0]?.sortKey as number, rows[0]?.id as string];
+    }
+    expect(seen).toEqual(['t124000', 't123999', 't123457', 't123456', 't122000']);
+    expect(new Set(ids).size).toBe(5);
   });
 
   it('shows a revision with its Markdown, a last author of null once that user is gone, and nothing for another page', async () => {

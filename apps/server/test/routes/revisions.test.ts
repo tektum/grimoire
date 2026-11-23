@@ -76,6 +76,21 @@ describe('GET /v1/pages/{id}/revisions', () => {
     expect(new Set(seen).size).toBe(5);
   });
 
+  it('pages through times finer than a millisecond without a gap or a repeat, and does not show the sort position', async () => {
+    const b = build();
+    for (const micros of [0, 1, 2, 3]) b.revisions.seed({ pageId: b.page.id, createdAt: 60_000, extraMicros: micros, title: `fine${String(micros)}` });
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 12; guard += 1) {
+      const body = (await (await b.call('member', `/v1/pages/${b.page.id}/revisions?limit=1${cursor === null ? '' : `&cursor=${cursor}`}`)).json()) as Listed;
+      expect(Object.keys(body.items[0] ?? {}).sort()).toEqual(['authors', 'createdAt', 'id', 'lastAuthor', 'reason', 'title']);
+      seen.push(...body.items.map((i) => i.title));
+      cursor = body.nextCursor;
+      if (cursor === null) break;
+    }
+    expect(seen).toEqual(['fine3', 'fine2', 'fine1', 'fine0', 'T40', 'T30', 'T20', 'T10']);
+  });
+
   it('is open to a viewer and 404 to a user without access to the page', async () => {
     const b = build();
     expect((await b.call('viewer', `/v1/pages/${b.page.id}/revisions`)).status).toBe(200);
