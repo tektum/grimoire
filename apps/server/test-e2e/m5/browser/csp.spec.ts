@@ -148,6 +148,16 @@ test.describe('the file store under the application’s Content-Security-Policy'
     const result = await load(shown.url);
     expect(result).toEqual({ ok: true, width: 1 });
     await load(hostile.url);
+    // What the store sent for the hostile object: served as an image, never as a page (a regression of the forced
+    // type would show here, since an <img> never runs script whatever it is given).
+    const served = (await page.evaluate(
+      `fetch(${JSON.stringify(hostile.url)}).then((r) => ({ status: r.status, type: r.headers.get('content-type') }))`,
+    )) as {
+      status: number;
+      type: string | null;
+    };
+    expect(served.status).toBe(200);
+    expect(served.type).toMatch(/^image\/gif/);
     expect(await page.evaluate('window.__ran')).toBeUndefined();
     expect(await violations(page)).toEqual([]);
   });
