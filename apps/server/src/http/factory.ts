@@ -37,7 +37,7 @@ export interface RouteDefinition extends Omit<RouteConfig, 'security' | 'respons
 export function defineRoute<const D extends RouteDefinition>(def: D) {
   const { policy, rateLimit, idempotent, responses, ...config } = def;
   const isPublic = policy.kind === 'public';
-  const standardResponses = isPublic ? { 429: STANDARD_RESPONSES[429], 503: STANDARD_RESPONSES[503] } : STANDARD_RESPONSES;
+  const standardResponses = isPublic ? { 422: STANDARD_RESPONSES[422], 429: STANDARD_RESPONSES[429], 503: STANDARD_RESPONSES[503] } : STANDARD_RESPONSES;
   return createRoute({
     ...config,
     responses: { ...standardResponses, ...responses },

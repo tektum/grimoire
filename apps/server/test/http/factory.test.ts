@@ -85,6 +85,9 @@ describe('defineRoute', () => {
     const op = doc.paths?.['/open']?.get as Record<string, unknown>;
     expect(op['x-grimoire-policy']).toEqual({ kind: 'public' });
     expect(op['security']).toBeUndefined();
+    const responses = (op as { responses: Record<string, unknown> }).responses;
+    for (const status of ['422', '429', '503']) expect(responses, status).toHaveProperty(status);
+    for (const status of ['401', '403']) expect(responses, status).not.toHaveProperty(status);
   });
 
   it('carries the route rate limit and the idempotency flag into the document, and only when declared', () => {
