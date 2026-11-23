@@ -135,6 +135,61 @@ const scope = (files, imports, syntax, exempt = []) => [
     : []),
 ];
 
+// apps/web: browser APIs live behind small modules, so each can be checked in one place (contracts section 4). Storage (`localStorage`,
+// `sessionStorage`, `indexedDB`, `document.cookie`) belongs to `src/storage` and `src/auth`; `fetch` to `src/api`, `src/auth` and `src/gate`
+// (the gate reads `config.json` and `GET /v1/config` before the client exists); `console` to `src/logging`.
+const webWindowObject = "/^(?:window|globalThis|self)$/";
+const webApis = {
+  storage: {
+    globals: ["localStorage", "sessionStorage", "indexedDB"],
+    message: "Browser storage goes through src/storage (ClientStorage) or src/auth; nothing else touches localStorage, sessionStorage, indexedDB or document.cookie.",
+    selectors: [
+      `MemberExpression[object.name=${webWindowObject}][property.name=/^(?:localStorage|sessionStorage|indexedDB)$/]`,
+      `MemberExpression[object.name=${webWindowObject}][computed=true][property.value=/^(?:localStorage|sessionStorage|indexedDB)$/]`,
+      "MemberExpression[object.name='document'][property.name='cookie']",
+      "MemberExpression[object.name='document'][computed=true][property.value='cookie']",
+      `MemberExpression[object.type='MemberExpression'][object.object.name=${webWindowObject}][object.property.name='document'][property.name='cookie']`,
+      `MemberExpression[object.type='MemberExpression'][object.object.name=${webWindowObject}][object.property.name='document'][computed=true][property.value='cookie']`,
+    ],
+  },
+  fetch: {
+    globals: ["fetch"],
+    message: "Network calls go through src/api (the typed client and its middleware); only src/auth and src/gate call fetch themselves.",
+    selectors: [
+      `MemberExpression[object.name=${webWindowObject}][property.name='fetch']`,
+      `MemberExpression[object.name=${webWindowObject}][computed=true][property.value='fetch']`,
+    ],
+  },
+  console: {
+    globals: ["console"],
+    message: "Log through log() of src/logging, which keeps tokens and document text out of the output; nothing else calls console.",
+    selectors: [`MemberExpression[object.name=${webWindowObject}][property.name='console']`, `MemberExpression[object.name=${webWindowObject}][computed=true][property.value='console']`],
+  },
+};
+/** The restrictions for a folder of `apps/web/src` that may use the APIs in `allowed` (the others are errors there). */
+const webBlock = (files, allowed, ignores = []) => {
+  const kinds = Object.keys(webApis).filter((k) => !allowed.includes(k));
+  return {
+    files,
+    ignores,
+    rules: {
+      "no-restricted-imports": restrictedImports(noAdaptersNoServerOnly(webMessage).patterns),
+      "no-restricted-syntax": [
+        "error",
+        ...noAdaptersNoServerOnlySyntax(webMessage),
+        ...nonLiteralRules,
+        ...kinds.flatMap((k) => (webApis[k].selectors).map((selector) => ({ selector, message: webApis[k].message }))),
+      ],
+      "no-restricted-globals": ["error", ...kinds.flatMap((k) => webApis[k].globals.map((name) => ({ name, message: webApis[k].message })))],
+    },
+  };
+};
+const webAllowed = { storage: ["storage"], auth: ["storage", "fetch"], api: ["fetch"], gate: ["fetch"], logging: ["console"] };
+const webBrowserApiRules = [
+  webBlock(["apps/web/src/**"], [], Object.keys(webAllowed).map((d) => `apps/web/src/${d}/**`)),
+  ...Object.entries(webAllowed).map(([dir, allowed]) => webBlock([`apps/web/src/${dir}/**`], allowed)),
+];
+
 export default defineConfig([
   globalIgnores(["reference/**", "**/node_modules/**", "**/dist/**", "**/coverage/**", "packages/core/test/boundaries/fixtures/**"]),
   tseslint.configs.recommended,
@@ -166,6 +221,7 @@ export default defineConfig([
   ),
   // apps/web: no server-only libraries, adapters or apps/server.
   ...scope(["apps/web/**"], restrictedImports(noAdaptersNoServerOnly(webMessage).patterns), noAdaptersNoServerOnlySyntax(webMessage)),
+  ...webBrowserApiRules,
   ...scope(
     ["packages/editor-schema/**", "packages/api-client/**"],
     restrictedImports(noAdaptersNoServerOnly(libMessage).patterns),

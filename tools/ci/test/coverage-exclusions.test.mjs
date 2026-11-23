@@ -11,7 +11,7 @@ const skip = new Set(['node_modules', 'dist', 'coverage', '.git', 'reference']);
 function sources(dir, out = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) { if (!skip.has(entry.name)) sources(full, out); } else if (entry.name.endsWith('.ts') && full.split(path.sep).includes('src')) out.push(full);
+    if (entry.isDirectory()) { if (!skip.has(entry.name)) sources(full, out); } else if (/\.tsx?$/.test(entry.name) && full.split(path.sep).includes('src')) out.push(full);
   }
   return out;
 }

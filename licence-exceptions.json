@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "name": "@fingerprintjs/fingerprintjs-pro",
+    "versions": "3.11.6",
+    "licence": "SEE LICENSE IN LICENSE",
+    "reason": "Pulled in, at exactly this version, by the two browser sign-in libraries of the identity provider (@descope/web-component and @descope/web-js-sdk), which load only on the sign-in page. Its licence file points to the vendor's terms of service. It performs device fingerprinting for fraud detection, which any privacy notice for the tool must mention. Allowed for the web client only (decision 94).",
+    "source": "node_modules/@fingerprintjs/fingerprintjs-pro/LICENSE: \"licensed according to the Terms of Service available here: https://dev.fingerprint.com/docs/terms-of-service\"",
+    "approvedBy": "The owner, owner question Q22 answer A (decision 94)",
+    "expires": "2027-11-23"
+  }
+]
