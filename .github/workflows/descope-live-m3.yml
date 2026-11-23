@@ -1,0 +1,46 @@
+name: Sign-in live check (manual)
+# OPT-IN, MANUAL, AND NEVER RUN. This workflow talks to a real sign-in provider project. It has NOT been run: the project, its test user and its secrets DO NOT EXIST yet
+# (the variables DESCOPE_DEV_PROJECT_ID and DESCOPE_DEV_TEST_LOGIN and the secret DESCOPE_DEV_MANAGEMENT_KEY of the environment `descope-dev` are not created). It may be run only
+# after the owner has approved that run in writing. Its only trigger is a manual dispatch: no schedule, no pull request, no push. It signs the test user in and reads;
+# it creates and changes nothing in the provider project. The offline exit test (`make test-m3`) never uses it.
+# The two provider endpoints used by tools/m3-live/check.mjs follow the public documentation and are unverified.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MISE_LOCKED: "1"
+
+jobs:
+  live:
+    name: Sign-in live check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: descope-dev
+    env:
+      DESCOPE_DEV_PROJECT_ID: ${{ vars.DESCOPE_DEV_PROJECT_ID }}
+      DESCOPE_DEV_TEST_LOGIN: ${{ vars.DESCOPE_DEV_TEST_LOGIN }}
+      DESCOPE_DEV_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+    steps:
+      - name: Stop cleanly while the provider project does not exist
+        id: gate
+        run: |
+          if [ -z "${DESCOPE_DEV_MANAGEMENT_KEY}" ] || [ -z "${DESCOPE_DEV_PROJECT_ID}" ] || [ -z "${DESCOPE_DEV_TEST_LOGIN}" ]; then
+            echo "blocked: provider dev project not provisioned"
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node
+      - name: Check a real session token
+        if: steps.gate.outputs.blocked != 'true'
+        run: node tools/m3-live/check.mjs
