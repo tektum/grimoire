@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation
+.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation test-m3-live
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -120,3 +120,10 @@ test-m3-mutation: dev-secret
 	$(M3_COMPOSE) $(MAKE) up
 	rm -f test-results/m3-mutation/*.json
 	$(M3_COMPOSE) node apps/server/test-e2e/m3/mutation.ts
+
+# OPT-IN live sign-in check against a real provider project: never run in CI, never on a pull request. Reads its configuration from .env.m3 (git-ignored):
+# DESCOPE_DEV_PROJECT_ID, DESCOPE_DEV_TEST_LOGIN, DESCOPE_DEV_MANAGEMENT_KEY. Exits 2 without the file or under CI. Its offline guards: tools/m3-live/test/.
+test-m3-live:
+	@if [ -n "$$CI" ]; then echo "test-m3-live: refused, CI is set (the live check never runs in CI)" >&2; exit 2; fi
+	@if [ ! -f .env.m3 ]; then echo "test-m3-live: .env.m3 is missing" >&2; exit 2; fi
+	@set -a; . ./.env.m3; set +a; node tools/m3-live/check.mjs
