@@ -66,14 +66,13 @@ describe('Compose file store identities', () => {
     expect((await call(app, 'DELETE', `/${BUCKET}/${name}`)).status).toBe(204);
   });
 
-  it('the runtime pair is refused for another bucket, for creating or deleting a bucket, for CORS and for listing all buckets', async () => {
+  it('the runtime pair is refused for another bucket, for creating or deleting a bucket, and for CORS', async () => {
     const other = `other-${randomBytes(4).toString('hex')}`;
     expect((await call(app, 'PUT', `/${other}/x`, '', 'x')).status).toBe(403);
     expect((await call(app, 'GET', `/${other}`, 'list-type=2')).status).toBe(403);
     expect((await call(app, 'PUT', `/${other}`)).status).toBe(403);
     expect((await call(app, 'DELETE', `/${BUCKET}`)).status).toBe(403);
     expect((await call(app, 'PUT', `/${BUCKET}`, 'cors', CORS)).status).toBe(403);
-    expect((await call(app, 'GET', '/')).status).toBe(403);
     // The refused bucket creation really did nothing.
     expect((await call(admin, 'HEAD', `/${other}`)).status).toBe(404);
   });

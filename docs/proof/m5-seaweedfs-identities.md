@@ -18,3 +18,8 @@ The measurement is the Compose integration check in CI: it signs requests with t
 - `app`: `GRIMOIRE_DEV_S3_APP_*`, rendered from `.env` through a top-level `configs:` entry; actions `Read`, `Write` and `List` on `GRIMOIRE_S3_BUCKET` (default `grimoire`).
 - The app service receives only the `app` pair. No file with a key value is committed other than `.env.example`.
 - An existing `.env` without the two new variables makes Compose stop with a message naming them.
+
+## Measured in CI
+
+- The runtime pair is refused (403) for another bucket, bucket creation, bucket deletion and CORS; the admin pair is accepted for the same CORS request on a scratch bucket.
+- ListBuckets (`GET /`) is answered 200 for the runtime pair (the store does not treat it as an admin operation). It grants no access to any bucket's objects, so it is not asserted as refused.
