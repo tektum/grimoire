@@ -23,7 +23,7 @@ await scenario('pre-sign-in', 120_000, async (t) => {
   const waitedMs = Date.now() - startedAt;
   t.metric('preSignInCloseMs', waitedMs);
   for (const c of closes) t.equal(c, { code: 4408, reason: 'preauth-timeout' }, 'an idle socket is closed 4408 preauth-timeout');
-  t.check(waitedMs >= 4000 && waitedMs < 15_000, `the timeout is the configured 5 s (${String(waitedMs)} ms)`);
+  t.check(waitedMs >= 4000 && waitedMs < 9000, `the timeout is the configured 5 s (${String(waitedMs)} ms)`);
   // The places are free again.
   const p = await eventually(async () => { try { return await signedIn(page, 'after the window', await tokenFor({ sub }), 'read-write'); } catch { return undefined; } }, 20_000, 'a person to sign in once the idle sockets are gone');
   t.check(p.provider.isAuthenticated, 'a person signs in once the idle sockets are gone');
