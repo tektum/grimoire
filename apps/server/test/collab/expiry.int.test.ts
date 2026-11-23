@@ -269,7 +269,7 @@ describe('re-check on the real server and database (1 s interval)', () => {
     proxy.release();
     await sqlAdmin(DB, "update users set suspended_at = now() where descope_user_id = 'T7outage'");
     expect(await closedBy(c)).toBe('access-changed');
-  }, 3 * ROUND_BUDGET_MS + 30_000);
+  }, 3 * ROUND_BUDGET_MS + SLACK_MS);
 
   it('300 open documents: a round costs a small bounded number of queries, not one per connection', async () => {
     const r = await rig({ collab: { maxOpenDocuments: 400, maxDocumentsPerUser: 400, maxSocketsPerUser: 400, maxConnections: 400, maxConnectionsPerPage: 400 } });
