@@ -10,8 +10,7 @@ export async function startFake(claimsOverride = {}, headerOverride = {}) {
   const kid = 'k1';
   const requests = [];
   const server = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => { body += c; });
+    req.resume();
     req.on('end', () => {
       requests.push({ method: req.method, path: req.url, auth: req.headers.authorization ?? '' });
       res.setHeader('content-type', 'application/json');
