@@ -112,9 +112,16 @@ describe('createJobQueue', () => {
     const make = vi.fn(() => boss);
     await createJobQueue({ connectionString: 'postgresql://example/db', onError }, make);
     await createJobQueue({ connectionString: 'postgresql://example/db', onError, max: 4 }, make);
-    expect(make).toHaveBeenNthCalledWith(1, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false });
-    expect(make).toHaveBeenNthCalledWith(2, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false, max: 4 });
+    expect(make).toHaveBeenNthCalledWith(1, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false, schedule: false });
+    expect(make).toHaveBeenNthCalledWith(2, { connectionString: 'postgresql://example/db', schema: PGBOSS_SCHEMA, migrate: false, schedule: false, max: 4 });
     expect(boss.start).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns the cron loop on only when asked', async () => {
+    const boss = stub();
+    const make = vi.fn(() => boss);
+    await createJobQueue({ connectionString: 'postgresql://example/db', onError, cron: true }, make);
+    expect(make).toHaveBeenCalledWith(expect.objectContaining({ schedule: true }));
   });
 
   it('uses the stop grace given at creation as the default of stop', async () => {

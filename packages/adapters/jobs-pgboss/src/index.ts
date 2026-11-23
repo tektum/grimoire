@@ -83,6 +83,12 @@ export interface CreateOptions {
   readonly onError: (error: Error) => void;
   /** How long `stop` waits for running jobs unless it is told otherwise. Default 1.5 s. */
   readonly stopGraceMs?: number;
+  /**
+   * Run pg-boss's cron loop in this process, so `schedule` entries fire. Off by default: the loop calls `create_queue` for
+   * an internal queue every time it starts, which the runtime role may not run. A process that is meant to fire schedules
+   * needs a role that may.
+   */
+  readonly cron?: boolean;
 }
 
 /** pg-boss never migrates here (`migrate: false`): `grimoire migrate` owns the schema. Resolves once started. */
@@ -94,9 +100,12 @@ export async function createJobQueue(
     connectionString: options.connectionString,
     schema: PGBOSS_SCHEMA,
     migrate: false,
+    schedule: options.cron ?? false,
     ...(options.max === undefined ? {} : { max: options.max }),
   });
   boss.on('error', options.onError);
   await boss.start();
   return new PgBossJobQueue(boss, options.stopGraceMs);
 }
+
+export { grantRuntimeRole, migratePgBoss, type MigrateOptions } from './migrate.js';
