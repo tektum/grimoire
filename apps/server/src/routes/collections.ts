@@ -3,6 +3,7 @@ import type { CollectionRecord } from '@tektum/grimoire-core/ports/collection-re
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { caller, guardCollection } from '../http/collection-guard.js';
+import type { ReplayRebuild } from '../http/idempotency.js';
 import type { Level } from '../http/collection-guard.js';
 
 /** Limits of the text fields (R6.13). `name` is 1 to 100 characters. */
@@ -99,6 +100,13 @@ export const getCollectionTree = defineRoute({
 export function present(row: CollectionRecord, mine: Level): z.infer<typeof CollectionSchema> {
   return { ...row, myPermission: mine };
 }
+
+/** A retry of a create replays the stored collection only while the caller is still an administrator and the collection is still there. */
+export const replayCreateCollection: ReplayRebuild = async (stored, c) => {
+  const id = (stored.body as { id?: unknown } | null)?.id;
+  if (typeof id === 'string') await guardCollection(c, id, 'admin');
+  return Response.json(stored.body, { status: stored.status });
+};
 
 const router = createRouter();
 
