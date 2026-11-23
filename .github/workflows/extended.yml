@@ -198,8 +198,6 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - run: bun run build
-      - run: make up
       - run: make test-m3-mutation
       - name: Collect Compose logs
         if: failure()
