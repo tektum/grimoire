@@ -4,7 +4,7 @@ import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { caller } from '../http/collection-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
-import { PageMetaSchema, PAGE_LIMITS } from './pages.js';
+import { ErrorBody, PageMetaSchema, PAGE_LIMITS } from './pages.js';
 
 // This file is the one place that asks the access checks to see deleted pages and collections (`includeDeleted`), and it asks only after the
 // role or the write right the route needs: the list for what the caller can write (an administrator: everything), the restore for a caller
@@ -54,7 +54,10 @@ export const restoreFromTrash = defineRoute({
   request: { params: IdParam },
   responses: {
     200: { description: 'The restored root page', content: { 'application/json': { schema: PageMetaSchema } } },
-    409: { description: 'The collection is deleted or would be over its page limit, or the page moved to another collection meanwhile' },
+    409: {
+      description: 'The collection is deleted (`collection_deleted`) or would be over its page limit (`collection_full`), or the page moved to another collection meanwhile (`conflict`)',
+      content: { 'application/json': { schema: ErrorBody } },
+    },
   },
 });
 

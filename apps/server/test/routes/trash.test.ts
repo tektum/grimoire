@@ -312,6 +312,8 @@ describe('the trash routes in the document and in the source', () => {
   it('declare their policies', () => {
     const doc = build().app.getOpenAPI31Document({ openapi: '3.1.0', info: { title: 't', version: '1' } }) as unknown as { paths: Record<string, Record<string, Record<string, unknown>>> };
     expect(doc.paths['/v1/trash']?.['get']?.['x-grimoire-policy']).toEqual({ kind: 'authenticated' });
+    const conflict = (doc.paths['/v1/trash/{id}/restore']?.['post']?.['responses'] as Record<string, { content?: Record<string, unknown> }>)['409'];
+    expect(Object.keys(conflict?.content ?? {})).toEqual(['application/json']);
     expect(doc.paths['/v1/trash/{id}/restore']?.['post']?.['x-grimoire-policy']).toEqual({ kind: 'trash', param: 'id', need: 'write' });
     expect(doc.paths['/v1/trash/{id}']?.['delete']?.['x-grimoire-policy']).toEqual({ kind: 'admin' });
   });

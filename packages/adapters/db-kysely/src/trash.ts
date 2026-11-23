@@ -84,9 +84,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
         } else {
           const taken = await tx.query(`select 1 from pages where ${siblings} and position = $3`, [expectedCollectionId, parentId, root.position]);
           if (taken.length > 0) {
-            const last = (
-              await tx.query<{ position: string }>(`select position from pages where ${siblings} order by position desc limit 1`, [expectedCollectionId, parentId])
-            )[0];
+            const last = (await tx.query<{ position: string }>(`select position from pages where ${siblings} order by position desc limit 1`, [expectedCollectionId, parentId]))[0];
             place = position(last?.position ?? null, null);
           }
         }
@@ -98,16 +96,15 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
     },
 
     async attachmentKeys(batch) {
-      const rows = await db.query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) order by a.s3_key`, [
-        batch,
-      ]);
+      const rows = await db.query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) order by a.s3_key`, [batch]);
       return rows.map((r) => r.s3_key);
     },
 
     purge(batch, actorId, removedKeys) {
       return db.transaction(async (tx) => {
-        // One statement: the composite foreign key between pages is deferred, so pages that point at each other go together.
-        const gone = await tx.query(`${DOOMED} delete from pages where id in (select id from doomed) returning 1`, [batch]);
+        // One statement: the composite foreign key between pages is deferred, so pages that point at each other go together. `deleted_at is not
+        // null` is checked on the row itself, so a restore that commits while this waits on a row lock is seen again and its pages are kept.
+        const gone = await tx.query(`${DOOMED} delete from pages where id in (select id from doomed) and deleted_at is not null returning 1`, [batch]);
         // Objects the caller removed whose attachment row is still here: its page came back (a restore ran in between). The row says so.
         if (removedKeys.length > 0) await tx.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and deleted_at is null`, [[...removedKeys]]);
         if (gone.length > 0) {

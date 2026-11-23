@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { purgeBatch } from '@tektum/grimoire-core/pages/purge';
 import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
@@ -309,6 +309,28 @@ describe('TrashRepo.purge and purgeBatch', () => {
     expect(await trash().purge(root, user, keys)).toEqual({ pages: 0 });
     expect(await state(root)).toBe('live');
     expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, root)).toBe(1);
+    expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(0);
+  });
+
+  it('keeps the pages of a batch that a restore brings back while the purge waits on their rows', async () => {
+    const root = await make('root');
+    const child = await make('child', root);
+    await remove(root);
+    let purging: Promise<{ pages: number }> | undefined;
+    await t.admin.transaction(async (tx) => {
+      // The restore's own statement, not yet committed: it holds the row locks the purge needs.
+      await tx.query(`update pages set deleted_at = null, deleted_by = null, deleted_batch = null where id = any($1::uuid[])`, [[root, child]]);
+      purging = trash().purge(root, user, []);
+      await vi.waitFor(
+        async () => {
+          const waiting = await tx.query<{ n: string }>(`select count(*) as n from pg_locks l join pg_stat_activity a on a.pid = l.pid where not l.granted and a.datname = current_database()`);
+          if (Number(waiting[0]?.n) === 0) throw new Error('the purge is not waiting yet');
+        },
+        { timeout: 20_000, interval: 100 },
+      );
+    });
+    expect(await purging).toEqual({ pages: 0 });
+    expect(await Promise.all([root, child].map(state))).toEqual(['live', 'live']);
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(0);
   });
 
