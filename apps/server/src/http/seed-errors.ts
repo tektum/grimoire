@@ -20,7 +20,7 @@ export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'det
     if (r.reason === 'content-lost' || r.reason === 'too-large' || r.reason === 'too-deep' || r.reason === 'invalid-state') {
       return { code: 'invalid', message: r.message ?? 'The Markdown cannot be converted.' };
     }
-    if (r.reason === 'timeout') return { code: 'invalid', message: 'the Markdown takes too long to convert' };
+    if (r.reason === 'timeout') return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
     return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
   }
   switch (r.reason) {
@@ -30,10 +30,11 @@ export function seedRefusalToHttp(r: Pick<SeedRefusal, 'stage' | 'reason' | 'det
       // The real pool puts the limit sentence (counts only, never text) in `detail` for a seed over a limit.
       return { code: 'invalid', message: r.message ?? r.detail };
     case 'timeout':
-      return { code: 'invalid', message: 'the Markdown takes too long to convert' };
+      // The pool's time limit also covers the wait for a worker, so a timeout does not show the page is at fault: retryable.
+      return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
     default:
       if (r.detail === 'one-at-a-time') {
-        return { code: 'rate_limited', message: r.message ?? 'Another conversion is still running. Try again in a moment.', headers: { 'retry-after': '2' } };
+        return { code: 'rate_limited', message: 'Another conversion is still running. Try again in a moment.', headers: { 'retry-after': '2' } };
       }
       return { code: 'unavailable', message: BUSY, headers: BUSY_HEADERS };
   }

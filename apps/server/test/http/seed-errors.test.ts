@@ -21,13 +21,13 @@ describe('seedRefusalToHttp', () => {
     });
   });
 
-  it('answers 422 invalid for a seed timeout', () => {
-    expect(seedRefusalToHttp(seed('timeout', 'x'))).toEqual({ code: 'invalid', message: 'the Markdown takes too long to convert' });
+  it('answers 503 with Retry-After for a seed timeout: the wait for a worker counts against it', () => {
+    expect(seedRefusalToHttp(seed('timeout', 'x'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
   });
 
   it('answers 429 rate_limited with Retry-After 2 for a second seed by one user', () => {
     expect(seedRefusalToHttp(seed('internal', 'one-at-a-time', 'Another one is running.'))).toEqual({
-      code: 'rate_limited', message: 'Another one is running.', headers: { 'retry-after': '2' },
+      code: 'rate_limited', message: 'Another conversion is still running. Try again in a moment.', headers: { 'retry-after': '2' },
     });
   });
 
@@ -59,7 +59,7 @@ describe('seedRefusalToHttp', () => {
     expect(seedRefusalToHttp(back('content-lost'))).toEqual({ code: 'invalid', message: 'The Markdown cannot be converted.' });
   });
 
-  it('answers 422 invalid when the conversion back times out', () => {
-    expect(seedRefusalToHttp(back('timeout'))).toEqual({ code: 'invalid', message: 'the Markdown takes too long to convert' });
+  it('answers 503 when the conversion back times out', () => {
+    expect(seedRefusalToHttp(back('timeout'))).toEqual({ code: 'unavailable', message: BUSY, headers: { 'retry-after': '5' } });
   });
 });
