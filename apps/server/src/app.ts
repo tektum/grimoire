@@ -7,6 +7,8 @@ import { timeout } from 'hono/timeout';
 import { ApiError, errorResponse } from './http/error.js';
 import type { AppEnv } from './http/env.js';
 import { createRouter } from './http/factory.js';
+import { corsMiddleware } from './http/cors.js';
+import { clientVersionGate } from './http/client-version.js';
 import { routers } from './routes/registry.js';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import { errorName } from './events.js';
@@ -55,6 +57,8 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use(secureHeaders());
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
+  app.use(corsMiddleware(ctx.config.allowedOrigins));
+  app.use(clientVersionGate(ctx.config.minClientVersion));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   for (const router of routers) app.route('/', router);
   return app;
