@@ -14,7 +14,8 @@ async function selectWord(page: Page, text: string): Promise<void> {
 
 test.describe('the link editor of the bubble', () => {
   test('refuses javascript: and file: addresses with the one text, and applies https:, mailto: and relative ones', async ({ browser, baseURL }) => {
-    const made = await makePage('Words to link: alpha beta gamma delta.\n');
+    // One word to a paragraph: a double click lands on the middle of the paragraph, which is then the word.
+    const made = await makePage('alpha\n\nbeta\n\ngamma\n');
     const users = await twoUsers(browser, baseURL);
     try {
       const { page } = users.a;
@@ -51,13 +52,13 @@ test.describe('the link editor of the bubble', () => {
   });
 
   test('Mod-K opens it for the selection, Escape leaves it, and Remove link takes a link off', async ({ browser, baseURL }) => {
-    const made = await makePage('A [linked word](https://example.com) and another word.\n');
+    const made = await makePage('another\n\n[linked](https://example.com)\n');
     const users = await twoUsers(browser, baseURL);
     try {
       const { page } = users.a;
       await page.goto(made.path);
       await waitForSynced(page);
-      await surface(page).getByText('another').dblclick();
+      await surface(page).locator('p', { hasText: 'another' }).dblclick();
       await page.keyboard.press('Control+k');
       const field = page.getByRole('textbox', { name: 'Link address' });
       await expect(field).toBeFocused();

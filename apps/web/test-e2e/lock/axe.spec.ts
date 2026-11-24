@@ -25,13 +25,13 @@ test.describe('accessibility of the editor menus', () => {
   });
 
   test('no serious or critical violation with the bubble open, and with its link editor showing a refusal', async ({ browser, baseURL }) => {
-    const made = await makePage('Some words to select.\n');
+    const made = await makePage('selectable\n');
     const users = await twoUsers(browser, baseURL);
     try {
       const { page } = users.a;
       await page.goto(made.path);
       await waitForSynced(page);
-      await surface(page).getByText('words').dblclick();
+      await surface(page).getByText('selectable').dblclick(); // one word: a double click on the middle of the paragraph selects it
       await page.getByRole('toolbar', { name: 'Text formatting' }).waitFor();
       await expectNoAxeViolations(page);
       await page.getByRole('button', { name: 'Link' }).click();
