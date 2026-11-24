@@ -147,3 +147,41 @@ test-m4: dev-secret
 	node apps/server/test-e2e/m4/migration-check.ts
 	rm -f test-results/m4/*.json
 	node apps/server/test-e2e/m4/run.ts
+
+# BEGIN test-m5
+.PHONY: files-setup test-m5
+# Makes the bucket exist with the application's CORS rule, with the administrator identity of the development store (GRIMOIRE_DEV_S3_*, in .env). The command gets nothing but
+# the settings it needs, so no other setting of .env reaches it; the running container never holds the administrator key.
+files-setup: .env
+	@set -a; . ./.env; set +a; \
+	env -i PATH="$$PATH" HOME="$$HOME" \
+	  GRIMOIRE_S3_ENDPOINT="$$GRIMOIRE_S3_ENDPOINT" GRIMOIRE_S3_BUCKET="$$GRIMOIRE_S3_BUCKET" \
+	  GRIMOIRE_S3_ADMIN_ACCESS_KEY="$$GRIMOIRE_DEV_S3_ACCESS_KEY" GRIMOIRE_S3_ADMIN_SECRET_KEY="$$GRIMOIRE_DEV_S3_SECRET_KEY" \
+	  GRIMOIRE_ALLOWED_ORIGINS="$${GRIMOIRE_ALLOWED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}" \
+	  node apps/server/dist/cli.js files-setup
+
+# The milestone 5 exit test: files and attachments against the Compose stack in local mode (alice administrator, bob member, carol viewer) and the real file store. It checks the
+# generated API surface and the compile time, runs the unit tests, the conformance tests of the file store port and the real-browser checks of the store (the browser is installed
+# once with `bunx playwright install chromium`; without it the check says so and stops), checks the source rules of the scenarios, then runs the scenarios of
+# apps/server/test-e2e/m5 one after another (each prints `PASS <name>` or `FAIL <name>: <reason>` and writes test-results/m5/<name>.json). The runner names every scenario first
+# and exits 1 when the list and the scenario files differ. The application signs addresses for 127.0.0.1:8333, the store as the host reaches it.
+# Covered requirements: R9.15, R9.23, R12.11, R13.8, R13.26.
+test-m5: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	bun run tsc -b
+	bun run openapi:check
+	bun run typecheck
+	bun run check:tsc-time
+	bun run test
+	node --test apps/server/test-e2e/m5/guards.test.mjs
+	GRIMOIRE_S3_PUBLIC_ENDPOINT=http://127.0.0.1:8333 $(MAKE) up
+	$(MAKE) files-setup
+	bun run test:conformance
+	bunx playwright test -c apps/server/test-e2e/m5/browser/playwright.config.ts
+	rm -f test-results/m5/*.json
+	node apps/server/test-e2e/m5/run.ts
+# END test-m5
+
+# Later milestones that run after this one and are not ordered against each other keep their targets in mk/test-mN.mk.
+-include mk/*.mk
