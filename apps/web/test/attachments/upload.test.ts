@@ -61,6 +61,20 @@ describe('the upload sequence', () => {
     expect(await unknown.upload()).toEqual({ ok: false, message: 'That file is too large' });
   });
 
+  it('says the cap only for the 429 that is the cap: the route\'s own rate limit (it carries Retry-After) gets the plain text, and the limits are not even asked for', async () => {
+    const asked = vi.fn(async () => ({ pendingMax: 10 }));
+    const limited = setup({ create: { error: { error: { code: 'rate_limited' } }, response: new Response('{}', { status: 429, headers: { 'retry-after': '30' } }) }, limits: asked });
+    expect(await limited.upload()).toEqual({ ok: false, message: 'Too many uploads at once. Wait a moment.' });
+    expect(asked).not.toHaveBeenCalled();
+    const cap = setup({ create: respond(429, undefined, { error: { code: 'rate_limited' } }), limits: asked });
+    expect(await cap.upload()).toEqual({ ok: false, message: 'Too many uploads at once (10 is the most). Wait a moment.' });
+  });
+
+  it('still ends with a message when the limits cannot be asked for (it never throws)', async () => {
+    const s = setup({ create: respond(413, undefined, { error: { code: 'too_large' } }), limits: async () => { throw new Error('offline'); } });
+    expect(await s.upload()).toEqual({ ok: false, message: 'Something went wrong' });
+  });
+
   it('says the upload did not finish when the store refuses or cannot be reached, and does not complete', async () => {
     for (const put of [new Response(null, { status: 403 }), new Error('network')]) {
       const s = setup({ put });

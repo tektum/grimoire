@@ -76,7 +76,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   useEffect(() => {
     const element = rootRef.current;
     if (element === null || session === null) return;
-    const disposeAttachments = provideAttachments(element, { fetchUrls: signedUrlsFrom(clientOf(session)), pageId: page.id, api: clientOf(session), uploadApi: quietApiOf(session), limits: lazyLimits(clientOf(session)), notify });
+    const disposeAttachments = provideAttachments(element, { fetchUrls: signedUrlsFrom(clientOf(session)), pageId: page.id, api: clientOf(session), uploadApi: quietApiOf(session), limits: lazyLimits(quietApiOf(session) ?? clientOf(session)), notify });
     let cancelled = false;
     let live: MountedEditor | null = null;
     let saved: MountedEditor | null = null;

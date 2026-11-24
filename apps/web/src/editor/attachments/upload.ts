@@ -22,8 +22,10 @@ type ApiError = { readonly error?: { readonly code?: string } } | undefined;
 const codeOf = (error: ApiError): string | undefined => error?.error?.code;
 const refused = async (error: ApiError, response: Response, asked: (() => Promise<UploadLimits | undefined>) | undefined): Promise<UploadResult> => {
   const code = codeOf(error);
-  const limits = response.status === 429 || code === 'too_large' ? await asked?.() : undefined; // the limits are asked for only when a message says one
-  if (response.status === 429) return { ok: false, message: tooManyMessage(limits) };
+  const limits = (response.status === 429 && !response.headers.has('retry-after')) || code === 'too_large' ? await asked?.() : undefined; // the limits are asked for only when a message says one
+  // Two kinds of 429 come from the create route: the cap on unfinished uploads (no `Retry-After`) and the route's own rate limit (it has one). Only the first is the cap the
+  // message names; the other says the plain thing.
+  if (response.status === 429) return { ok: false, message: response.headers.has('retry-after') ? tooManyMessage(undefined) : tooManyMessage(limits) };
   return { ok: false, message: code === 'too_large' ? tooLargeMessage(limits) : messageFor(code) };
 };
 const DID_NOT_FINISH = messageFor('upload_missing');
@@ -36,7 +38,7 @@ export async function uploadAttachment(deps: UploadDeps, file: File): Promise<Up
   try {
     const body = { pageId: deps.pageId, fileName: file.name === '' ? 'file' : file.name, contentType: file.type === '' ? 'application/octet-stream' : file.type, size: file.size };
     const create = await deps.api.POST('/v1/attachments', { body });
-    if (create.data === undefined) return refused(create.error, create.response, deps.limits);
+    if (create.data === undefined) return await refused(create.error, create.response, deps.limits);
     const { id, upload } = create.data;
     let stored: Response;
     try {
@@ -46,7 +48,7 @@ export async function uploadAttachment(deps: UploadDeps, file: File): Promise<Up
     }
     if (!stored.ok) return { ok: false, message: DID_NOT_FINISH };
     const complete = await deps.api.POST('/v1/attachments/{id}/complete', { params: { path: { id } } });
-    if (complete.data === undefined) return refused(complete.error, complete.response, deps.limits);
+    if (complete.data === undefined) return await refused(complete.error, complete.response, deps.limits);
     return { ok: true, attachment: complete.data };
   } catch {
     return { ok: false, message: messageFor(undefined) };

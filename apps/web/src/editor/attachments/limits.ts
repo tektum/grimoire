@@ -1,4 +1,4 @@
-import type { ApiClient } from '@tektum/grimoire-api-client';
+import type { ApiClient, components } from '@tektum/grimoire-api-client';
 
 /** What the server announces about uploads (`GET /v1/config`): the largest file, and how many unfinished uploads one person may have. Each is absent when it is not known. */
 export interface UploadLimits {
@@ -8,12 +8,13 @@ export interface UploadLimits {
 
 const positive = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined);
 
-/** The limits in a client configuration (anything else, a server that does not say, is "nothing known"). */
-export function uploadLimitsOf(config: unknown): UploadLimits {
-  if (typeof config !== 'object' || config === null) return {};
-  const { maxAttachmentBytes, pendingUploadsMax } = config as Record<string, unknown>;
-  const maxBytes = positive(maxAttachmentBytes);
-  const pendingMax = positive(pendingUploadsMax);
+/** The two numbers of the server's client configuration (`ClientConfig` of the generated types, so a renamed field fails to compile). */
+export type AnnouncedLimits = Pick<components['schemas']['ClientConfig'], 'maxAttachmentBytes' | 'pendingUploadsMax'>;
+
+/** The limits in a client configuration (a server that does not say, a store that is not configured, is "nothing known"). */
+export function uploadLimitsOf(config: AnnouncedLimits | undefined): UploadLimits {
+  const maxBytes = positive(config?.maxAttachmentBytes);
+  const pendingMax = positive(config?.pendingUploadsMax);
   return { ...(maxBytes === undefined ? {} : { maxBytes }), ...(pendingMax === undefined ? {} : { pendingMax }) };
 }
 

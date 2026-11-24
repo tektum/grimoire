@@ -20,19 +20,20 @@ describe('the size in the message', () => {
 
 describe('the limits the server announces', () => {
   it('reads the two numbers of the client configuration', () => {
-    expect(uploadLimitsOf({ maxAttachmentBytes: 26_214_400, pendingUploadsMax: 10, collabUrl: 'x' })).toEqual({ maxBytes: 26_214_400, pendingMax: 10 });
+    expect(uploadLimitsOf({ maxAttachmentBytes: 26_214_400, pendingUploadsMax: 10 })).toEqual({ maxBytes: 26_214_400, pendingMax: 10 });
   });
 
-  it.each([[undefined], [null], ['Saved text'], [{}], [{ maxAttachmentBytes: null, pendingUploadsMax: null }], [{ maxAttachmentBytes: 'big', pendingUploadsMax: -1 }], [{ maxAttachmentBytes: 0 }]])(
-    'knows nothing from %j',
-    (data) => {
-      expect(uploadLimitsOf(data)).toEqual({});
-    },
-  );
+  it.each([[undefined], [{ maxAttachmentBytes: null, pendingUploadsMax: null }], [{ maxAttachmentBytes: 0, pendingUploadsMax: -1 }]])('knows nothing from %j', (data) => {
+    expect(uploadLimitsOf(data)).toEqual({});
+  });
+
+  it.each([[null], ['Saved text'], [{}], [{ maxAttachmentBytes: 'big', pendingUploadsMax: Number.NaN }]])('knows nothing from an answer of another shape: %j', (data) => {
+    expect(uploadLimitsOf(data as never)).toEqual({});
+  });
 
   it('keeps each number on its own', () => {
-    expect(uploadLimitsOf({ maxAttachmentBytes: 1_048_576 })).toEqual({ maxBytes: 1_048_576 });
-    expect(uploadLimitsOf({ pendingUploadsMax: 3 })).toEqual({ pendingMax: 3 });
+    expect(uploadLimitsOf({ maxAttachmentBytes: 1_048_576, pendingUploadsMax: null })).toEqual({ maxBytes: 1_048_576 });
+    expect(uploadLimitsOf({ maxAttachmentBytes: null, pendingUploadsMax: 3 })).toEqual({ pendingMax: 3 });
   });
 });
 
@@ -56,6 +57,19 @@ describe('asking for the limits', () => {
     expect(await limits()).toEqual({ maxBytes: 1_048_576, pendingMax: 4 });
     expect(GET).toHaveBeenCalledTimes(1);
     expect(GET).toHaveBeenCalledWith('/v1/config');
+  });
+
+  it('is one request for refusals that come together: both callers wait for the same answer', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const GET = vi.fn(() => new Promise((resolve) => { answer = resolve; }));
+    const limits = lazyLimits({ GET } as never);
+    const first = limits();
+    const second = limits();
+    expect(GET).toHaveBeenCalledTimes(1); // the second call joined the first
+    answer({ data: { maxAttachmentBytes: 2_097_152, pendingUploadsMax: 7 }, response: new Response('{}', { status: 200 }) });
+    expect(await first).toEqual({ maxBytes: 2_097_152, pendingMax: 7 });
+    expect(await second).toBe(await first);
+    expect(GET).toHaveBeenCalledTimes(1);
   });
 
   it('knows nothing after a failed request, and asks again next time', async () => {

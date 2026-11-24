@@ -55,7 +55,7 @@ export async function scriptStore(page: Page, options: StoreOptions = {}) {
     if (path === '/v1/attachments' && request.method() === 'POST') {
       created += 1;
       const status = options.createStatus?.(created) ?? 201;
-      if (status !== 201) return route.fulfill(json(status, { error: { code: CODES[status] ?? 'internal', message: 'refused' } }, status === 429 ? { 'retry-after': '1' } : {}));
+      if (status !== 201) return route.fulfill(json(status, { error: { code: CODES[status] ?? 'internal', message: 'refused' } }, {}));
       const body = request.postDataJSON() as { fileName: string; contentType: string; size: number; pageId: string };
       const id = `00000000-0000-4000-8000-${String(created).padStart(12, '0')}`;
       const name = encodeURIComponent(body.fileName);
