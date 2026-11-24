@@ -33,6 +33,10 @@
       "types": "./dist/pages/*.d.ts",
       "default": "./dist/pages/*.js"
     },
+    "./attachments/*": {
+      "types": "./dist/attachments/*.d.ts",
+      "default": "./dist/attachments/*.js"
+    },
     "./tree/*": {
       "types": "./dist/tree/*.d.ts",
       "default": "./dist/tree/*.js"
