@@ -201,7 +201,7 @@ describe('a purge that the store fails half-way', () => {
     expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBe(503);
     on.failing = false;
     expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBeLessThan(300);
-    for (const id of [b.first, b.second]) await expect(files.head(`attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
+    for (const id of [b.first, b.second]) await expect(files.head(`tenants/legacy/attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
     expect(Number(((await run(`select count(*) as n from attachments where page_id = '${b.page}'`)) as { n: string }[])[0]?.n)).toBe(0);
   }, 60_000);
 });
