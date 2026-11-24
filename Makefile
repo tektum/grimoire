@@ -1,7 +1,7 @@
 # COMPOSE_FILE (for example compose.yaml:compose.offline.yaml) is honoured; the project name is fixed.
 COMPOSE := docker compose -p grimoire
 
-.PHONY: db-up db-down up down down-volumes reset migrate check-compose test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation test-m3-live test-m4
+.PHONY: db-up db-down up down down-volumes reset migrate check-compose test-web-e2e test test-m1 test-m1-office test-m1-mutation test-m2 test-m2-hostile-mutation test-m3 test-m3-mutation test-m3-live test-m4
 
 # Compose reads .env for the development passwords and keys; .env.example is the single place they are written down.
 # Hand-written: Compose has no "copy a default env file" feature.
@@ -182,6 +182,16 @@ test-m5: dev-secret
 	rm -f test-results/m5/*.json
 	node apps/server/test-e2e/m5/run.ts
 # END test-m5
+
+# The web client's browser specs (apps/web/test-e2e) against the real stack: the client is built, the stack starts with the web overlay (it allows the origin of the
+# client's server, 127.0.0.1:$${E2E_WEB_PORT:-4173}), and the Chromium project of apps/web/playwright.config.ts runs. The development token comes from .env, as for the exit
+# tests. Needs the browser once: `bunx playwright install --with-deps chromium`. Reproduce a CI failure with `make test-web-e2e`; `make down-volumes` afterwards.
+WEB_COMPOSE := COMPOSE_FILE=compose.yaml:compose.m6.yaml
+test-web-e2e: dev-secret
+	bun install --frozen-lockfile
+	bun run build
+	$(WEB_COMPOSE) $(MAKE) up
+	bunx playwright test -c apps/web/playwright.config.ts --project=chromium
 
 # Later milestones that run after this one and are not ordered against each other keep their targets in mk/test-mN.mk.
 -include mk/*.mk
