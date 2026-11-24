@@ -7,6 +7,7 @@ import { SessionContext } from '../../src/auth/session';
 import HomeScreen from '../../src/screens/collections/HomeScreen';
 import { HomeRedirect } from '../../src/screens/collections/HomeRedirect';
 import { CollectionsScreen } from '../../src/screens/collections/CollectionsScreen';
+import { queryKey } from '../../src/api/query';
 import { createClientStorage } from '../../src/storage';
 import '../support/dom';
 import { COLLECTIONS, fakeApi, page } from './support';
@@ -20,6 +21,15 @@ const at = (ui: React.ReactElement) => render(<QueryClientProvider client={new Q
 const list = (items: unknown[]) => ({ 'GET /v1/collections': { status: 200, body: { items } } });
 
 describe('/ (HomeRedirect)', () => {
+  it('still goes on with the list it has when the last read of it failed', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const key = queryKey('GET', '/v1/collections', undefined);
+    client.setQueryData(key, COLLECTIONS); // the list the collection screen read earlier ...
+    client.getQueryCache().find({ queryKey: key })?.setState({ status: 'error', error: new Error('503'), fetchStatus: 'idle' }); // ... whose last read failed
+    const { api } = fakeApi({ 'GET /v1/collections': { status: 503 } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/']}><Routes><Route path="/" element={<HomeRedirect api={api} storage={memoryStorage()} />} /><Route path="/c/:id" element={<Where />} /></Routes></MemoryRouter></QueryClientProvider>);
+    await waitFor(() => { expect(screen.getByLabelText('location').textContent).toBe('/c/c1'); });
+  });
   it('goes to the collection that was read last', async () => {
     at(<HomeRedirect api={fakeApi(list(COLLECTIONS)).api} storage={memoryStorage({ 'last-collection': 'c2' })} />);
     await waitFor(() => { expect(screen.getByLabelText('location').textContent).toBe('/c/c2'); });

@@ -7,7 +7,7 @@ import { LAST_COLLECTION_KEY, useCollections } from './useCollections';
 /** `/`: on to the collection that was read last, or the first one when there is none or it can no longer be read. */
 export function HomeRedirect({ api, storage }: { readonly api: ApiLike; readonly storage: ClientStorage }) {
   const collections = useCollections(api);
-  if (collections.isError) {
+  if (collections.isError && collections.data === undefined) {
     return (
       <p role="alert">
         Couldn&apos;t load the collections. <Button onClick={() => void collections.refetch()}>Try again</Button>
