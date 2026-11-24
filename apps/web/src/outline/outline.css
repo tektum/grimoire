@@ -1,3 +1,6 @@
+.page-layout > .page-margin {
+  align-self: stretch; /* the margin is as tall as the page, so the outline has room to stick in as the page is read */
+}
 .outline {
   position: sticky;
   top: var(--space-4);

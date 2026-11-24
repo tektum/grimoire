@@ -70,7 +70,8 @@ export function Outline() {
   const [wide, setWide] = useState(() => window.matchMedia(WIDE).matches);
   const [entries, setEntries] = useState<readonly Entry[]>([]);
   const [current, setCurrent] = useState(-1);
-  const [stop, setStop] = useState(0);
+  /** The heading (by id) whose link is the one Tab stop; the first link when it is not in the list. */
+  const [stop, setStop] = useState<number | null>(null);
   const list = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
@@ -138,8 +139,7 @@ export function Outline() {
     if (next === null || at < 0) return;
     event.preventDefault();
     const target = Math.max(0, Math.min(links.length - 1, next));
-    setStop(target);
-    links[target]?.focus();
+    links[target]?.focus(); // its onFocus makes it the Tab stop
   };
 
   if (!wide || entries.length === 0) return null;
@@ -152,9 +152,9 @@ export function Outline() {
               href="#"
               data-indent={Math.min(entry.level, MAX_INDENT + 1) - 1}
               style={{ '--indent': Math.min(entry.level, MAX_INDENT + 1) - 1 } as React.CSSProperties}
-              tabIndex={i === Math.min(stop, entries.length - 1) ? 0 : -1}
+              tabIndex={entry.id === (entries.some((e) => e.id === stop) ? stop : entries[0]?.id) ? 0 : -1}
               {...(i === current ? { 'aria-current': 'location' as const } : {})}
-              onFocus={() => { setStop(i); }}
+              onFocus={() => { setStop(entry.id); }}
               onClick={(event) => {
                 event.preventDefault();
                 go(i, entry);

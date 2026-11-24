@@ -211,5 +211,7 @@ describe('the outline of a page', () => {
     await waitFor(() => { expect(names()).toEqual(['Inserted first', 'A', 'B', 'C']); });
     expect(screen.getByRole('link', { name: 'B' })).toBe(before);
     expect(document.activeElement).toBe(before);
+    // The Tab stop moved with the focus: leaving the outline is still one Shift+Tab or Tab away.
+    expect(screen.getAllByRole('link').map((a) => [a.textContent, a.tabIndex])).toEqual([['Inserted first', -1], ['A', -1], ['B', 0], ['C', -1]]);
   });
 });

@@ -67,3 +67,14 @@ test('Tab reaches the outline, the arrow keys and Enter go to a heading, and axe
   });
   expect(inside).toBe(true);
 });
+
+test('the outline stays in view while a long page is read', async ({ page }) => {
+  await open(page, 1400);
+  const nav = page.getByRole('navigation', { name: 'Page outline' });
+  await expect(nav).toBeInViewport();
+  await page.evaluate(() => { for (const element of [document.scrollingElement, ...document.querySelectorAll('main, .shell-main, .shell-content')]) element?.scrollTo?.(0, 1e6); });
+  await expect(page.getByTestId('editor-root').locator('h3')).toBeInViewport(); // the end of the page: the page did scroll
+  await expect(nav).toBeInViewport();
+  // Far down, the heading that has passed the top of the window is the current one (C: the next heading, Deep, is still below the top).
+  await expect(nav.getByRole('link', { name: 'C' })).toHaveAttribute('aria-current', 'location');
+});
