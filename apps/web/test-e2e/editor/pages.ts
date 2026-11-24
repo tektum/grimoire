@@ -53,6 +53,11 @@ export async function setSuspended(userId: string, suspended: boolean): Promise<
   await call('PATCH', `/v1/users/${userId}`, { suspended });
 }
 
+/** Changes a person's role (`admin`, `member`, `viewer`), as an administrator. The server's check of open connections sees it at its next round. */
+export async function setRole(userId: string, role: 'admin' | 'member' | 'viewer'): Promise<void> {
+  await call('PATCH', `/v1/users/${userId}`, { role });
+}
+
 /** Resets the saved state of a page as an administrator (`POST /v1/pages/{id}/reset-state`); every open editor of the page is closed with a stale epoch. */
 export async function resetPageState(pageId: string, options: { confirmStale?: boolean; markdown?: string } = {}): Promise<void> {
   await call('POST', `/v1/pages/${pageId}/reset-state`, {

@@ -4,7 +4,7 @@ import { mapSignal } from '../../src/editor/core/map-signal';
 import { apiUrl, devSecret } from '../support/env';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
-import { makePage, readPage, setDefaultPermission, setSuspended, whoIs } from './pages';
+import { makePage, readPage, setDefaultPermission, setRole, setSuspended, whoIs } from './pages';
 import { probe, token } from './probe';
 import { recreateApp } from './stack';
 
@@ -102,6 +102,38 @@ test.describe('an administrator changes access under an open page', () => {
         await expect(surface).toHaveAttribute('contenteditable', 'true', { timeout: 30_000 });
         await expect(page.getByText('This page was reset. Your unsent changes were not applied.')).toHaveCount(0);
         expect((await readPage(made.id)).stateEpoch, 'no reset: the epoch is the same').toBe(before.stateEpoch);
+      } finally {
+        await users.close();
+      }
+    } finally {
+      await recreateApp();
+    }
+  });
+
+  test('a role lowered from member to viewer: the page goes read-only, keeps its text, and is not reset; the role is restored afterwards', async ({ browser, baseURL }) => {
+    test.slow();
+    const made = await makePage('# Viewer\n\nA page open in the tab of a person whose role is lowered.\n');
+    await recreateApp({ M6_RECHECK_SECONDS: '2' });
+    try {
+      const users = await twoUsers(browser, baseURL);
+      try {
+        const bob = await whoIs(users.b.userId);
+        try {
+          const { page } = users.b;
+          await page.goto(made.path);
+          await waitForSynced(page);
+          const surface = page.locator('.ProseMirror');
+          await expect(surface).toHaveAttribute('contenteditable', 'true');
+          const before = await readPage(made.id);
+          await setRole(bob.id, 'viewer');
+          await expect(surface).toHaveAttribute('contenteditable', 'false', { timeout: 30_000 });
+          await expect(page.getByText('Read only')).toBeVisible();
+          await expect(surface).toContainText('A page open in the tab of a person whose role is lowered.');
+          await expect(page.getByText('This page was reset. Your unsent changes were not applied.')).toHaveCount(0);
+          expect((await readPage(made.id)).stateEpoch, 'no reset: the epoch is the same').toBe(before.stateEpoch);
+        } finally {
+          await setRole(bob.id, 'member'); // the other specs sign in as this person, as a member
+        }
       } finally {
         await users.close();
       }
