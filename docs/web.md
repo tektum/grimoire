@@ -48,7 +48,7 @@ Tokens are CSS custom properties in `src/ui/tokens.css`: `--paper`, `--ink`, `--
 
 ## Connection signals observed from the real server
 
-The client maps what the collab server says to what the page does in `src/editor/core/map-signal.ts`, by the reason first and by the close code only when there is no reason. The table below is what the real server answered to the browser's own socket, recorded by `test-e2e/editor/connection-signals.spec.ts` in the `Web browser tests` job (the spec prints the line `observed-signals`; this is its output from a passing run).
+The client maps what the collab server says to what the page does in `src/editor/core/map-signal.ts`, a refusal by its reason, a close by its code (a few close reasons are read first: `access-changed`, `session-expired`, `stale-epoch`, `rate-limited`). The table below is what the real server answered to the browser's own socket, recorded by `test-e2e/editor/connection-signals.spec.ts` in the `Web browser tests` job (the spec prints the line `observed-signals`; this is its output from a passing run).
 
 | Case | Refusal reason | Close code | Close reason |
 |---|---|---|---|
@@ -56,4 +56,6 @@ The client maps what the collab server says to what the page does in `src/editor
 | a page that does not exist | `not-found` | 4404 | `not-found` |
 | a document name that is not a page id | `bad-document-name` | 4400 | `bad-document-name` |
 
-In all three the refusal arrives first and the close follows, and the close reason repeats the refusal reason. Every reason has a row in the mapping, and the spec checks that the close is mapped by the same reason. The other signals (`forbidden`, `access-changed`, `session-expired`, `page-full`) are not in this table: the probe does not produce them, so nothing is recorded for them here.
+In all three the refusal arrives first and the close follows, and the close reason repeats the refusal reason. Every reason has a row in the mapping, and the spec checks, for each of the three, that the socket is closed, that the close reason equals the refusal reason, and that the close is handled exactly as the refusal is (same behaviour and text).
+
+The other signals (`forbidden`, `access-changed`, `session-expired`, `page-full`) are not in this table: the probe does not produce them, so nothing is recorded for them here.
