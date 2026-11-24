@@ -27,7 +27,7 @@ const queue = (element: HTMLElement, step: () => Promise<void>): Promise<void> =
 
 const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, copy: null, generation: 0 };
 
-export function PageView({ page, engine = realEngine }: { page: PageMeta; engine?: Engine }) {
+export function PageView({ page, engine = realEngine, onReplaced }: { page: PageMeta; engine?: Engine; onReplaced?: () => void }) {
   const session = useSession();
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,6 +38,11 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
   const [showingSaved, setShowingSaved] = useState(false);
   const editableRef = useRef<(editable: boolean) => void>(() => undefined);
   const permissionReadOnly = page.myPermission === 'read-only';
+  // The effect below outlives a page response: it reads what the person may do now, not what the first response said.
+  const permissionRef = useRef(permissionReadOnly);
+  permissionRef.current = permissionReadOnly;
+  const replacedRef = useRef(onReplaced);
+  replacedRef.current = onReplaced;
   const readOnly = permissionReadOnly || state.readOnly;
   const restore = (location.state as { restoreMarkdown?: unknown } | null)?.restoreMarkdown;
   const restoreRef = useRef(typeof restore === 'string' ? restore : null);
@@ -51,8 +56,9 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
     let live: MountedEditor | null = null;
     let saved: MountedEditor | null = null;
     let liveGeneration = 0;
+    let seenGeneration = 0;
     let starting = false;
-    const editable = (): boolean => !(permissionReadOnly || manager.state().readOnly || manager.state().stopped !== null);
+    const editable = (): boolean => !(permissionRef.current || manager.state().readOnly || manager.state().stopped !== null);
     const manager: ConnectionManager = new ConnectionManager({
       auth: { getToken: () => session.auth.getToken(), refresh: () => session.auth.refresh(), signOut: () => session.auth.signOut('expired') },
       clientVersion: CLIENT_VERSION,
@@ -117,6 +123,11 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
     const unsubscribe = manager.subscribe((next) => {
       setState(next);
       if (cancelled) return;
+      if (next.generation > seenGeneration) {
+        // A new document: the person's access may have changed (that is usually why), so the page is read again.
+        if (seenGeneration > 0) replacedRef.current?.();
+        seenGeneration = next.generation;
+      }
       if (live !== null && next.generation !== liveGeneration) {
         // The document under the editor was replaced: take the editor down and show the saved text until the new one has synced.
         const old = live;

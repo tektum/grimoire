@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Auth } from '../../src/auth';
@@ -80,6 +80,7 @@ function mountPage(
     markdown?: string;
     staleHeader?: boolean;
     markdownStatus?: number;
+    onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
     authOver?: Partial<Auth>;
   } = {},
@@ -93,10 +94,14 @@ function mountPage(
     })),
   } as unknown as AppSession['api'];
   const value: AppSession = { auth, api, collabUrl: 'ws://collab.test' };
-  const router = createMemoryRouter(
-    [{ path: '/', element: <PageView page={options.page ?? page()} engine={{ ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) }} /> }],
-    { initialEntries: [{ pathname: '/', state: options.state }] },
-  );
+  const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
+  const engine = { ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) };
+  const Host = () => {
+    const [current, set] = useState(options.page ?? page());
+    setPage.current = set;
+    return <PageView page={current} engine={engine} {...(options.onReplaced === undefined ? {} : { onReplaced: options.onReplaced })} />;
+  };
+  const router = createMemoryRouter([{ path: '/', element: <Host /> }], { initialEntries: [{ pathname: '/', state: options.state }] });
   const tree = (
     <SessionContext.Provider value={value}>
       <RouterProvider router={router} />
@@ -105,7 +110,7 @@ function mountPage(
   const view = render(options.strict ? <StrictMode>{tree}</StrictMode> : tree);
   const root = () => screen.getByTestId('editor-root');
   const synced = (index = fake.sessions.length - 1) => act(async () => void fake.sessions[index]!.provider.succeed(1));
-  return { ...fake, api, root, synced, view };
+  return { ...fake, api, root, synced, view, setPage: (p: PageMeta) => act(async () => setPage.current(p)) };
 }
 
 const waitSaved = () => waitFor(() => expect(document.querySelector('.ProseMirror[contenteditable="false"]')).not.toBeNull());
@@ -328,5 +333,21 @@ describe('the page screen', () => {
     await t.synced(1);
     await waitFor(() => expect(t.lives).toHaveLength(1));
     expect((t.lives[0]!.session as { provider: unknown }).provider).toBe(t.sessions[1]!.provider);
+  });
+
+  it('a reader who is given write access can type in the new document without a reload: the page is read again, and what it says now decides', async () => {
+    const onReplaced = vi.fn();
+    const t = mountPage({ page: page({ myPermission: 'read-only' }), onReplaced });
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect(t.lives[0]!.editable).toBe(false);
+    expect(onReplaced).not.toHaveBeenCalled();
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed'));
+    await waitFor(() => expect(onReplaced).toHaveBeenCalledTimes(1));
+    await t.setPage(page({ myPermission: 'read-write' })); // the page read again
+    await t.synced(1);
+    await waitFor(() => expect(t.lives).toHaveLength(2));
+    expect(t.lives[1]!.editable).toBe(true);
+    expect(screen.queryByText('Read only')).toBeNull();
   });
 });

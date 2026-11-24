@@ -15,5 +15,5 @@ export default function PageScreen() {
         <p>This page does not exist, or you do not have access to it.</p>
       </section>
     );
-  return <PageView key={result.data.page.id} page={result.data.page} />;
+  return <PageView key={result.data.page.id} page={result.data.page} onReplaced={() => void result.refetch()} />;
 }
