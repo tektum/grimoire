@@ -1,17 +1,16 @@
-import { vi, afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { vi, afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import { jobQueueCaseNames, jobQueueConformance, type JobQueueHarness } from '@tektum/grimoire-core/testing/job-queue-conformance';
 import type { PgBossJobQueue } from '../src/index.js';
 import { createTestDatabase, databaseUrl, dropTestDatabase, installPgBoss, poolDatabase, startQueue } from './pgboss-support.js';
 
 const DB = `grimoire_t_pgboss_conf_${String(process.pid)}`;
-const NAMES = ['c-enqueue', 'c-delay', 'c-retry', 'c-retry-exhausted', 'c-retry-default', 'c-singleton', 'c-schedule', 'c-crash', 'c-tx'];
 const database = poolDatabase(databaseUrl(DB));
 let current: PgBossJobQueue | undefined;
 const started: PgBossJobQueue[] = [];
 
 async function fresh(): Promise<PgBossJobQueue> {
-  const q = await startQueue(databaseUrl(DB), NAMES);
+  const q = await startQueue(databaseUrl(DB));
   started.push(q);
   return q;
 }
@@ -40,15 +39,16 @@ describe('PgBossJobQueue conformance (same cases as the fake)', () => {
   beforeAll(async () => {
     await createTestDatabase(DB);
     await installPgBoss(databaseUrl(DB));
-    current = await fresh();
   }, 60_000);
+  // A case may stop its queue, so each one gets its own.
+  beforeEach(async () => { current = await fresh(); }, 60_000);
+  afterEach(async () => { await Promise.all(started.splice(0).map((q) => q.stop({ graceMs: 0 }).catch(() => undefined))); }, 60_000);
   afterAll(async () => {
-    await Promise.all(started.map((q) => q.stop({ graceMs: 0 }).catch(() => undefined)));
     await database.close();
     await dropTestDatabase(DB);
   }, 60_000);
 
-  it('lists the seven cases, in order', () => {
+  it('lists the cases, in order', () => {
     expect(jobQueueConformance.map((c) => c.name)).toEqual([...jobQueueCaseNames]);
     console.log(`conformance cases: ${jobQueueConformance.map((c) => c.name).join(', ')}`);
   });

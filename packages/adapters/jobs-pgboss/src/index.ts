@@ -1,6 +1,6 @@
-import { PgBoss, type ConstructorOptions, type Job } from 'pg-boss';
+import { PgBoss, type ConstructorOptions, type JobWithMetadata } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import type { EnqueueOptions, JobHandler, JobQueue } from '@tektum/grimoire-core/ports/job-queue';
+import { expirySignalDelayMs, type EnqueueOptions, type JobHandler, type JobQueue, type QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
 
 /** The schema pg-boss keeps its tables in; the Kysely migrations never touch it. */
 export const PGBOSS_SCHEMA = 'pgboss';
@@ -8,15 +8,8 @@ export const PGBOSS_SCHEMA = 'pgboss';
 /** Stop waits this long for running jobs by default; the server checks that it fits the release step of the shutdown budget. */
 export const DEFAULT_STOP_GRACE_MS = 1500;
 
-export interface EnsureQueueOptions {
-  /** At most one queued or running job per `singletonKey` on this queue (the port's `singletonKey` option needs it). */
-  readonly singleton?: boolean;
-  /** A running job that reports nothing for this long is given back to the queue. */
-  readonly expireInSeconds?: number;
-}
-
 /** The part of pg-boss the adapter uses; tests pass a stand-in. */
-export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'isInstalled' | 'on'>;
+export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'findJobs' | 'getDb' | 'isInstalled' | 'on'>;
 
 /** The database object pg-boss accepts for one call (`db` option). */
 interface PgBossDatabase { executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> }
@@ -27,32 +20,63 @@ function asDatabase(tx: Queryable): PgBossDatabase {
 }
 
 export class PgBossJobQueue implements JobQueue {
+  /** The abort controllers of the handlers that are running now. */
+  private readonly running = new Set<AbortController>();
+
   constructor(
     private readonly boss: PgBossLike,
     private readonly stopGraceMs: number = DEFAULT_STOP_GRACE_MS,
   ) {}
 
-  /** Creates the queue unless it exists. Run it at start-up, before `work`, `schedule` or `enqueue` use the name. */
-  async ensureQueue(name: string, options: EnsureQueueOptions = {}): Promise<void> {
-    if (await this.boss.getQueue(name)) return;
-    await this.boss.createQueue(name, {
-      policy: options.singleton ? 'exclusive' : 'standard',
-      ...(options.expireInSeconds === undefined ? {} : { expireInSeconds: options.expireInSeconds }),
+  /** Creates the queue unless it exists. Run it with a role that may create tables (`grimoire migrate`), before `work`, `schedule` or `enqueue` use the name. */
+  async ensureQueue(definition: QueueDefinition): Promise<void> {
+    if (await this.boss.getQueue(definition.name)) return;
+    await this.boss.createQueue(definition.name, {
+      policy: definition.policy,
+      retryLimit: definition.retryLimit,
+      retryDelay: definition.retryDelaySeconds,
+      retryBackoff: definition.retryBackoff,
+      expireInSeconds: definition.expireInSeconds,
+      retentionSeconds: definition.retentionSeconds,
+      ...(definition.deadLetter === undefined ? {} : { deadLetter: definition.deadLetter }),
     });
   }
 
   async enqueue<Payload>(name: string, payload: Payload, options: EnqueueOptions = {}, tx?: Queryable): Promise<string | null> {
-    return this.boss.send(name, payload as object, {
+    const id = await this.boss.send(name, payload as object, {
       ...(options.delaySeconds === undefined ? {} : { startAfter: options.delaySeconds }),
       ...(options.singletonKey === undefined ? {} : { singletonKey: options.singletonKey }),
-      retryLimit: options.retryLimit ?? 0, // pg-boss would default to 2 retries; the port's default is none
+      ...(options.retryLimit === undefined ? {} : { retryLimit: options.retryLimit }),
+      ...(options.expireInSeconds === undefined ? {} : { expireInSeconds: options.expireInSeconds }),
       ...(tx ? { db: asDatabase(tx) } : {}),
     });
+    if (id !== null || options.singletonKey === undefined) return id;
+    // pg-boss answers null when the key is taken; the port answers with the job that holds it.
+    // Inside the caller's transaction its own uncommitted job is the one that holds the key.
+    const [existing] = await this.boss.findJobs(name, { key: options.singletonKey, queued: true, limit: 1, ...(tx ? { db: asDatabase(tx) } : {}) });
+    return existing?.id ?? null;
+  }
+
+  async isLive(name: string, singletonKey: string): Promise<boolean> {
+    // States are ordered created, retry, active, completed, cancelled, failed; the first three are live.
+    const { rows } = await this.boss.getDb().executeSql(`select 1 from ${PGBOSS_SCHEMA}.job where name = $1 and singleton_key = $2 and state <= 'active' limit 1`, [name, singletonKey]);
+    return rows.length > 0;
   }
 
   async work<Payload>(name: string, handler: JobHandler<Payload>): Promise<void> {
-    await this.boss.work<Payload>(name, async (jobs: Job<Payload>[]) => {
-      for (const job of jobs) await handler(job.data, { id: job.id, attempt: job.retryCount + 1 });
+    await this.boss.work<Payload, void, { includeMetadata: true }>(name, { includeMetadata: true }, async (jobs: JobWithMetadata<Payload>[]) => {
+      for (const job of jobs) {
+        const own = new AbortController();
+        this.running.add(own);
+        const timer = setTimeout(() => { own.abort(); }, expirySignalDelayMs(job.expireInSeconds));
+        try {
+          const signal = job.signal ? AbortSignal.any([own.signal, job.signal]) : own.signal;
+          await handler(job.data, { jobId: job.id, attempt: job.retryCount + 1, retryLimit: job.retryLimit, signal });
+        } finally {
+          clearTimeout(timer);
+          this.running.delete(own);
+        }
+      }
     });
   }
 
@@ -61,7 +85,7 @@ export class PgBossJobQueue implements JobQueue {
   }
 
   /** True when pg-boss's tables are installed and answer; false otherwise (for the readiness check). */
-  async isLive(): Promise<boolean> {
+  async isReady(): Promise<boolean> {
     try {
       return await this.boss.isInstalled();
     } catch {
@@ -69,9 +93,15 @@ export class PgBossJobQueue implements JobQueue {
     }
   }
 
-  /** Stops fetching, waits up to `graceMs` for running jobs, then closes pg-boss's connections. */
-  async stop({ graceMs = this.stopGraceMs }: { graceMs?: number } = {}): Promise<void> {
-    await this.boss.stop({ graceful: true, close: true, timeout: graceMs });
+  /** Stops fetching, waits up to `graceMs` for running jobs (aborting their signals at `graceMs - 2000`), then closes pg-boss's connections. */
+  async stop({ graceMs = this.stopGraceMs }: { graceMs?: number } = {}): Promise<{ inFlight: number }> {
+    const abortTimer = setTimeout(() => { for (const c of this.running) c.abort(); }, Math.max(0, graceMs - 2000));
+    try {
+      await this.boss.stop({ graceful: true, close: true, timeout: graceMs });
+    } finally {
+      clearTimeout(abortTimer);
+    }
+    return { inFlight: this.running.size };
   }
 }
 
