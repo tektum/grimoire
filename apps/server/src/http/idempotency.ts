@@ -17,6 +17,8 @@ export type ReplayRebuild = (stored: StoredResponse, c: Context<AppEnv>) => Resp
 export interface IdempotencyOptions {
   /** Per-route replay hooks; a route without one replays the stored status and body as they were. */
   readonly rebuild?: Readonly<Record<string, ReplayRebuild>>;
+  /** Per-route stored form, by `"METHOD /route/pattern"`: what is kept of a 2xx JSON body (a signed URL is never stored; the route's replay hook makes a new one). */
+  readonly stored?: Readonly<Record<string, (body: unknown) => unknown>>;
   /** True for about one request in a hundred: that request also deletes the keys older than a day. */
   readonly sample?: () => boolean;
 }
@@ -69,7 +71,7 @@ export function idempotency(app: OpenAPIHono<AppEnv>, deps: Pick<HttpDeps, 'idem
       await deps.idempotency.release(userId, key);
       throw error;
     }
-    const kept = await keptResponse(c.res);
+    const kept = await keptResponse(c.res, opts.stored?.[`${method} ${pattern}`]);
     // The answer has been produced; failing to record it must not turn it into an error. The key then stays claimed until the daily clean-up.
     try {
       if (kept === undefined) await deps.idempotency.release(userId, key);
@@ -82,10 +84,10 @@ export function idempotency(app: OpenAPIHono<AppEnv>, deps: Pick<HttpDeps, 'idem
 }
 
 /** The status and parsed JSON of a 2xx answer, or undefined when the answer is not worth replaying. */
-async function keptResponse(res: Response): Promise<StoredResponse | undefined> {
+async function keptResponse(res: Response, shape: ((body: unknown) => unknown) | undefined): Promise<StoredResponse | undefined> {
   if (res.status < 200 || res.status > 299) return undefined;
   const text = await res.clone().text();
   if (text === '') return { status: res.status, body: null };
   if (!(res.headers.get('content-type') ?? '').includes('json')) return undefined;
-  try { return { status: res.status, body: JSON.parse(text) as unknown }; } catch { return undefined; }
+  try { const body = JSON.parse(text) as unknown; return { status: res.status, body: shape === undefined ? body : shape(body) }; } catch { return undefined; }
 }
