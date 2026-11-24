@@ -1,7 +1,9 @@
-import { useMatch } from 'react-router';
+import { Link, useMatch } from 'react-router';
 import { type ApiLike, useApiQuery } from '../../api/query';
 import { Button } from '../../ui/primitives';
 import NotFoundScreen from '../notfound';
+import { AccessScreen } from './AccessScreen';
+import { GroupsScreen } from './GroupsScreen';
 import { UsersScreen } from './UsersScreen';
 
 /**
@@ -11,6 +13,8 @@ import { UsersScreen } from './UsersScreen';
 export function AdminArea({ api }: { readonly api: ApiLike }) {
   const me = useApiQuery<{ role: 'admin' | 'member' | 'viewer' }>(api, '/v1/me');
   const users = useMatch('/admin/users');
+  const groups = useMatch('/admin/groups');
+  const access = useMatch('/admin/collections/:id/access');
   if (me.isError && me.data === undefined) {
     return (
       <p role="alert">
@@ -19,6 +23,14 @@ export function AdminArea({ api }: { readonly api: ApiLike }) {
     );
   }
   if (me.data === undefined) return <p>Loading</p>;
-  if (me.data.role !== 'admin' || users === null) return <NotFoundScreen />;
-  return <UsersScreen api={api} />;
+  if (me.data.role !== 'admin' || (users === null && groups === null && access === null)) return <NotFoundScreen />;
+  return (
+    <>
+      <nav aria-label="Admin" className="admin-nav">
+        <Link to="/admin/users" {...(users !== null ? { 'aria-current': 'page' as const } : {})}>Users</Link>
+        <Link to="/admin/groups" {...(groups !== null ? { 'aria-current': 'page' as const } : {})}>Groups</Link>
+      </nav>
+      {users !== null ? <UsersScreen api={api} /> : groups !== null ? <GroupsScreen api={api} /> : <AccessScreen api={api} />}
+    </>
+  );
 }

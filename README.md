@@ -84,6 +84,18 @@ Administrators: resetting a page's saved state, with an optional replacement tex
 
 The second question when the saved text is older than the page.
 
+![The users screen for administrators](docs/screenshots/m6-t12/users-light.png)
+
+Administrators: people, their roles, and who is suspended.
+
+![A group with its members](docs/screenshots/m6-t12/group-light.png)
+
+Administrators: a group and its members.
+
+![Who has access to a collection](docs/screenshots/m6-t12/access-light.png)
+
+Administrators: who may read and write a collection.
+
 The same page in the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

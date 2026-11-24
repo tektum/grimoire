@@ -29,6 +29,26 @@ describe('the admin area', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
   });
 
+  it('has a way between Users and Groups, marking the one shown', async () => {
+    const { api } = fakeApi({ 'GET /v1/me': me('admin'), 'GET /v1/groups': ok({ items: [] }) });
+    show(api, '/admin/groups');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Groups' })).toBeTruthy();
+    const nav = screen.getByRole('navigation', { name: 'Admin' });
+    expect(Array.from(nav.querySelectorAll('a')).map((a) => [a.textContent, a.getAttribute('aria-current')])).toEqual([['Users', null], ['Groups', 'page']]);
+  });
+
+  it('shows an administrator the access of a collection, and a member the not-found screen', async () => {
+    const routes = { 'GET /v1/collections/{id}': ok({ id: 'c1', name: 'Dev', myPermission: 'read-write' }), 'GET /v1/collections/{id}/access': ok({ defaultPermission: null, entries: [] }) };
+    const admin = fakeApi({ 'GET /v1/me': me('admin'), ...routes });
+    const { unmount } = show(admin.api, '/admin/collections/c1/access');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Access to Dev' })).toBeTruthy();
+    unmount();
+    const member = fakeApi({ 'GET /v1/me': me('member'), ...routes });
+    show(member.api, '/admin/collections/c1/access');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
+    expect(member.requests.map((r) => r.path)).toEqual(['/v1/me']);
+  });
+
   it.each(['member', 'viewer'])('shows a %s the not-found screen, and makes no admin request', async (role) => {
     const { api, requests } = fakeApi({ 'GET /v1/me': me(role), 'GET /v1/users': ok({ items: [], nextCursor: null }) });
     show(api, '/admin/users');

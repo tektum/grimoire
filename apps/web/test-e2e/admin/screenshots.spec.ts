@@ -51,3 +51,35 @@ test('the reset dialog, asked and then at the stale confirmation, light and dark
     await reset.stop();
   }
 });
+
+test('a group with its members, light and dark', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await signInAs(context, 'e2e-alice', 'admin', { check: false });
+  await adminApi(page, {
+    role: 'admin',
+    users: [u('u1', 'Alice Example', 'admin'), u('u2', 'Bob Builder'), u('u3', 'Carol Reader', 'viewer'), u('u4', 'Dana Writer')],
+    groups: [{ id: 'g1', name: 'Platform team' }, { id: 'g2', name: 'Editors' }],
+    members: { g1: ['u2', 'u3', 'u4'], g2: ['u4'] },
+  });
+  await page.goto('/admin/groups?group=g1');
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByRole('list', { name: 'Members' }).getByRole('listitem')).toHaveCount(3);
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'group');
+});
+
+test('the access table of a collection, light and dark', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await signInAs(context, 'e2e-alice', 'admin', { check: false });
+  await adminApi(page, {
+    role: 'admin',
+    users: [u('u1', 'Alice Example', 'admin'), u('u2', 'Bob Builder')],
+    groups: [{ id: 'g1', name: 'Platform team' }],
+    access: { defaultPermission: 'read', entries: [{ id: 'e1', principalType: 'group', principalId: 'g1', permission: 'read_write' }, { id: 'e2', principalType: 'user', principalId: 'u2', permission: 'read' }] },
+  });
+  await page.goto('/admin/collections/c1/access');
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByRole('table', { name: 'Who has access' })).toBeVisible();
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'access');
+});

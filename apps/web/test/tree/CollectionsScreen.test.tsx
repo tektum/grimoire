@@ -26,6 +26,16 @@ describe('CollectionsScreen', () => {
     expect(calls).toContain('GET /v1/collections/{id} c1');
   });
 
+  it.each([['admin', 1], ['member', 0], ['viewer', 0]] as const)('offers Manage access to an administrator only (%s)', async (role, count) => {
+    const { api } = fakeApi({ 'GET /v1/me': ok({ id: 'u1', name: 'A', email: 'a@dev.invalid', role }), 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}': ok(COLLECTIONS[0]) });
+    renderAt(<CollectionsScreen api={api} collectionId="c1" />);
+    await screen.findByRole('heading', { level: 1, name: 'Dev' });
+    await screen.findByText('Choose a page in the contents, or start a new one.');
+    const links = screen.queryAllByRole('link', { name: 'Manage access' });
+    expect(links).toHaveLength(count);
+    if (count > 0) expect(links[0]?.getAttribute('href')).toBe('/admin/collections/c1/access');
+  });
+
   it('shows the not-found screen for a collection the caller cannot read, the same for an unknown one', async () => {
     for (const status of [404, 403]) {
       const { api } = fakeApi({ 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}': { status } });
