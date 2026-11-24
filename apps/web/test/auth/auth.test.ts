@@ -344,6 +344,49 @@ describe('a second sign-out', () => {
     expect(t.sdk.logouts).toBeLessThanOrEqual(1);
   });
 
+  it('removes the SDK keys again, without telling subscribers, when a refresh that finished late made the SDK write tokens back', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    await t.auth.signOut('manual');
+    expect(t.sdkStorage.map.size).toBe(0);
+    t.sdkStorage.map.set(DESCOPE_SESSION_KEY, 's2'); // written back by an SDK call that was still running
+    t.sdkStorage.map.set(DESCOPE_REFRESH_KEY, 'r2');
+    t.sdkStorage.map.set(DESCOPE_DEVICE_KEY, 'd2');
+    const seen: AuthState[] = [];
+    t.auth.subscribe((s) => seen.push(s));
+    await t.auth.signOut('expired');
+    expect(t.sdkStorage.map.size).toBe(0);
+    expect(seen).toEqual([]);
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+  });
+
+  it('joins a sign-out that is waiting for the provider: a late expired neither removes the refresh token the logout needs nor notifies first', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r', [DESCOPE_DEVICE_KEY]: 'd' }, sdkToken: jwt(secs(NOW) + 600) });
+    await t.auth.getToken();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    t.sdk.logout = async () => {
+      t.sdk.logouts += 1;
+      t.sdk.atLogout = [...t.sdkStorage.map.keys()];
+      await gate;
+    };
+    const seen: AuthState[] = [];
+    t.auth.subscribe((s) => seen.push(s));
+    const manual = t.auth.signOut('manual');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(t.sdk.atLogout).toContain(DESCOPE_REFRESH_KEY);
+    let lateDone = false;
+    const late = t.auth.signOut('expired').then(() => (lateDone = true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lateDone).toBe(false); // it waits for the sign-out in progress
+    expect(t.sdkStorage.map.has(DESCOPE_REFRESH_KEY)).toBe(true); // and has not removed what the logout needs
+    expect(seen).toEqual([]);
+    release();
+    await Promise.all([manual, late]);
+    expect(seen).toEqual([{ status: 'signed-out', reason: 'manual' }]);
+    expect(t.sdk.logouts).toBe(1);
+    expect(t.sdkStorage.map.size).toBe(0);
+  });
+
   it('still records a reason for a start that was signed out without one', async () => {
     const t = setup();
     expect(t.auth.state()).toEqual({ status: 'signed-out' });

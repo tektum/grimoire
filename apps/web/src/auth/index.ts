@@ -67,6 +67,15 @@ export function createAuth(o: CreateAuthOptions): Auth {
   let refreshing: Promise<boolean> | null = null;
   // Counts sign-outs: a refresh that was started before one must not bring the session back, or sign out a second time.
   let epoch = 0;
+  // The sign-out in progress, if any.
+  let ending: Promise<void> | null = null;
+  const clearSdkKeys = (): void => {
+    try {
+      for (const key of [DESCOPE_SESSION_KEY, DESCOPE_REFRESH_KEY, DESCOPE_DEVICE_KEY]) sdkStorage?.removeItem(key);
+    } catch {
+      // storage blocked: nothing to remove
+    }
+  };
 
   const hasDescopeSession = (): boolean => {
     try {
@@ -170,24 +179,29 @@ export function createAuth(o: CreateAuthOptions): Auth {
       return refreshing;
     },
     async signOut(reason = 'manual') {
-      // A session that has already ended keeps the reason it ended with: a late "expired" (the API middleware reacting to a refresh that was cut short)
-      // must not replace the user's own sign-out. The keys are removed again, which costs nothing.
+      // A sign-out already under way (a manual one waits for the provider) decides the reason and the order of events: a late call joins it, so an "expired"
+      // from the API middleware can neither remove the refresh token the provider logout still needs nor tell subscribers before the manual one does.
+      if (ending !== null) return ending;
+      // A session that has already ended keeps the reason it ended with. The keys are removed again, which costs nothing: a refresh that finished late may
+      // have made the SDK write tokens back, and storage that refused a removal once gets another try.
       if (current.status === 'signed-out' && current.reason !== undefined) {
         o.devSignIn?.clear();
+        clearSdkKeys();
         return;
       }
-      epoch += 1;
-      o.devSignIn?.clear();
-      // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
-      // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
-      if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
-      try {
-        for (const key of [DESCOPE_SESSION_KEY, DESCOPE_REFRESH_KEY, DESCOPE_DEVICE_KEY]) sdkStorage?.removeItem(key);
-      } catch {
-        // storage blocked: nothing to remove
-      }
-      log('info', 'web.sign_out', { reason });
-      set({ status: 'signed-out', reason });
+      ending = (async () => {
+        epoch += 1;
+        o.devSignIn?.clear();
+        // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
+        // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
+        if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
+        clearSdkKeys();
+        log('info', 'web.sign_out', { reason });
+        set({ status: 'signed-out', reason });
+      })().finally(() => {
+        ending = null;
+      });
+      return ending;
     },
   };
   return auth;
