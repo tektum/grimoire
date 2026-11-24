@@ -66,4 +66,14 @@ describe('bodyLimit under node-server', () => {
     const res = await app.fetch(new Request('http://x/echo', { method: 'POST', headers: { 'content-length': '5' }, body: 'hello' }));
     expect([res.status, await res.json()]).toEqual([200, { method: 'POST', body: 'hello' }]);
   });
+  it('a body that fails mid-read (the client went away) is answered 422, not an unknown error', async () => {
+    const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error('aborted')); } });
+    const res = await build().fetch(new Request('http://x/echo', { method: 'POST', body: stream, duplex: 'half' } as RequestInit));
+    expect(res.status).toBe(422);
+  });
+  it('a GET that carries a chunked body reaches the handler without it', async () => {
+    const port = await listen(build());
+    const r = await chunked(port, 'GET', ['abc']);
+    expect([r.status, JSON.parse(r.text)]).toEqual([200, { method: 'GET', body: '' }]);
+  });
 });

@@ -13,7 +13,7 @@ export interface BodyLimitOptions { readonly maxSize: number }
 export function bodyLimit(options: BodyLimitOptions): MiddlewareHandler {
   return async (c, next) => {
     const raw = c.req.raw;
-    if (raw.body === null || raw.body === undefined) return next();
+    if (raw.body === null) return next();
     const declared = c.req.header('content-length');
     const chunked = c.req.header('transfer-encoding') !== undefined;
     if (declared !== undefined && !chunked && /^\d+$/.test(declared)) {
@@ -30,7 +30,7 @@ export function bodyLimit(options: BodyLimitOptions): MiddlewareHandler {
         if (done) break;
         size += value.length;
         if (size > options.maxSize) {
-          void reader.cancel().catch(() => undefined);
+          void reader.cancel();
           return errorResponse('too_large');
         }
         parts.push(value);
