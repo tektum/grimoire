@@ -22,7 +22,7 @@ Descope skills (vendored from upstream, see
 - `descope-auth`: adding sign-in, sign-up, SSO, MFA or other login methods to an app.
 - `auth-review`: a security review of authentication and authorisation code.
 - `descope-flows`: building or changing Descope flows through the Descope MCP.
-- `descope-terraform`: managing Descope projects, roles and settings as Terraform.
+- `descope-terraform`: managing Descope projects, roles and settings as code. Here that code is the SST app (`sst.config.ts`, `infra/`), not OpenTofu: the skill's resource names and its warnings about secrets and state still apply, its commands do not (see `infra/README.md`).
 - `descope-fga-schema`: writing or changing a Descope FGA (fine-grained access) schema.
 - `descope-byos-builder`: building custom React screens on top of a Descope flow.
 
@@ -81,7 +81,7 @@ paths are not under the workspace (blobs carry the absolute paths of the machine
 because a floor that matches nothing passes without checking anything
 (`tools/ci/check-floor-matches.mjs`).
 
-`mise.toml` lists node, bun, gitleaks, actionlint, zizmor and opentofu (for `infra/descope`), with their checksums in
+`mise.toml` lists node, bun, gitleaks, actionlint and zizmor, with their checksums in
 `mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
 
 Today the integration, container and benchmark commands find no tests and exit
