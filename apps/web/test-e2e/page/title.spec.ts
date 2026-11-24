@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { mockApi } from '../collections/mock-api';
+import { API, mockApi } from '../collections/mock-api';
 import { signInAs } from '../support/sign-in';
 
 // The title of a page, edited in place (R14.6: a plain field, saved through the API like the tree's rename). Against a stand-in of the API that keeps the pages in memory; the editor
@@ -99,4 +99,26 @@ test('an old address of a renamed page still opens it, and so does the new one a
   await expect(heading(page)).toHaveText('Renamed');
   await page.reload();
   await expect(heading(page)).toHaveText('Renamed');
+});
+
+test('a title saved by leaving the field for another page in the tree does not take the person back: the address stays on the page they opened', async ({ page, context }) => {
+  const api = await open(page, context);
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`${API}/v1/pages/a`, async (route) => {
+    if (route.request().method() === 'PATCH') await gate; // the rename is still on its way when the person clicks
+    await route.fallback();
+  });
+  await heading(page).getByRole('button').click();
+  await page.getByRole('textbox', { name: 'Page title' }).fill('Renamed');
+  await page.getByRole('link', { name: 'Notes', exact: true }).click(); // leaving the field saves it; the click opens the other page
+  await expect(page).toHaveURL(/\/p\/notes-b0000000$/);
+  await expect(heading(page)).toHaveText('Notes');
+  release();
+  await expect.poll(() => api.writes()).toEqual(['PATCH /v1/pages/a']);
+  await expect.poll(() => names(page)).toEqual(['Renamed', 'Notes']);
+  await expect(page).toHaveURL(/\/p\/notes-b0000000$/); // the renamed page's address did not replace this one
+  await expect(heading(page)).toHaveText('Notes');
 });
