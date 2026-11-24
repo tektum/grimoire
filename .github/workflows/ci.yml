@@ -260,7 +260,7 @@ jobs:
     name: Integration tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-integration/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ${{ format('runs-on={0}-{1}-integration/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     permissions:
       id-token: write # Codecov upload by OIDC; contents stays read
       contents: read
@@ -391,7 +391,7 @@ jobs:
     name: Exit test M1
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -431,7 +431,7 @@ jobs:
     name: Exit test M2
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -471,7 +471,7 @@ jobs:
     name: Exit test M3
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -510,7 +510,7 @@ jobs:
     name: Exit test M4
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m4/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ${{ format('runs-on={0}-{1}-e2e-m4/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
