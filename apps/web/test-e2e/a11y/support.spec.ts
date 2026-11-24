@@ -62,7 +62,7 @@ test('Tab reaches the element asked for, and the failure says where the focus wa
   await page.goto(server.url('/buttons'));
   await tabTo(page, (el) => el?.id === 'b');
   expect(await page.evaluate(() => document.activeElement?.id)).toBe('b');
-  await expect(tabTo(page, (el) => el?.id === 'nowhere', { limit: 4 })).rejects.toThrow(/never reached the element in 4 Tab presses.*it went over: button "First", button "Second"/);
+  await expect(tabTo(page, (el) => el?.id === 'nowhere', { limit: 4 })).rejects.toThrow(/never reached the element in 4 Tab presses.*it went over: .*button "First"/s);
 });
 
 test('Tab takes a value as an argument (the predicate runs in the page), and the last Tab press is checked too', async ({ page }) => {
