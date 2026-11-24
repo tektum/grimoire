@@ -24,6 +24,7 @@ const MARKDOWN = [
 
 test.describe('the page text: first view and live editor', () => {
   test('both have a name for the editing surface and no accessibility violations, and the first view is set like the live one: same font, every heading level styled', async ({ browser, baseURL }) => {
+    test.slow(); // the sync wait below may have to outlast a backoff
     const made = await makePage(MARKDOWN);
     const users = await twoUsers(browser, baseURL);
     try {
@@ -53,7 +54,7 @@ test.describe('the page text: first view and live editor', () => {
       // The page waits out a backoff of up to 30 s before its next attempt; the browser's own offline and online events make it connect at once.
       await page.context().setOffline(true);
       await page.context().setOffline(false);
-      await waitForSynced(page, { timeout: 60_000 }); // and room for the backoff on a slow machine, should the events find it between waits
+      await waitForSynced(page, { timeout: 60_000 }); // room for a backoff already running (the test is marked slow for this)
       await expect(surface).toHaveAttribute('aria-label', 'Page text');
       await expectNoAxeViolations(page);
       const live = await look();
