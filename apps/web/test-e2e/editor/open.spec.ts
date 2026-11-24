@@ -22,6 +22,26 @@ test.describe('opening a page', () => {
     }
   });
 
+  test('leaving the page and coming back mounts exactly one editor again: the one that was left is gone', async ({ browser, baseURL }) => {
+    const made = await makePage('# Again\n\nOne editor at a time.\n');
+    const users = await twoUsers(browser, baseURL);
+    try {
+      const { page } = users.a;
+      await page.goto(made.path);
+      await waitForSynced(page);
+      await expect(page.locator('.ProseMirror')).toHaveCount(1);
+      await page.getByRole('link', { name: 'Search' }).click(); // the page screen unmounts
+      await expect(page.getByTestId('editor-root')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror')).toHaveCount(0);
+      await page.goBack(); // and mounts again
+      await waitForSynced(page);
+      await expect(page.locator('.ProseMirror')).toHaveCount(1);
+      await expect(page.locator('.ProseMirror')).toContainText('One editor at a time.');
+    } finally {
+      await users.close();
+    }
+  });
+
   test("what one person types is in the other's editor, without a reload", async ({ browser, baseURL }) => {
     const made = await makePage('# Together\n\nStart.\n');
     const users = await twoUsers(browser, baseURL);

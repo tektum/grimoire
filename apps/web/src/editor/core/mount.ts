@@ -1,4 +1,4 @@
-import { Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx } from '@milkdown/core';
+import { Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx, schemaCtx } from '@milkdown/core';
 import { collab, collabServiceCtx } from '@milkdown/plugin-collab';
 import { grimoireEditorPlugins } from '@tektum/grimoire-editor-schema';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -19,7 +19,13 @@ export interface MountedEditor {
   destroy(): Promise<void>;
 }
 
-const wrap = (editor: Editor, flag: { editable: boolean }, onDestroy: () => void = () => undefined): MountedEditor => ({
+/** A mounted editor that can also say what its schema holds (for the tests of the screen's editor). */
+export interface InspectableEditor extends MountedEditor {
+  /** The names of the node and mark types of the editor's schema: what the screen's editor can hold. */
+  schemaNames(): { readonly nodes: readonly string[]; readonly marks: readonly string[] };
+}
+
+const wrap = (editor: Editor, flag: { editable: boolean }, onDestroy: () => void = () => undefined): InspectableEditor => ({
   setEditable(editable) {
     flag.editable = editable;
     // An empty transaction makes ProseMirror read the `editable` option again.
@@ -29,6 +35,7 @@ const wrap = (editor: Editor, flag: { editable: boolean }, onDestroy: () => void
     });
   },
   markdown: () => markdownOf(editor),
+  schemaNames: () => editor.action((ctx) => ({ nodes: Object.keys(ctx.get(schemaCtx).nodes), marks: Object.keys(ctx.get(schemaCtx).marks) })),
   applyMarkdown: (markdown) => applyMarkdown(editor, markdown),
   destroy: async () => {
     onDestroy();
@@ -46,7 +53,7 @@ const base = (element: HTMLElement, flag: { editable: boolean }): Editor =>
     .use(uiPlugins);
 
 /** The saved text of a page, shown before the live editor is ready: the same editor with no connection, never editable. */
-export async function mountReadOnly(element: HTMLElement, markdown: string): Promise<MountedEditor> {
+export async function mountReadOnly(element: HTMLElement, markdown: string): Promise<InspectableEditor> {
   const flag = { editable: false };
   const editor = base(element, flag).config((ctx) => void ctx.set(defaultValueCtx, markdown));
   await editor.create();
