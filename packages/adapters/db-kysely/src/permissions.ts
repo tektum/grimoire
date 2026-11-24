@@ -110,7 +110,7 @@ export function createAccessStore(db: Queryable): AccessStore {
         out[hit.i] = {
           request: hit.request,
           ...(user ? { user } : {}),
-          ...(row.collection_found ? { collection: { ...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), deleted: row.collection_deleted_at !== null, defaultPermission: asPermission(row.default_permission) ?? null, entries: entriesFrom(row.entries) } } : {}),
+          ...(row.collection_found ? { collection: { deleted: row.collection_deleted_at !== null, ...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), defaultPermission: asPermission(row.default_permission) ?? null, entries: entriesFrom(row.entries) } } : {}),
         };
       }
       return out;

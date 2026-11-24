@@ -5,6 +5,8 @@ import pg from 'pg';
 import { devDatabaseUrl, insertPage, raw } from '@tektum/grimoire-test-support/database';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { World } from '@tektum/grimoire-core/testing/fake-access-store';
+import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
+import type { AccessStore } from '@tektum/grimoire-core/ports/access-store';
 
 // Dev-only credentials of the Compose database (`make db-up`). Every test file creates and drops its own database.
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
@@ -75,4 +77,43 @@ export function counting(inner: Queryable): { db: Queryable; statements: () => n
     statements: () => n,
     reset: () => { n = 0; },
   };
+}
+
+// Two tenants in one database (docs/tenancy.md 3.3, 3.4): an admin of `legacy` with its collection and page, an admin of `tenant-b` with its own. The ids are fixed and apart from the shared table's.
+const tid = (n: number): string => `00000000-0000-4000-8000-000000fa00${String(n).padStart(2, '0')}`;
+export const TENANTS = { userA: tid(1), userB: tid(2), colA: tid(3), colB: tid(4), pageA: tid(5), pageB: tid(6) };
+const tenantWorld: World = {
+  users: [{ id: TENANTS.userA, role: 'admin', suspended: false }, { id: TENANTS.userB, role: 'admin', suspended: false }],
+  groups: [], members: [], access: [],
+  collections: [{ id: TENANTS.colA, deleted: false, defaultPermission: 'read_write' }, { id: TENANTS.colB, deleted: false, defaultPermission: 'read_write' }],
+  pages: [{ id: TENANTS.pageA, collectionId: TENANTS.colA, epoch: 1, deleted: false }, { id: TENANTS.pageB, collectionId: TENANTS.colB, epoch: 1, deleted: false }],
+};
+
+/** Loads the two-tenant world: everything goes in as `legacy`, then tenant B takes its user, collection and page in one transaction (the keys between them are checked at commit). */
+export async function loadTenantWorld(db: string): Promise<void> {
+  await loadWorld(db, tenantWorld);
+  const admin = urlFor('grimoire_admin', db);
+  await sqlAs(admin, `insert into tenants (id, name) values ('tenant-b', 'B')`);
+  await sqlAs(admin, `begin;
+    update users set tenant_id = 'tenant-b' where id = '${TENANTS.userB}';
+    update collections set tenant_id = 'tenant-b' where id = '${TENANTS.colB}';
+    update pages set tenant_id = 'tenant-b' where id = '${TENANTS.pageB}';
+    commit;`);
+}
+
+/** What the store must do with the two tenants; the number of answers that are wrong (0 for a correct store). */
+export async function tenantFailures(store: AccessStore): Promise<number> {
+  const a = createAuthorizer(store);
+  const level = async (userId: string, pageId: string): Promise<string> => (await a.check({ userId, pageId })).access;
+  const colLevel = async (userId: string, collectionId: string): Promise<string> => (await a.checkCollection({ userId, collectionId })).access;
+  const ids = async (userId: string): Promise<string[]> => (await a.visibleCollections(userId)).map((c) => c.collectionId);
+  const T = TENANTS;
+  const wrong = [
+    (await level(T.userA, T.pageA)) !== 'read-write', (await level(T.userB, T.pageB)) !== 'read-write',
+    (await level(T.userA, T.pageB)) !== 'none', (await level(T.userB, T.pageA)) !== 'none',
+    (await colLevel(T.userA, T.colA)) !== 'read-write', (await colLevel(T.userB, T.colB)) !== 'read-write',
+    (await colLevel(T.userA, T.colB)) !== 'none', (await colLevel(T.userB, T.colA)) !== 'none',
+    (await ids(T.userA)).includes(T.colB), (await ids(T.userB)).join() !== T.colB,
+  ];
+  return wrong.filter(Boolean).length;
 }
