@@ -25,6 +25,7 @@ describe('GET /v1/config', () => {
       minClientVersion: '1.4.2',
       local: true,
       providerProjectId: null,
+      providerBaseUrl: null,
       fileStoreOrigin: null,
     });
   });
@@ -36,6 +37,24 @@ describe('GET /v1/config', () => {
     const body = (await (await app.request('/v1/config')).json()) as Record<string, unknown>;
     expect(body['providerProjectId']).toBe('P2abc');
     expect(body['fileStoreOrigin']).toBe('https://files.example.test');
+  });
+
+  it('returns the sign-in provider endpoint the server was composed with, and null when there is none', async () => {
+    const t = makeContext();
+    const config: Config = makeFakeConfig({ publicCollabUrl: 'wss://docs.example.test/collab', descopeProjectId: 'P2abc' });
+    const withUrl = createApp({ ...t.ctx, config, http: { ...t.ctx.http, config, providerBaseUrl: 'https://api.eu1.example.test' } });
+    expect(((await (await withUrl.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBe('https://api.eu1.example.test');
+    const without = createApp({ ...t.ctx, config, http: { ...t.ctx.http, config } });
+    expect(((await (await without.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBeNull();
+    const none = createApp({ ...t.ctx, config, http: { ...t.ctx.http, config, providerBaseUrl: null } });
+    expect(((await (await none.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBeNull();
+  });
+
+  it('does not take the raw setting: the route answers from what the server computed', async () => {
+    const t = makeContext();
+    const config: Config = makeFakeConfig({ publicCollabUrl: 'wss://docs.example.test/collab', descopeProjectId: 'P2abc', descopeBaseUrl: 'https://raw.example.test/' });
+    const app = createApp({ ...t.ctx, config, http: { ...t.ctx.http, config, providerBaseUrl: 'https://computed.example.test' } });
+    expect(((await (await app.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBe('https://computed.example.test');
   });
 
   it('reports local true only in local mode', async () => {

@@ -47,7 +47,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true };
   const users = new FakeUserStore();
   const http: AppContext['http'] = {
-    config, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
+    config, providerBaseUrl: null, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
     authorizer: createAuthorizer(createFakeAccessStore(emptyWorld())),
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
     ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),

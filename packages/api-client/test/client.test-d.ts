@@ -9,6 +9,7 @@ export async function typed(): Promise<void> {
   if (ok.data !== undefined) {
     expectTypeOf(ok.data.local).toEqualTypeOf<boolean>();
     expectTypeOf(ok.data.providerProjectId).toEqualTypeOf<string | null>();
+    expectTypeOf(ok.data.providerBaseUrl).toEqualTypeOf<string | null>();
     expectTypeOf(ok.data.fileStoreOrigin).toEqualTypeOf<string | null>();
   }
   // The error of a non-2xx result is typed with the envelope.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../src/index.js';
 
-const config = { collabUrl: 'wss://docs.example.test/collab', minClientVersion: '1.0.0', local: true, providerProjectId: null, fileStoreOrigin: null };
+const config = { collabUrl: 'wss://docs.example.test/collab', minClientVersion: '1.0.0', local: true, providerProjectId: null, providerBaseUrl: null, fileStoreOrigin: null };
 
 /** A server stand-in: records each request and answers with the given status and JSON, with no network. */
 function setup(status = 200, body: unknown = config) {

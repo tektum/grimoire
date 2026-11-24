@@ -24,6 +24,8 @@ export interface Identity { readonly userId: string; readonly profile?: Profile 
 /** Every port a route may use. Handlers read it from the context; a router keeps no state of its own. */
 export interface HttpDeps {
   readonly config: Config;
+  /** The sign-in provider endpoint browsers use, as the server's own provider calls use it (region from the project id, a configured URL without trailing slashes); null without a project. */
+  readonly providerBaseUrl?: string | null;
   readonly log: EventLog;
   readonly clock: Clock;
   readonly users: UserStore;
