@@ -83,9 +83,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding-inline-end: calc(24px + var(--space-4));
 }
 [data-sonner-toaster] [data-sonner-toast][data-styled='true'] [data-close-button] {
-  top: var(--space-2);
-  right: var(--space-2);
-  left: auto;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  inset-inline-start: auto;
   width: 24px;
   height: 24px;
   transform: none;
