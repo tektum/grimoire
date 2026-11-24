@@ -129,6 +129,10 @@ test.describe('an administrator changes access under an open page', () => {
           await expect(surface).toHaveAttribute('contenteditable', 'false', { timeout: 30_000 });
           await expect(page.getByText('Read only')).toBeVisible();
           await expect(surface).toContainText('A page open in the tab of a person whose role is lowered.');
+          // The settle point is the server's next look at this connection: the role is given back, and when the editor is editable again the server has re-checked it once more
+          // since the downgrade. A reset that was going to follow the downgrade has shown by then.
+          await setRole(bob.id, 'member');
+          await expect(surface).toHaveAttribute('contenteditable', 'true', { timeout: 30_000 });
           await expect(page.getByText('This page was reset. Your unsent changes were not applied.')).toHaveCount(0);
           expect((await readPage(made.id)).stateEpoch, 'no reset: the epoch is the same').toBe(before.stateEpoch);
         } finally {
