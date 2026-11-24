@@ -82,6 +82,21 @@ describe('the app wired to the gate and the session', () => {
     expect(screen.getByTestId('user-role').textContent).toBe('admin');
   });
 
+  it.each([
+    ['', 'the email, when the account has no name'],
+    ['   ', 'the email, when the name is only spaces'],
+  ])('shows %j as %s, with the role and the Sign out button', async (name) => {
+    run({ token: `dev:${SECRET}:alice:admin`, api: () => json(200, { name, role: 'admin', email: 'a@dev.invalid', id: 'u1' }) });
+    expect((await screen.findByTestId('user-name')).textContent).toBe('a@dev.invalid');
+    expect(screen.getByTestId('user-role').textContent).toBe('admin');
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+  });
+
+  it('shows a name that is not empty as it is', async () => {
+    run({ token: `dev:${SECRET}:alice:member`, api: () => json(200, { name: ' Alice A. ', role: 'member', email: 'a@dev.invalid', id: 'u1' }) });
+    expect((await screen.findByTestId('user-name')).textContent).toBe(' Alice A. ');
+  });
+
   it('shows a viewer as read-only', async () => {
     run({ token: `dev:${SECRET}:vera:viewer`, api: () => json(200, { name: 'vera', role: 'viewer', email: 'v@dev.invalid', id: 'u2' }) });
     expect((await screen.findByTestId('user-role')).textContent).toBe('viewer (read-only)');
