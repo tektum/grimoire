@@ -19,12 +19,18 @@ No cloud resource belongs to `descope-dev`. SST keeps its state in the AWS accou
 
 The workflow `.github/workflows/descope-infra.yml` holds no secret. Its job runs in the environment `descope-dev` (deploys from `main` only) with `id-token: write`, and asks GitHub for an OIDC token twice:
 
-1. For AWS: `aws-actions/configure-aws-credentials` assumes the role in the variable `AWS_ROLE_ARN` (region in `AWS_REGION`). The role trusts only `repo:tektum/grimoire:environment:descope-dev`.
+1. For AWS: `aws-actions/configure-aws-credentials` assumes the role in the variable `AWS_ROLE_ARN` (region in `AWS_REGION`). In the current setup that is the shared `GithubActions` role, which trusts the `descope-dev` and `staging` environments of this repository; with the recommended hardening it is a role that trusts only `repo:tektum/grimoire:environment:descope-dev`.
 2. For Descope: a token with the audience `https://api.descope.com/<key id>` (the variable `DESCOPE_MANAGEMENT_KEY_ID`) is used as `DESCOPE_MANAGEMENT_KEY`. The key is a *federated* management key: it holds no secret and trusts only the GitHub issuer, the subject `repo:tektum/grimoire:environment:descope-dev`, and a token lifetime of at most 15 minutes (so a run must finish within that; ask again for a longer one). The provider's own guide says the management key attribute accepts such a token.
 
 Until the three variables exist the job stops at its first step with a notice, and the workflow stays green.
 
-## One-time AWS set-up (an administrator)
+## AWS roles: the current setup and the recommended hardening
+
+**Current setup, by the owner's decision.** Both environments (`descope-dev`, `staging`) assume one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum/grimoire:environment:descope-dev` and `repo:tektum/grimoire:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region, so the administrator step below is done there. This setup gives the Descope job administrator access to the account: the least-privilege roles below are not in use.
+
+**Recommended hardening, not applied.** Two separate roles, one per environment, each trusting only its own environment, with the Descope role limited to the keys of its own stage. The script, the exact policies and their tests are kept for that: switch by running the script and changing `AWS_ROLE_ARN` of each environment. The rest of this section describes that setup.
+
+## One-time AWS set-up for the least-privilege roles (an administrator)
 
 The deploy jobs need, in the AWS account, the GitHub OIDC provider and one role per environment. The script `infra/bootstrap/aws-github-oidc.sh` creates them and is safe to run again:
 
