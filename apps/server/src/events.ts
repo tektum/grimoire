@@ -34,6 +34,9 @@ export interface InfoEvents {
   'pages.restored': { pageId: string };
   'pages.purged': { pageId: string; count: number };
   'pages.state_reset': { pageId: string; epoch: number };
+  'attachments.upload_created': { attachmentId: string; size: number };
+  'attachments.completed': { attachmentId: string };
+  'attachments.cleaned': { count: number };
   'admin.user_changed': { userId: string };
   'admin.group_changed': { groupId: string };
   'server.starting': { role: string; local: boolean };
@@ -56,6 +59,8 @@ export interface InfoEvents {
 export interface WarnEvents {
   'http.rate_limited': { scope: 'user' | 'address' | 'route'; route: string };
   'http.auth_rejected': { reason: 'missing' | 'invalid' | 'suspended' | 'no-user' };
+  /** An upload that was refused at completion and removed. The id of the attachment, never its key or name. */
+  'attachments.refused': { attachmentId: string; reason: 'size_mismatch' | 'type_mismatch' | 'upload_missing' };
   'config.collab_url_missing': Record<string, never>;
   'server.local_mode_exposed': { host: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */
@@ -69,6 +74,8 @@ export interface WarnEvents {
 }
 
 export interface ErrorEvents {
+  /** The file store did not answer (or is not configured): the operation that needed it, nothing of the request, the key or the store's message. */
+  'files.unavailable': { operation: 'create' | 'complete' | 'download' | 'urls' | 'cleanup' | 'delete' };
   'http.request_failed': { errorName: string };
   'http.handler_error': { errorName: string; method: RequestMethod; route: string; status: number };
   'server.config_invalid': { settings: readonly ConfigProblem[] };

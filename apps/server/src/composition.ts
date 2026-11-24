@@ -14,10 +14,11 @@ import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
 import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import { createDevAuth } from '@tektum/grimoire-adapter-auth-dev';
 import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
-import { checkCors, createBucket, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
+import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
-import { createAccessStore, createAdmin, createAudit, createCollections, createDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { deleteObjects } from './attachments/deps.js';
+import { createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -109,6 +110,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
   const converter = createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) });
   const httpUsers = createUserStore(db);
+  const files = config.files === undefined ? undefined : createFileStorage(config.files);
   const http: HttpDeps = {
     config, log, clock: systemClock, users: httpUsers,
     access: overrides.access ?? createPageAccess(createAccessStore(db)),
@@ -117,7 +119,10 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     ordering: createOrdering(), converter,
     idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
-    deleteFiles: () => Promise.resolve(), // the file store is not wired yet: a purge removes no object until it is
+    attachments: createAttachments(db),
+    ...(files === undefined ? {} : { files }),
+    // A purge removes the objects of the attachments it deletes before it deletes any row; without a store there is nothing to remove.
+    deleteFiles: deleteObjects(files),
   };
   let collab: AppContext['collab'];
   if (pageDb && authDb) {

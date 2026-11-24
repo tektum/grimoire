@@ -36,11 +36,7 @@ const fieldOf: Record<string, string> = {
 };
 
 /** Settings read by a piece of work that has not landed. */
-const notReadYet: Record<string, string> = {
-  GRIMOIRE_FILES_MAX_BYTES: 'the upload routes',
-  GRIMOIRE_FILES_ALLOWED_TYPES: 'the upload routes',
-  GRIMOIRE_FILES_PENDING_MAX_PER_USER: 'the upload routes',
-};
+const notReadYet: Record<string, string> = {};
 
 /** Whether some source reads `field` from a files configuration (`config.field`, `config.files.field`, `files?.field`, `setup.field`). */
 export function hasReader(sources: readonly string[], field: string): boolean {

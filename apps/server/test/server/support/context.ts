@@ -14,6 +14,7 @@ import { FakeIdempotencyStore } from '@tektum/grimoire-core/testing/fake-idempot
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakePageRepo } from '@tektum/grimoire-core/testing/fake-page-repo';
 import { FakePageStateRepo } from '@tektum/grimoire-core/testing/fake-page-state-repo';
+import { FakeAttachmentRepo } from '@tektum/grimoire-core/testing/fake-attachment-repo';
 import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import { FakeTrashRepo } from '@tektum/grimoire-core/testing/fake-trash-repo';
 import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
@@ -51,7 +52,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
     ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
-    pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), deleteFiles: () => Promise.resolve(),
+    pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), attachments: new FakeAttachmentRepo(), deleteFiles: () => Promise.resolve(),
   };
   const ctx: AppContext = {
     config, log, clock, db, http,

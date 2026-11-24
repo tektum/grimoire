@@ -6,6 +6,8 @@ import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import { createFakeAccessStore, emptyWorld } from '@tektum/grimoire-core/testing/fake-access-store';
 import { FakeAdminRepo } from '@tektum/grimoire-core/testing/fake-admin-repo';
 import { FakeCollectionRepo } from '@tektum/grimoire-core/testing/fake-collection-repo';
+import { FakeAttachmentRepo } from '@tektum/grimoire-core/testing/fake-attachment-repo';
+import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
 import { FakeIdempotencyStore } from '@tektum/grimoire-core/testing/fake-idempotency-store';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakePageRepo } from '@tektum/grimoire-core/testing/fake-page-repo';
@@ -33,6 +35,12 @@ export const USER_ID = Object.fromEntries(NAMES.map((name, i) => [name, uuid(100
  * administrator reads (`closed`), a live page and a deleted page in each, a revision, a group with a member, and an access entry. Every walk starts from a
  * fresh world, because the operations that succeed change it.
  */
+const FILES = {
+  endpoint: 'http://s3.invalid', publicEndpoint: 'http://s3.invalid', publicOrigin: 'http://s3.invalid', bucket: 'b', accessKey: 'a', secretKey: 's', region: 'r',
+  addressing: 'path' as const, createOnlyHeader: 'if-none-match' as const, corsMode: 'external' as const, maxBytes: 1000, allowedTypes: ['image/png'], pendingMaxPerUser: 100,
+};
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+
 export async function buildWorld() {
   const t = makeContext();
   const world = emptyWorld();
@@ -72,12 +80,25 @@ export async function buildWorld() {
   if (granted.kind !== 'saved') throw new Error('access entry');
   const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
   // Limits that the walk cannot reach: it sends a handful of requests per credential, not a flood.
-  const config = makeFakeConfig({ allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 } });
+  // Four attachments by the member: ready and pending, on the open page and on the one only an administrator reads. Each has its object.
+  const attachments = new FakeAttachmentRepo();
+  const files = new FakeFileStorage({ clock: t.clock });
+  const attachment = (n: number, pageId: string, status: 'ready' | 'pending'): string => {
+    const id = uuid(900 + n);
+    attachments.seed({ id, pageId, uploaderId: USER_ID.member, fileName: 'a.png', contentType: 'image/png', size: PNG_BYTES.length, key: `attachments/${id}`, status, expiresAt: status === 'pending' ? t.clock.now() + 3_600_000 : null, createdAt: t.clock.now(), readyAt: status === 'ready' ? t.clock.now() : null });
+    return id;
+  };
+  const readyAttachment = attachment(1, page.id, 'ready');
+  const hiddenReadyAttachment = attachment(2, hidden.id, 'ready');
+  const pendingAttachment = attachment(3, page.id, 'pending');
+  const hiddenPendingAttachment = attachment(4, hidden.id, 'pending');
+  for (const id of [readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment]) await files.put(`attachments/${id}`, PNG_BYTES, { size: PNG_BYTES.length, contentType: 'image/png' });
+  const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 } });
   const store = createFakeAccessStore(world);
   const app = createApp({
     ...t.ctx, config, auth: { verifier }, signInPolicy,
     http: {
-      ...t.ctx.http, config, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit,
+      ...t.ctx.http, config, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit, attachments, files,
       idempotency: new FakeIdempotencyStore(t.clock),
       provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
       access: createPageAccess(store), authorizer: createAuthorizer(store),
@@ -103,7 +124,7 @@ export async function buildWorld() {
   };
   const ids = {
     openCollection: open.id, closedCollection: closed.id, page: page.id, hiddenPage: hidden.id, urlId: page.urlId, hiddenUrlId: hidden.urlId,
-    trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
+    readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment, trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
   };
   return { call, demote, suspend, ids, world, pages, collections, converter, trash, pageState, admin, config };
 }
@@ -116,6 +137,7 @@ export function pathFor(op: Operation, w: WorldBuilt, hidden = false): string {
     if (op.path.startsWith('/v1/collections')) return hidden ? i.closedCollection : i.openCollection;
     if (op.path.startsWith('/v1/trash')) return hidden ? i.hiddenTrashed : i.trashed;
     if (op.path.startsWith('/v1/pages')) return hidden ? i.hiddenPage : i.page;
+    if (op.path.startsWith('/v1/attachments')) return op.path.endsWith('/complete') ? (hidden ? i.hiddenPendingAttachment : i.pendingAttachment) : (hidden ? i.hiddenReadyAttachment : i.readyAttachment);
     if (op.path.startsWith('/v1/groups')) return i.group;
     return USER_ID.member; // /v1/users/{id}
   };
@@ -133,5 +155,5 @@ export function pathFor(op: Operation, w: WorldBuilt, hidden = false): string {
 
 /** Ids a generated body may name: the collection the walk writes into, and a user. */
 export function bodyHints(w: WorldBuilt, hidden = false): Record<string, unknown> {
-  return { uuid: NIL, collectionId: hidden ? w.ids.closedCollection : w.ids.openCollection, principalId: USER_ID.member, userId: USER_ID.member, ids: [USER_ID.member], parentId: null };
+  return { uuid: NIL, pageId: hidden ? w.ids.hiddenPage : w.ids.page, fileName: 'a.png', contentType: 'image/png', size: 16, collectionId: hidden ? w.ids.closedCollection : w.ids.openCollection, principalId: USER_ID.member, userId: USER_ID.member, ids: [USER_ID.member], parentId: null };
 }

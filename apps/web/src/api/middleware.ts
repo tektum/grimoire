@@ -21,6 +21,7 @@ export interface WrapOptions extends ApiHooks {
 
 /** Operations that accept an `Idempotency-Key` (the `idem:yes` operations of docs/api-surface.txt). */
 export const IDEMPOTENT: readonly { method: string; path: RegExp }[] = [
+  { method: 'POST', path: /^\/v1\/attachments$/ },
   { method: 'POST', path: /^\/v1\/collections$/ },
   { method: 'POST', path: /^\/v1\/groups$/ },
   { method: 'POST', path: /^\/v1\/pages$/ },

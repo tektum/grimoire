@@ -66,6 +66,7 @@ export default defineConfig({
         // db-kysely is exercised only by the integration project (needs Postgres): its floor is in vitest.integration-coverage.config.js.
         "apps/server/src/http/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "apps/server/src/routes/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "apps/server/src/attachments/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "apps/server/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/jobs-pgboss/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
