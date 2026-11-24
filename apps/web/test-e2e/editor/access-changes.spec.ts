@@ -60,6 +60,7 @@ test.describe('an administrator changes access under an open page', () => {
 
           // The server's answer to the same person asking again, from the other person's page (the suspended one is signed out).
           const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
+          await users.a.page.goto('/'); // a page of the app: the server only accepts sockets that come from its origin
           const seen = await probe(users.a.page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
           console.log(`forbidden observed ${JSON.stringify(seen)}`);
           expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
