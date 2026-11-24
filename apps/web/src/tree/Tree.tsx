@@ -34,7 +34,7 @@ function Row({ node, style, dragHandle }: NodeRendererProps<TreeItem>) {
       ) : (
         <span className="tree-toggle" aria-hidden />
       )}
-      <Link to={pagePath(item.name, item.urlId)} className="tree-link" tabIndex={-1} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
+      <Link to={pagePath(item.name, item.urlId)} className="tree-link" tabIndex={-1} onClick={(e) => { e.stopPropagation(); }} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
         {item.icon !== null && <span aria-hidden className="tree-icon">{item.icon}</span>}
         {item.name}
       </Link>
@@ -58,7 +58,7 @@ export function Tree({ items, currentUrlId }: TreeProps) {
         openByDefault={false}
         initialOpenState={initialOpen(items)}
         // Enter on the focused row opens its page: the links are not in the tab order (the tree is one stop; the arrow keys move inside it).
-        onActivate={(node) => { if (node.isLeaf || node.isInternal) navigate(pagePath(node.data.name, node.data.urlId)); }}
+        onActivate={(node) => { navigate(pagePath(node.data.name, node.data.urlId)); }}
         disableDrag
         disableDrop
         disableEdit

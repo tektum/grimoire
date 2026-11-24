@@ -93,4 +93,11 @@ describe('Tree', () => {
     await userEvent.keyboard('{ArrowDown}');
     expect(marked()).toEqual(['Nested']);
   });
+
+  it('lets the link do the opening when it is clicked: the row is not also selected and activated', async () => {
+    render(<MemoryRouter><Tree items={items} /><Where /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('link', { name: 'Plain page' }));
+    expect(screen.getByLabelText('location').textContent).toBe('/p/plain-page-plain');
+    expect(screen.getAllByRole('treeitem').map((r) => r.getAttribute('aria-selected'))).not.toContain('true');
+  });
 });
