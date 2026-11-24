@@ -72,7 +72,18 @@ function fakeEngine() {
   return { engine, sessions, lives, events, clock };
 }
 
-function mountPage(options: { page?: PageMeta; strict?: boolean; state?: unknown; markdown?: string; staleHeader?: boolean; markdownStatus?: number; engine?: Partial<Engine>; authOver?: Partial<Auth> } = {}) {
+function mountPage(
+  options: {
+    page?: PageMeta;
+    strict?: boolean;
+    state?: unknown;
+    markdown?: string;
+    staleHeader?: boolean;
+    markdownStatus?: number;
+    engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
+    authOver?: Partial<Auth>;
+  } = {},
+) {
   const fake = fakeEngine();
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
@@ -82,7 +93,10 @@ function mountPage(options: { page?: PageMeta; strict?: boolean; state?: unknown
     })),
   } as unknown as AppSession['api'];
   const value: AppSession = { auth, api, collabUrl: 'ws://collab.test' };
-  const router = createMemoryRouter([{ path: '/', element: <PageView page={options.page ?? page()} engine={{ ...fake.engine, ...options.engine }} /> }], { initialEntries: [{ pathname: '/', state: options.state }] });
+  const router = createMemoryRouter(
+    [{ path: '/', element: <PageView page={options.page ?? page()} engine={{ ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) }} /> }],
+    { initialEntries: [{ pathname: '/', state: options.state }] },
+  );
   const tree = (
     <SessionContext.Provider value={value}>
       <RouterProvider router={router} />
@@ -265,5 +279,54 @@ describe('the page screen', () => {
   it('sets the text in the reading column: the page-text class (the page font and the measure) is on the editor root', async () => {
     const t = mountPage();
     expect(t.root().classList.contains('page-text')).toBe(true);
+  });
+
+  it('does not leave an editor on a document that was replaced while the editor was being built: it is taken down and the saved text shows', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => void (release = resolve));
+    const t = mountPage({ engine: (base) => ({ mountLive: async (o) => (await gate, base.mountLive(o)) }) });
+    await waitSaved();
+    await t.synced();
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed')); // a new document, while the editor of the old one is still being built
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    release();
+    await waitFor(() => expect(t.lives.length === 0 || t.lives.every((l) => l.destroyed)).toBe(true));
+    await waitSaved();
+    expect(t.root().getAttribute('data-collab-state')).toBe('connecting');
+    expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+    expect(t.root().querySelector('.ProseMirror')!.getAttribute('contenteditable')).toBe('false');
+  });
+
+  it('turns editing off when the connection stops: nothing typed after "no longer have access" goes into a document that will never be sent', async () => {
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect(t.lives[0]!.editable).toBe(true);
+    await act(async () => void t.sessions[0]!.provider.refuse('forbidden'));
+    await waitFor(() => expect(t.lives[0]!.editable).toBe(false));
+  });
+
+  it('builds a live editor that stops before it is bound: no editor, the page stays readable on its saved text', async () => {
+    const t = mountPage({ engine: { mountLive: async () => Promise.reject(new Error('no editor')) } });
+    await waitSaved();
+    await t.synced();
+    await waitFor(() => expect(t.events).toContain('saved-destroyed')); // taken down for the live editor ...
+    await waitSaved(); // ... and back, because the live editor could not be built
+    expect(t.root().textContent).toBe('Saved text');
+    expect(t.root().getAttribute('data-collab-state')).toBe('connecting');
+  });
+
+  it('does not build an editor on a document that was replaced before the build began, and builds one on the new document when that has synced', async () => {
+    const t = mountPage();
+    await waitSaved();
+    await act(async () => {
+      t.sessions[0]!.provider.succeed(1);
+      t.sessions[0]!.provider.close(4205, 'access-changed'); // replaced in the same breath as the sync
+    });
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    expect(t.lives).toHaveLength(0);
+    await t.synced(1);
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect((t.lives[0]!.session as { provider: unknown }).provider).toBe(t.sessions[1]!.provider);
   });
 });

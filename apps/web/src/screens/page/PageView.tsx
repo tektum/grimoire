@@ -42,7 +42,7 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
   const restore = (location.state as { restoreMarkdown?: unknown } | null)?.restoreMarkdown;
   const restoreRef = useRef(typeof restore === 'string' ? restore : null);
 
-  useEffect(() => editableRef.current(!readOnly), [readOnly]);
+  useEffect(() => editableRef.current(!readOnly && state.stopped === null), [readOnly, state.stopped]);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -52,7 +52,7 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
     let saved: MountedEditor | null = null;
     let liveGeneration = 0;
     let starting = false;
-    const editable = (): boolean => !(permissionReadOnly || manager.state().readOnly);
+    const editable = (): boolean => !(permissionReadOnly || manager.state().readOnly || manager.state().stopped !== null);
     const manager: ConnectionManager = new ConnectionManager({
       auth: { getToken: () => session.auth.getToken(), refresh: () => session.auth.refresh(), signOut: () => session.auth.signOut('expired') },
       clientVersion: CLIENT_VERSION,
@@ -74,15 +74,29 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
 
     const goLive = (generation: number): void => {
       starting = true;
+      const synced = manager.currentSession();
+      /** Still the document that synced, and still synced and running: otherwise an editor on it would take typing into a document that is not the page. */
+      const current = (): boolean => !cancelled && manager.currentSession() === synced && manager.state().generation === generation && manager.state().phase === 'synced';
       void queue(element, async () => {
         if (cancelled) return;
+        if (!current()) {
+          starting = false;
+          return;
+        }
         await saved?.destroy();
         saved = null;
         setShowingSaved(false);
-        const current = manager.currentSession();
-        if (current === null) return;
-        live = await engine.mountLive({ element, session: current, editable: editable(), isCancelled: () => cancelled });
-        if (live === null) return;
+        if (synced === null) return;
+        const mounted = await engine.mountLive({ element, session: synced, editable: editable(), isCancelled: () => cancelled });
+        if (mounted === null) return;
+        if (!current()) {
+          // The document was replaced, or the connection stopped, while the editor was being built: take it down again.
+          await mounted.destroy();
+          starting = false;
+          if (!cancelled) showSaved();
+          return;
+        }
+        live = mounted;
         liveGeneration = generation;
         editableRef.current = (flag) => live?.setEditable(flag);
         setLiveReady(true);
@@ -92,7 +106,12 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
           live.applyMarkdown(handed);
           navigate('.', { replace: true, state: null });
         }
-      }).catch(() => log('warn', 'web.page_mount_failed', { page: page.id }));
+      }).catch(() => {
+        log('warn', 'web.page_mount_failed', { page: page.id });
+        // The saved view was taken down for the live editor, which could not be built: the page stays readable.
+        starting = false;
+        if (!cancelled) showSaved();
+      });
     };
 
     const unsubscribe = manager.subscribe((next) => {
