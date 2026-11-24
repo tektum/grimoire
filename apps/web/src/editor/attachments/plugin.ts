@@ -26,7 +26,8 @@ export function fragmentFor(attachments: readonly Attachment[], schema: Schema):
  * Uploads every file of a paste or a drop at once. Those that were stored become nodes; each distinct refusal is told once, and a refused file leaves nothing in the
  * document. It never rejects: the plugin that calls it keeps its "in progress" marker for a rejection.
  */
-async function uploader(files: FileList, schema: Schema, ctx: Ctx): Promise<Fragment> {
+export async function uploadFiles(files: readonly File[], ctx: Ctx): Promise<Fragment> {
+  const schema = ctx.get(editorViewCtx).state.schema;
   const provided = providedFor(ctx.get(editorViewCtx).dom);
   const host = provided?.host;
   if (host?.pageId === undefined || host.uploadApi === undefined) {
@@ -34,7 +35,7 @@ async function uploader(files: FileList, schema: Schema, ctx: Ctx): Promise<Frag
     return Fragment.empty;
   }
   const deps = { api: host.uploadApi, put: host.put ?? storeFetch, pageId: host.pageId };
-  const results = await Promise.all(Array.from(files, (file) => uploadAttachment(deps, file)));
+  const results = await Promise.all(files.map((file) => uploadAttachment(deps, file)));
   const refusals = new Set<string>();
   const stored: Attachment[] = [];
   for (const result of results) {
@@ -52,6 +53,8 @@ const uploadWidget = (pos: number, spec: Parameters<typeof Decoration.widget>[2]
   dom.textContent = 'Uploading…';
   return Decoration.widget(pos, dom, spec);
 };
+
+const uploader = (files: FileList, _schema: Schema, ctx: Ctx): Promise<Fragment> => uploadFiles(Array.from(files), ctx);
 
 const configureUpload: MilkdownPlugin = (ctx) => async () => {
   ctx.update(uploadConfig.key, (prev) => ({ ...prev, uploader, uploadWidgetFactory: uploadWidget }));

@@ -3,6 +3,7 @@ import type { Ctx } from '@milkdown/ctx';
 import { createCodeBlockCommand, insertHrCommand, wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand } from '@milkdown/preset-commonmark';
 import { insertTableCommand } from '@milkdown/preset-gfm';
 import { setBlockLevelCommand } from '@tektum/grimoire-editor-schema';
+import { chooseFiles } from '../attachments';
 
 /** One kind of block the person can turn the current block into, from the slash menu (and later the block handle). */
 export interface BlockKind {
@@ -45,7 +46,7 @@ function wrapInTaskList(ctx: Ctx): boolean {
 
 /**
  * The block kinds of the schema, in the order the menu shows them: text, the six heading levels, the three lists, quote, code, divider, table.
- * (Images are the upload task's, and the table's own controls the table task's.)
+ * Then the file chooser: images and any file, uploaded to the page. (The table's own controls are the table task's.)
  */
 export const BLOCK_KINDS: readonly BlockKind[] = [
   level(0),
@@ -57,6 +58,7 @@ export const BLOCK_KINDS: readonly BlockKind[] = [
   { id: 'code', label: 'Code block', description: 'Text in a fixed-width font', keywords: ['code', 'fence', 'pre', 'snippet'], structural: true, run: (ctx) => call(ctx, createCodeBlockCommand.key) },
   { id: 'divider', label: 'Divider', description: 'A horizontal line', keywords: ['divider', 'rule', 'line', 'hr', 'separator'], run: (ctx) => call(ctx, insertHrCommand.key) },
   { id: 'table', label: 'Table', description: 'Rows and columns', keywords: ['table', 'grid', 'rows', 'columns'], run: (ctx) => call(ctx, insertTableCommand.key, { row: 3, col: 3 }) },
+  { id: 'file', label: 'Image or file', description: 'Upload from your computer', keywords: ['image', 'picture', 'photo', 'file', 'upload', 'attachment', 'attach'], run: (ctx) => { void chooseFiles(ctx); return true; } },
 ];
 
 /**

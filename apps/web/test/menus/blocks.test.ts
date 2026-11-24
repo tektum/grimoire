@@ -24,6 +24,7 @@ describe('the block kinds of the menu', () => {
       'code',
       'divider',
       'table',
+      'file',
     ]);
   });
 
