@@ -18,7 +18,7 @@ import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektu
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
-import { createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -158,11 +158,13 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
 export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
 export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
-/** Kysely migrations first, then pg-boss's own schema with its grants for the runtime role (the role name is fixed by the migrations). */
+/** Kysely migrations first, then pg-boss's own schema with its grants for the runtime role (the role name is fixed by the migrations), all of it under one lock: a second `migrate` waits. */
 export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string): Promise<{ readonly applied: string[]; readonly jobTables: number }> {
-  const { applied } = await migrateDatabase(db, dir);
-  const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' });
-  return { applied, jobTables: granted.length }; // `applied` lists only the Kysely migrations
+  return withMigrationLock(migrationUrl, async () => {
+    const { applied } = await migrateDatabase(db, dir);
+    const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' });
+    return { applied, jobTables: granted.length }; // `applied` lists only the Kysely migrations
+  });
 }
 
 export function composeMigrate(options: MigrateOptions = {}): CommandCompositionResult {
