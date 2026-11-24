@@ -9,6 +9,9 @@ export const optionId = (menu: string, kind: BlockKind): string => (menu === SLA
  * text: the keys are the editor's, the list only shows which item they would choose, and a click chooses one too. With `focused` the list takes the focus itself (the handle's
  * menu, opened from a button) and points at the item with its own `aria-activedescendant`: that attribute belongs on a listbox, not on a button.
  */
+/** One function for every drawing: React calls a ref again when its function changes, and the list is to take the focus once, when it opens, not at each drawing. */
+const takeFocus = (element: HTMLElement | null): void => element?.focus();
+
 export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; onPick: (kind: BlockKind) => void; onHover: (index: number) => void; id?: string; label?: string; focused?: boolean }) {
   const menu = props.id ?? SLASH_MENU_ID;
   if (props.kinds.length === 0) {
@@ -26,7 +29,7 @@ export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; 
       aria-label={props.label ?? 'Turn this block into'}
       tabIndex={props.focused === true ? -1 : undefined}
       aria-activedescendant={props.focused === true && props.kinds[props.active] !== undefined ? optionId(menu, props.kinds[props.active] as BlockKind) : undefined}
-      ref={props.focused === true ? (element) => element?.focus() : undefined}
+      ref={props.focused === true ? takeFocus : undefined}
     >
       {props.kinds.map((kind, index) => (
         <div
