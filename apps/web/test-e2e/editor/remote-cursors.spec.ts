@@ -8,6 +8,10 @@ import { makePage, whoIs } from './pages';
 const FILLER = Array.from({ length: 40 }, (_, i) => `Filler paragraph number ${i + 1}, to make the page longer than the window.`).join('\n\n');
 const PARAGRAPH = 'The shared paragraph.';
 
+const toHex = (rgb: string): string => {
+  const [r, g, b] = (rgb.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+  return `#${[r, g, b].map((n) => (n ?? 0).toString(16).padStart(2, '0')).join('')}`;
+};
 const caretAt = async (page: Page, text: string, where: 'End' | 'Home'): Promise<void> => {
   await page.locator('.ProseMirror p', { hasText: text }).first().click();
   await page.keyboard.press(where);
@@ -51,9 +55,16 @@ test.describe('remote cursors', () => {
       await expect(selection).toBeVisible();
       expect(await selection.evaluate((el) => getComputedStyle(el).backgroundColor)).toMatch(/^rgba\(.+, 0?\.\d+\)$/);
 
-      // Every colour of the palette keeps its name label readable on both themes: the label text on the colour reaches 4.5:1. (The caret itself is a 2 px line in the
-      // colour; the palette is the colour-blind-safe set of the design, and not every colour reaches 3:1 against the page on both themes: 2.1 to 2.9 for five of them.)
+      // Readable on both themes: the label text on every colour of the palette reaches 4.5:1, and the caret has a 1px ring of the page's ink, whose edge reaches
+      // 3:1 against the page (the colours alone do not, on both themes: that is the palette of the design, which stays as it is).
       for (const colour of COLLAB_COLOURS) expect(contrast(colour, labelText(colour)), `the label text on ${colour}`).toBeGreaterThanOrEqual(4.5);
+      for (const scheme of ['light', 'dark'] as const) {
+        await a.page.emulateMedia({ colorScheme: scheme });
+        const background = toHex(await a.page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor));
+        const ring = await cursor.evaluate((el) => getComputedStyle(el).boxShadow); // `rgb(r, g, b) 0px 0px 0px 1px`
+        expect(ring, 'the ring is 1px').toMatch(/0px 0px 0px 1px$/);
+        expect(contrast(toHex(ring), background), `the ring of the caret on the ${scheme} page`).toBeGreaterThanOrEqual(3);
+      }
 
       // The cursor survives a scroll of A's page ...
       await a.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

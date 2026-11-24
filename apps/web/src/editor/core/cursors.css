@@ -2,6 +2,8 @@
  * Remote cursors: the caret is the 2px border of `.cursor` (ui/global.css) in the person's colour. The name label shows on arrival and after each move
  * (`cursor-label--shown`, removed after a few seconds), and when the caret is hovered. Cursors on the same character stack their labels and stand a few pixels apart, so every caret shows.
  */
+/* The caret is the person's colour with a 1px ring of the ink of the page: the ring is what reaches 3:1 against the page on both themes, for every colour of the palette. */
+.page-editor .ProseMirror-yjs-cursor { box-shadow: 0 0 0 1px var(--ink); }
 .page-editor .ProseMirror-yjs-cursor .cursor-label { opacity: 0; pointer-events: none; transition: opacity var(--transition); }
 .page-editor .ProseMirror-yjs-cursor .cursor-label--shown,
 .page-editor .ProseMirror-yjs-cursor:hover .cursor-label { opacity: 1; }
