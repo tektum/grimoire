@@ -106,4 +106,26 @@ describe('the remote cursor', () => {
     const caret = cursorBuilders(directory).cursorBuilder({ id: ID });
     expect(caret.querySelector('.cursor-label--shown')).not.toBeNull();
   });
+
+  it('lets go of the labels of carets that were replaced: following does not grow with every move of a remote cursor', () => {
+    const { builders } = make({ [ID]: 'Ada' });
+    for (let move = 0; move < 200; move++) {
+      const caret = builders.cursorBuilder({ id: ID });
+      document.body.append(caret);
+      document.querySelectorAll('.ProseMirror-yjs-cursor').forEach((old) => old !== caret && old.remove()); // the plugin drops the old caret
+    }
+    expect(builders.tracked()).toBeLessThanOrEqual(2);
+    document.querySelectorAll('.ProseMirror-yjs-cursor').forEach((el) => el.remove());
+  });
+
+  it('stops following the directory when it is disposed of: the editor is gone and the session directory keeps nothing of it', () => {
+    const { builders, arrive } = make();
+    const caret = builders.cursorBuilder({ id: ID });
+    document.body.append(caret);
+    builders.dispose();
+    expect(builders.tracked()).toBe(0);
+    arrive(ID, 'Ada');
+    expect(caret.querySelector('.cursor-label')!.textContent).toBe('Someone'); // nothing listens any more
+    caret.remove();
+  });
 });

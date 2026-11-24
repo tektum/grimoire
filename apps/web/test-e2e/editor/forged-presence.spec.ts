@@ -64,7 +64,7 @@ test.describe('forged presence', () => {
     browser,
     baseURL,
   }) => {
-    const made = await makePage('# Forged\n\nSomeone writes here.\n');
+    const made = await makePage('# Presence\n\nSomeone writes here.\n');
     const users = await twoUsers(browser, baseURL);
     try {
       const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };

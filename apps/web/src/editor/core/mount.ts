@@ -18,7 +18,7 @@ export interface MountedEditor {
   destroy(): Promise<void>;
 }
 
-const wrap = (editor: Editor, flag: { editable: boolean }): MountedEditor => ({
+const wrap = (editor: Editor, flag: { editable: boolean }, onDestroy: () => void = () => undefined): MountedEditor => ({
   setEditable(editable) {
     flag.editable = editable;
     // An empty transaction makes ProseMirror read the `editable` option again.
@@ -30,6 +30,7 @@ const wrap = (editor: Editor, flag: { editable: boolean }): MountedEditor => ({
   markdown: () => markdownOf(editor),
   applyMarkdown: (markdown) => applyMarkdown(editor, markdown),
   destroy: async () => {
+    onDestroy();
     await editor.destroy(true);
   },
 });
@@ -70,11 +71,12 @@ export async function mountLive(options: {
     await editor.destroy(true);
     return null;
   }
+  const cursors = cursorBuilders(options.presence.directory);
   editor.action((ctx) => {
-    const { cursorBuilder, selectionBuilder } = cursorBuilders(options.presence.directory);
+    const { cursorBuilder, selectionBuilder } = cursors;
     // Only `user.id`, `cursor` and `blockId` go out, at most four times a second; remote cursors show the directory name and the colour derived from the id.
     const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
     ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
-  return wrap(editor, flag);
+  return wrap(editor, flag, () => cursors.dispose());
 }

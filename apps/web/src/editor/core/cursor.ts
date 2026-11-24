@@ -22,14 +22,23 @@ export interface CursorTimers {
  */
 export function cursorBuilders(directory: Directory, timers: CursorTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms) }) {
   const labels = new Set<{ id: string; label: HTMLElement }>();
-  directory.subscribe(() => {
+  const unsubscribe = directory.subscribe(() => {
     for (const entry of labels) {
       if (!entry.label.isConnected) labels.delete(entry);
       else entry.label.textContent = directory.nameOf(entry.id);
     }
   });
   return {
+    /** How many labels are being followed (for the tests: it must not grow with every move of a remote cursor). */
+    tracked: () => labels.size,
+    /** Stops following the directory and lets go of the labels: the editor is gone. */
+    dispose(): void {
+      unsubscribe();
+      labels.clear();
+    },
     cursorBuilder(user: unknown): HTMLElement {
+      // The plugin builds a new caret on every move of a remote cursor and drops the old one: the dropped labels are let go here.
+      for (const entry of labels) if (!entry.label.isConnected) labels.delete(entry);
       const id = idOf(user);
       const colour = colourOf(id);
       const caret = document.createElement('span');
