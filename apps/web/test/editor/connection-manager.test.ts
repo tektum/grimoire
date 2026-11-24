@@ -408,4 +408,35 @@ describe('what the first review found', () => {
     await flush();
     expect(manager.state()).toMatchObject({ banner: null, offline: false });
   });
+
+  it('a reconnect of the same session after the page was too large does not unlock the editor', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(2);
+    h.last().provider.stateless({ kind: 'refusal', code: 'state-cap' });
+    h.last().provider.close(1001);
+    await h.clock.advance(1000);
+    h.last().provider.emit({ type: 'authenticated', scope: 'read-write' });
+    expect(manager.state()).toMatchObject({ readOnly: true, text: TEXTS.tooLarge });
+  });
+
+  it('a refresh still running for a replaced session does not swallow the refusal of the new one: it is refreshed and reconnected', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(2);
+    const gates: ((ok: boolean) => void)[] = [];
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void gates.push(resolve));
+    h.last().provider.refuse('invalid-token'); // refresh 1 runs for session 1
+    h.last().provider.close(4205, 'access-changed'); // ... which is replaced by a new session meanwhile
+    await flush();
+    expect(h.sessions).toHaveLength(2);
+    await h.clock.advance(61_000);
+    h.last().provider.refuse('invalid-token'); // the new session is refused: its own refresh
+    expect(gates).toHaveLength(2);
+    gates[0]!(true); // the old one finishes: nothing to do for the replaced session
+    gates[1]!(true);
+    await flush();
+    expect(h.last().provider.connects).toBe(2);
+    expect(manager.state().stopped).toBeNull();
+  });
 });

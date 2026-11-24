@@ -98,7 +98,9 @@ export class ConnectionManager {
   private offlineTimer: unknown = null;
   private lastRefreshAt = Number.NEGATIVE_INFINITY;
   private refusedAt = Number.NEGATIVE_INFINITY;
-  private refreshing = false;
+  private refreshingFor: Session | null = null;
+  /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
+  private large = false;
   /** True after the manager disconnected the provider itself (a stop, or a wait before an error retry): the close that follows is its own doing and says nothing new. */
   private quiet = false;
   /** The copy taken before a close that may turn out to be a reset: offered when the next connect is refused `stale-epoch`, dropped when it is accepted. */
@@ -180,6 +182,7 @@ export class ConnectionManager {
     this.unsubscribe = session.provider.subscribe((event) => this.onEvent(session, event));
     // A new document starts clean: what the old one said about access, size, offline and the banner does not carry over. A FRESH that has its own text sets it after.
     this.clearOffline();
+    this.large = false;
     const carried = this.current.text;
     this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
     this.connectSession();
@@ -230,7 +233,7 @@ export class ConnectionManager {
       case 'authenticated':
         if (event.scope !== 'readonly') {
           // Signed in with the right to write: the read-only state of an earlier connection (a reader who was upgraded) ends here.
-          this.set({ readOnly: false, text: this.current.text === TEXTS.readOnly ? null : this.current.text });
+          this.set({ readOnly: this.large, text: this.current.text === TEXTS.readOnly ? null : this.current.text });
           return;
         }
         this.act(mapSignal({ type: 'scope', readOnly: true }));
@@ -298,6 +301,7 @@ export class ConnectionManager {
         this.set({ readOnly: true, text: mapping.text ?? null });
         return;
       case 'LARGE':
+        this.large = true;
         this.set({ readOnly: true, text: mapping.text ?? null });
         return;
       case 'RETRY':
@@ -366,7 +370,7 @@ export class ConnectionManager {
   }
 
   private async refreshThenRetry(): Promise<void> {
-    if (this.refreshing) return; // one refresh at a time: a second signal for the same cause arrives while it runs
+    if (this.refreshingFor !== null && this.refreshingFor === this.session) return; // one refresh per session at a time: a second signal for the same cause arrives while it runs
     const now = this.timers.now();
     if (now - this.lastRefreshAt < REFRESH_WINDOW_MS) {
       await this.signOut();
@@ -375,9 +379,9 @@ export class ConnectionManager {
     this.lastRefreshAt = now;
     const session = this.session;
     session?.provider.disconnect();
-    this.refreshing = true;
+    this.refreshingFor = session;
     const refreshed = await this.options.auth.refresh().catch(() => false);
-    this.refreshing = false;
+    if (this.refreshingFor === session) this.refreshingFor = null;
     // The page may have been stopped, or its session replaced, while the refresh ran: then it is not this one's to reconnect.
     if (this.session === null || this.session !== session || this.current.phase === 'stopped') return;
     if (!refreshed) {
