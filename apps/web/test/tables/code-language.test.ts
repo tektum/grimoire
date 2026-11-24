@@ -116,6 +116,23 @@ describe('the code-block language picker', () => {
     expect(Array.from(select.options).filter((o) => o.value === 'zig')).toHaveLength(1);
   });
 
+  it('drops the entry of a language that is no longer shown: zig then sql leaves no zig, and moving between two blocks leaves only the current one', async () => {
+    const h = await open('```\nx\n```\n\nMiddle.\n\n```brainfuck\ny\n```\n');
+    h.cursorInCode(0);
+    h.view.dispatch(h.view.state.tr.setNodeMarkup(0, undefined, { ...h.view.state.doc.firstChild?.attrs, language: 'zig' }));
+    expect(Array.from((pickers(h)[0] as HTMLSelectElement).options).map((o) => o.value)).toContain('zig');
+    h.view.dispatch(h.view.state.tr.setNodeMarkup(0, undefined, { ...h.view.state.doc.firstChild?.attrs, language: 'sql' }));
+    const values = (): string[] => Array.from((pickers(h)[0] as HTMLSelectElement).options).map((o) => o.value);
+    expect(values()).not.toContain('zig');
+    expect(pickers(h)[0]?.value).toBe('sql');
+    h.cursorInCode(1);
+    expect(pickers(h)[0]?.value).toBe('brainfuck');
+    expect(values().filter((v) => v === 'brainfuck')).toHaveLength(1);
+    h.cursorInCode(0);
+    expect(values()).not.toContain('brainfuck');
+    expect(pickers(h)[0]?.value).toBe('sql');
+  });
+
   it('does nothing when the change comes after the cursor has left every code block', async () => {
     const h = await open('Intro.\n\n```\nx\n```\n');
     h.cursorInCode(0);

@@ -6,10 +6,13 @@ import { LANGUAGES } from './languages';
 
 /** Makes the select show `language`: plain text for none, a list entry for the fixed ones, and its own entry for a language that is not in the list (kept, never changed by looking). */
 function show(select: HTMLSelectElement, language: string): void {
+  // The entry of an unlisted language that is no longer the one shown goes: the select is reused for other blocks and for a peer's changes.
+  for (const extra of Array.from(select.querySelectorAll<HTMLOptionElement>('option[data-extra]'))) if (extra.value !== language) extra.remove();
   if (language !== '' && !Array.from(select.options).some((option) => option.value === language)) {
     const option = document.createElement('option');
     option.value = language;
     option.textContent = language;
+    option.dataset['extra'] = '';
     select.append(option);
   }
   if (select.value !== language) select.value = language;
