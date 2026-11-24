@@ -39,3 +39,123 @@
   padding: var(--space-2);
   color: var(--muted);
 }
+
+.bubble-host {
+  position: absolute;
+  z-index: 20;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+}
+.bubble-host:not([data-show='true']) {
+  display: none;
+}
+.bubble-bar {
+  display: flex;
+  gap: var(--space-1);
+}
+.bubble-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--ink);
+}
+.bubble-button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--paper-raised));
+  border-color: var(--accent);
+}
+.bubble-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-1);
+  max-width: 24rem;
+}
+.bubble-link-label {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.bubble-link-label input {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.bubble-link-label input[aria-invalid='true'] {
+  border-color: var(--ink);
+  outline: 2px solid var(--ink);
+}
+.bubble-text-button {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.85rem;
+}
+.bubble-link-error {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.block-handle {
+  position: absolute;
+  z-index: 15;
+}
+/* Hidden by its visibility, not by display: the library measures the handle before it marks it shown, and a handle that is not displayed measures nothing (it would be placed on top of the text). */
+.block-handle:not([data-show='true']) {
+  visibility: hidden;
+  pointer-events: none;
+}
+.page-editor .ProseMirror[contenteditable='false'] ~ .block-handle {
+  display: none;
+}
+.block-handle-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--muted);
+}
+.block-handle-button:hover,
+.block-handle-button[aria-expanded='true'] {
+  border-color: var(--border);
+  background: var(--paper-raised);
+  color: var(--ink);
+}
+.block-handle-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 18rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}

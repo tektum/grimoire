@@ -4,7 +4,7 @@ import { listener } from '@milkdown/plugin-listener';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import { rawHtmlPlugin } from '../../safety/raw-html';
 import { codeLanguage } from '../code';
-import { slashMenu, trailingNode } from '../menus';
+import { blockHandle, selectionBubble, slashMenu, trailingNode } from '../menus';
 import { tableToolbar } from '../tables';
 
 /**
@@ -12,4 +12,4 @@ import { tableToolbar } from '../tables';
  * (history, a bundled preset, local persistence) is never added, because undo comes from the collaboration plugin
  * and the server is the only store.
  */
-export const uiPlugins: MilkdownPlugin[] = [listener, clipboard, ...cursor, rawHtmlPlugin, tableToolbar, codeLanguage, slashMenu, trailingNode].flat();
+export const uiPlugins: MilkdownPlugin[] = [listener, clipboard, ...cursor, rawHtmlPlugin, tableToolbar, codeLanguage, slashMenu, selectionBubble, blockHandle, trailingNode].flat();
