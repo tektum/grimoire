@@ -54,6 +54,21 @@ describe('the revision list', () => {
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
+  it('says so when the next page cannot be loaded, keeps what is shown, and Show more tries again', async () => {
+    let later = 0;
+    const { api, of } = fakeApi({
+      [LIST]: (r) => ((r.params.query as { cursor?: string } | undefined)?.cursor === undefined ? ok({ items: [rev('r2')], nextCursor: 'c2' }) : later++ === 0 ? { status: 503 } : ok({ items: [rev('r1')], nextCursor: null })),
+    });
+    show(api);
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect((await screen.findByRole('alert')).textContent).toContain("Couldn't load more versions");
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    await waitFor(() => { expect(screen.getAllByRole('listitem')).toHaveLength(2); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(of('GET', '/v1/pages/{id}/revisions')).toHaveLength(3);
+  });
+
   it('says so when the page has no saved version yet', async () => {
     const { api } = fakeApi({ [LIST]: ok({ items: [], nextCursor: null }) });
     show(api);

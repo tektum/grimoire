@@ -55,6 +55,7 @@ export function RevisionList({ api, page, slug }: { readonly api: ApiLike; reado
               </li>
             ))}
           </ul>
+          {list.isFetchNextPageError && <p role="alert">Couldn&apos;t load more versions.</p>}
           {list.hasNextPage && (
             <Button disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>
               Show more

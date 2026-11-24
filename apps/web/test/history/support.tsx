@@ -11,7 +11,7 @@ export interface Request {
   readonly params: { path?: Record<string, string>; query?: Record<string, unknown> };
   readonly parseAs?: string;
 }
-export type Answer = { status: number; body?: unknown };
+export type Answer = { status: number; body?: unknown; headers?: Record<string, string> };
 type Handler = Answer | ((request: Request) => Answer | Promise<Answer>);
 
 /** A fake typed client: `routes` maps "METHOD /path template" to an answer, or to a function of the request; every request is recorded. */
@@ -23,7 +23,7 @@ export function fakeApi(routes: Record<string, Handler>) {
     const entry = routes[`${method} ${path}`];
     return Promise.resolve(typeof entry === 'function' ? entry(request) : (entry ?? { status: 404 })).then((answer) => {
       const ok = answer.status < 300;
-      return { data: ok ? answer.body : undefined, error: ok ? undefined : answer.body, response: new Response(null, { status: answer.status }) };
+      return { data: ok ? answer.body : undefined, error: ok ? undefined : answer.body, response: new Response(null, { status: answer.status, headers: answer.headers ?? {} }) };
     });
   };
   const api = { GET: vi.fn(call('GET')), POST: vi.fn(call('POST')), PUT: vi.fn(call('PUT')), PATCH: vi.fn(call('PATCH')), DELETE: vi.fn(call('DELETE')) } as unknown as ApiLike;

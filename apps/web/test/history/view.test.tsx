@@ -114,6 +114,23 @@ describe('one revision', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
   });
 
+  it('does not compare with a page whose saved text is behind its live content: it says so, with Try again, and never claims what restoring would remove', async () => {
+    let attempt = 0;
+    const { api } = fakeApi({
+      [ONE]: ok({ ...rev('r1'), markdown: OLD }),
+      [CURRENT]: () => (attempt++ === 0 ? { status: 200, body: '', headers: { 'x-grimoire-markdown-stale': 'true' } } : ok(NOW)),
+    });
+    show(api);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Changes' }));
+    const note = await screen.findByRole('status');
+    expect(note.textContent).toContain('still being saved');
+    expect(screen.queryByText(/Restoring this version would remove/)).toBeNull();
+    expect(screen.getByRole('tabpanel').querySelectorAll('ins, del')).toHaveLength(0);
+    await userEvent.click(within(note).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText(/Restoring this version would remove/)).toBeTruthy();
+    expect(screen.getByRole('tabpanel').querySelectorAll('ins, del').length).toBeGreaterThan(0);
+  });
+
   it('keeps the text and says the comparison failed, with Try again, when the current page cannot be read', async () => {
     let attempt = 0;
     const { api } = fakeApi({ [ONE]: ok({ ...rev('r1'), markdown: OLD }), [CURRENT]: () => (attempt++ === 0 ? { status: 503 } : ok(NOW)) });

@@ -37,13 +37,13 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
       return data as WithMarkdown;
     },
   });
-  const current = useQuery<string, HttpError>({
+  const current = useQuery<{ markdown: string; stale: boolean }, HttpError>({
     ...NO_CACHE,
     queryKey: queryKey('GET', '/v1/pages/{id}/markdown', { params: { path: { id: page.id } } }),
     queryFn: async ({ signal }) => {
       const { data, response } = await api.GET('/v1/pages/{id}/markdown' as never, { params: { path: { id: page.id } }, parseAs: 'text', signal } as never);
       if (!response.ok) throw new HttpError(response.status);
-      return typeof data === 'string' ? data : '';
+      return { markdown: typeof data === 'string' ? data : '', stale: response.headers.get('x-grimoire-markdown-stale') === 'true' };
     },
   });
   if (revision.error?.status === 404 || revision.error?.status === 403) return <NotFoundScreen />;
@@ -94,10 +94,14 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
             </p>
           ) : current.data === undefined ? (
             <p>Loading</p>
+          ) : current.data.stale ? (
+            <p role="status">
+              The page is still being saved, so it can&apos;t be compared with this version yet. <Button onClick={() => void current.refetch()}>Try again</Button>
+            </p>
           ) : (
             <>
               <p>Restoring this version would remove the lines marked Removed and add the lines marked Added.</p>
-              <DiffView from={current.data} to={data.markdown} />
+              <DiffView from={current.data.markdown} to={data.markdown} />
             </>
           )}
         </div>
