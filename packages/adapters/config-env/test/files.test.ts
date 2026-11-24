@@ -46,6 +46,10 @@ describe('Config.files', () => {
 
   it('takes the public origin from the public endpoint, without its path', () => {
     expect(load({ GRIMOIRE_S3_PUBLIC_ENDPOINT: 'https://files.example.com:9000/x' }).files?.publicOrigin).toBe('https://files.example.com:9000');
+    // Virtual addressing puts the bucket in the host the browser calls, and the content security policy and the client's file-store origin must name that host.
+    const virtual = { GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual', GRIMOIRE_S3_ENDPOINT: 'https://s3.eu-west-1.amazonaws.com', GRIMOIRE_S3_BUCKET: 'my-bucket' };
+    expect(load(virtual).files?.publicOrigin).toBe('https://my-bucket.s3.eu-west-1.amazonaws.com');
+    expect(load({ ...virtual, GRIMOIRE_S3_ADDRESSING_STYLE: 'path' }).files?.publicOrigin).toBe('https://s3.eu-west-1.amazonaws.com');
   });
 
   it('reads explicit values', () => {

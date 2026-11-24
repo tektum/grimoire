@@ -332,6 +332,13 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
 const cleaned = (env: Readonly<Record<string, string | undefined>>): Raw =>
   Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''));
 
+/** The origin browsers send file requests to: with virtual addressing the bucket is part of the host, so it is part of the origin. */
+const publicOriginOf = (publicEndpoint: string, bucket: string, addressing: 'path' | 'virtual'): string => {
+  const url = new URL(publicEndpoint);
+  if (addressing === 'virtual') url.hostname = `${bucket}.${url.hostname}`;
+  return url.origin;
+};
+
 const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose): { readonly files?: FilesConfig } => {
   const endpoint = v.GRIMOIRE_S3_ENDPOINT;
   if (purpose === 'files-setup' || endpoint === undefined || v.GRIMOIRE_S3_BUCKET === undefined) {
@@ -340,7 +347,7 @@ const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpo
   const publicEndpoint = v.GRIMOIRE_S3_PUBLIC_ENDPOINT ?? endpoint;
   const { GRIMOIRE_S3_ACCESS_KEY: accessKey, GRIMOIRE_S3_SECRET_KEY: secretKey } = v;
   return { files: {
-    endpoint, publicEndpoint, publicOrigin: new URL(publicEndpoint).origin,
+    endpoint, publicEndpoint, publicOrigin: publicOriginOf(publicEndpoint, v.GRIMOIRE_S3_BUCKET, v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path'),
     bucket: v.GRIMOIRE_S3_BUCKET,
     ...(accessKey !== undefined && secretKey !== undefined ? { accessKey, secretKey } : {}),
     region: v.GRIMOIRE_S3_REGION ?? 'us-east-1', addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path',
