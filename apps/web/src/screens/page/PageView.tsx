@@ -58,6 +58,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     let liveGeneration = 0;
     let seenGeneration = 0;
     let starting = false;
+    let attempts = 0;
     const editable = (): boolean => !(permissionRef.current || manager.state().readOnly || manager.state().stopped !== null);
     const manager: ConnectionManager = new ConnectionManager({
       auth: { getToken: () => session.auth.getToken(), refresh: () => session.auth.refresh(), signOut: () => session.auth.signOut('expired') },
@@ -80,13 +81,18 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
 
     const goLive = (generation: number): void => {
       starting = true;
+      const attempt = (attempts += 1);
+      // Only the newest attempt may say the building is over: an older one that gives up must not let a second build start beside the newer one.
+      const finished = (): void => {
+        if (attempt === attempts) starting = false;
+      };
       const synced = manager.currentSession();
       /** Still the document that synced, and still synced and running: otherwise an editor on it would take typing into a document that is not the page. */
       const current = (): boolean => !cancelled && manager.currentSession() === synced && manager.state().generation === generation && manager.state().phase === 'synced';
       void queue(element, async () => {
         if (cancelled) return;
         if (!current()) {
-          starting = false;
+          finished();
           return;
         }
         await saved?.destroy();
@@ -98,7 +104,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         if (!current()) {
           // The document was replaced, or the connection stopped, while the editor was being built: take it down again.
           await mounted.destroy();
-          starting = false;
+          finished();
           if (!cancelled) showSaved();
           return;
         }
@@ -115,7 +121,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       }).catch(() => {
         log('warn', 'web.page_mount_failed', { page: page.id });
         // The saved view was taken down for the live editor, which could not be built: the page stays readable.
-        starting = false;
+        finished();
         if (!cancelled) showSaved();
       });
     };

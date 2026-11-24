@@ -350,4 +350,31 @@ describe('the page screen', () => {
     expect(t.lives[1]!.editable).toBe(true);
     expect(screen.queryByText('Read only')).toBeNull();
   });
+
+  it('an older build that gives up does not let a second build start beside the newer one: one editor stays bound, even when the state changes meanwhile', async () => {
+    const gates: (() => void)[] = [];
+    let calls = 0;
+    const t = mountPage({
+      engine: (base) => ({
+        mountLive: async (o) => {
+          calls += 1;
+          await new Promise<void>((resolve) => void gates.push(resolve));
+          return base.mountLive(o);
+        },
+      }),
+    });
+    await waitSaved();
+    await t.synced(); // generation 1 starts to build, and waits
+    await waitFor(() => expect(gates).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed')); // generation 2
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    await t.synced(1); // generation 2 syncs: its build waits behind the first
+    gates[0]!(); // the first finishes, finds its document replaced, and gives up
+    await waitFor(() => expect(gates).toHaveLength(2)); // the second build is under way
+    await act(async () => void t.sessions[1]!.provider.stateless({ kind: 'warning', code: 'state-warning' })); // a state change while it is
+    gates[1]!();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect(calls).toBe(2);
+    expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+  });
 });
