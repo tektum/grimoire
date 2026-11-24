@@ -72,6 +72,20 @@ describe('the outline of a page', () => {
     expect(document.activeElement).toBe(editor);
   });
 
+  it('leaves the page where it is when the heading is already in the window, and brings it to the middle when it is not', async () => {
+    const { editor } = renderPage([[1, 'A'], [1, 'B']]);
+    await settle();
+    const target = editor.querySelectorAll('h1')[1] as HTMLElement;
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    target.getBoundingClientRect = () => ({ top: 100, bottom: 140 }) as DOMRect;
+    await userEvent.click(screen.getByRole('link', { name: 'B' }));
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' });
+    target.getBoundingClientRect = () => ({ top: 5000, bottom: 5040 }) as DOMRect;
+    await userEvent.click(screen.getByRole('link', { name: 'B' }));
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'center' });
+  });
+
   it('marks the heading the cursor is in as the current one', async () => {
     const { editor } = renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
     await settle();

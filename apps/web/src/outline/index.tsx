@@ -93,7 +93,9 @@ export function Outline() {
     const surface = root.querySelector<HTMLElement>('.ProseMirror') ?? root;
     surface.focus({ preventScroll: true });
     window.getSelection()?.collapse(target, 0);
-    target.scrollIntoView({ block: 'center' });
+    // A heading already in the window stays where it is (the page does not jump); one that is not comes to the middle of it.
+    const box = target.getBoundingClientRect();
+    target.scrollIntoView({ block: box.top >= 0 && box.bottom <= window.innerHeight ? 'nearest' : 'center' });
   }, []);
 
   const move = (event: KeyboardEvent<HTMLUListElement>): void => {
