@@ -23,7 +23,7 @@ const row = async (id: string) => (await t.admin.query<{ deleted_at: Date | null
 beforeAll(async () => {
   t = await createTestDatabase('pdelete');
   user = await addUser(t.app, 'ada', 'admin');
-  collection = (await createCollections(t.app).append({ name: 'del', createdBy: user }, (last) => ordering.between(last, null))).id;
+  collection = (await createCollections(t.app).append('legacy', { name: 'del', createdBy: user }, (last) => ordering.between(last, null))).id;
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
 
@@ -51,15 +51,15 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     await pages().softDelete(page, user, collection);
     expect(await pages().softDelete(page, user, collection)).toEqual({ kind: 'not-found' });
     expect(await pages().softDelete('00000000-0000-4000-8000-000000000000', user, collection)).toEqual({ kind: 'not-found' });
-    const other = (await createCollections(t.app).append({ name: 'del2', createdBy: user }, (last) => ordering.between(last, null))).id;
+    const other = (await createCollections(t.app).append('legacy', { name: 'del2', createdBy: user }, (last) => ordering.between(last, null))).id;
     const inside = await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In', createdBy: user }, limits, (a, b) => ordering.between(a, b));
     if (inside.kind !== 'created') throw new Error(inside.kind);
-    await createCollections(t.app).softDelete(other, user);
+    await createCollections(t.app).softDelete('legacy', other, user);
     expect(await pages().softDelete(inside.page.id, user, other)).toEqual({ kind: 'not-found' });
   });
 
   it('deletes nothing when the page is not in the collection the caller was checked against', async () => {
-    const elsewhere = (await createCollections(t.app).append({ name: 'del3', createdBy: user }, (last) => ordering.between(last, null))).id;
+    const elsewhere = (await createCollections(t.app).append('legacy', { name: 'del3', createdBy: user }, (last) => ordering.between(last, null))).id;
     const page = await make();
     const kid = await make(page);
     expect(await pages().softDelete(page, user, elsewhere)).toEqual({ kind: 'conflict' });

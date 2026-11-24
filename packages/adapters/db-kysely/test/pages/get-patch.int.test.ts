@@ -40,7 +40,7 @@ const counted = (d: KyselyDatabase, sent: string[]): KyselyDatabase => ({
 beforeAll(async () => {
   t = await createTestDatabase('getpatch');
   user = await addUser(t.app, 'ada', 'admin');
-  collection = (await createCollections(t.app).append({ name: 'gp', createdBy: user }, (last) => ordering.between(last, null))).id;
+  collection = (await createCollections(t.app).append('legacy', { name: 'gp', createdBy: user }, (last) => ordering.between(last, null))).id;
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
 
@@ -63,10 +63,10 @@ describe('the PostgreSQL PageRepo get', () => {
     expect((await pages().get(id))?.markdownStaleSince).toBe(1_700_000_000_000);
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [id]);
     expect(await pages().get(id)).toBeUndefined();
-    const other = (await createCollections(t.app).append({ name: 'gp-del', createdBy: user }, (last) => ordering.between(last, null))).id;
+    const other = (await createCollections(t.app).append('legacy', { name: 'gp-del', createdBy: user }, (last) => ordering.between(last, null))).id;
     const inside = (await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In', createdBy: user }, limits, (a, b) => ordering.between(a, b)));
     if (inside.kind !== 'created') throw new Error(inside.kind);
-    await createCollections(t.app).softDelete(other, user);
+    await createCollections(t.app).softDelete('legacy', other, user);
     expect(await pages().get(inside.page.id)).toBeUndefined();
   });
 

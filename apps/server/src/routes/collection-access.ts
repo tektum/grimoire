@@ -50,14 +50,14 @@ const router = createRouter();
 router.openapi(listCollectionAccess, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  const list = await c.get('deps').collections.listAccess(id);
+  const list = await c.get('deps').collections.listAccess(caller(c).tenantId, id);
   return list === undefined ? fail('not_found') : c.json(list, 200);
 });
 
 router.openapi(putCollectionAccess, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  const result = await c.get('deps').collections.upsertAccess(id, c.req.valid('json'), caller(c).id);
+  const result = await c.get('deps').collections.upsertAccess(caller(c).tenantId, id, c.req.valid('json'), caller(c).id);
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'no-principal') return fail('invalid');
   return c.json(result.entry, 200);
@@ -66,7 +66,7 @@ router.openapi(putCollectionAccess, async (c) => {
 router.openapi(deleteCollectionAccess, async (c) => {
   const { id, entryId } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  return (await c.get('deps').collections.removeAccess(id, entryId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
+  return (await c.get('deps').collections.removeAccess(caller(c).tenantId, id, entryId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
 });
 
 export default router;

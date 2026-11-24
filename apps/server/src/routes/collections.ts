@@ -113,7 +113,7 @@ router.openapi(listCollections, async (c) => {
   const { authorizer, collections } = c.get('deps');
   const visible = await authorizer.visibleCollections(caller(c).id);
   const levels = new Map(visible.map((v) => [v.collectionId, v.access] as const));
-  const rows = await collections.listLive([...levels.keys()]);
+  const rows = await collections.listLive(caller(c).tenantId, [...levels.keys()]);
   return c.json({ items: rows.map((row) => present(row, levels.get(row.id) as Level)) }, 200);
 });
 
@@ -121,14 +121,14 @@ router.openapi(createCollection, async (c) => {
   const user = caller(c);
   if (user.role !== 'admin') return fail('forbidden');
   const { collections, ordering } = c.get('deps');
-  const created = await collections.append({ ...c.req.valid('json'), createdBy: user.id }, (last) => ordering.between(last, null));
+  const created = await collections.append(user.tenantId, { ...c.req.valid('json'), createdBy: user.id }, (last) => ordering.between(last, null));
   return c.json(present(created, 'read-write'), 201);
 });
 
 router.openapi(getCollection, async (c) => {
   const { id } = c.req.valid('param');
   const mine = await guardCollection(c, id, 'read');
-  const row = await c.get('deps').collections.get(id);
+  const row = await c.get('deps').collections.get(caller(c).tenantId, id);
   return row === undefined ? fail('not_found') : c.json(present(row, mine), 200);
 });
 
@@ -138,7 +138,7 @@ router.openapi(patchCollection, async (c) => {
   const { collections, ordering } = c.get('deps');
   const patch = c.req.valid('json');
   if (patch.position !== undefined && !ordering.isValidPosition(patch.position)) return fail('invalid');
-  const result = await collections.update(id, patch, caller(c).id);
+  const result = await collections.update(caller(c).tenantId, id, patch, caller(c).id);
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'position-taken') return fail('conflict');
   return c.json(present(result.collection, mine), 200);
@@ -147,13 +147,13 @@ router.openapi(patchCollection, async (c) => {
 router.openapi(deleteCollection, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  return (await c.get('deps').collections.softDelete(id, caller(c).id)) === undefined ? fail('not_found') : c.body(null, 204);
+  return (await c.get('deps').collections.softDelete(caller(c).tenantId, id, caller(c).id)) === undefined ? fail('not_found') : c.body(null, 204);
 });
 
 router.openapi(getCollectionTree, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'read');
-  const pages = await c.get('deps').collections.tree(id);
+  const pages = await c.get('deps').collections.tree(caller(c).tenantId, id);
   return pages === undefined ? fail('not_found') : c.json({ pages: [...pages] }, 200);
 });
 

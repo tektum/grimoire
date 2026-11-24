@@ -58,13 +58,13 @@ describe('the PostgreSQL AdminRepo: groups', () => {
     const repo = createAdmin(t.app);
     const collections = createCollections(t.app);
     const ordering = new FakeOrdering();
-    const collection = await collections.append({ name: 'Docs', createdBy: boss }, (last) => ordering.between(last, null));
+    const collection = await collections.append('legacy', { name: 'Docs', createdBy: boss }, (last) => ordering.between(last, null));
     const gone = saved(await repo.createGroup('legacy', 'Gone', boss));
     const kept = saved(await repo.createGroup('legacy', 'Kept', boss));
     const user = await addUser(t.app, 'cy');
     for (const g of [gone, kept]) {
       await repo.addMember('legacy', g, user, boss);
-      await collections.upsertAccess(collection.id, { principalType: 'group', principalId: g, permission: 'read' }, boss);
+      await collections.upsertAccess('legacy', collection.id, { principalType: 'group', principalId: g, permission: 'read' }, boss);
     }
     expect(await repo.deleteGroup('legacy', gone, boss)).toBe(true);
     expect(await repo.deleteGroup('legacy', gone, boss)).toBe(false);
