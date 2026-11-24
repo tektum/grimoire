@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { TEXTS } from '../../editor/core/map-signal';
 import { Button } from '../../ui/primitives';
 
+/** How long the Blob of a download is kept after the click. */
+export const REVOKE_AFTER_MS = 4000;
+
 /** The name of the downloaded copy: the page's title (made safe for a file name) and "-your-copy.md". */
 export function copyFileName(title: string): string {
   const base = title
@@ -22,7 +25,8 @@ export function downloadCopy(text: string, title: string): void {
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Let go of it a little later, not in the same task: some browsers read the Blob after the click's task has ended.
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_MS);
 }
 
 /**

@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ResetNotice, copyFileName, downloadCopy } from '../../src/screens/page/ResetNotice';
+import { REVOKE_AFTER_MS, ResetNotice, copyFileName, downloadCopy } from '../../src/screens/page/ResetNotice';
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.restoreAllMocks();
   Reflect.deleteProperty(navigator, 'clipboard');
@@ -25,7 +26,8 @@ describe('the name of the downloaded copy', () => {
 });
 
 describe('downloading the copy', () => {
-  it('makes a Markdown file from a Blob held in memory, clicks a link for it, and lets the Blob go', async () => {
+  it('makes a Markdown file from a Blob held in memory, clicks a link for it, and lets the Blob go a little later, not in the same task', async () => {
+    vi.useFakeTimers();
     let blob: Blob | null = null;
     const create = vi.fn((b: Blob) => ((blob = b), 'blob:copy'));
     const revoke = vi.fn();
@@ -38,7 +40,10 @@ describe('downloading the copy', () => {
     expect(clicks).toEqual([{ href: 'blob:copy', download: 'Plan-your-copy.md' }]);
     expect(blob!.type).toBe('text/markdown');
     expect(await blob!.text()).toBe('# My text\n');
+    expect(revoke).not.toHaveBeenCalled(); // some browsers read the Blob after the click's task
+    vi.advanceTimersByTime(REVOKE_AFTER_MS);
     expect(revoke).toHaveBeenCalledWith('blob:copy');
+    vi.useRealTimers();
     expect(document.querySelector('a[download]')).toBeNull(); // the link is not left in the page
   });
 });

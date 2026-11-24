@@ -218,7 +218,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         <p className="page-status" role="status" data-state={collab}>
           {status}
         </p>
-        {state.copy !== null ? <ResetNotice copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
+        {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}
         <div ref={rootRef} className="page-editor page-text" data-collab-state={collab} data-testid="editor-root" />

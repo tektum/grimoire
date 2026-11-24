@@ -512,4 +512,33 @@ describe('the page screen', () => {
     mountPage({ page: page({ title: '', urlId: 'zz99' }), meRole: 'member' });
     expect((await screen.findByRole('link', { name: 'History' })).getAttribute('href')).toBe('/p/page-zz99/history');
   });
+
+  it('a second reset replaces the offered copy and starts its notice afresh: "Copied." never refers to the old copy', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    let built = 0;
+    const t = mountPage({
+      engine: (base) => ({
+        mountLive: async (o) => {
+          const mounted = await base.mountLive(o);
+          if (mounted === null) return null;
+          const n = (built += 1);
+          return { ...mounted, markdown: () => `copy number ${n}` };
+        },
+      }),
+    });
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4409, 'stale-epoch'));
+    await act(async () => void (await screen.findByRole('button', { name: 'Copy to clipboard' })).click());
+    expect(await screen.findByText('Copied.')).toBeTruthy();
+    expect(writeText).toHaveBeenLastCalledWith('copy number 1');
+    await t.synced(1);
+    await waitFor(() => expect(t.lives).toHaveLength(2));
+    await act(async () => void t.sessions[1]!.provider.close(4409, 'stale-epoch')); // reset again, before the first notice was dismissed
+    await waitFor(() => expect(t.sessions).toHaveLength(3));
+    await waitFor(() => expect(screen.queryByText('Copied.')).toBeNull());
+    await act(async () => void screen.getByRole('button', { name: 'Copy to clipboard' }).click());
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
+  });
 });
