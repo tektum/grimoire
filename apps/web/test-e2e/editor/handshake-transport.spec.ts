@@ -1,27 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
+import { recordHandshakes } from './handshakes';
 import { makePage, readPage } from './pages';
 import { appEvents, compose, waitReady } from './stack';
-
-interface Handshake {
-  t: string;
-  v?: string;
-  e?: number;
-}
-
-/** The handshake tokens the page's own sockets send: the `g1.` text inside each frame the page writes, decoded. */
-function recordHandshakes(page: Page): Handshake[] {
-  const seen: Handshake[] = [];
-  page.on('websocket', (socket) => {
-    socket.on('framesent', (frame) => {
-      const text = typeof frame.payload === 'string' ? frame.payload : Buffer.from(frame.payload).toString('latin1');
-      const match = /g1\.([A-Za-z0-9_-]+)/.exec(text);
-      if (match?.[1] !== undefined) seen.push(JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as Handshake);
-    });
-  });
-  return seen;
-}
 
 const connected = async (since: Date): Promise<number> => (await appEvents(since)).filter((e) => e.event === 'collab.connected').length;
 
