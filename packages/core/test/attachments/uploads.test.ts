@@ -182,3 +182,32 @@ describe('completeUpload', () => {
     expect(await completeUpload(second.deps, second.stored)).toEqual({ kind: 'gone' });
   });
 });
+
+describe('review: the two races', () => {
+  it('signs a re-signed upload for no longer than the row has left, and answers gone with less than a second left', async () => {
+    const { deps, files, clock } = setup();
+    const made = await createUpload(deps, meta, LIMITS);
+    if (made.kind !== 'created') throw new Error('setup');
+    clock.at += PENDING_TTL_MS - 120_000; // two minutes left
+    const again = await resignUpload(deps, made.id, USER);
+    expect(again.kind === 'resigned' && again.upload.expiresAt).toBe(clock.at + 120_000);
+    expect(files.signed.at(-1)).toMatchObject({ kind: 'upload' });
+    clock.at += 119_500; // half a second left
+    expect(await resignUpload(deps, made.id, USER)).toEqual({ kind: 'gone' });
+  });
+
+  it('does not delete an upload that another completion made ready while this one saw no object', async () => {
+    const t = await uploaded({ stored: 0 });
+    // The object arrives and the other completion finishes after this one looked.
+    const racing = { ...t.repo, removeIfPending: async () => { await t.files.put(t.stored.key, PNG, { size: 4, contentType: 'image/png' }); await t.repo.markReady(t.id, NOW); return false; }, get: (id: string) => t.repo.get(id) } as unknown as typeof t.repo;
+    expect(await completeUpload({ ...t.deps, repo: racing }, t.stored)).toMatchObject({ kind: 'ready', row: { id: t.id, status: 'ready' } });
+    expect((await t.files.head(t.stored.key)).size).toBe(4);
+    expect(await t.repo.get(t.id)).toMatchObject({ status: 'ready' });
+  });
+
+  it('answers gone when the row to discard is already removed', async () => {
+    const t = await uploaded({ stored: 0 });
+    await t.repo.remove(t.id);
+    expect(await completeUpload(t.deps, t.stored)).toEqual({ kind: 'gone' });
+  });
+});

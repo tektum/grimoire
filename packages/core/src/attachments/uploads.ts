@@ -30,9 +30,9 @@ export type CreateResult =
   | { readonly kind: 'refused'; readonly reason: CreateRefusal };
 
 /** The signed PUT of a key: the exact size and type, create-only, and a download disposition for everything a browser would not show inline. */
-const sign = (d: AttachmentDeps, row: Pick<AttachmentRow, 'key' | 'size' | 'contentType'>): Promise<SignedUpload> =>
+const sign = (d: AttachmentDeps, row: Pick<AttachmentRow, 'key' | 'size' | 'contentType'>, ttlSeconds: number = UPLOAD_TTL_SECONDS): Promise<SignedUpload> =>
   d.files.signUpload(row.key, {
-    size: row.size, contentType: row.contentType, ttlSeconds: UPLOAD_TTL_SECONDS, ifNoneMatch: true,
+    size: row.size, contentType: row.contentType, ttlSeconds, ifNoneMatch: true,
     ...(isInlineType(row.contentType) ? {} : { disposition: 'attachment' as const }),
   });
 
@@ -70,12 +70,14 @@ export const markdownPathOf = (row: Pick<AttachmentRow, 'id' | 'fileName'>): str
 
 /**
  * A retry of a create with the same Idempotency-Key: while the row is still pending and has not expired, a fresh upload URL is signed (a stored one may have
- * expired, and a URL is never stored); after that the answer is `gone`. Only the uploader's own row answers.
+ * expired, and a URL is never stored), for no longer than the row has left, so no upload can land after the clean-up has removed the row; after that the answer is `gone`. Only the uploader's own row answers.
  */
 export async function resignUpload(d: AttachmentDeps, id: string, userId: string): Promise<{ readonly kind: 'resigned'; readonly upload: SignedUpload; readonly markdownPath: string } | { readonly kind: 'gone' }> {
   const row = await d.repo.get(id);
   if (row === undefined || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
-  return { kind: 'resigned', upload: await sign(d, row), markdownPath: markdownPathOf(row) };
+  const left = Math.floor((row.expiresAt - d.now()) / 1000);
+  if (left < 1) return { kind: 'gone' };
+  return { kind: 'resigned', upload: await sign(d, row, Math.min(UPLOAD_TTL_SECONDS, left)), markdownPath: markdownPathOf(row) };
 }
 
 /** The row an upload may be completed through: the caller's own, and either ready already or pending and not expired. Anything else is not found. */
@@ -92,11 +94,17 @@ export type CompleteResult =
   | { readonly kind: 'refused'; readonly reason: CompleteRefusal }
   | { readonly kind: 'gone' };
 
-/** An upload that must not stay: its object and its row are deleted. */
+/**
+ * An upload that must not stay: the row goes first, and only while it is still pending; then the object. A row that became ready in the meantime (another completion
+ * finished) is kept with its object and answered as ready, and one that is gone is gone.
+ */
 async function discard(d: AttachmentDeps, row: AttachmentRow, reason: CompleteRefusal): Promise<CompleteResult> {
-  await d.files.delete(row.key);
-  await d.repo.remove(row.id);
-  return { kind: 'refused', reason };
+  if (await d.repo.removeIfPending(row.id)) {
+    await d.files.delete(row.key);
+    return { kind: 'refused', reason };
+  }
+  const now = await d.repo.get(row.id);
+  return now?.status === 'ready' ? { kind: 'ready', row: now } : { kind: 'gone' };
 }
 
 async function firstBytes(d: AttachmentDeps, key: string): Promise<Uint8Array> {
