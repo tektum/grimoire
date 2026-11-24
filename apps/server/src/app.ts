@@ -48,7 +48,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   const handle = (err: unknown, c: Context): Response => {
     const response = err instanceof ApiError ? err.getResponse() : isBodyRefusal(err) ? errorResponse('invalid') : errorResponse('unavailable');
     const fields = { errorName: errorName(err), method: c.req.method, route: routePath(c), status: response.status };
-    if (response.status >= 500 && process.env['VITEST'] === undefined && err instanceof Error) process.stderr.write(JSON.stringify({ diag: String(err.stack).split("\n").slice(0, 8) }) + "\n");
+    if (response.status >= 500 && c.req.method === 'DELETE' && routePath(c) === '/*' && err instanceof Error) process.stderr.write(JSON.stringify({ diag: String(err.stack).split("\n").slice(0, 8) }) + "\n");
     if (response.status >= 500) ctx.log.error('http.handler_error', fields);
     else ctx.log.warn('http.handler_rejected', fields);
     return response;
