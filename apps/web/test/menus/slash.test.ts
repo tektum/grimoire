@@ -189,3 +189,18 @@ describe('the menu in the editor', () => {
     await vi.waitFor(() => expect(open(t)).toBe(true));
   });
 });
+
+describe('the slash menu in an editor that cannot be edited', () => {
+  it('is never shown: the library sets no attribute on its host there, which the styles take as hidden', async () => {
+    const t = await plainEditor('Some words', { editable: false });
+    try {
+      t.cursorAtEnd();
+      typeText(t, '/');
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      expect(slashQuery(t.view())).toBeNull();
+      expect(host(t)?.dataset['show']).not.toBe('true');
+    } finally {
+      await t.destroy();
+    }
+  });
+});
