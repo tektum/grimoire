@@ -10,7 +10,7 @@ const p = (id: string, parentId: string | null, position: string, title: string)
 const names = (page: Page) => page.locator('[role="treeitem"] .tree-link').allInnerTexts();
 const row = (page: Page, title: string) => page.getByRole('treeitem').filter({ has: page.getByRole('link', { name: title, exact: true }) });
 
-test('new page, rename, move under another page and delete', async ({ page, context }) => {
+test('new page, rename, move under another page, delete and restore', async ({ page, context }) => {
   await signInAs(context, 'e2e-alice', 'member', { check: false });
   const api = await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [p('a', null, 'p0000', 'Welcome'), p('b', 'a', 'p0000', 'Nested')] });
   await page.goto('/c/c1');
@@ -35,5 +35,14 @@ test('new page, rename, move under another page and delete', async ({ page, cont
   await page.getByRole('menuitem', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
   await expect(row(page, 'Plan')).toHaveCount(0);
-  expect(api.writes()).toEqual(['POST /v1/pages', expect.stringMatching(/^PATCH /), expect.stringMatching(/^POST \/v1\/pages\/.+\/move$/), expect.stringMatching(/^DELETE /)]);
+
+  // The trash lists it, and Restore puts it back at its old parent.
+  await page.getByRole('link', { name: 'Trash' }).click();
+  await expect(page.getByRole('listitem').filter({ hasText: 'Plan' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Restore Plan' }).click();
+  await expect(page.getByText('The trash is empty')).toBeVisible();
+  await page.goto('/c/c1');
+  await expect(row(page, 'Plan')).toHaveAttribute('aria-level', '2');
+  await expect(row(page, 'Welcome')).toHaveAttribute('aria-expanded', 'true');
+  expect(api.writes()).toEqual(['POST /v1/pages', expect.stringMatching(/^PATCH /), expect.stringMatching(/^POST \/v1\/pages\/.+\/move$/), expect.stringMatching(/^DELETE /), expect.stringMatching(/^POST \/v1\/trash\/.+\/restore$/)]);
 });

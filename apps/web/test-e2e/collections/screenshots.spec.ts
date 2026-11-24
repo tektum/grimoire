@@ -32,7 +32,7 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     // This machine's default sans-serif is a monospace face, so `system-ui` would draw everything in monospace: name an installed sans for the interface text, as the shots of M6-T01 do.
     await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
     await tab.addScriptTag({ content: bundle.js });
-    await tab.evaluate(([data, id]) => { (window as unknown as { showCollections: (d: unknown, i: string) => void }).showCollections(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, 'c1']);
+    await tab.evaluate(([data, id]) => { (window as unknown as { show: (d: unknown, p: string) => void }).show(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, '/c/c1']);
     await expect(tab.getByRole('treeitem')).toHaveCount(5); // Welcome is open: Welcome, Nested, Getting started guide, Plan for May, Meeting notes
     await shots(tab, TASK, 'collection-list');
     // Three levels, one row expanded and one focused, from the keyboard.
@@ -59,7 +59,7 @@ test('the Move to dialog, light and dark', async ({ page: tab, browserName }) =>
     await tab.addStyleTag({ content: bundle.css });
     await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" }); // as above
     await tab.addScriptTag({ content: bundle.js });
-    await tab.evaluate(([data, id]) => { (window as unknown as { showCollections: (d: unknown, i: string) => void }).showCollections(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, 'c1']);
+    await tab.evaluate(([data, id]) => { (window as unknown as { show: (d: unknown, p: string) => void }).show(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, '/c/c1']);
     await expect(tab.getByRole('treeitem')).toHaveCount(5);
     await tab.getByRole('button', { name: 'Actions for Plan for May' }).click();
     await tab.getByRole('menuitem', { name: 'Move to…' }).click();
@@ -68,5 +68,41 @@ test('the Move to dialog, light and dark', async ({ page: tab, browserName }) =>
     await shots(tab, TASK, 'move-to-dialog');
   } finally {
     await server.stop();
+  }
+});
+
+/** Opens `path` of the harness with the data given, in the page of a fresh test (the same preparation as above). */
+async function open(tab: import('@playwright/test').Page, path: string, data: object): Promise<() => Promise<void>> {
+  const bundle = await bundleHarness('screens-harness.tsx');
+  const server = await fixtureServer({ '/': '<!doctype html><meta charset="utf-8"><title>Grimoire</title><div id="host"></div>' });
+  await tab.goto(server.url('/'));
+  await tab.addStyleTag({ content: bundle.css });
+  await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" }); // as above
+  await tab.addScriptTag({ content: bundle.js });
+  await tab.evaluate(([d, p]) => { (window as unknown as { show: (d: unknown, p: string) => void }).show(d, p as string); }, [data, path] as const);
+  return () => server.stop();
+}
+
+test('the trash with one page that can be restored, light and dark', async ({ page: tab, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const stop = await open(tab, '/trash', { collections: COLLECTIONS, pages: [], trash: [{ id: 'plan', title: 'Plan for May', collectionId: 'c1', deletedAt: Date.UTC(2026, 10, 20, 9, 0), deletedBy: null, daysLeft: 26 }] });
+  try {
+    await expect(tab.getByRole('button', { name: 'Restore Plan for May' })).toBeVisible();
+    await tab.mouse.move(0, 0);
+    await shots(tab, TASK, 'trash');
+  } finally {
+    await stop();
+  }
+});
+
+test('the not-found screen, light and dark', async ({ page: tab, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const stop = await open(tab, '/nowhere/at-all', { collections: COLLECTIONS, pages: [] });
+  try {
+    await expect(tab.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
+    await tab.mouse.move(0, 0);
+    await shots(tab, TASK, 'not-found');
+  } finally {
+    await stop();
   }
 });

@@ -1,9 +1,7 @@
-/** Placeholder until the screen's own task fills this folder. */
+import { useApi } from '../../api/context';
+import { TrashScreen } from './TrashScreen';
+
+/** The route `/trash`. */
 export default function Screen() {
-  return (
-    <section aria-labelledby="screen-title">
-      <h1 id="screen-title">Trash</h1>
-      <p>This screen is not built yet.</p>
-    </section>
-  );
+  return <TrashScreen api={useApi()} />;
 }
