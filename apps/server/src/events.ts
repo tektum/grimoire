@@ -70,7 +70,7 @@ export interface WarnEvents {
 
 export interface ErrorEvents {
   'http.request_failed': { errorName: string };
-  'http.handler_error': { errorName: string; method: RequestMethod; route: string; status: number };
+  'http.handler_error': { errorName: string; method: RequestMethod; route: string; status: number; origin?: string };
   'server.config_invalid': { settings: readonly ConfigProblem[] };
   'server.start_failed': { errorName: string; errorCode: string; host: string; port: number };
   'shutdown.hook_failed': { hook: string; phase: ShutdownPhaseName; errorName: string };
@@ -108,4 +108,19 @@ export function createEventLog(logger: Logger): EventLog {
 /** Only the class name of a thrown value: messages and properties of arbitrary errors may carry data. */
 export function errorName(e: unknown): string {
   return e instanceof Error ? e.name : 'NonError';
+}
+
+const OUR_FRAME = /\/((?:apps|packages)\/[^\s():]+):(\d+):\d+\)?$/;
+/**
+ * Where an error was thrown: the first stack frame inside our code (`apps/` or `packages/`, not `node_modules`), as `path:line` relative to the repository. Never the
+ * message (it can carry user data) and never a value. `undefined` when no frame is ours.
+ */
+export function errorOrigin(e: unknown): string | undefined {
+  if (!(e instanceof Error) || typeof e.stack !== 'string') return undefined;
+  for (const line of e.stack.split('\n')) {
+    if (line.includes('node_modules')) continue;
+    const m = OUR_FRAME.exec(line.trim());
+    if (m !== null) return m.slice(1, 3).join(':');
+  }
+  return undefined;
 }
