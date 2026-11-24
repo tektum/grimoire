@@ -89,6 +89,7 @@ test.describe('connection signals of the real server', () => {
         'not-found': await probe(page, { collabUrl: config.collabUrl, documentName: randomUUID(), handshake: token(good) }),
         'bad-document-name': await probe(page, { collabUrl: config.collabUrl, documentName: 'not-a-page-id', handshake: token(good) }),
       };
+      console.log(`observed-signals ${JSON.stringify(observed)}`); // in the job log of a passing run too: the attachment is only kept for a failing one
       await test.info().attach('observed-signals.json', { body: JSON.stringify(observed, null, 2), contentType: 'application/json' });
 
       for (const [expected, seen] of Object.entries(observed)) {
