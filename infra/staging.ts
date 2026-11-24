@@ -96,7 +96,7 @@ export default function staging() {
     loadBalancer: {
       domain: { name: domain, dns: sst.aws.dns({ zone: ZONE_ID }) },
       rules: [
-        { listen: '80/http', redirect: '443/https' },
+        { listen: '80/http', redirect: '443/https', container: 'app' },
         { listen: '443/https', forward: `${PORT}/http`, container: 'app' },
       ],
       health: { [`${PORT}/http`]: { path: '/readyz', interval: '15 seconds', timeout: '5 seconds', healthyThreshold: 2, unhealthyThreshold: 3, successCodes: '200' } },
