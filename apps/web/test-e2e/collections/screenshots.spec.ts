@@ -49,3 +49,24 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     await server.stop();
   }
 });
+
+test('the Move to dialog, light and dark', async ({ page: tab, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const bundle = await bundleHarness('screens-harness.tsx');
+  const server = await fixtureServer({ '/': '<!doctype html><meta charset="utf-8"><title>Grimoire</title><div id="host"></div>' });
+  try {
+    await tab.goto(server.url('/'));
+    await tab.addStyleTag({ content: bundle.css });
+    await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" }); // as above
+    await tab.addScriptTag({ content: bundle.js });
+    await tab.evaluate(([data, id]) => { (window as unknown as { showCollections: (d: unknown, i: string) => void }).showCollections(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, 'c1']);
+    await expect(tab.getByRole('treeitem')).toHaveCount(5);
+    await tab.getByRole('button', { name: 'Actions for Plan for May' }).click();
+    await tab.getByRole('menuitem', { name: 'Move to…' }).click();
+    await expect(tab.getByRole('dialog', { name: 'Move Plan for May to…' })).toBeVisible();
+    await tab.mouse.move(0, 0);
+    await shots(tab, TASK, 'move-to-dialog');
+  } finally {
+    await server.stop();
+  }
+});

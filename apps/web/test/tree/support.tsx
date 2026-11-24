@@ -16,15 +16,17 @@ type Answer = { status: number; body?: unknown };
 /** A fake typed client: `routes` maps "GET /path" to an answer, or to a function that makes one. */
 export function fakeApi(routes: Record<string, Answer | (() => Answer)>) {
   const calls: string[] = [];
-  const call = vi.fn((method: string) => (path: string, init?: { params?: { path?: { id?: string } } }) => {
+  const bodies: { method: string; path: string; body: unknown }[] = [];
+  const call = vi.fn((method: string) => (path: string, init?: { params?: { path?: { id?: string } }; body?: unknown }) => {
     const key = `${method} ${path}`;
+    if (init?.body !== undefined) bodies.push({ method, path, body: init.body });
     calls.push(init?.params?.path?.id === undefined ? key : `${key} ${init.params.path.id}`);
     const entry = routes[`${key} ${init?.params?.path?.id ?? ''}`.trim()] ?? routes[key];
     const answer = typeof entry === 'function' ? entry() : entry ?? { status: 404 };
     return Promise.resolve({ data: answer.status < 300 ? answer.body : undefined, error: answer.status < 300 ? undefined : answer.body, response: new Response(null, { status: answer.status }) });
   });
   const api = { GET: call('GET'), POST: call('POST'), PUT: call('PUT'), PATCH: call('PATCH'), DELETE: call('DELETE') } as unknown as ApiLike;
-  return { api, calls };
+  return { api, calls, bodies };
 }
 
 export function renderAt(ui: ReactElement, path = '/') {

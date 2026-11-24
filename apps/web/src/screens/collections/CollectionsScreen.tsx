@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import type { ApiLike } from '../../api/query';
 import type { ClientStorage } from '../../storage';
 import { Button } from '../../ui/primitives';
+import { useTreeActions } from '../../tree/actions';
 import { Tree } from '../../tree/Tree';
 import { buildTree } from '../../tree/model';
 import type { HttpError } from '../../tree/useTree';
@@ -18,7 +19,9 @@ const isNotFound = (error: HttpError | null): boolean => error !== null && (erro
 export function CollectionsScreen({ api, collectionId, storage }: { readonly api: ApiLike; readonly collectionId: string; readonly storage?: ClientStorage }) {
   const collections = useCollections(api);
   const tree = useCollectionTree(api, collectionId);
+  const actions = useTreeActions(api, collectionId);
   const current = collections.data?.find((c) => c.id === collectionId);
+  const writable = current?.myPermission === 'read-write';
   // The collection that was read last is where `/` goes next time (only a collection that could be read counts).
   const readable = tree.data !== undefined;
   useEffect(() => { if (readable) storage?.set(LAST_COLLECTION_KEY, collectionId); }, [readable, storage, collectionId]);
@@ -44,7 +47,10 @@ export function CollectionsScreen({ api, collectionId, storage }: { readonly api
           <NotFoundScreen />
         ) : (
           <>
-            <h1 id="collection-title">{current?.name ?? 'Collection'}</h1>
+            <div className="collections-head">
+              <h1 id="collection-title">{current?.name ?? 'Collection'}</h1>
+              {writable && <Button variant="primary" onClick={() => void actions.create(null)}>New page</Button>}
+            </div>
             {tree.isError && tree.data === undefined ? (
               <p role="alert">
                 Couldn&apos;t load the pages. <Button onClick={() => void tree.refetch()}>Try again</Button>
@@ -52,7 +58,7 @@ export function CollectionsScreen({ api, collectionId, storage }: { readonly api
             ) : tree.data === undefined ? (
               <p>Loading</p>
             ) : (
-              <Tree items={items} />
+              <Tree items={items} editing={writable && tree.data !== undefined ? { actions, pages: tree.data } : undefined} />
             )}
           </>
         )}
