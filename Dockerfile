@@ -8,6 +8,10 @@ FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3
 FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
+# Amazon's certificate authorities for the managed database (RDS): the connection to it is verified (sslmode=verify-full) against this bundle, which the server finds through
+# NODE_EXTRA_CA_CERTS, set by the deployment that uses RDS. Readable by everyone (--chmod=644): ADD writes a fetched file as 0600 and the server runs as 65532, which
+# would then load no authorities at all. Fetched with a pinned checksum: when Amazon publishes a new bundle the build fails here until the checksum is updated.
+ADD --chmod=644 --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /rds/global-bundle.pem
 COPY . .
 # bun runs a dependency's install script only if it is trusted: the root package.json sets "trustedDependencies": [] (which also switches off bun's built-in default list), so no install script runs, as with npm's --ignore-scripts.
 RUN bun install --frozen-lockfile
@@ -20,7 +24,7 @@ RUN bun run --cwd apps/web build
 RUN rm -rf node_modules && bun install --frozen-lockfile --production --filter @tektum/grimoire-server --filter @tektum/grimoire-adapter-markdown-milkdown
 # Stage exactly what runs: per workspace package its package.json, dist and any CommonJS entry (`*.cjs`) beside it, the pruned node_modules, the migrations
 # directory (@types/debug, mdast, ms and unist are real dependencies of the Markdown libraries, but hold only type declarations; test helpers compiled into dist/testing, the declarations of the test projects in dist/test and build info are left out). A shell is fine here: this stage is not shipped.
-RUN set -eu; mkdir /out; cp package.json /out/; cp -a node_modules /out/node_modules; \
+RUN set -eu; mkdir /out; cp package.json /out/; mkdir /out/certs; install -m 0644 /rds/global-bundle.pem /out/certs/global-bundle.pem; test "$(stat -c %a /out/certs/global-bundle.pem)" = 644; cp -a node_modules /out/node_modules; \
     for d in apps/server packages/core packages/editor-schema packages/adapters/*; do \
       mkdir -p "/out/$d"; cp "$d/package.json" "/out/$d/"; cp -a "$d/dist" "/out/$d/dist"; cp "$d"/*.cjs "/out/$d/" 2>/dev/null || true; \
     done; \

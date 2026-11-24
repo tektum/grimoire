@@ -1,9 +1,9 @@
 name: SST infrastructure
 # Pull requests only typecheck the SST config (no credentials, no environment: a secret or a cloud role must not reach pull-request code).
-# `diff` and `deploy` run only by manual dispatch of `main`, in the environment `descope-dev`, which deploys from `main` only. There is no stored
+# `diff` and `deploy` run only by manual dispatch of `main`, in the environment of the chosen stage (`descope-dev` or `staging`), each of which deploys from `main` only. There is no stored
 # secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
 # second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
-# The Descope provider plugin is installed with Pulumi's `plugin install --checksum` (the sha256 below) before either credential is
+# The provider plugins (infra/pulumi-plugins.txt: Descope, AWS and the others a deploy loads) are installed with Pulumi's `plugin install --checksum` before either credential is
 # requested. Until the owner has created the variables the job stops at its first step with a notice.
 on:
   pull_request:
@@ -17,21 +17,25 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "diff shows the difference, deploy changes the development project"
+        description: "diff shows the difference, deploy changes the stage"
         required: true
         type: choice
         options:
           - diff
           - deploy
+      stage:
+        description: "descope-dev is the development identity-provider project, staging is the hosted staging site with its own project"
+        required: true
+        type: choice
+        options:
+          - descope-dev
+          - staging
 
 permissions:
   contents: read
 
 env:
   MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
-  # The Descope provider plugin (version of sst.config.ts) and the sha256 of its linux-amd64 release asset. Update both with the provider.
-  DESCOPE_PROVIDER_VERSION: "1.0.1"
-  DESCOPE_PROVIDER_SHA256: "0e376aa5c573aad73be62e8d17bf3f9e4e505d3a9af839e8d5ac189d815ab5c5"
 
 concurrency:
   group: descope-infra
@@ -56,11 +60,11 @@ jobs:
       - run: bun run check:infra
 
   run:
-    name: SST ${{ inputs.action }} (descope-dev)
+    name: SST ${{ inputs.action }} (${{ inputs.stage }})
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: descope-dev
+    timeout-minutes: 60 # a first staging deploy waits for the database to be made
+    environment: ${{ inputs.stage }}
     permissions:
       contents: read
       id-token: write
@@ -68,12 +72,25 @@ jobs:
       - name: Stop cleanly while the variables do not exist
         id: gate
         env:
+          STAGE: ${{ inputs.stage }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           KEY_ID: ${{ vars.DESCOPE_MANAGEMENT_KEY_ID }}
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+          STAGING_ALLOWED_EMAIL_DOMAINS: ${{ vars.STAGING_ALLOWED_EMAIL_DOMAINS }}
         run: |
-          if [ -z "${AWS_ROLE_ARN}" ] || [ -z "${AWS_REGION}" ] || [ -z "${KEY_ID}" ]; then
-            echo "::notice title=Skipped::The variables AWS_ROLE_ARN, AWS_REGION and DESCOPE_MANAGEMENT_KEY_ID of the environment descope-dev are not all set, so nothing ran. This is expected until the owner creates them."
+          # Every variable the stage needs is checked here, before the job assumes the AWS role or asks for the Descope token.
+          missing=""
+          for name in AWS_ROLE_ARN AWS_REGION KEY_ID; do
+            [ -n "${!name}" ] || missing="${missing} ${name}"
+          done
+          if [ "${STAGE}" = "staging" ]; then
+            for name in STAGING_DOMAIN STAGING_ALLOWED_EMAIL_DOMAINS; do
+              [ -n "${!name}" ] || missing="${missing} ${name}"
+            done
+          fi
+          if [ -n "${missing}" ]; then
+            echo "::notice title=Skipped::The variable(s)${missing} of the environment ${STAGE} are not set (KEY_ID is the variable DESCOPE_MANAGEMENT_KEY_ID), so nothing ran. This is expected until the owner creates them."
             echo "blocked=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,12 +105,15 @@ jobs:
           install_args: node bun
       - run: bun install --frozen-lockfile
         if: steps.gate.outputs.blocked != 'true'
-      - name: Install the Descope provider plugin with its pinned checksum, before any credential exists
+      - name: Install the provider plugins of infra/pulumi-plugins.txt with their pinned checksums, before any credential exists
         if: steps.gate.outputs.blocked != 'true'
         run: |
           bunx sst install
           export PULUMI_HOME="$HOME/.config/sst" # SST keeps its plugins here
-          "$PULUMI_HOME/bin/pulumi" plugin install resource descope "$DESCOPE_PROVIDER_VERSION" --server github://api.github.com/descope --checksum "$DESCOPE_PROVIDER_SHA256" --reinstall
+          while read -r name version server sha256; do
+            case "$name" in '' | '#'*) continue ;; esac
+            "$PULUMI_HOME/bin/pulumi" plugin install resource "$name" "$version" --server "$server" --checksum "$sha256" --reinstall
+          done < infra/pulumi-plugins.txt
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         if: steps.gate.outputs.blocked != 'true'
         with:
@@ -115,4 +135,9 @@ jobs:
         env:
           DESCOPE_MANAGEMENT_KEY: ${{ steps.wif.outputs.token }}
           ACTION: ${{ inputs.action }}
-        run: bunx sst "$ACTION" --stage descope-dev
+          STAGE: ${{ inputs.stage }}
+          PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION: "true" # a plugin that is not in infra/pulumi-plugins.txt stops the run instead of being downloaded unchecked
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+          STAGING_ALLOWED_EMAIL_DOMAINS: ${{ vars.STAGING_ALLOWED_EMAIL_DOMAINS }}
+          STAGING_FIRST_ADMIN_EMAILS: ${{ vars.STAGING_FIRST_ADMIN_EMAILS }}
+        run: bunx sst "$ACTION" --stage "$STAGE"

@@ -5,7 +5,7 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 | Stage | File | What it makes |
 |---|---|---|
 | `descope-dev` | `descope-dev.ts` | the Descope project "Grimoire development", for local runs |
-| `staging` | (hosting, with its own Descope project "Grimoire staging") | the next change |
+| `staging` | `staging.ts` | the hosted staging site (below) and its own Descope project "Grimoire staging" |
 
 ## One Descope project for each stage, all of it code
 
@@ -21,6 +21,27 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 | look | `Styles` | the design tokens |
 
 The flow is the Descope template "Sign up or in - OTP or sniper email link" (one-time code by email, with a shortcut to the reader's mail inbox), checked with the management API's `ValidateFlow` and kept as a file so a change to it is a pull request. The id of each stage's project is the stack's output (and an SST link), so the application takes it from there, not from a variable set by hand.
+
+## The staging site (`staging.ts`)
+
+One Fargate task (the image of the `Dockerfile`, which serves the web client and the API on port 8080) behind an HTTPS load balancer at `STAGING_DOMAIN`, with the Route 53 zone of that domain looked up (never made), a certificate validated through it, and an HTTP to HTTPS redirect. The load balancer checks `/readyz`.
+
+| Part | Resource | Notes |
+|---|---|---|
+| network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway) |
+| database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate` (under a database lock, so a second one waits); the connections use `sslmode=verify-full` against Amazon's database CA bundle, which the image fetches with a pinned checksum into `/app/certs`; the two role passwords are random and live in the state |
+| files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the rule belongs to the infrastructure: the task runs in `external` CORS mode, which means nothing in it writes the rule, and nothing checks it at start either, because only `grimoire files-setup` runs the check and the task does not run it; a drifted rule shows as failed browser uploads) | virtual addressing; the file origin in the policy names the bucket host |
+| identity | the Descope project of the stage, and a management key of it with the role `project-asset-mgmt-read` (read users, access keys and tenants, nothing else) | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID`; the key (an ECS secret) lets the server read the profile of a user it does not know yet, which the session token does not carry, so a first sign-in works. Creating it needs the deploy key to be allowed to make management keys |
+| task | `db-setup`, then `migrate`, then `app` (`init-order.ts`) | the first two are not essential and the next container waits for each one's exit with 0 (ECS `dependsOn` with `SUCCESS`): a failing step stops the task before it serves, the old task keeps serving |
+| task size and stop | 0.5 vCPU, 2 GB; the app has a 64 second stop timeout | the memory is above the collaboration memory guard (1 GiB by default) so the guard refuses work before the task is killed; 64 seconds is what the server needs to drain and save open pages (ECS's default of 30 would cut a deploy short; a test ties it to the server's budget) |
+| secrets | Parameter Store `SecureString`, as ECS secrets | the database passwords and the three connection strings reach the containers by ARN, not as plain environment values; the `app` container gets only the runtime role's string, the schema owner's stays with `migrate` |
+| file access | the task role, `GetObject`, `PutObject` and `DeleteObject` on the bucket's objects and `ListBucket` on the bucket | no access keys anywhere |
+
+Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_ALLOWED_EMAIL_DOMAINS` (comma separated) and `STAGING_FIRST_ADMIN_EMAILS` (optional). Run `diff` for `staging` first.
+
+Stated plainly: one task only (`scaling` is 1 to 1); the migration lock would make a second task wait, but staging needs no more. When Amazon publishes a new CA bundle, the image build fails at its checksum until the checksum in the `Dockerfile` is updated. The images are built three times from one Dockerfile (one for each container: SST names its build and its cache by container and has no way to share one, and the layers are the same, so the second and third builds are cache hits and push nothing new). Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the browser uploads against the bucket's rule.
+
+The management key is never a plain environment value or a stack output: it is stored as a Parameter Store `SecureString` and reaches the `app` container as an ECS secret (the execution role reads it when a task starts). It has no expiry. To rotate it, change the logical name of the `RuntimeKey` resource in `staging.ts` (and its `DescopeKey` parameter) and deploy: the old key is deleted, the new one stored, and the service rolls to a task that reads it. A later change can remove the key altogether by putting the profile into the user token with a Descope JWT template (the server already reads `email`, `name` and `emailVerified` claims); that needs the template syntax confirmed against a real project first.
 
 ## What it does not make
 
@@ -46,12 +67,12 @@ Until the three variables exist the job stops at its first step with a notice, a
 
 Both environments (`descope-dev`, `staging`) assume one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum@271704328/grimoire@1466314324:environment:descope-dev` and `repo:tektum@271704328/grimoire@1466314324:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
 
-## The provider plugin
+## The provider plugins
 
-The Descope plugin is a binary that runs with the Descope token in its environment. Pulumi would download it on first use with no check, so the workflow installs it first, before the job holds the AWS role or the Descope token, with Pulumi's own `plugin install --checksum`: it downloads the release asset, compares its sha256 with the value in the workflow, and installs nothing on a mismatch (shown by hand). It installs into SST's own Pulumi home (`~/.config/sst`, where SST looks for plugins) with `--reinstall`, which replaces a copy that is already there. To update the provider, change the version in `sst.config.ts` and the version and sha256 in the workflow (`tools/ci/test/provider-pin.test.mjs` fails if the versions disagree). The official Pulumi AWS plugin is still downloaded by SST on demand and is not pinned; it runs in the same job and inherits the Descope token in its environment.
+Provider plugins are binaries that run with the AWS role and the Descope token in their environment. Pulumi would download them on first use with no check, so the workflow installs every one first, before the job holds the AWS role or the Descope token, with Pulumi's own `plugin install --checksum`: it downloads the release archive, compares its sha256 with the value in `pulumi-plugins.txt`, and installs nothing on a mismatch. The run itself then sets `PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION`, so a plugin missing from the list stops the run, naming itself, instead of being downloaded unchecked. The list holds the Descope, AWS and random providers (their versions must equal `sst.config.ts`, a test checks) and the docker-build, command and tls providers SST 4.17.2 bundles. To update one, change its version and sha256 (of the linux-amd64 archive from the provider's GitHub release) together.
 
 ## Running it
 
 - On a pull request that touches `sst.config.ts` or `infra/`: only `bun run check:infra` (installs the providers and typechecks the config). No credentials, no environment.
-- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`. Read the `diff` first.
+- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `descope-dev` or `staging`. Read the `diff` first.
 - Locally with your own credentials: `bunx sst diff --stage descope-dev` with AWS credentials in the environment and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).

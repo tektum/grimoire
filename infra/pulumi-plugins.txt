@@ -1,0 +1,10 @@
+# The provider plugins a deploy may load: name, version, release server, and the sha256 of the linux-amd64 release archive. The workflow installs each with
+# `pulumi plugin install --checksum` before any credential exists and then forbids downloading any other (PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION), so a plugin
+# that is not listed here stops the run, naming itself. aws, random and descope versions must equal sst.config.ts (a test checks); docker-build, command and tls are
+# the versions SST 4.17.2 bundles (.sst/platform/package.json). Update a line together with its provider.
+descope 1.0.1 github://api.github.com/descope 0e376aa5c573aad73be62e8d17bf3f9e4e505d3a9af839e8d5ac189d815ab5c5
+aws 7.55.0 github://api.github.com/pulumi 0ceb32ca5914b4ba5fa980b3ec398d240c8720d9cb63de9639b7d9bd91c84523
+random 4.16.6 github://api.github.com/pulumi e4f325e9bb64e55d80d45174ace24b1be580dbc39d2c2d0f2b05af2feae2ce88
+docker-build 0.0.14 github://api.github.com/pulumi 6bfa2e94c2773b9d7e0920b937d0b004335a60e5db1cce1e5714890103311c8b
+command 1.0.1 github://api.github.com/pulumi 0c17c5351fc3cb926f7afc203af09f77afa2a1ad4fb28c1200776d1ecbceffe8
+tls 5.0.1 github://api.github.com/pulumi 898ece148b661104c6ed50adaa586e2cb7deac124882474d08c2588d576e98b4
