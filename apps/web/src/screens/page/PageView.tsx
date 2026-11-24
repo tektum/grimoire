@@ -18,6 +18,7 @@ import { recheckMinClientVersion } from '../../gate/recheck';
 import { notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
+import { latestOnly } from './latest';
 import { PageMenu } from './PageMenu';
 import { PageTitle } from './PageTitle';
 import { type PageResult, titled } from './usePage';
@@ -83,6 +84,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     if ((location.state as { newPage?: boolean } | null)?.newPage === true) navigate('.', { replace: true, state: null });
   }, []);
   const client = useQueryClient();
+  const beginRename = useRef(latestOnly()).current;
   // The key of the location now, or null once this page has gone from the screen.
   const hereKey = useRef<string | null>(location.key);
   hereKey.current = location.key;
@@ -99,8 +101,10 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
    */
   const saveTitle = async (title: string): Promise<boolean> => {
     const pressedAt = hereKey.current;
+    const isLatest = beginRename();
     const outcome = await treeActions.rename(page.id, title);
     if (!outcome.ok) return false;
+    if (!isLatest()) return true; // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
     // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
     client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
     // The address is changed only if the person is still on this page, where they pressed Enter (the key of the location; none once the page is gone): they may have gone elsewhere meanwhile.

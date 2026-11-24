@@ -116,9 +116,15 @@ test('a title saved by leaving the field for another page in the tree does not t
   await page.getByRole('link', { name: 'Notes', exact: true }).click(); // leaving the field saves it; the click opens the other page
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/);
   await expect(heading(page)).toHaveText('Notes');
+  const treeReadsBefore = api.treeReads('c1');
+  const patched = page.waitForResponse((response) => response.request().method() === 'PATCH' && response.url().endsWith('/v1/pages/a'));
   release();
-  await expect.poll(() => api.writes()).toEqual(['PATCH /v1/pages/a']);
+  await patched;
+  // The rename is finished for the page when the tree has been read again after it (that read ends the rename); then the page has had its chance to move the address.
+  await expect.poll(() => api.treeReads('c1')).toBeGreaterThan(treeReadsBefore);
   await expect.poll(() => names(page)).toEqual(['Renamed', 'Notes']);
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))); // what the answer set going has been handled
+  expect(api.writes()).toEqual(['PATCH /v1/pages/a']);
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/); // the renamed page's address did not replace this one
   await expect(heading(page)).toHaveText('Notes');
 });
