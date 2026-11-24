@@ -33,6 +33,10 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 button, .button { font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); cursor: pointer; transition: background var(--transition), border-color var(--transition); }
 button:hover { border-color: var(--muted); }
 button[data-variant='primary'] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+/* Forced colours (high contrast): the system chooses the colours, so the primary button names them (face, text and a heavier border) instead of the accent and paper it has otherwise. */
+@media (forced-colors: active) {
+  button[data-variant='primary'] { background: ButtonFace; border: 2px solid ButtonText; color: ButtonText; }
+}
 button:disabled { opacity: 0.5; cursor: default; }
 
 /* Page text: the reading column (R11.17). */

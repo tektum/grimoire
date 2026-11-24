@@ -194,6 +194,7 @@ test('the editor has no ring for a click, and has one for a Tab', async ({ brows
     await page.goto(world.alpha.path);
     await waitForSynced(page);
     const editor = page.locator('.ProseMirror');
+    await expect(editor, 'the editor can be edited (a page that is still being opened is not)').toHaveAttribute('contenteditable', 'true');
     await editor.locator('p', { hasText: 'A second paragraph.' }).click();
     await expect(editor).toBeFocused();
     await expect(editor, 'the plain look after a click').toHaveCSS('outline-style', 'none');
