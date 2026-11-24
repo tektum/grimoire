@@ -34,6 +34,8 @@ describe('the outline of a page', () => {
   it('follows the document a moment after it changes, not on every keystroke', async () => {
     const { set } = renderPage([[1, 'A']]);
     set([[1, 'A'], [2, 'New heading']]);
+    // A real wait, well under the 200 ms debounce: a list that read the change at once (in the observer's microtask) would show the link by now.
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByRole('link', { name: 'New heading' })).toBeNull(); // the change has not been read yet
     expect(await screen.findByRole('link', { name: 'New heading' })).toBeTruthy();
     expect(names()).toEqual(['A', 'New heading']);
@@ -177,6 +179,17 @@ describe('the outline of a page', () => {
     await userEvent.click(screen.getByRole('link', { name: 'C' }));
     expect(scrolls).toEqual(['C']);
     expect(window.getSelection()?.anchorNode?.parentElement?.textContent ?? window.getSelection()?.anchorNode?.textContent).toContain('C');
+  });
+
+  it('finds a heading that moved up a long way: two headings above it were deleted since the list was drawn', async () => {
+    const { editor } = renderPage([[1, 'A'], [1, 'B'], [1, 'C']]);
+    const scrolls: string[] = [];
+    const c = editor.querySelectorAll('h1')[2] as HTMLElement;
+    c.scrollIntoView = () => { scrolls.push('C'); };
+    editor.querySelectorAll('h1')[0]?.remove();
+    editor.querySelectorAll('h1')[0]?.remove(); // the list still shows A, B, C
+    await userEvent.click(screen.getByRole('link', { name: 'C' }));
+    expect(scrolls).toEqual(['C']);
   });
 
   it('does nothing, rather than go somewhere else, when the clicked heading is no longer there', async () => {

@@ -120,7 +120,7 @@ export function Outline() {
     const same = (i: number): boolean => fresh[i]?.entry.text === clicked.text && fresh[i].entry.level === clicked.level;
     let at = -1;
     if (same(index)) at = index;
-    else for (let distance = 1; distance < fresh.length && at < 0; distance += 1) at = same(index - distance) ? index - distance : same(index + distance) ? index + distance : -1;
+    else for (let distance = 1; distance <= Math.max(index, fresh.length - 1 - index) && at < 0; distance += 1) at = same(index - distance) ? index - distance : same(index + distance) ? index + distance : -1;
     const target = fresh[at]?.element;
     if (target === undefined) return;
     const surface = root.querySelector<HTMLElement>('.ProseMirror') ?? root;
