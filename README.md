@@ -64,6 +64,10 @@ Lists in a page: bullets, numbered steps and task boxes.
 
 Headings, one to six, in the page's reading font.
 
+![The block menu that opens on a slash, with one item highlighted](docs/screenshots/m6-t05/slash-menu-light.png)
+
+The block menu: type `/` at the start of a line, narrow it by typing, choose with the arrow keys and Enter.
+
 ![Two people in one page: each sees the other's cursor and selection with a name label](docs/screenshots/m6-t04/cursors-seen-by-bob-light.png)
 
 Two people in one page: each sees the other's cursor and selection, with the name from the directory.

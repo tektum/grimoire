@@ -87,9 +87,14 @@ export async function mountLive(options: {
     const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
     ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
+  // A test build (the end-to-end build, or development) lets a specification read the shared document of the open page, to check what the editor did to it (which
+  // element a command changed, not only how it looks). `__GRIMOIRE_DEV_SIGNIN__` is a constant of the build: in the production build this is removed, as the sample page is.
+  const exposed = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__;
+  if (exposed) (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc = options.doc;
   const stopGuarding = guardLinks(options.element);
   return wrap(editor, flag, () => {
     stopGuarding();
+    if (exposed && (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc === options.doc) delete (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc;
     cursors.dispose();
     // Unbinds the document and the awareness while the editor can still answer, so that taking the editor down does not apply a last change to a view that is going.
     try {
