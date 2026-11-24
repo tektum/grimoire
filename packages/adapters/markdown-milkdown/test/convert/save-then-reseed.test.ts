@@ -11,16 +11,22 @@ let pool: PooledMarkdownConverter;
 beforeAll(() => { ensureBuilt(); pool = createMarkdownConverter({ poolSize: 2 }); });
 afterAll(async () => { await pool.close(); });
 
-const tally = { checked: 0, notSaved: 0, timedOut: 0 };
+const tally = { checked: 0, notSaved: 0, timedOut: 0, smallIdOverLimit: [] as string[] };
+const STATE_LIMIT = 1_000_000;
+/** The identity the system re-seed gives its state: five bytes as a varint. */
+const SYSTEM_CLIENT_ID = 3_000_000_000;
 
 /**
- * The states under test are built with a FIXED client identity of the same size (five bytes as a varint) as the system re-seed's. A Yjs update
- * writes the client id with every reference to an earlier item, so its size depends on how many bytes the id takes: this input (lists, 100000) is 1,065,116 bytes
- * with a five-byte id and 960,594 with a three-byte one, against a limit of 1,000,000. With a random id, one run in 2048 got a state that fit the limit and was
- * stored, while the same Markdown re-seeded with the five-byte id of the system path did not fit: "stored but not rebuildable: too-large". Input and id are fixed
- * now, so a run's states are the same bytes every time.
+ * The states under test are built with FIXED client identities, never a random one. A Yjs update writes the client id with every reference to an earlier item,
+ * so the size of a state depends on how many bytes the id takes as a varint: the lists input of 100000 bytes is 1,065,116 bytes with a five-byte id and 960,594 with a
+ * three-byte one, against a limit of 1,000,000. With a random id, one run in 2048 drew a small one, and the flake was this: the state fit the limit and was stored, while
+ * the same Markdown re-seeded with the system's five-byte id did not. Both kinds of id are covered, deterministically:
+ *  - the five-byte id (the same as the re-seed's): every state that is stored must be rebuilt, no exception;
+ *  - a three-byte id: the same, except for the one case the size of the id explains, counted and checked below (the state fits with the small id, the same Markdown does not
+ *    fit with the system's id). That is a limit of the product at the edge of the state limit, not of the test.
  */
-const TEST_CLIENT_ID = 3_000_000_001;
+const BIG_ID = 3_000_000_001;
+const SMALL_ID = 2_097_147;
 
 async function check(state: Uint8Array, key: string): Promise<void> {
   const saved = await pool.toMarkdown(state);
@@ -32,6 +38,11 @@ async function check(state: Uint8Array, key: string): Promise<void> {
   const rebuilt = await pool.reseed(saved.markdown, key);
   if (!rebuilt.ok) {
     if (rebuilt.reason === 'timeout') { tally.timedOut += 1; return; }
+    // The one explained exception: this state fits only because its client id is small. Checked, not assumed: the same Markdown built with the system's id must really be over the limit.
+    if (rebuilt.reason === 'too-large' && state.byteLength <= STATE_LIMIT && (await stateFromMarkdownDirect(saved.markdown, SYSTEM_CLIENT_ID)).byteLength > STATE_LIMIT) {
+      tally.smallIdOverLimit.push(key);
+      return;
+    }
     throw new Error(`stored but not rebuildable: ${rebuilt.reason}: ${rebuilt.detail} (input ${key}: state of ${state.byteLength} bytes, ${saved.markdown.length} characters of Markdown)`);
   }
   // The rebuilt page saves again, and from then on the Markdown is a fixed point. (The first re-save may differ from the first save in
@@ -50,23 +61,25 @@ describe('save, then system re-seed, then save again: the same Markdown', () => 
     for (let seed = 1; seed <= 60; seed += 1) await check(await stateFromDocJson(generateEditorDocument(seed)), `doc-${seed}`);
   }, 300_000);
 
-  it.each(SHAPES.flatMap((shape) => [30_000, 100_000, 200_000].map((bytes) => [shape, bytes] as const)))('%s, %d bytes of Markdown', async (shape, bytes) => {
-    let state: Uint8Array;
-    try { state = await stateFromMarkdownDirect(generateMarkdown(shape, bytes), TEST_CLIENT_ID); } catch { tally.notSaved += 1; return; } // the state limit
-    await check(state, `${shape}-${bytes}`);
+  it.each(SHAPES.flatMap((shape) => [30_000, 100_000, 200_000].flatMap((bytes) => [BIG_ID, SMALL_ID].map((id) => [shape, bytes, id] as const))))('%s, %d bytes of Markdown, client id %d', async (shape, bytes, id) => {
+    // No size limit applies to building the state (a state over the limit is refused by the save, and counted there); a Markdown that cannot be parsed throws, and fails.
+    const state = await stateFromMarkdownDirect(generateMarkdown(shape, bytes), id);
+    await check(state, `${shape}-${bytes}-${id}`);
   }, 300_000);
 
   it('builds the same states every time: the same Markdown and client id give the same bytes', async () => {
     for (const shape of SHAPES) {
-      const first = await stateFromMarkdownDirect(generateMarkdown(shape, 30_000), TEST_CLIENT_ID);
-      const second = await stateFromMarkdownDirect(generateMarkdown(shape, 30_000), TEST_CLIENT_ID);
+      const first = await stateFromMarkdownDirect(generateMarkdown(shape, 30_000), BIG_ID);
+      const second = await stateFromMarkdownDirect(generateMarkdown(shape, 30_000), BIG_ID);
       expect(Buffer.from(second).equals(Buffer.from(first)), `${shape}`).toBe(true);
     }
   }, 120_000);
 
   it('reports its counts', () => {
-    console.log(`save-then-reseed: checked ${tally.checked}, not saved (limits) ${tally.notSaved}, stopped by time ${tally.timedOut}`);
+    console.log(`save-then-reseed: checked ${tally.checked}, not saved (limits) ${tally.notSaved}, stopped by time ${tally.timedOut}, small id over the limit with the system id ${tally.smallIdOverLimit.join(', ')}`);
     expect(tally.checked).toBeGreaterThan(40);
     expect(tally.timedOut).toBe(0);
+    // Exactly the inputs whose state is within the size of the id of the limit: with the three-byte id they fit, with the system's they do not. A new entry here is a new finding.
+    expect(tally.smallIdOverLimit.sort()).toEqual(['lists-100000-2097147', 'mixed-200000-2097147']);
   });
 });
