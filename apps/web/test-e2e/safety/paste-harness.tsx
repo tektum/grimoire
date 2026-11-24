@@ -21,16 +21,31 @@ if (descriptor?.set !== undefined) {
     },
   });
 }
-(window as unknown as { harness: unknown }).harness = { markdown: (): string => editor?.markdown() ?? '', sanitize: sanitizePastedHtml, parsed: (): string[] => [...parsed], forget: (): void => void (parsed.length = 0) };
 const host = document.getElementById('host');
+const root = document.createElement('div');
+root.className = 'page-editor page-text';
+root.style.cssText = 'max-width: 42rem; margin: 3rem auto; padding: 0 1rem;';
+host?.append(root);
+
+/** The editor on this Markdown: replaces the one before it (taken down first), editable or not. */
+async function mount(markdown: string, editable: boolean): Promise<void> {
+  await editor?.destroy();
+  root.replaceChildren();
+  editor = await mountReadOnly(root, markdown);
+  editor.setEditable(editable);
+}
+
+(window as unknown as { harness: unknown }).harness = {
+  markdown: (): string => editor?.markdown() ?? '',
+  sanitize: sanitizePastedHtml,
+  parsed: (): string[] => [...parsed],
+  forget: (): void => void (parsed.length = 0),
+  mount,
+  /** The editor's own way of taking a whole text in (what a restore or an import does): a transaction on the editor. */
+  apply: (markdown: string): void => editor?.applyMarkdown(markdown),
+};
 if (host !== null) {
-  const root = document.createElement('div');
-  root.className = 'page-editor page-text';
-  root.style.cssText = 'max-width: 42rem; margin: 3rem auto; padding: 0 1rem;';
-  host.append(root);
-  void mountReadOnly(root, 'Start.\n').then((mounted) => {
-    editor = mounted;
-    mounted.setEditable(true);
+  void mount('Start.\n', true).then(() => {
     (window as unknown as { __ready: boolean }).__ready = true;
   });
 }

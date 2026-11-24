@@ -1,6 +1,9 @@
-import { editorViewOptionsCtx } from '@milkdown/core';
+import { editorViewOptionsCtx, parserCtx } from '@milkdown/core';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import { isSafeUrl } from '@tektum/grimoire-editor-schema';
+import { Slice } from '@milkdown/prose/model';
+import { Plugin, PluginKey } from '@milkdown/prose/state';
+import { $prose } from '@milkdown/utils';
 import DOMPurify from 'dompurify';
 import { isSafeHref } from './index';
 
@@ -43,3 +46,32 @@ export const pasteSanitizer: MilkdownPlugin = (ctx) => async () => {
     },
   }));
 };
+
+/**
+ * Markdown pasted as text (no HTML on the clipboard) is read into nodes and put into the document as they are. The clipboard plugin reads it by writing the nodes out as DOM
+ * with the schema's own `toDOM` and reading that back: an image node is then an `img` element with its source set, which the browser starts to load at once, before the
+ * image is anywhere in the page, so `![](https://elsewhere.example/pixel.png)` pasted as text told that host. This takes the text before the clipboard plugin (it must be
+ * added to the editor ahead of it); a paste with HTML, from a code editor, into a code block, or into a page that cannot be edited is left to the clipboard plugin.
+ */
+export const pastedMarkdownKey = new PluginKey('grimoire-pasted-markdown');
+
+export const pastedMarkdown: MilkdownPlugin[] = [
+  $prose((ctx) =>
+    new Plugin({
+      key: pastedMarkdownKey,
+      props: {
+        handlePaste: (view, event) => {
+          const data = event.clipboardData;
+          if (data === null || view.props.editable?.(view.state) !== true || view.state.selection.$from.node().type.spec.code) return false;
+          const text = data.getData('text/plain');
+          if (text === '' || data.getData('text/html') !== '' || data.getData('vscode-editor-data') !== '') return false;
+          const parsed = ctx.get(parserCtx)(text); // read when it is needed: the parser is not made yet when the plugin is
+          if (typeof parsed === 'string' || !parsed) return false; // what the parser gives is a document; its content, opened at both ends, is what a paste of text is
+          view.dispatch(view.state.tr.replaceSelection(Slice.maxOpen(parsed.content)).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
+          event.preventDefault();
+          return true;
+        },
+      },
+    }),
+  ),
+].flat();

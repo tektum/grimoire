@@ -33,6 +33,13 @@ test('250 ms and below, vi.waitFor, fake timers, comments and the helper definit
   assert.deepEqual(findSleeps('x.test.ts', 'await sleep(250);\nawait sleep(1);\nawait vi.waitFor(() => {});\nvi.advanceTimersByTime(9000);\n'), []);
 });
 
+test("Playwright's test.setTimeout(ms) is the test's own time limit, not a sleep; any other setTimeout is still checked", () => {
+  assert.deepEqual(findSleeps('x.spec.ts', 'test.setTimeout(120_000);\ntest.setTimeout(30000);\n'), []);
+  assert.deepEqual(findSleeps('x.spec.ts', 'await new Promise((r) => window.setTimeout(r, 5000));\n').map((v) => v.ms), [5000]);
+  assert.deepEqual(findSleeps('x.spec.ts', 'await new Promise((r) => setTimeout(r, 5000));\n').map((v) => v.ms), [5000]);
+  assert.deepEqual(findSleeps('x.spec.ts', 'somethingElse.setTimeout(120_000);\n').map((v) => v.kind), ['non-literal']);
+});
+
 test('an allow-list entry exempts a line only when it names the file, the line text and a reason', () => {
   const file = 'pkg/test/sleep-300.test.ts';
   const text = 'await sleep(300);';

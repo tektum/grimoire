@@ -1,6 +1,7 @@
 import { editorViewOptionsCtx } from '@milkdown/core';
 import { clipboard } from '@milkdown/plugin-clipboard';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { imagePlugin } from '../../src/editor/attachments/image-view';
 import { makeEditor } from '../tables/support';
 
 // DOMPurify does not work in the test DOM of this project (happy-dom keeps what it should remove), so what it does to HTML is checked in a real browser
@@ -20,7 +21,7 @@ vi.mock('dompurify', () => ({
   }),
 }));
 
-const { pasteSanitizer, sanitizePastedHtml } = await import('../../src/safety/paste');
+const { pasteSanitizer, pastedMarkdown, pastedMarkdownKey, sanitizePastedHtml } = await import('../../src/safety/paste');
 
 const decide = (node: string, attrName: string, attrValue: string): boolean => {
   const data = { attrName, attrValue, keepAttr: true };
@@ -117,6 +118,50 @@ describe('the sanitising in front of the editor', () => {
   it('works with no other transform of pasted HTML', async () => {
     const { harness, transform } = await transformOf(pasteSanitizer);
     expect(transform('<p>y</p>', harness.view)).toBe('CLEAN(<p>y</p>)');
+    await harness.destroy();
+  });
+});
+
+describe('Markdown pasted as text', () => {
+  const pasteText = (harness: Awaited<ReturnType<typeof makeEditor>>, text: string, extra: Record<string, string> = {}): boolean => {
+    const data: Record<string, string> = { 'text/plain': text, ...extra };
+    const event = { clipboardData: { getData: (type: string) => data[type] ?? '' }, preventDefault: vi.fn() } as unknown as ClipboardEvent;
+    // The plugin under test by itself: asking the view would go on to the paste handlers of the others.
+    const ours = pastedMarkdownKey.get(harness.view.state)!;
+    return ours.props.handlePaste!.call(ours, harness.view, event, null as never) === true;
+  };
+
+  it('is read into nodes directly, so the editor builds no DOM, and so no image element, for it (an element with a source starts to load even before it is in the page)', async () => {
+    const harness = await makeEditor('start\n', [pastedMarkdown, clipboard, imagePlugin].flat());
+    const created: string[] = [];
+    const create = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation(((tag: string, options?: ElementCreationOptions) => {
+      created.push(tag);
+      return create(tag, options);
+    }) as never);
+    expect(pasteText(harness, '![x](https://evil.example/x.png) and **bold**')).toBe(true);
+    expect(created).not.toContain('img');
+    expect(harness.markdown()).toContain('**bold**');
+    expect(harness.markdown()).toContain('![x](https://evil.example/x.png)');
+    vi.restoreAllMocks();
+    await harness.destroy();
+  });
+
+  it('leaves what is not its business to the clipboard plugin: a paste with HTML, a paste of code from an editor, a paste with nothing, and a paste into a code block', async () => {
+    const harness = await makeEditor('start\n', [pastedMarkdown, clipboard].flat());
+    expect(pasteText(harness, 'text', { 'text/html': '<p>text</p>' })).toBe(false);
+    expect(pasteText(harness, 'let x', { 'vscode-editor-data': '{"mode":"js"}' })).toBe(false);
+    expect(pasteText(harness, '')).toBe(false);
+    await harness.destroy();
+    const code = await makeEditor('```js\nx\n```\n', [pastedMarkdown, clipboard].flat());
+    code.cursorInCode(0);
+    expect(pasteText(code, 'text')).toBe(false);
+    await code.destroy();
+  });
+
+  it('is not offered the paste of an editor that cannot be edited', async () => {
+    const harness = await makeEditor('start\n', [pastedMarkdown, clipboard].flat(), { editable: false });
+    expect(pasteText(harness, 'text')).toBe(false);
     await harness.destroy();
   });
 });
