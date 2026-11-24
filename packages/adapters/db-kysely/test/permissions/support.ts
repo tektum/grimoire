@@ -2,14 +2,13 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import pg from 'pg';
-import { insertPage, raw } from '@tektum/grimoire-test-support/database';
+import { devDatabaseUrl, insertPage, raw } from '@tektum/grimoire-test-support/database';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { World } from '@tektum/grimoire-core/testing/fake-access-store';
 
 // Dev-only credentials of the Compose database (`make db-up`). Every test file creates and drops its own database.
-const SERVER = '127.0.0.1:55432';
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
-export const urlFor = (role: 'grimoire_admin' | 'grimoire_migrator' | 'grimoire_app', db: string): string => `postgresql://${role}:grimoire-dev@${SERVER}/${db}`;
+export const urlFor = (role: 'grimoire_admin' | 'grimoire_migrator' | 'grimoire_app', db: string): string => devDatabaseUrl(role, db);
 
 export async function sqlAs<T extends pg.QueryResultRow = pg.QueryResultRow>(url: string, text: string, params: unknown[] = []): Promise<T[]> {
   const client = new pg.Client({ connectionString: url });

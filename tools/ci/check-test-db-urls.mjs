@@ -14,23 +14,32 @@ const testFile = (rel) => /(^|\/)(test|test-e2e)\//.test(rel) || /\.(test|spec)\
 const sourceFile = (name) => /\.[cm]?[jt]sx?$/.test(name);
 const HOLE = '\u0000'; // stands for an interpolation in a template
 // The password must hold at least one literal character (a password that is wholly interpolated is not a literal).
-const CREDENTIALED = new RegExp(`postgres(?:ql)?://[^/\\s@:${HOLE}]*:(?=[^/\\s@]*[^/\\s@${HOLE}])[^/\\s@]+@`);
+const CREDENTIALED = new RegExp(`postgres(?:ql)?://[^/\\s@:]*:(?=[^/\\s@]*[^/\\s@${HOLE}])[^/\\s@]+@`);
 const kindFor = (file) => (/\.[cm]?tsx$/.test(file) ? ts.ScriptKind.TSX : /\.[cm]?jsx?$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS);
 
 /** The lines of `text` (a source file called `file`) that hold a string or template literal with a credentialed Postgres URL whose password is literal. */
 export function findCredentialedUrls(text, file = 'file.ts') {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kindFor(file));
-  const found = [];
-  const check = (node, value) => {
-    if (CREDENTIALED.test(value)) found.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+  const found = new Set();
+  const flag = (node, value) => {
+    if (CREDENTIALED.test(value)) found.add(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+  };
+  /** The text of an expression made of literals, templates and `+`; anything else in it is a hole. */
+  const textOf = (node) => {
+    if (ts.isParenthesizedExpression(node)) return textOf(node.expression);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+    if (ts.isTemplateExpression(node)) return node.head.text + node.templateSpans.map((span) => HOLE + span.literal.text).join('');
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) return textOf(node.left) + textOf(node.right);
+    return HOLE;
   };
   const visit = (node) => {
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) check(node, node.text);
-    else if (ts.isTemplateExpression(node)) check(node, node.head.text + node.templateSpans.map((span) => HOLE + span.literal.text).join(''));
+    if (ts.isStringLiteral(node) || ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) flag(node, textOf(node));
+    // A URL split over literals (`'postgresql://u:' + 'pw@h'`) is one literal for the rule.
+    else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) flag(node, textOf(node));
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return found;
+  return [...found].sort((x, y) => x - y);
 }
 
 function walk(dir, found) {

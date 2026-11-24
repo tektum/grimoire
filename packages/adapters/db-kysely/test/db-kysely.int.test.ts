@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -13,6 +14,7 @@ import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-u
 // Runs against the Compose PostgreSQL (`make db-up`). Dev-only credentials from the contracts file.
 // Its own database, so no other user of the stack loses data; dropped in afterAll.
 const DB = `grimoire_t_dbkysely_${String(process.pid)}`;
+const WRONG_PASSWORD = `not-the-password-${randomBytes(6).toString('hex')}`; // new for each run: what a refused connection must never print
 const URLS = {
   admin: adminUrl(DB),
   migrator: migratorUrl(DB),
@@ -108,10 +110,10 @@ describe('grimoire migrate', () => {
   });
 
   it('exits 1 on a wrong password and prints neither the password nor the URL', async () => {
-    const r = await migrate({ url: devDatabaseUrl('grimoire_migrator', DB, HOST, 'wrong') });
+    const r = await migrate({ url: devDatabaseUrl('grimoire_migrator', DB, HOST, WRONG_PASSWORD) });
     expect(r.code).toBe(1);
     expect(r.out).toContain('password authentication failed');
-    expect(r.out).not.toContain('Wr0ng-s3cret');
+    expect(r.out).not.toContain(WRONG_PASSWORD);
     expect(r.out).not.toContain('postgresql://');
   });
 
@@ -261,11 +263,11 @@ describe('Kysely adapter', () => {
   });
 
   it('ping rejects when the server refuses the login, without leaking the password', async () => {
-    const db = createDatabase(devDatabaseUrl('grimoire_app', DB, HOST, 'wrong'));
+    const db = createDatabase(devDatabaseUrl('grimoire_app', DB, HOST, WRONG_PASSWORD));
     const err = await db.ping().then(() => undefined, (e: unknown) => e as Error);
     await db.close();
     expect(err?.message).toContain('password authentication failed');
-    expect(err?.message).not.toContain('Wr0ng-s3cret');
+    expect(err?.message).not.toContain(WRONG_PASSWORD);
   });
 
   it('a query that needs a new connection to a server that accepts and never answers fails within the connection timeout', async () => {
