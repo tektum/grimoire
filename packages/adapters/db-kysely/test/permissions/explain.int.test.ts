@@ -70,7 +70,7 @@ describe('plans on 10,000 pages, 500 users, 200 groups', () => {
   it('facts for 3 requests reaches pages through its primary key', async () => {
     const text = await plan((s) => s.facts(pageRequests.slice(0, 3)));
     console.log(`EXPLAIN facts (3 requests)\n${text}`);
-    expect(text).toMatch(/Index Scan using pages_(pkey|id_collection_uq)/);
+    expect(text).toMatch(/Index Scan using pages_(pkey|id_collection_uq|id_tenant_uq)/);
     expect(text).not.toMatch(/Seq Scan on pages\b/);
   });
   it('the answers on this world are the fake store\'s', async () => {

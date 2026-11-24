@@ -22,7 +22,7 @@ const ENTRY_SELECT = `select a.id, a.user_id, a.group_id, coalesce(u.name, g.nam
 const isForeignKeyViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23503';
 
 const isPositionTaken = (e: unknown): boolean =>
-  typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'collections_position_uq';
+  typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'collections_tenant_position_uq';
 
 /** The PostgreSQL CollectionRepo over `collections`. */
 export function createCollections(db: KyselyDatabase): CollectionRepo {
