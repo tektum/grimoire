@@ -53,12 +53,19 @@ export const COUNT_POINTER_EVENTS = `(() => {
 /** The number of pointer events the page has had in this session: a keyboard-only walk expects 0. */
 export const pointerEvents = (page: Page): Promise<number> => page.evaluate((key) => Number(sessionStorage.getItem(key) ?? 0), POINTER_COUNTER);
 
-/** Presses Tab until `match` is true of the focused element (at most `limit` times); fails with the place it gave up at. */
-export async function tabTo(page: Page, match: (element: Element | null) => boolean, limit = 60): Promise<void> {
+/**
+ * Presses Tab until `match` is true of the focused element (at most `limit` times, the focus is checked once more after the last press); fails with the place it gave up at.
+ * `match` runs in the page, as source text: it must not use anything of the test. A value it needs goes in `arg`, which it gets as its second parameter.
+ */
+export async function tabTo<A = undefined>(page: Page, match: (element: Element | null, arg: A) => boolean, options: { limit?: number; arg?: A } = {}): Promise<void> {
+  const limit = options.limit ?? 60;
+  const call = `(${match.toString()})(document.activeElement, ${JSON.stringify(options.arg) ?? 'undefined'})`;
+  const reached = (): Promise<boolean> => page.evaluate(call);
   for (let i = 0; i < limit; i += 1) {
-    if (await page.evaluate(`(${match.toString()})(document.activeElement)`)) return;
+    if (await reached()) return;
     await page.keyboard.press('Tab');
   }
+  if (await reached()) return;
   const at = await page.evaluate(() => `${document.activeElement?.tagName ?? 'nothing'} ${document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent?.slice(0, 40) ?? ''}`);
   throw new Error(`the focus never reached the element in ${limit} Tab presses (it is on ${at})`);
 }

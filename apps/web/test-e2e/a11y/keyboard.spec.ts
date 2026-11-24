@@ -29,7 +29,8 @@ async function walk(browser: Browser, baseURL: string | undefined, who: { userId
   }
 }
 
-const isLabelled = (label: string) => (element: Element | null) => (element as HTMLInputElement | null)?.getAttribute('aria-label') === label;
+/** For `tabTo(page, isLabelled, { arg: label })`: it runs in the page, so the label comes as the argument. */
+const isLabelled = (element: Element | null, label: string): boolean => element?.getAttribute('aria-label') === label;
 
 test('the walk counts a mouse click (so that "no pointer events" says something)', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }) });
@@ -137,7 +138,7 @@ test('the trash: a page is restored', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/trash');
     await expect(page.getByRole('button', { name: `Restore ${title}` })).toBeVisible();
-    await tabTo(page, isLabelled(`Restore ${title}`));
+    await tabTo(page, isLabelled, { arg: `Restore ${title}` });
     await page.keyboard.press('Enter');
     await expect(page.getByRole('button', { name: `Restore ${title}` })).toHaveCount(0);
   });
@@ -146,21 +147,22 @@ test('the trash: a page is restored', async ({ browser, baseURL }) => {
 test('the admin screens: a role is changed, a group is made, the default access is changed', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/admin/users');
-    await tabTo(page, isLabelled('Search users'));
+    await tabTo(page, isLabelled, { arg: 'Search users' });
     await page.keyboard.type(world.colleague.name);
     await page.keyboard.press('Enter');
-    await tabTo(page, isLabelled(`Role of ${world.colleague.name}`));
+    await tabTo(page, isLabelled, { arg: `Role of ${world.colleague.name}` });
     await page.keyboard.press('ArrowDown'); // member to viewer
     await expect(page.getByLabel(`Role of ${world.colleague.name}`)).toHaveValue('viewer');
 
     await page.goto('/admin/groups');
-    await tabTo(page, isLabelled('New group name'));
-    await page.keyboard.type('Made with keys');
+    const group = `Made with keys ${Date.now()}`; // a group name is unique on the stack, and the tour can be run again
+    await tabTo(page, isLabelled, { arg: 'New group name' });
+    await page.keyboard.type(group);
     await page.keyboard.press('Enter');
-    await expect(page.getByText('Made with keys').first()).toBeVisible();
+    await expect(page.getByText(group, { exact: true })).toBeVisible();
 
     await page.goto(`/admin/collections/${world.collectionId}/access`);
-    await tabTo(page, isLabelled('Everyone with an account can'));
+    await tabTo(page, isLabelled, { arg: 'Everyone with an account can' });
     const before = await page.getByLabel('Everyone with an account can').inputValue();
     await page.keyboard.press('ArrowDown');
     if ((await page.getByLabel('Everyone with an account can').inputValue()) === before) await page.keyboard.press('ArrowUp'); // it was the last choice
