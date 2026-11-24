@@ -50,7 +50,7 @@ The management key is never a plain environment value or a stack output: it is s
 - Test users: the provider has only a static code for them, which is a secret. Create them through the management API when the live check needs one.
 - The hand-made project "Grimoire dev" is not adopted. It stays as it is until the new development project works, and is then retired by the owner.
 
-Not checked against a real project yet, stated plainly: the styles JSON (the keys `globals.colors`, `globals.fonts`, `globals.radius` follow Descope's code-mode reference, and the provider's own test data uses a `designTokens` form), and whether the provider accepts the flow file as it is. The first `diff` after the company key exists shows the plan, and the first deploy to the development stage is the proof.
+What the first deploy of the development stage showed: the company key made the project and its settings; the styles were refused because they named a components version (3.27.2) that was not the project's own (the project said 2.0.0), so the styles now name none (Descope applies them to the project's own version; an import without a version was accepted on a project made for the purpose, with the same `globals.colors`, `globals.fonts` and `globals.radius` keys). Whether the provider accepts the flow file as it is shows in the next deploy.
 
 ## No stored secret
 

@@ -71,7 +71,11 @@ function mode(tokens: Tokens) {
   };
 }
 
-/** The `data` of a Descope styles resource: the export shape `{ componentsVersion, references, styles: { light, dark } }`. */
-export function buildStyles(tokens: TokenSets): { componentsVersion: string; references: Record<string, never>; styles: { light: ReturnType<typeof mode>; dark: ReturnType<typeof mode> } } {
-  return { componentsVersion: '3.27.2', references: {}, styles: { light: mode(tokens.light), dark: mode(tokens.dark) } };
+/**
+ * The `data` of a Descope styles resource: the export shape `{ references, styles: { light, dark } }`. It names no `componentsVersion` on purpose: Descope refuses styles whose
+ * version differs from the project's own ("exported from components version 3.27.2 but the project is on 2.0.0"), and the project's version moves with Descope's releases (the first deploy
+ * of the development project failed on exactly that). Left out, the import is accepted and applied to the project's own version (checked on a project made for the purpose).
+ */
+export function buildStyles(tokens: TokenSets): { references: Record<string, never>; styles: { light: ReturnType<typeof mode>; dark: ReturnType<typeof mode> } } {
+  return { references: {}, styles: { light: mode(tokens.light), dark: mode(tokens.dark) } };
 }
