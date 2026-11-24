@@ -1,13 +1,10 @@
+import type { components } from '@tektum/grimoire-api-client';
 import { useQuery } from '@tanstack/react-query';
 import { type ApiLike, queryKey } from '../../api/query';
 import { HttpError } from '../../tree/useTree';
 
-export interface CollectionItem {
-  readonly id: string;
-  readonly name: string;
-  readonly icon: string | null;
-  readonly myPermission: 'read-write' | 'read-only';
-}
+/** A collection as the API lists it: the generated client's shape. */
+export type CollectionItem = Readonly<components['schemas']['Collection']>;
 
 export const LIST_PATH = '/v1/collections';
 /** The `ClientStorage` key of the collection that was read last (contracts section 3). */
