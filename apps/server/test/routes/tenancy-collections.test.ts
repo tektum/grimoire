@@ -23,7 +23,7 @@ function build() {
   const verifier: AuthVerifier = {
     verify: (token) => {
       const row = rows.find((r) => `tok-${r.name}` === token);
-      return Promise.resolve(row === undefined ? { kind: 'invalid-token' } : { kind: 'ok', userId: row.descopeUserId, expiresAt: 9e12, tenant: { kind: 'one', id: row.tenantId } });
+      return Promise.resolve(row === undefined ? { kind: 'invalid-token' } : { kind: 'ok', userId: row.descopeUserId, expiresAt: 9e12, tenant: { kind: 'one', id: row.tenantId as string } });
     },
   };
   const users = new FakeUserStore(rows);
