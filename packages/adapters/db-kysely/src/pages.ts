@@ -92,8 +92,9 @@ export function createPages(db: KyselyDatabase): PageRepo {
       });
     },
     async get(id) {
-      const rows = await db.query<Row & { stale_ms: string | null }>(
-        `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms
+      const rows = await db.query<Row & { stale_ms: string | null; stale: boolean }>(
+        `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms,
+                (markdown_stale_since is not null or (markdown is null and ydoc is not null)) as stale
            from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id],
       );
       const row = rows[0];
@@ -103,7 +104,7 @@ export function createPages(db: KyselyDatabase): PageRepo {
            union all select p.id, p.parent_id, p.title, up.d + 1 from pages p join up on p.id = up.parent_id)
          select id, title from up where id <> $2 order by d desc`, [row.parent_id, id],
       );
-      const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
+      const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms), markdownStale: row.stale };
       return detail;
     },
     async markdownOf(id) {

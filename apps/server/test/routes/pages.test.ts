@@ -294,6 +294,12 @@ describe('GET /v1/pages/{id}', () => {
     expect(await (await b.call('member', 'GET', `/v1/pages/${fresh.id}`)).json()).toMatchObject({ markdownStale: false, markdownStaleSince: null });
   });
 
+  it('calls a page with editing state and no saved Markdown stale, with no time (reset and restore treat it the same way)', async () => {
+    const b = build();
+    const stateOnly = b.pages.seed({ collectionId: b.shared.id, hasState: true });
+    expect(await (await b.call('member', 'GET', `/v1/pages/${stateOnly.id}`)).json()).toMatchObject({ markdownStale: true, markdownStaleSince: null });
+  });
+
   it('is 404, with one answer, for a page the caller cannot read, a deleted one and an unknown id', async () => {
     const b = build();
     const hidden = b.pages.seed({ collectionId: b.closed.id });

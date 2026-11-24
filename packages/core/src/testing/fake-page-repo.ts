@@ -151,7 +151,7 @@ export class FakePageRepo implements PageRepo {
     if (row === undefined) return Promise.resolve(undefined);
     const breadcrumb: { id: string; title: string }[] = [];
     for (let up = this.rows.find((r) => r.id === row.parentId); up !== undefined; up = this.rows.find((r) => r.id === up?.parentId)) breadcrumb.unshift({ id: up.id, title: up.title });
-    return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince });
+    return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince, markdownStale: row.staleSince !== null || (row.markdown === null && row.state !== null) });
   }
 
   markdownOf(id: string): Promise<MarkdownOfPage | undefined> {

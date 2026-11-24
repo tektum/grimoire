@@ -15,7 +15,7 @@ export const getPageMarkdown = defineRoute({
       headers: z.object({
         'x-saved-at': z.string().describe('When the page was last written, as epoch milliseconds: the number `savedAt` of the page carries'),
         'x-grimoire-markdown-stale': z.literal('true').optional().describe('Present when the editor state is newer than this Markdown'),
-        'x-grimoire-markdown-stale-since': z.string().optional().describe('With the stale header: since when, as epoch milliseconds: the number `markdownStaleSince` of the page carries'),
+        'x-grimoire-markdown-stale-since': z.string().optional().describe('With the stale header, when a time is recorded: since when, as epoch milliseconds: the number `markdownStaleSince` of the page carries'),
       }),
       content: { 'text/markdown': { schema: z.string() } },
     },
@@ -53,11 +53,10 @@ router.openapi(getPageMarkdown, async (c) => {
     'content-disposition': `attachment; filename="${fileName(page.title)}"; filename*=UTF-8''${encodedFileName(page.title)}`,
     'x-saved-at': String(page.savedAt),
   };
-  // Stale: the state was saved and its Markdown could not be made (a recorded time), or the page has a state and no Markdown at all.
-  const staleSince = page.markdownStaleSince ?? (page.markdown === null && page.hasState ? page.savedAt : null);
-  if (staleSince !== null) {
+  // Stale: the state was saved and its Markdown could not be made (a recorded time), or the page has a state and no Markdown at all (no time is recorded: the header is absent).
+  if (page.markdownStaleSince !== null || (page.markdown === null && page.hasState)) {
     headers['x-grimoire-markdown-stale'] = 'true';
-    headers['x-grimoire-markdown-stale-since'] = String(staleSince);
+    if (page.markdownStaleSince !== null) headers['x-grimoire-markdown-stale-since'] = String(page.markdownStaleSince);
   }
   return c.body(page.markdown ?? '', 200, headers);
 });

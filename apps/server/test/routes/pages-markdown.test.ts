@@ -137,6 +137,7 @@ describe('GET /v1/pages/{id}/markdown', () => {
     const withState = b.pages.seed({ collectionId: b.open.id, hasState: true });
     const stale = await b.get('member', withState.id);
     expect([stale.status, await stale.text(), stale.headers.get('x-grimoire-markdown-stale')]).toEqual([200, '', 'true']);
+    expect(stale.headers.has('x-grimoire-markdown-stale-since')).toBe(false); // no time was recorded: the header is absent, as the page's `markdownStaleSince` is null
     const empty = b.pages.seed({ collectionId: b.open.id });
     const plain = await b.get('member', empty.id);
     expect([plain.status, await plain.text(), plain.headers.get('x-grimoire-markdown-stale')]).toEqual([200, '', null]);
