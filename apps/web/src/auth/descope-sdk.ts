@@ -6,8 +6,8 @@ import type { DescopeModule, DescopeSdk } from './index';
 // in the entry chunks (`check:build` enforces it). Tokens are kept in local storage (`DS`, `DSR`) by the SDK: the one documented use of storage outside
 // `ClientStorage`.
 const module: DescopeModule = {
-  create({ projectId }): DescopeSdk {
-    const sdk = createSdk({ projectId, persistTokens: true, storeLastAuthenticatedUser: false });
+  create({ projectId, baseUrl }): DescopeSdk {
+    const sdk = createSdk({ projectId, ...(baseUrl === undefined ? {} : { baseUrl }), persistTokens: true, storeLastAuthenticatedUser: false });
     return {
       getSessionToken: () => sdk.getSessionToken(),
       isJwtExpired: (token) => sdk.isJwtExpired(token),

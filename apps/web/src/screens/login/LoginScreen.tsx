@@ -12,7 +12,7 @@ export const LOGIN_TEXTS = {
 } as const;
 
 type DevFormProps = { options: DevSignInOptions; onSignedIn: () => void };
-type DescopeProps = { projectId: string; flowId?: string; onSuccess: () => void; onError: () => void };
+type DescopeProps = { projectId: string; baseUrl?: string; flowId?: string; onSuccess: () => void; onError: () => void };
 
 export interface LoginScreenProps {
   readonly config: ServerConfig;
@@ -57,7 +57,12 @@ export function LoginScreen(props: LoginScreenProps) {
   } else {
     body = (
       <Suspense fallback={null}>
-        <Descope projectId={props.config.providerProjectId} onSuccess={() => props.go(target)} onError={() => undefined} />
+        <Descope
+          projectId={props.config.providerProjectId}
+          {...(props.config.providerBaseUrl == null ? {} : { baseUrl: props.config.providerBaseUrl })}
+          onSuccess={() => props.go(target)}
+          onError={() => undefined}
+        />
       </Suspense>
     );
   }

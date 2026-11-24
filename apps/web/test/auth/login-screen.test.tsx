@@ -15,7 +15,9 @@ function screenWith(over: Partial<LoginScreenProps> & { devFormText?: string }) 
       {over.devFormText ?? 'dev form'}
     </button>
   );
-  const Descope: ComponentType<{ projectId: string; onSuccess: () => void }> = ({ projectId, onSuccess }) => <button type="button" onClick={onSuccess}>{`descope ${projectId}`}</button>;
+  const Descope: ComponentType<{ projectId: string; baseUrl?: string; onSuccess: () => void }> = ({ projectId, baseUrl, onSuccess }) => (
+    <button type="button" onClick={onSuccess}>{`descope ${projectId}${baseUrl === undefined ? '' : ` at ${baseUrl}`}`}</button>
+  );
   const loadDevForm = vi.fn(async () => ({ default: DevForm as never }));
   const loadDescopeFlow = vi.fn(async () => ({ default: Descope as never }));
   render(
@@ -56,6 +58,11 @@ describe('the sign-in screen', () => {
     expect(await screen.findByRole('button', { name: 'descope P-test' })).toBeTruthy();
     expect(t.loadDescopeFlow).toHaveBeenCalledTimes(1);
     expect(t.loadDevForm).not.toHaveBeenCalled();
+  });
+
+  it('gives the provider flow the endpoint of a regional project', async () => {
+    screenWith({ config: config({ local: false, providerProjectId: 'P-test', providerBaseUrl: 'https://api.eu1.example.test' }) });
+    expect(await screen.findByRole('button', { name: 'descope P-test at https://api.eu1.example.test' })).toBeTruthy();
   });
 
   it('says so in plain words, and loads nothing, when the server is not local and has no project id', () => {

@@ -27,7 +27,27 @@ describe('descope-sdk (the narrow interface over the web SDK)', () => {
   });
 });
 
+describe('descope-sdk: the endpoint of a regional project', () => {
+  it('is given to the SDK when there is one, and left out when there is not', async () => {
+    createSdk.mockReturnValue({ getSessionToken: vi.fn(), isJwtExpired: vi.fn(), refresh: vi.fn(), logout: vi.fn() });
+    const { default: module } = await import('../../src/auth/descope-sdk');
+    module.create({ projectId: 'P', baseUrl: 'https://api.eu1.example.test' });
+    expect(createSdk).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: 'P', baseUrl: 'https://api.eu1.example.test' }));
+    module.create({ projectId: 'P' });
+    expect(createSdk.mock.lastCall?.[0]).not.toHaveProperty('baseUrl');
+  });
+});
+
 describe('descope-signin (the flow as a custom element)', () => {
+  it('sets base-url on the element for a regional project, and no attribute otherwise', async () => {
+    const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
+    const regional = render(<DescopeSignIn projectId="P" baseUrl="https://api.eu1.example.test" onSuccess={() => {}} onError={() => {}} />);
+    expect(regional.container.querySelector('descope-wc')?.getAttribute('base-url')).toBe('https://api.eu1.example.test');
+    cleanup();
+    const plain = render(<DescopeSignIn projectId="P" onSuccess={() => {}} onError={() => {}} />);
+    expect(plain.container.querySelector('descope-wc')?.hasAttribute('base-url')).toBe(false);
+  });
+
   it('renders the provider element with the project and flow, and reports success and error events', async () => {
     const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
     const onSuccess = vi.fn();

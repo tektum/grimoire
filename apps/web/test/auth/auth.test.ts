@@ -98,6 +98,23 @@ describe('createAuth: identity provider session', () => {
     expect(t.loads()).toBe(1);
   });
 
+  it('gives the SDK the endpoint of a regional project when the configuration has one, and none otherwise', async () => {
+    const regional = createAuth({
+      config: config({ providerProjectId: 'P', providerBaseUrl: 'https://api.eu1.example.test' }),
+      storage: fakeStorage().storage,
+      devSignIn: null,
+      sdkStorage: fakeSdkStorage({ [DESCOPE_REFRESH_KEY]: 'r' }),
+      loadDescope: async () => regionalLoader.module,
+    });
+    const sdk = fakeSdk(jwt(secs(NOW) + 600));
+    const regionalLoader = moduleOf(sdk);
+    await regional.getToken();
+    expect(regionalLoader.baseUrls).toEqual(['https://api.eu1.example.test']);
+    const plain = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    await plain.auth.getToken();
+    expect(plain.loader.baseUrls).toEqual([undefined]);
+  });
+
   it('asks the SDK to refresh a token that ends within 60 s, and hands out the new one', async () => {
     const t = setup({ projectId: 'P-test', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 59) });
     const fresh = jwt(secs(NOW) + 3600);

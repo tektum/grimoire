@@ -6,7 +6,19 @@ import { createElement, type ReactElement, useEffect, useRef } from 'react';
  * domains at run time (contracts section 4), which is why it lives in the separate sign-in document. The component keeps the session in local storage by
  * itself; on success the screen goes on to the return path.
  */
-export default function DescopeSignIn({ projectId, flowId = 'sign-up-or-in', onSuccess, onError }: { projectId: string; flowId?: string; onSuccess: () => void; onError: () => void }): ReactElement {
+export default function DescopeSignIn({
+  projectId,
+  baseUrl,
+  flowId = 'sign-up-or-in',
+  onSuccess,
+  onError,
+}: {
+  projectId: string;
+  baseUrl?: string;
+  flowId?: string;
+  onSuccess: () => void;
+  onError: () => void;
+}): ReactElement {
   const element = useRef<HTMLElement>(null);
   useEffect(() => {
     const node = element.current;
@@ -18,5 +30,5 @@ export default function DescopeSignIn({ projectId, flowId = 'sign-up-or-in', onS
       node.removeEventListener('error', onError);
     };
   }, [onSuccess, onError]);
-  return createElement('descope-wc', { ref: element, 'project-id': projectId, 'flow-id': flowId });
+  return createElement('descope-wc', { ref: element, 'project-id': projectId, 'flow-id': flowId, ...(baseUrl === undefined ? {} : { 'base-url': baseUrl }) });
 }
