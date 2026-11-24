@@ -4,8 +4,6 @@ import { xssCorpus } from '../../test/corpus/xss';
 import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'history-specs-secret-0000001';
-
 // A version's stored Markdown is drawn by the rules of contracts section 8 (rule 1: links, by `isSafeHref`, which the editor's own link guard applies in the read-only
 // editor this screen uses; rule 2: raw HTML is inert text): every link entry and every
 // HTML entry of the corpus is in one version, and the screen has no `<a>` with an unsafe address, runs no script, opens no dialog and fetches nothing from another host.

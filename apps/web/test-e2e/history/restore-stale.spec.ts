@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'history-specs-secret-0000001';
-
 // Restore answered 409 `markdown_stale` (route interception): the message says the page is still being saved, the version stays open, nothing navigates; a second try
 // that is answered 200 restores and goes to the page. The page screen itself applies the Markdown (M6-T04), so only the address is checked here.
 const revision: MockRevision = {

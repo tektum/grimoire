@@ -3,8 +3,6 @@ import { signInAs } from '../support/sign-in';
 import { historyApi, PAGE_ID, SLUG, type MockRevision } from './mock-api';
 import { API } from '../collections/mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'history-specs-secret-0000001';
-
 // A viewer reads the list and a version, and sees no Restore button. Against the stand-in API, which answers a viewer's restore 403 as the server does (the server's
 // own 403 is tested in apps/server/test/routes/revisions.test.ts, and with the real stack in viewer.spec.ts).
 const revision: MockRevision = {
