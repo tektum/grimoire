@@ -202,9 +202,9 @@ describe('opening an attachment link', () => {
     });
 
     it('does nothing more when the browser refused the new tab', async () => {
-      vi.spyOn(window, 'open').mockReturnValue(null);
+      const opener = vi.spyOn(window, 'open').mockReturnValue(null);
       click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(opener).toHaveBeenCalledTimes(1); // the refusal is known inside the click: nothing is requested after it
       expect(GET).not.toHaveBeenCalled();
     });
   });
@@ -227,9 +227,8 @@ describe('opening an attachment link', () => {
   it('opens nothing when the server has no link (no access, deleted)', async () => {
     GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status: 404 }) } as never);
     click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
-    await vi.waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
-    await new Promise((resolve) => setTimeout(resolve, 0)); // a whole turn: the answer has been handled
+    await vi.waitFor(() => expect(told).toHaveBeenCalledWith("That file isn't available")); // a deleted file or lost access is said, not a flash of a tab
+    expect(GET).toHaveBeenCalledTimes(1);
     expect(open).not.toHaveBeenCalled();
-    expect(told).toHaveBeenCalledWith("That file isn't available"); // a deleted file or lost access is said, not a flash of a tab
   });
 });

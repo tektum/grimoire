@@ -1,6 +1,8 @@
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { mountReadOnly } from '../../src/editor/core/mount';
+import { Toaster } from '../../src/ui/primitives';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { linksOf, providedFor } from '../../src/editor/attachments/host';
+import { linksOf } from '../../src/editor/attachments/host';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { RevisionBody } from '../../src/screens/history/RevisionBody';
 import '../support/dom';
@@ -30,23 +32,31 @@ describe('the text of a version', () => {
     expect(linksOf(host)).toBeNull();
   });
 
-  it('passes the session client too, so a click on an attachment link in an old version can ask for its signed link', async () => {
-    const GET = vi.fn(async () => ({ data: { url: 'https://files.test/s' }, response: new Response('{}', { status: 200 }) }));
+  it('opens an attachment link of an old version: a click asks for its signed link at that moment and opens it, and a missing file is said', async () => {
+    const id = '3f2a9c1e-8b7d-4e6f-9a1b-2c3d4e5f6a7b';
+    const GET = vi.fn(async () => ({ data: { url: 'https://files.test/signed?download' }, response: new Response('{}', { status: 200 }) }));
     const session = { auth: {}, api: { POST: vi.fn(), GET }, collabUrl: 'ws://x' } as unknown as Session;
-    let provided: ReturnType<typeof providedFor> = null;
-    const mount = vi.fn(async (host: HTMLElement) => {
-      provided = providedFor(host);
-      return fakeEditor as never;
-    });
-    render(
+    const tab = { opener: 'x' as unknown, location: { replace: vi.fn() }, close: vi.fn() };
+    const opener = vi.spyOn(window, 'open').mockReturnValue(tab as never);
+    const view = render(
       <SessionContext.Provider value={session}>
-        <RevisionBody markdown="x" mount={mount} />
+        <RevisionBody markdown={`[the plan](attachments/${id}/plan.pdf)`} mount={mountReadOnly} />
+        <Toaster />
       </SessionContext.Provider>,
     );
-    await waitFor(() => expect(provided).not.toBeNull());
-    expect(provided!.host.api).toBe(session.api);
-    expect(provided!.host.notify).toBeTypeOf('function'); // a file that cannot be opened is said, in an old version too
-    expect(provided!.host.pageId).toBeUndefined(); // an old version is read, nothing is uploaded into it
+    const link = await view.findByRole('link', { name: 'the plan' });
+    expect(GET).not.toHaveBeenCalled(); // nothing is asked for before the click
+    act(() => { link.click(); });
+    expect(opener).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(tab.location.replace).toHaveBeenCalledWith('https://files.test/signed?download'));
+    expect(GET).toHaveBeenCalledTimes(1);
+    expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id }, query: { download: true } } });
+    // A file that is gone: the tab is closed and the person is told (the toast of the page).
+    GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status: 404 }) } as never);
+    act(() => { link.click(); });
+    await waitFor(() => expect(tab.close).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.body.textContent).toContain("That file isn't available"));
+    opener.mockRestore();
   });
 
   it('still draws with no session (a screen on its own)', async () => {
