@@ -110,13 +110,29 @@ describe('the web client served by the server', () => {
 describe('the headers the server renders', () => {
   it('are the lines scripts/render-headers.mjs renders for a static host, in both modes', () => {
     const origins = webOrigins({ apiUrl: 'https://grimoire.example.test', collabUrl: 'https://grimoire.example.test/collab', storeOrigin: 'https://files.example.test' });
-    expect(origins).toEqual({ apiOrigin: 'https://grimoire.example.test', collabOrigin: 'wss://grimoire.example.test', storeOrigin: 'https://files.example.test' });
+    expect(origins).toEqual({ apiOrigin: 'https://grimoire.example.test', collabOrigin: 'wss://grimoire.example.test', storeOrigin: 'https://files.example.test', descopeOrigin: 'https://api.descope.com' });
     for (const signin of ['login-document', 'app-wide'] as const) {
       const out = path.join(root, `rendered-${signin}`);
-      execFileSync(process.execPath, [path.join(repo, 'apps/web/scripts/render-headers.mjs'), '--api-origin', origins.apiOrigin, '--collab-origin', origins.collabOrigin, '--store-origin', origins.storeOrigin, '--signin', signin, '--out', out]);
+      execFileSync(process.execPath, [path.join(repo, 'apps/web/scripts/render-headers.mjs'), '--api-origin', origins.apiOrigin, '--collab-origin', origins.collabOrigin, '--store-origin', origins.storeOrigin, '--descope-origin', origins.descopeOrigin, '--signin', signin, '--out', out]);
       const fromScript = JSON.parse(readFileSync(path.join(out, 'headers.json'), 'utf8')) as Record<string, string[]>;
       expect(renderDocumentHeaders(readFileSync(TEMPLATE, 'utf8'), origins, signin), signin).toEqual(fromScript);
     }
+  });
+
+  it('use the regional identity provider of a project, as the script does', () => {
+    const origins = webOrigins({ apiUrl: 'https://grimoire.example.test', collabUrl: 'https://grimoire.example.test', storeOrigin: 'https://files.example.test', descopeUrl: 'https://api.use1.descope.test/' });
+    expect(origins.descopeOrigin).toBe('https://api.use1.descope.test');
+    expect(renderDocumentHeaders(readFileSync(TEMPLATE, 'utf8'), origins)['/index.html'].join('\n')).toContain('https://api.use1.descope.test');
+  });
+
+  it('take an explicit default port, plain http and ws only on loopback, and refuse what is not exactly an origin', () => {
+    expect(webOrigins({ apiUrl: 'https://grimoire.example.test:443', collabUrl: 'https://grimoire.example.test', storeOrigin: 'https://files.example.test' }).apiOrigin).toBe('https://grimoire.example.test');
+    const local = webOrigins({ apiUrl: 'http://127.0.0.1:8080', collabUrl: 'http://localhost:8080', storeOrigin: 'http://[::1]:8333' });
+    expect([local.apiOrigin, local.collabOrigin, local.storeOrigin]).toEqual(['http://127.0.0.1:8080', 'ws://localhost:8080', 'http://[::1]:8333']);
+    expect(() => webOrigins({ apiUrl: 'http://grimoire.example.test', collabUrl: 'https://c.test', storeOrigin: 'https://s.test' })).toThrow(/public API address/);
+    expect(() => webOrigins({ apiUrl: 'https://a.test', collabUrl: 'https://c.test', storeOrigin: 'http://files.example.test' })).toThrow(/file store address/);
+    expect(() => webOrigins({ apiUrl: 'https://a.test', collabUrl: 'https://c.test', storeOrigin: 'https://s.test', descopeUrl: 'http://127.0.0.1:1' })).toThrow(/identity provider address/);
+    expect(() => webOrigins({ apiUrl: 'https://u:p@a.test', collabUrl: 'https://c.test', storeOrigin: 'https://s.test' })).toThrow(/public API address/);
   });
 
   it('turn an http(s) live editing address into the ws(s) origin and refuse an address that is not an origin of a web scheme', () => {

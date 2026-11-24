@@ -75,7 +75,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   // The web client, when configured, sets its own response headers (a content security policy per document, X-Frame-Options and the rest): the defaults below would overwrite them.
   const web = ctx.config.webRoot === undefined || ctx.config.publicApiUrl === undefined || ctx.config.publicCollabUrl === undefined || ctx.config.files === undefined
     ? undefined
-    : webClient({ root: ctx.config.webRoot, apiUrl: ctx.config.publicApiUrl, collabUrl: ctx.config.publicCollabUrl, storeOrigin: ctx.config.files.publicOrigin });
+    : webClient({ root: ctx.config.webRoot, apiUrl: ctx.config.publicApiUrl, collabUrl: ctx.config.publicCollabUrl, storeOrigin: ctx.config.files.publicOrigin, descopeUrl: ctx.config.descopeBaseUrl });
   const defaults = secureHeaders();
   app.use((c, next) => (web?.serves(c.req.path) === true ? next() : defaults(c, next)));
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));

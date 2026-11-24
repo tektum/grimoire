@@ -11,6 +11,8 @@ export interface WebClientOptions {
   readonly apiUrl: string;
   readonly collabUrl: string;
   readonly storeOrigin: string;
+  /** `GRIMOIRE_DESCOPE_BASE_URL`: the identity provider's API of a regional project; unset means the default one. */
+  readonly descopeUrl?: string | undefined;
 }
 
 /** Paths the API owns: the web client never answers them, whatever the method. */
@@ -31,7 +33,7 @@ export function webClient(options: WebClientOptions): { readonly middleware: Mid
   for (const file of [path.join(dist, 'index.html'), path.join(dist, 'login.html'), templatePath]) {
     if (!existsSync(file)) throw new Error(`the web client is incomplete: ${file} is missing (GRIMOIRE_WEB_ROOT)`);
   }
-  const headers = renderDocumentHeaders(readFileSync(templatePath, 'utf8'), webOrigins({ apiUrl: options.apiUrl, collabUrl: options.collabUrl, storeOrigin: options.storeOrigin }));
+  const headers = renderDocumentHeaders(readFileSync(templatePath, 'utf8'), webOrigins({ apiUrl: options.apiUrl, collabUrl: options.collabUrl, storeOrigin: options.storeOrigin, descopeUrl: options.descopeUrl }));
   const config = `${JSON.stringify({ apiUrl: new URL(options.apiUrl).origin })}\n`;
   const apply = (c: Context, document: DocumentPath | undefined, cache: string): void => {
     for (const line of document === undefined ? headers['/index.html'].filter((l) => !l.startsWith('Content-Security-Policy')) : headers[document]) {

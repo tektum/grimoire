@@ -6,25 +6,39 @@ export interface Origins {
   readonly apiOrigin: string;
   readonly collabOrigin: string;
   readonly storeOrigin: string;
+  /** The identity provider's API: `https://api.descope.com`, or the regional one a project is bound to. */
+  readonly descopeOrigin: string;
 }
 export type Signin = 'login-document' | 'app-wide';
 export type DocumentPath = '/index.html' | '/login.html';
 
-const originOf = (name: string, value: string, schemes: readonly string[]): string => {
-  if (!URL.canParse(value)) throw new Error(`${name} must be an origin such as ${schemes[0] ?? ''}//host`);
-  const url = new URL(value);
-  if (!schemes.includes(url.protocol)) throw new Error(`${name} must use ${schemes.join(' or ')}`);
-  return url.origin;
-};
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** `https://host/x` as `https://host`, and `http`/`https` public addresses as the `ws`/`wss` origin of the same host. */
-export function webOrigins(input: { readonly apiUrl: string; readonly collabUrl: string; readonly storeOrigin: string }): Origins {
-  const collab = new URL(input.collabUrl);
-  const scheme = collab.protocol === 'https:' ? 'wss:' : collab.protocol === 'http:' ? 'ws:' : collab.protocol;
+/**
+ * The canonical origin of an address that must be exactly one: a secure scheme, or the plain one for a loopback host only (local development), with no user, path,
+ * query or fragment. Same rule as `apps/web/scripts/render-headers.mjs`, whose output a test compares with this module's.
+ */
+function originOf(name: string, value: string, secure: string, plain: string): string {
+  const schemes = secure === plain ? `${secure} scheme` : `${secure} scheme, or ${plain} for localhost only`;
+  const fail = (): Error => new Error(`${name} must be an origin (${schemes}; host and optional port, no path)`);
+  if (!URL.canParse(value)) throw fail();
+  const url = new URL(value);
+  if (!(url.protocol === secure || (url.protocol === plain && LOOPBACK.has(url.hostname))) || url.username !== '' || url.password !== '' || url.pathname !== '/' || url.search !== '' || url.hash !== '' || /[\s;,]/.test(value)) throw fail();
+  return url.origin;
+}
+
+/** The origin of a public address, which may carry a path (`/collab`): only the origin counts. An address with a user, or that does not parse, is passed on for the origin check to refuse. */
+const originOnly = (url: string): string => (URL.canParse(url) && new URL(url).username === '' && new URL(url).password === '' ? new URL(url).origin : url);
+
+/** The public addresses of a deployment as the origins of the policy: a `http(s)` live editing address becomes the `ws(s)` origin of the same host. */
+export function webOrigins(input: { readonly apiUrl: string; readonly collabUrl: string; readonly storeOrigin: string; readonly descopeUrl?: string | undefined }): Origins {
+  const collab = URL.canParse(input.collabUrl) ? new URL(input.collabUrl) : undefined;
+  const scheme = collab?.protocol === 'https:' ? 'wss:' : collab?.protocol === 'http:' ? 'ws:' : collab?.protocol ?? 'ws:';
   return {
-    apiOrigin: originOf('the public API address', input.apiUrl, ['https:', 'http:']),
-    collabOrigin: originOf('the public live editing address', `${scheme}//${collab.host}`, ['wss:', 'ws:']),
-    storeOrigin: originOf('the file store address', input.storeOrigin, ['https:', 'http:']),
+    apiOrigin: originOf('the public API address', originOnly(input.apiUrl), 'https:', 'http:'),
+    collabOrigin: originOf('the public live editing address', collab === undefined ? input.collabUrl : `${scheme}//${collab.host}`, 'wss:', 'ws:'),
+    storeOrigin: originOf('the file store address', originOnly(input.storeOrigin), 'https:', 'http:'),
+    descopeOrigin: originOf('the identity provider address', originOnly(input.descopeUrl ?? 'https://api.descope.com'), 'https:', 'https:'),
   };
 }
 
@@ -40,7 +54,7 @@ export function renderDocumentHeaders(template: string, origins: Origins, signin
     if (name === undefined) throw new Error('a line before the first [section] of the header template');
     sections[name]?.push(line);
   }
-  const values: Record<string, string> = { API_ORIGIN: origins.apiOrigin, COLLAB_ORIGIN: origins.collabOrigin, STORE_ORIGIN: origins.storeOrigin, FINGERPRINT_CONNECT: '' };
+  const values: Record<string, string> = { API_ORIGIN: origins.apiOrigin, COLLAB_ORIGIN: origins.collabOrigin, STORE_ORIGIN: origins.storeOrigin, DESCOPE_ORIGIN: origins.descopeOrigin, FINGERPRINT_CONNECT: '' };
   const policy = (key: string): string => {
     const text = (sections[`policy ${key}`] ?? []).join(' ').replace(/\{\{([A-Z_]+)\}\}/g, (_all, k: string) => values[k] ?? `{{${k}}}`).replace(/\s+;/g, ';').replace(/ {2,}/g, ' ');
     if (text === '' || text.includes('{{')) throw new Error(`the policy ${key} of the header template is empty or has an unfilled placeholder`);
