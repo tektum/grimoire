@@ -10,6 +10,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { makeContext } from './support/context.js';
 import { TEST_SLOW_MARKER, parseTestFacilities } from '@tektum/grimoire-adapter-config-env';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const root = path.resolve(import.meta.dirname, '../../../..');
 const SLOW = 'GRIMOIRE_TEST_SLOW_CONVERT_MS';
@@ -50,7 +51,7 @@ describe('test-only facilities: parse', () => {
 
 describe('test-only facilities: refused at start-up outside local mode', () => {
   const nonLocal = {
-    GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+    GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
     GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
     GRIMOIRE_DESCOPE_PROJECT_ID: 'P123',
     GRIMOIRE_DESCOPE_MANAGEMENT_KEY: 'mgmt-key-xyz',
@@ -106,7 +107,7 @@ describe('test-only facilities: where they may appear', () => {
 
 describe('test-only facilities: one start-up line when active (local mode)', () => {
   it('compose reports the active facilities and run logs exactly one warn line naming them; none active: no line', async () => {
-    const local = { GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:1/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef' };
+    const local = { GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef' };
     const on = compose({ ...local, [NOBREAKER]: '1' });
     const off = compose(local);
     if (!on.ok || !off.ok) throw new Error('expected compositions');

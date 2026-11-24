@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeDatabase } from '@tektum/grimoire-core/testing/fake-database';
 import { createApp } from '../../src/app.js';
 import { fakeDatabase, makeContext } from './support/context.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 async function get(app: ReturnType<typeof createApp>, path: string) {
   const res = await app.request(path);
@@ -17,7 +18,7 @@ describe('health routes', () => {
 
   it('/readyz is 503 unavailable when the ping rejects, and /healthz stays 200 ok', async () => {
     const db = fakeDatabase();
-    db.ping = () => Promise.reject(new Error('connect ECONNREFUSED postgres://u:secret@h/db'));
+    db.ping = () => Promise.reject(new Error(`connect ECONNREFUSED ${placeholderDatabaseUrl('h', 'db')}`));
     const app = createApp(makeContext(db).ctx);
     expect(await get(app, '/readyz')).toMatchObject({ status: 503, body: 'unavailable' });
     expect(await get(app, '/healthz')).toMatchObject({ status: 200, body: 'ok' });

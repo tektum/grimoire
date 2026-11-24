@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { requireBuild, runToEnd, serverDir } from '../server/support/harness.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 // Runs `grimoire db-setup` as a process. What it does to a database is tested against the Compose database with other role names
 // (packages/adapters/db-kysely/test/setup.int.test.ts): the product's own role names are cluster-wide and the shared development database must keep its passwords.
@@ -40,7 +41,7 @@ describe('grimoire db-setup', () => {
 
   it('the server refuses to start holding the administrator connection or a role password', async () => {
     const result = await runToEnd([path.join(serverDir, 'dist/main.js')], {
-      GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'dev-token-secret-0123456789', GRIMOIRE_DATABASE_URL: 'postgresql://grimoire_app:x@127.0.0.1:55432/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+      GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'dev-token-secret-0123456789', GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:55432', 'grimoire', 'grimoire_app'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
       GRIMOIRE_DATABASE_ADMIN_URL: `postgresql://grimoire_admin:${ADMIN_PASSWORD}@127.0.0.1:55432/grimoire`,
     });
     expect(result.code).not.toBe(0);

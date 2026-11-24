@@ -7,13 +7,14 @@ import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import { createDatabase, type KyselyDatabase } from '../../src/index.js';
 import { createUserStore } from '../../src/users.js';
+import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
 
 // Only tests in this process use this database; its afterAll drops it, never somebody else's runtime database.
 const DATABASE = `grimoire_m3t05_users_${String(process.pid)}`;
-const APP_URL = `postgresql://grimoire_app:grimoire-dev@127.0.0.1:55432/${DATABASE}`;
-const ADMIN_URL = `postgresql://grimoire_admin:grimoire-dev@127.0.0.1:55432/${DATABASE}`;
-const MIGRATION_URL = `postgresql://grimoire_migrator:grimoire-dev@127.0.0.1:55432/${DATABASE}`;
-const POSTGRES_URL = 'postgresql://grimoire_admin:grimoire-dev@127.0.0.1:55432/postgres';
+const APP_URL = appUrl(DATABASE);
+const ADMIN_URL = adminUrl(DATABASE);
+const MIGRATION_URL = migratorUrl(DATABASE);
+const POSTGRES_URL = adminUrl('postgres');
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 const CLI = path.join(ROOT, 'apps/server/dist/cli.js');
 const exec = promisify(execFile);

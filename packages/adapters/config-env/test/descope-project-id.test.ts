@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const base = {
   GRIMOIRE_DEV_TOKEN_SECRET: ['test', 'secret', '0123456789abcdef'].join('-'), // joined so that no secret-looking literal sits in the file
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_LOCAL: '0',
   GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test',

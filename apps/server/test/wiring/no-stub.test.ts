@@ -21,6 +21,7 @@ import { compose } from '../../src/composition.js';
 import { createEventLog } from '../../src/events.js';
 import { createRun } from '../../src/lifecycle/run.js';
 import { EXIT } from '../../src/lifecycle/process.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 // Security review F7: the authorisation stub cannot ship. The stub exists only in this test file.
 /** TEST ONLY: answers "allowed, read-write" for every page, the shape of the earlier authorisation stub. */
@@ -34,7 +35,7 @@ function createStubAuthorizer(): PageAccessChecker {
 }
 
 const nonLocal = {
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:1/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DESCOPE_PROJECT_ID: 'P2abc', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test',
 };
 

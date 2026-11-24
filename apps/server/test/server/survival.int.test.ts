@@ -2,9 +2,10 @@ import net from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { requireBuild, startServer } from './support/harness.js';
 import type { ServerProcess } from './support/harness.js';
+import { appUrl } from '@tektum/grimoire-test-support/database';
 
 // No database is needed: the listener must survive whatever arrives before anything else is touched.
-const DB_URL = 'postgresql://grimoire_app:grimoire-dev@127.0.0.1:1/grimoire';
+const DB_URL = appUrl('grimoire', '127.0.0.1:1');
 let server: ServerProcess;
 
 beforeAll(async () => {

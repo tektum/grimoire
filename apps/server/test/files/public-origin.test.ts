@@ -3,6 +3,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '@tektum/grimoire-adapter-config-env';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const key = () => randomBytes(12).toString('hex'); // generated per run: no secret-looking literal in the repository
 
@@ -14,7 +15,7 @@ async function presignedOrigin(endpoint: string, bucket: string): Promise<string
 
 const configuredOrigin = (endpoint: string, bucket: string): string | undefined =>
   loadConfig({
-    GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: key() + key(), GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+    GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: key() + key(), GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
     GRIMOIRE_S3_ENDPOINT: endpoint, GRIMOIRE_S3_BUCKET: bucket, GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual', GRIMOIRE_S3_ACCESS_KEY: key(), GRIMOIRE_S3_SECRET_KEY: key(),
   }).files?.publicOrigin;
 

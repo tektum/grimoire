@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createDatabase } from '../../src/index.js';
 import type { KyselyDatabase } from '../../src/index.js';
+import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
 
 const exec = promisify(execFile);
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 const CLI = path.join(ROOT, 'apps/server/dist/cli.js');
-const POSTGRES_URL = 'postgresql://grimoire_admin:grimoire-dev@127.0.0.1:55432/postgres';
+const POSTGRES_URL = adminUrl('postgres');
 
 export interface TestDatabase {
   /** The runtime role: what the product connects as. */
@@ -26,11 +27,11 @@ async function runSql(url: string, sql: string): Promise<void> {
 /** A migrated database of this process only (its own name), dropped by `drop`; never somebody else's runtime database. */
 export async function createTestDatabase(label: string): Promise<TestDatabase> {
   const name = `grimoire_m4t05_${label}_${String(process.pid)}`;
-  const migrator = `postgresql://grimoire_migrator:grimoire-dev@127.0.0.1:55432/${name}`;
+  const migrator = migratorUrl(name);
   await runSql(POSTGRES_URL, `drop database if exists ${name} with (force)`);
   await runSql(POSTGRES_URL, `create database ${name} owner grimoire_migrator`);
   await exec(process.execPath, [CLI, 'migrate'], { env: { ...process.env, GRIMOIRE_DATABASE_MIGRATION_URL: migrator } });
-  const app = createDatabase(`postgresql://grimoire_app:grimoire-dev@127.0.0.1:55432/${name}`, { maxConnections: 10 });
+  const app = createDatabase(appUrl(name), { maxConnections: 10 });
   const admin = createDatabase(migrator, { maxConnections: 2 });
   return {
     app, admin,

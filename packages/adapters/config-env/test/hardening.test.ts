@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const base = {
   GRIMOIRE_LOCAL: '1',
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
 };
 
@@ -167,7 +168,7 @@ describe('seeded fuzz: only a Config or a ConfigError, and no secret in any issu
     GRIMOIRE_LOCAL: ['0', '1', '2', 'x'], GRIMOIRE_ROLE: ['all', 'api', 'collab', 'w'],
     GRIMOIRE_PORT: ['8080', '9000', '0', 'abc', '1e3', '65536'], GRIMOIRE_COLLAB_PORT: ['8080', '9000', '9001', 'abc', '0'],
     GRIMOIRE_LOG_LEVEL: ['info', 'debug', 'trace'],
-    GRIMOIRE_DATABASE_URL: ['postgres://u:pw@h/db', `mysql://u:${MARK}@h/db`, `postgres://u:${MARK}@[bad/db\n`, `postgres://u:${MARK}@h/db `],
+    GRIMOIRE_DATABASE_URL: [placeholderDatabaseUrl('h', 'db').replace(/^postgresql:/, 'postgres:'), `mysql://u:${MARK}@h/db`, `postgres://u:${MARK}@[bad/db\n`, `postgres://u:${MARK}@h/db `],
     GRIMOIRE_DATABASE_MIGRATION_URL: ['postgres://m@h/db', `http://m:${MARK}@h`, `postgresql://m:${MARK}@h/\t`],
     GRIMOIRE_DESCOPE_PROJECT_ID: ['P1', '  ', 'P\u200B1', 'P 1', '\uFEFFP1', `${MARK}\n`],
     GRIMOIRE_ALLOWED_ORIGINS: ['http://a.test', 'http://a.test , https://b.test', `http://${MARK}\u200B.test`, `http://b\u00E9.test`, 'https://b.test:8443,http://c.test', `http://x.test/${MARK}`, '*', `http://${MARK}.test `],

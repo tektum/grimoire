@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { createJsonLogger } from '../src/index.js';
+import { dsn } from './dsn.js';
 
 function capture(level?: 'debug' | 'info' | 'warn' | 'error') {
   const lines: string[] = [];
@@ -31,7 +32,7 @@ describe('logger-json', () => {
       token: 'abc.secret.jwt',
       nested: { Password: 'pw-123', authToken: 't2', list: ['ok'] },
       url: 'wss://host/collab?token=abc.secret.jwt&x=1',
-      dsn: 'postgres://u:dbpass-99@h/db',
+      dsn: dsn('u:dbpass-99', 'h/db'),
       note: 'GET /p?token=zzz-leak failed',
     });
     const out = lines.join('\n');

@@ -2,18 +2,17 @@ import pg from 'pg';
 import { PgBoss } from 'pg-boss';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
+import { adminUrl } from '@tektum/grimoire-test-support/database';
 import { PGBOSS_SCHEMA, createJobQueue, type PgBossJobQueue } from '../src/index.js';
 
 // Runs against the Compose PostgreSQL (`make db-up`), in a database of its own that the test drops afterwards.
-const SERVER = '127.0.0.1:55432';
-const ADMIN = 'postgresql://grimoire_admin:grimoire-dev@' + SERVER;
 
 export function databaseUrl(name: string): string {
-  return `${ADMIN}/${name}`;
+  return adminUrl(name);
 }
 
 export async function createTestDatabase(name: string): Promise<void> {
-  const client = new pg.Client({ connectionString: `${ADMIN}/postgres` });
+  const client = new pg.Client({ connectionString: adminUrl('postgres') });
   await client.connect();
   try {
     await client.query(`drop database if exists ${name} with (force)`);
@@ -24,7 +23,7 @@ export async function createTestDatabase(name: string): Promise<void> {
 }
 
 export async function dropTestDatabase(name: string): Promise<void> {
-  const client = new pg.Client({ connectionString: `${ADMIN}/postgres` });
+  const client = new pg.Client({ connectionString: adminUrl('postgres') });
   await client.connect();
   try {
     await client.query(`drop database if exists ${name} with (force)`);

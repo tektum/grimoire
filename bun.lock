@@ -190,6 +190,9 @@
         "@tektum/grimoire-core": "*",
         "pg-boss": "12.38.2",
       },
+      "devDependencies": {
+        "@tektum/grimoire-test-support": "*",
+      },
     },
     "packages/adapters/logger-json": {
       "name": "@tektum/grimoire-adapter-logger-json",

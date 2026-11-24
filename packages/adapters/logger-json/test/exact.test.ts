@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_STRING_CHARS, REDACTED, redactString } from '../src/scrub.js';
+import { dsn } from './dsn.js';
 
 const R = REDACTED;
 
@@ -38,9 +39,9 @@ describe('credentials inside URLs', () => {
     ['user and password', 'see https://bob:s3cret@db.example.com:5432/app ok', `see https://${R}@db.example.com:5432/app ok`],
     ['user only', 'see https://bob@db.example.com/app ok', `see https://${R}@db.example.com/app ok`],
     ['password only', 'see https://:s3cret@db.example.com/app ok', `see https://${R}@db.example.com/app ok`],
-    ['a password containing @', 'x postgres://u:p@ss@h/db y', `x postgres://${R}@h/db y`],
+    ['a password containing @', `x ${dsn('u:p@ss', 'h/db')} y`, `x postgres://${R}@h/db y`],
     ['a password containing spaces', 'x postgres://u:a b c@h/db y', `x postgres://${R}@h/db y`],
-    ['text before the scheme is kept', 'conn=postgres://u:pw@h/db', `conn=postgres://${R}@h/db`],
+    ['text before the scheme is kept', `conn=${dsn('u:pw', 'h/db')}`, `conn=postgres://${R}@h/db`],
     ['a scheme at the very start of the text', '://u:pw@h/x', `://${R}@h/x`],
     ['an @ before the scheme is not userinfo', 'mail a@b.c then https://h/p', 'mail a@b.c then https://h/p'],
     ['a URL without credentials is untouched', 'GET https://example.com/a/b ok', 'GET https://example.com/a/b ok'],

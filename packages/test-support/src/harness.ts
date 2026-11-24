@@ -5,6 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Database } from '@tektum/grimoire-core/ports/database';
+import { databaseUrl } from '@tektum/grimoire-core/testing/database-url';
 import { eventually as waitEventually } from './e2e.ts';
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -12,10 +13,13 @@ export const serverDir = path.join(repoRoot, 'apps/server');
 export const mainJs = path.join(serverDir, 'dist/main.js');
 export const hooksEntry = path.join(serverDir, 'test/server/support/hooks-entry.mjs');
 export const slowEntry = path.join(serverDir, 'test/server/support/slow-route-entry.mjs');
-const HOST = '127.0.0.1:55432';
-export const adminUrl = (db: string): string => `postgresql://grimoire_admin:grimoire-dev@${HOST}/${db}`;
-export const appUrl = (db: string): string => `postgresql://grimoire_app:grimoire-dev@${HOST}/${db}`;
-export const migratorUrl = (db: string): string => `postgresql://grimoire_migrator:grimoire-dev@${HOST}/${db}`;
+export const HOST = '127.0.0.1:55432';
+/** The password of the roles of the development database (the same in .env.example and compose.yaml: a published development value). The one place tests have it. */
+const DEV_PASSWORD = 'grimoire-dev';
+export const devDatabaseUrl = (role: 'grimoire_admin' | 'grimoire_app' | 'grimoire_migrator', db: string, host: string = HOST, password: string = DEV_PASSWORD): string => databaseUrl(role, password, host, db);
+export const adminUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_admin', db, host);
+export const appUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_app', db, host);
+export const migratorUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_migrator', db, host);
 export function requireBuild(): void { if (!existsSync(mainJs)) throw new Error('apps/server/dist/main.js is missing: run `bun run build` first'); }
 
 export function freePort(): Promise<number> {

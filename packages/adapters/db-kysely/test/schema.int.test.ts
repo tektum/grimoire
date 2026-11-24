@@ -2,15 +2,14 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runToEnd } from '@tektum/grimoire-test-support';
-import { insertPage as insertPageRow } from '@tektum/grimoire-test-support/database';
+import { devDatabaseUrl, insertPage as insertPageRow } from '@tektum/grimoire-test-support/database';
 import { createDatabase } from '../src/index.js';
 import type { KyselyDatabase } from '../src/index.js';
 import { declaredColumns } from '../src/schema.js';
 
 // Its own database, created and dropped by this file, never somebody else's.
 const DATABASE = `grimoire_m4t00_schema_${String(process.pid)}`;
-const server = '127.0.0.1:55432';
-const url = (role: string, name: string): string => `postgresql://${role}:grimoire-dev@${server}/${name}`;
+const url = (role: 'grimoire_admin' | 'grimoire_migrator', name: string): string => devDatabaseUrl(role, name);
 const CLI = path.join(fileURLToPath(new URL('../../../../', import.meta.url)), 'apps/server/dist/cli.js');
 let db: KyselyDatabase;
 

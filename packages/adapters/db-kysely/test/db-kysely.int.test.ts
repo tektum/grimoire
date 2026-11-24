@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -6,18 +7,18 @@ import path from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { databaseConformance } from '@tektum/grimoire-core/testing/database-conformance';
-import { insertPage } from '@tektum/grimoire-test-support/database';
+import { adminUrl, appUrl, devDatabaseUrl, HOST, insertPage, migratorUrl } from '@tektum/grimoire-test-support/database';
 import { createDatabase } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 // Runs against the Compose PostgreSQL (`make db-up`). Dev-only credentials from the contracts file.
 // Its own database, so no other user of the stack loses data; dropped in afterAll.
 const DB = `grimoire_t_dbkysely_${String(process.pid)}`;
-const SERVER = '127.0.0.1:55432';
-const HOST = `${SERVER}/${DB}`;
+const WRONG_PASSWORD = `not-the-password-${randomBytes(6).toString('hex')}`; // new for each run: what a refused connection must never print
 const URLS = {
-  admin: `postgresql://grimoire_admin:grimoire-dev@${HOST}`,
-  migrator: `postgresql://grimoire_migrator:grimoire-dev@${HOST}`,
-  app: `postgresql://grimoire_app:grimoire-dev@${HOST}`,
+  admin: adminUrl(DB),
+  migrator: migratorUrl(DB),
+  app: appUrl(DB),
 };
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const CLI = path.join(ROOT, 'apps/server/dist/cli.js');
@@ -70,12 +71,12 @@ beforeAll(async () => {
   await new Promise<void>((resolve, reject) =>
     execFile(process.execPath, [path.join(ROOT, 'node_modules/typescript/bin/tsc'), '-b'], { cwd: ROOT }, (e, o) => (e ? reject(new Error(`tsc -b failed:\n${o}`)) : resolve())),
   );
-  await sqlAs(`postgresql://grimoire_admin:grimoire-dev@${SERVER}/postgres`, `DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
-  await sqlAs(`postgresql://grimoire_admin:grimoire-dev@${SERVER}/postgres`, `CREATE DATABASE ${DB} OWNER grimoire_migrator`);
+  await sqlAs(adminUrl('postgres'), `DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
+  await sqlAs(adminUrl('postgres'), `CREATE DATABASE ${DB} OWNER grimoire_migrator`);
   await mkdir(WORK, { recursive: true });
 }, 120_000);
 afterAll(async () => {
-  await sqlAs(`postgresql://grimoire_admin:grimoire-dev@${SERVER}/postgres`, `DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
+  await sqlAs(adminUrl('postgres'), `DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
   await rm(WORK, { recursive: true, force: true });
 });
 beforeEach(resetDatabase, 60_000);
@@ -109,10 +110,10 @@ describe('grimoire migrate', () => {
   });
 
   it('exits 1 on a wrong password and prints neither the password nor the URL', async () => {
-    const r = await migrate({ url: `postgresql://grimoire_migrator:Wr0ng-s3cret@${HOST}` });
+    const r = await migrate({ url: devDatabaseUrl('grimoire_migrator', DB, HOST, WRONG_PASSWORD) });
     expect(r.code).toBe(1);
     expect(r.out).toContain('password authentication failed');
-    expect(r.out).not.toContain('Wr0ng-s3cret');
+    expect(r.out).not.toContain(WRONG_PASSWORD);
     expect(r.out).not.toContain('postgresql://');
   });
 
@@ -262,11 +263,11 @@ describe('Kysely adapter', () => {
   });
 
   it('ping rejects when the server refuses the login, without leaking the password', async () => {
-    const db = createDatabase(`postgresql://grimoire_app:Wr0ng-s3cret@${HOST}`);
+    const db = createDatabase(devDatabaseUrl('grimoire_app', DB, HOST, WRONG_PASSWORD));
     const err = await db.ping().then(() => undefined, (e: unknown) => e as Error);
     await db.close();
     expect(err?.message).toContain('password authentication failed');
-    expect(err?.message).not.toContain('Wr0ng-s3cret');
+    expect(err?.message).not.toContain(WRONG_PASSWORD);
   });
 
   it('a query that needs a new connection to a server that accepts and never answers fails within the connection timeout', async () => {
@@ -274,7 +275,7 @@ describe('Kysely adapter', () => {
     const server = net.createServer((s) => { sockets.add(s); s.on('error', () => undefined); }); // accepts, then stays silent: the handshake hangs
     await new Promise<void>((resolve) => { server.listen(0, '127.0.0.1', resolve); });
     const { port } = server.address() as net.AddressInfo;
-    const db = createDatabase(`postgresql://u:p@127.0.0.1:${String(port)}/x`, { connectionTimeoutMs: 300, queryTimeoutMs: 300, closeTimeoutMs: 100 });
+    const db = createDatabase(placeholderDatabaseUrl(`127.0.0.1:${String(port)}`, 'x'), { connectionTimeoutMs: 300, queryTimeoutMs: 300, closeTimeoutMs: 100 });
     try {
       const startedAt = Date.now();
       await expect(db.query('select 1')).rejects.toThrow();
