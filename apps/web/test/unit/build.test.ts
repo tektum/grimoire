@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error plain .mjs script without types
 import { checkBuild } from '../../scripts/check-build.mjs';
 // @ts-expect-error plain .mjs script without types
-import { parseHeaders } from '../../scripts/serve.mjs';
+import { parseTemplate } from '../../scripts/render-headers.mjs';
 
 const web = path.resolve(import.meta.dirname, '../..');
 const dirs: string[] = [];
@@ -83,12 +83,16 @@ describe('check-build', () => {
 });
 
 describe('headers.template', () => {
-  const text = readFileSync(path.join(web, 'headers/headers.template'), 'utf8');
-  it('has Referrer-Policy: no-referrer exactly once and nosniff, for every path', () => {
-    expect(text.split('\n').filter((l) => l.includes('Referrer-Policy: no-referrer'))).toHaveLength(1);
-    expect(parseHeaders(text)).toEqual({ 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
+  const template = parseTemplate(readFileSync(path.join(web, 'headers/headers.template'), 'utf8'));
+  it('has Referrer-Policy: no-referrer exactly once, nosniff and a frame ban, for every document', () => {
+    expect(readFileSync(path.join(web, 'headers/headers.template'), 'utf8').split('\n').filter((l) => l.includes('Referrer-Policy: no-referrer'))).toHaveLength(1);
+    expect(template.headers).toEqual({ 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
   });
-  it('is read as a _headers file: only the /* block applies, comments are ignored', () => {
-    expect(parseHeaders('# c\n/other\n  A: 1\n/*\n  B: two: parts\n')).toEqual({ B: 'two: parts' });
+  it('holds the two policies, the app\'s and the full one', () => {
+    expect(Object.keys(template.policies).sort()).toEqual(['app', 'full']);
+  });
+  it('is read as sections: comments and blank lines are ignored, and a line before the first section is an error', () => {
+    expect(parseTemplate('# c\n\n[headers]\nA: two: parts\n[policy x]\na;\nb\n')).toEqual({ headers: { A: 'two: parts' }, policies: { x: 'a; b' } });
+    expect(() => parseTemplate('A: 1\n')).toThrow(/before the first/);
   });
 });

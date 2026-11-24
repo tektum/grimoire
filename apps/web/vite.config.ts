@@ -4,7 +4,7 @@ import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } fro
 
 // Static files only: `base: './'` keeps every asset path relative, so any static host can serve the output (R11.23).
 // Build modes: `production` (the default), `e2e` and `development`. The development sign-in exists in the last two only (contracts section 4).
-// `/login` is the sign-in document (login.html): the development server and the preview server map it, as `scripts/serve.mjs` and a host's redirects file do.
+// `/login` is the sign-in document (login.html): the development server and the preview server map it, as `scripts/serve.mjs` does (and the product's server will).
 const loginDocument = (): Plugin => {
   // The hook returns nothing: a function returned from `configureServer` would run as a later hook.
   const rewrite = (server: ViteDevServer | PreviewServer): void => {
