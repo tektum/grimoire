@@ -1,0 +1,89 @@
+import { editorViewCtx } from '@milkdown/core';
+import type { Ctx, MilkdownPlugin } from '@milkdown/ctx';
+import { upload, uploadConfig } from '@milkdown/plugin-upload';
+import { Fragment, type Node as ProseNode, type Schema } from '@milkdown/prose/model';
+import { Plugin } from '@milkdown/prose/state';
+import { Decoration } from '@milkdown/prose/view';
+import { $prose } from '@milkdown/utils';
+import { storeFetch } from '../../api/store';
+import { providedFor } from './host';
+import { imagePlugin } from './image-view';
+import { attachmentId } from './path';
+import { uploadAttachment, type Attachment } from './upload';
+
+/** What goes into the document for the files that were stored: an image for an image, the file's name as a link to its saved path for any other file. */
+export function fragmentFor(attachments: readonly Attachment[], schema: Schema): Fragment {
+  const nodes: ProseNode[] = [];
+  for (const attachment of attachments) {
+    if (nodes.length > 0) nodes.push(schema.text(' '));
+    if (attachment.contentType.startsWith('image/')) nodes.push(schema.nodes['image']!.create({ src: attachment.markdownPath, alt: attachment.fileName }));
+    else nodes.push(schema.text(attachment.fileName, [schema.marks['link']!.create({ href: attachment.markdownPath })]));
+  }
+  return Fragment.from(nodes);
+}
+
+/**
+ * Uploads every file of a paste or a drop at once. Those that were stored become nodes; each distinct refusal is told once, and a refused file leaves nothing in the
+ * document. It never rejects: the plugin that calls it keeps its "in progress" marker for a rejection.
+ */
+async function uploader(files: FileList, schema: Schema, ctx: Ctx): Promise<Fragment> {
+  const provided = providedFor(ctx.get(editorViewCtx).dom);
+  const host = provided?.host;
+  if (host?.pageId === undefined || host.uploadApi === undefined) {
+    host?.notify?.('Files can’t be added to this page');
+    return Fragment.empty;
+  }
+  const deps = { api: host.uploadApi, put: host.put ?? storeFetch, pageId: host.pageId };
+  const results = await Promise.all(Array.from(files, (file) => uploadAttachment(deps, file)));
+  const refusals = new Set<string>();
+  const stored: Attachment[] = [];
+  for (const result of results) {
+    if (result.ok) stored.push(result.attachment);
+    else refusals.add(result.message);
+  }
+  for (const message of refusals) host.notify?.(message);
+  return fragmentFor(stored, schema);
+}
+
+const uploadWidget = (pos: number, spec: Parameters<typeof Decoration.widget>[2]): Decoration => {
+  const dom = document.createElement('span');
+  dom.className = 'attachment-uploading';
+  dom.setAttribute('aria-busy', 'true');
+  dom.textContent = 'Uploading…';
+  return Decoration.widget(pos, dom, spec);
+};
+
+const configureUpload: MilkdownPlugin = (ctx) => async () => {
+  ctx.update(uploadConfig.key, (prev) => ({ ...prev, uploader, uploadWidgetFactory: uploadWidget }));
+};
+
+/** A click on a link to an uploaded file asks for a signed link at that moment and opens it, in the editor and in the read-only view alike; no other link is touched. */
+const openOnClick = $prose(
+  () =>
+    new Plugin({
+      props: {
+        handleDOMEvents: {
+          click: (view, event) => {
+            const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+            const id = attachmentId(link?.getAttribute('href'));
+            const host = providedFor(view.dom)?.host;
+            if (id === null || host === undefined) return false;
+            event.preventDefault();
+            void openAttachment(host, id);
+            return true;
+          },
+        },
+      },
+    }),
+);
+
+async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>['host'], id: string): Promise<void> {
+  if (host.api === undefined) return;
+  const { data, response } = await host.api.GET('/v1/attachments/{id}' as never, { params: { path: { id }, query: { download: true } } } as never);
+  if (!response.ok) return;
+  const url = (data as { url?: string } | undefined)?.url;
+  if (url !== undefined) (host.open ?? ((target: string) => void window.open(target, '_blank', 'noopener,noreferrer')))(url);
+}
+
+/** Images, the upload of files by paste and drop, and the opening of attachment links. */
+export const attachmentPlugins: MilkdownPlugin[] = [imagePlugin, ...upload, configureUpload, openOnClick].flat();

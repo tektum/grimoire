@@ -9,11 +9,11 @@ import { StatusLine } from '../../status';
 import { useSession } from '../../auth/session';
 import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
-import { provideAttachments, signedUrlsFrom } from '../../editor/attachments';
+import { provideAttachments, quietApiOf, signedUrlsFrom } from '../../editor/attachments';
 import { sessionDirectory } from '../../editor/core/directory';
 import { useApiQuery } from '../../api/query';
 import { recheckMinClientVersion } from '../../gate/recheck';
-import { Button } from '../../ui/primitives';
+import { Button, notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
 import { ResetNotice } from './ResetNotice';
@@ -76,7 +76,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   useEffect(() => {
     const element = rootRef.current;
     if (element === null || session === null) return;
-    const disposeAttachments = provideAttachments(element, { fetchUrls: signedUrlsFrom(session.api) });
+    const disposeAttachments = provideAttachments(element, { fetchUrls: signedUrlsFrom(session.api), pageId: page.id, api: session.api, uploadApi: quietApiOf(session), notify });
     let cancelled = false;
     let live: MountedEditor | null = null;
     let saved: MountedEditor | null = null;
