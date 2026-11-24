@@ -26,7 +26,7 @@ The check signs in and reads. It creates no user, changes no setting, flow or ke
 5. After the redirect to the page asked for, read the browser's local storage: record R6 (which of `DS`, `DSR` and `DSI` exist and what kind of value each holds; never the value). Decode the session token's header and payload on the machine (not in an online tool): record R4 and R5.
 6. Check that the app's own document never loaded the provider's scripts: in the network panel of the app page, record whether the session refresh loaded any script (CSP option C1).
 7. Ask the server who the session belongs to: `GET /v1/me` with the session token answers 200 and the user the provider knows. Record R9, with whether the account was provisioned and with which role.
-8. Repeat step 4 and 5 once with each content-security-policy mode of the header renderer (`--signin=login-document`, the default, and `--signin=app-wide`) and record C3.
+8. Repeat steps 4 and 5 under each of the two content-security-policy modes, the separate sign-in document (the default) and one policy for both documents (`app-wide`), and record C3. **This step depends on the header renderer, which is not built yet:** today `scripts/serve.mjs` applies the single file `headers/headers.template`, which has no content-security-policy. Until the renderer exists the step cannot be run, and C3 stays `not run`.
 9. Try the options of CSP option C2 on the sign-in page and record what changes.
 10. Sign out and check that `DS`, `DSR` and `DSI` are gone and that the session no longer works.
 
@@ -54,7 +54,7 @@ The default is a separate sign-in document (`login.html`) with its own policy; t
 |---|---|---|
 | C1 | Does the SDK's session refresh in the app load any script? (The default mode needs none.) | not run |
 | C2 | Does `@descope/web-component` 4.7.5 load its static assets from the app's own origin when `base-static-url` and `base-cdn-url` are set, so that `cdn.jsdelivr.net` can be dropped? Which origins remain? | not run |
-| C3 | What does the browser report under the policy of `--signin=login-document` and of `--signin=app-wide`? | not run |
+| C3 | What does the browser report under the policy of each mode, the separate sign-in document and `app-wide`? (Needs the header renderer, which is not built yet.) | not run |
 
 ## The automated job
 

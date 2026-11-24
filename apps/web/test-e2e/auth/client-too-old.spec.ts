@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { parseVersion } from '@tektum/grimoire-core/version';
+import { compareVersions, parseVersion } from '@tektum/grimoire-core/version';
+import { CLIENT_VERSION } from '../../src/version';
 import { apiUrl } from '../support/env';
 import { pointAtApi } from './support';
 
@@ -9,14 +10,18 @@ test.describe('a client that is too old', () => {
   test('the gate shows the reload text when the server asks for a newer client, and the app loads when it does not', async ({ page }) => {
     const config = (await (await page.request.get(`${apiUrl()}/v1/config`)).json()) as { minClientVersion: string };
     const min = parseVersion(config.minClientVersion);
+    const client = parseVersion(CLIENT_VERSION);
     expect(min).not.toBeNull();
+    expect(client).not.toBeNull();
     await pointAtApi(page);
     await page.goto('/search');
-    if (min![0] > 0) {
+    if (compareVersions(client!, min!) < 0) {
+      // Any minimum above this client's version, 0.0.1 included, holds the page back at the gate.
       await expect(page.getByText('A new version is available. Reload.')).toBeVisible();
       expect(await page.locator('body').innerText()).toBe('A new version is available. Reload.');
     } else {
-      await page.waitForURL(/\/login\?|\/search$/);
+      // The gate lets the app through: a signed-out visit goes on to the sign-in document, which only renders once the configuration was accepted.
+      await expect(page.getByRole('heading', { level: 1, name: 'Sign in to Grimoire' })).toBeVisible();
       await expect(page.getByText('A new version is available. Reload.')).toHaveCount(0);
     }
   });

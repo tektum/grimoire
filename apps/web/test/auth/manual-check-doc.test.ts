@@ -53,6 +53,12 @@ describe('docs/proof/m6-signin-manual.md', () => {
     expect(rows('What the owner has to provide or approve first').length).toBeGreaterThanOrEqual(6);
   });
 
+  it('does not send the reader to a command that does not exist: the policy modes depend on the header renderer, said so', () => {
+    expect(doc).not.toContain('--signin=');
+    expect(doc).toContain('depends on the header renderer, which is not built yet');
+    expect(rows('CSP options').find((r) => r[0] === 'C3')?.[1]).toContain('not built yet');
+  });
+
   it('holds no secret, no project id and no machine path', () => {
     expect(doc).not.toMatch(/\bP2[A-Za-z0-9]{20,}\b/); // a project id
     expect(doc).not.toMatch(/\/home\/|\/Users\/|C:\\\\/);

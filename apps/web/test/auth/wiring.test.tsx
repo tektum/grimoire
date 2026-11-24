@@ -102,6 +102,16 @@ describe('the app wired to the gate and the session', () => {
     expect(t.storage.get(DEV_TOKEN_KEY)).toBeNull();
   });
 
+  it('keeps the Sign out button, without a name or role, when /v1/me fails: the way out does not depend on that answer', async () => {
+    const t = run({ token: `dev:${SECRET}:alice:member`, api: () => json(500, { error: { code: 'internal' } }) });
+    const button = await screen.findByRole('button', { name: 'Sign out' });
+    await waitFor(() => expect(t.requests.length).toBeGreaterThan(0));
+    expect(screen.queryByTestId('user-name')).toBeNull();
+    expect(screen.queryByTestId('user-role')).toBeNull();
+    button.click();
+    await waitFor(() => expect(t.redirect).toHaveBeenCalledWith('/login?return=%2Fp%2Fsome-page-ab12cd%3Fx%3D1'));
+  });
+
   it('a 426 client_too_old answer replaces the app with the reload text, and no further call is sent', async () => {
     const t = run({ token: `dev:${SECRET}:alice:member`, api: () => json(426, { error: { code: 'client_too_old' } }) });
     expect(await screen.findByText(GATE_MESSAGES.outdated)).toBeTruthy();
