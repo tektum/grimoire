@@ -19,7 +19,7 @@ interface Data {
 const fakeApi = (data: Data): ApiLike => {
   const answer = (path: string, init?: { params?: { path?: { urlId?: string } } }) => {
     const found = path === '/v1/pages/by-url-id/{urlId}' ? (data.pages as { urlId: string }[]).find((p) => p.urlId === init?.params?.path?.urlId) : undefined;
-    const body = path === '/v1/collections' ? { items: data.collections } : path === '/v1/trash' ? { items: data.trash ?? [], nextCursor: null } : found !== undefined ? { ...found, collectionId: 'c1' } : { pages: data.pages };
+    const body = path === '/v1/me' ? { id: 'u1', name: 'Alice Example', email: 'alice@dev.invalid', role: 'member' } : path === '/v1/collections' ? { items: data.collections } : path === '/v1/trash' ? { items: data.trash ?? [], nextCursor: null } : found !== undefined ? { ...found, collectionId: 'c1' } : { pages: data.pages };
     return Promise.resolve({ data: body, response: new Response(null, { status: 200 }) });
   };
   const none = () => Promise.resolve({ response: new Response(null, { status: 404 }) });

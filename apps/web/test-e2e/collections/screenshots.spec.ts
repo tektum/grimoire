@@ -113,6 +113,17 @@ test('a page open with the tree beside it, light and dark', async ({ page: tab, 
   try {
     await expect(tab.getByRole('heading', { level: 1, name: 'Install the tools' })).toBeVisible();
     await expect(tab.getByRole('link', { name: 'Install the tools', exact: true }).and(tab.locator('[aria-current="page"]'))).toBeVisible(); // the branches above the page are open and the page is marked
+    await expect(tab.getByTestId('user-name')).toHaveText('Alice Example'); // the real header: who is signed in and what they may do
+    // The compact New page button: its text is in the middle of it, and it is not taller than a row of the tree.
+    const box = await tab.getByRole('button', { name: 'New page' }).evaluate((button) => {
+      const range = document.createRange();
+      range.selectNodeContents(button);
+      const text = range.getBoundingClientRect();
+      const outer = button.getBoundingClientRect();
+      return { offCentre: Math.abs(text.top + text.height / 2 - (outer.top + outer.height / 2)), height: outer.height };
+    });
+    expect(box.offCentre).toBeLessThan(1.5);
+    expect(box.height).toBeLessThanOrEqual(32);
     await tab.mouse.move(0, 0);
     await shots(tab, TASK, 'page-with-contents');
   } finally {

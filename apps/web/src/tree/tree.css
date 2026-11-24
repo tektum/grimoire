@@ -109,3 +109,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A compact button for the narrow contents area: tokens only, the text centred in it. */
+.contents-head button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  line-height: 1.25;
+}
