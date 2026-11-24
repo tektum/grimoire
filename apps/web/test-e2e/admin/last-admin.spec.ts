@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { adminApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'admin-specs-secret-000000001';
-
 // Demoting or suspending the only administrator is refused (409 `last_admin`): the screen says so in words and keeps the role the server has.
 test('demoting the last administrator says there must be at least one, and the role stays admin', async ({ page, context }) => {
   await signInAs(context, 'e2e-alice', 'admin', { check: false });

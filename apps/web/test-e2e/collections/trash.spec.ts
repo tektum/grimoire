@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // The trash screen: one row per deleted batch, Restore, and the empty trash. Needs a development build of the client (`bunx vite build --mode e2e`); the API is stood in for by `mockApi`.
 const item = (id: string, title: string) => ({ id, title, collectionId: 'c1', deletedAt: Date.UTC(2026, 10, 20, 9, 0), deletedBy: null, daysLeft: 20 });
 const page0 = (id: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId: null, position: 'p0000', title, icon: null });

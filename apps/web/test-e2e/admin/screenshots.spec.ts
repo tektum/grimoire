@@ -4,8 +4,6 @@ import { signInAs } from '../support/sign-in';
 import { adminApi, type MockUser } from './mock-api';
 import { openReset } from './reset-support';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'admin-specs-secret-000000001';
-
 // Screenshots of the admin screens, light and dark, 1280 by 800, from the built client with the stand-in API (test-results/shots/M6-T12/). This machine's default
 // sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text, as in the other shots.
 const TASK = 'M6-T12';

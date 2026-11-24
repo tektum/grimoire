@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // The tree is read again on a return to the window and every 60 s (R11.4), and not otherwise. Needs a development build of the client:
 // `bunx vite build --mode e2e` in apps/web. The API is stood in for by `mockApi`, which counts the reads of the tree.
 const page0 = (id: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId: null, position: `p${id}`, title, icon: null });

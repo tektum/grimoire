@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { BrowserContext } from '@playwright/test';
 import { buildDevToken, DevTokenError, type DevRole } from '../../test/support/dev-token';
 import { apiUrl, devSecret } from './env';
@@ -6,6 +7,12 @@ import { apiUrl, devSecret } from './env';
 export const DEV_TOKEN_STORAGE_KEY = 'grimoire.dev-token';
 /** `dev-token-expires`: when the token ends (ms since the epoch); the client treats a token without it as not signed in. A development token lives one hour. */
 export const DEV_TOKEN_EXPIRES_STORAGE_KEY = 'grimoire.dev-token-expires';
+
+/**
+ * The secret of the token a spec that stands in for the API gets (`check: false`): nothing verifies that token, so no real secret is read or needed, and no spec has to
+ * put one in the process environment (which every spec of a run would share).
+ */
+export const STAND_IN_SECRET = randomBytes(16).toString('hex'); // made at run time, never a literal in the repository
 
 export interface SignedInUser {
   readonly userId: string;
@@ -19,7 +26,7 @@ export interface SignedInUser {
  * `playwright.config.ts` keeps no traces in CI, and a local trace holds the token of a stack that accepts it in local mode only.
  */
 export async function signInAs(context: BrowserContext, userId: string, role: DevRole = 'member', options: { check?: boolean } = {}): Promise<SignedInUser> {
-  const token = buildDevToken(devSecret(), userId, role);
+  const token = buildDevToken(options.check === false ? STAND_IN_SECRET : devSecret(), userId, role);
   if (options.check !== false) {
     let status: number;
     try {
