@@ -24,4 +24,9 @@ describe('the list styles use the design tokens only', () => {
     expect(css).toContain("li[data-item-type='task']::before");
     expect(css).toContain("[data-checked='true']::after");
   });
+
+  it('gives the number of an ordered item a column that grows with it, so a long number never runs into the text', () => {
+    expect(css).toMatch(/ol > li \{[^}]*display: grid[^}]*max-content/);
+    expect(css).toMatch(/ol > li::before \{[^}]*position: static/);
+  });
 });

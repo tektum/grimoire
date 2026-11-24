@@ -8,7 +8,10 @@
 .page-text li > ul,
 .page-text li > ol { margin: var(--space-1) 0 0; }
 .page-text li { position: relative; padding-inline-start: var(--space-5); margin: 0 0 var(--space-1); }
-.page-text ol > li { padding-inline-start: calc(var(--space-5) + var(--space-2)); }
+/* Ordered items: the marker has a column of its own that is at least wide enough for three digits and grows for a longer number (a list can start at 998). */
+.page-text ol > li { display: grid; grid-template-columns: minmax(2em, max-content) minmax(0, 1fr); column-gap: var(--space-2); padding-inline-start: 0; }
+.page-text ol > li::before { position: static; grid-column: 1; grid-row: 1; white-space: nowrap; }
+.page-text ol > li > * { grid-column: 2; }
 .page-text li > p { margin: 0; line-height: 1.7; }
 .page-text li::before { content: attr(data-label); position: absolute; inset-inline-start: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .page-text ul ul > li::before { content: '\25E6'; }

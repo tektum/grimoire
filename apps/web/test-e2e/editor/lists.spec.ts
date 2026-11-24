@@ -14,6 +14,12 @@ const MARKDOWN = [
   '4. fourth',
   '   1. nested step',
   '',
+  'A list that starts high:',
+  '',
+  '998. almost a thousand',
+  '999. nearly',
+  '1000. a thousand',
+  '',
   '- [ ] an open task',
   '- [x] a done task',
   '',
@@ -39,6 +45,20 @@ test.describe('lists in the page text', () => {
       const numbered = editor.locator('li[data-list-type="ordered"]');
       expect(await marker(numbered.nth(0))).toBe('"3."');
       expect(await marker(numbered.nth(1))).toBe('"4."');
+      // A long number runs into nothing: the text starts after the whole label.
+      const long = editor.locator('li[data-label="1000."]');
+      expect(await marker(long)).toBe('"1000."');
+      const gap = await long.evaluate((li) => li.firstElementChild!.getBoundingClientRect().left - li.getBoundingClientRect().left);
+      const labelWidth = await long.evaluate((li) => {
+        const probe = document.createElement('span');
+        probe.textContent = getComputedStyle(li, '::before').content.replaceAll('"', '');
+        probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums';
+        li.append(probe);
+        const width = probe.getBoundingClientRect().width;
+        probe.remove();
+        return width;
+      });
+      expect(gap).toBeGreaterThanOrEqual(labelWidth);
       const tasks = editor.locator('li[data-item-type="task"]');
       expect(await marker(tasks.nth(0))).toBe('""'); // a box, not a bullet
       expect(await style(tasks.nth(0), 'border-top-style')).toBe('solid');
