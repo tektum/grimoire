@@ -16,6 +16,8 @@ export interface Harness {
   cursorAtStart(): void;
   /** Selects the cells from (row, column) to (row, column) of the first table, as dragging across them does. */
   selectCells(from: [number, number], to: [number, number]): void;
+  /** Puts the cursor in the n-th code block (counting from 0). */
+  cursorInCode(n: number): void;
   destroy(): Promise<void>;
 }
 
@@ -69,6 +71,18 @@ export async function makeEditor(markdown: string, extra: MilkdownPlugin | Milkd
         return found;
       };
       view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellPos(...from), cellPos(...to))));
+    },
+    cursorInCode(n) {
+      let found = -1;
+      let seen = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'code_block') {
+          seen += 1;
+          if (seen === n) found = pos + 1;
+        }
+        return found < 0;
+      });
+      select(found >= 0 ? found : 1);
     },
     destroy: async () => {
       await editor.destroy(true);

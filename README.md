@@ -160,6 +160,10 @@ On a window narrower than 1,200 pixels the outline is left out.
 
 In a table, the controls to add or delete a row or a column sit right under it, and the cell you are in is marked.
 
+![The language picker of a code block](docs/screenshots/m6-t05a/code-language-light.png)
+
+In a code block, a select below it sets the language written after the fence.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

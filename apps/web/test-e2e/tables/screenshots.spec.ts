@@ -25,3 +25,17 @@ test('a table with its controls and one cell focused, light and dark', async ({ 
     await editor.stop();
   }
 });
+
+test('the language picker of a code block, light and dark', async ({ page }) => {
+  const editor = await openEditor(page, ['# Release script', 'The step that builds the bundle:', '```ts\nconst bundle = await build({ minify: true });\nawait publish(bundle);\n```', 'Run it from the root of the repository.'].join('\n\n'), { sans: true });
+  try {
+    await page.locator('pre').click();
+    const picker = page.getByRole('combobox', { name: 'Language of this code block' });
+    await expect(picker).toHaveValue('ts');
+    await picker.focus();
+    await page.mouse.move(0, 0);
+    await shots(page, TASK, 'code-language');
+  } finally {
+    await editor.stop();
+  }
+});
