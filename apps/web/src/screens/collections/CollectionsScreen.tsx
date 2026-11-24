@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { type ApiLike, queryKey } from '../../api/query';
 import { Button } from '../../ui/primitives';
@@ -36,6 +37,7 @@ export function CollectionsScreen({ api, collectionId }: { readonly api: ApiLike
   const collections = useCollections(api);
   const tree = useCollectionTree(api, collectionId);
   const current = collections.data?.find((c) => c.id === collectionId);
+  const items = useMemo(() => buildTree(tree.data ?? []), [tree.data]);
   return (
     <div className="collections">
       <nav aria-label="Collections" className="collections-list">
@@ -58,14 +60,14 @@ export function CollectionsScreen({ api, collectionId }: { readonly api: ApiLike
         ) : (
           <>
             <h1 id="collection-title">{current?.name ?? 'Collection'}</h1>
-            {tree.isError ? (
+            {tree.isError && tree.data === undefined ? (
               <p role="alert">
                 Couldn&apos;t load the pages. <Button onClick={() => void tree.refetch()}>Try again</Button>
               </p>
             ) : tree.data === undefined ? (
               <p>Loading</p>
             ) : (
-              <Tree items={buildTree(tree.data)} />
+              <Tree items={items} />
             )}
           </>
         )}

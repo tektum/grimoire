@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { Tree } from '../../src/tree/Tree';
 import type { TreeItem } from '../../src/tree/model';
@@ -12,6 +12,7 @@ const items: TreeItem[] = [
   leaf('plain', 'Plain page'),
 ];
 const show = () => render(<MemoryRouter><Tree items={items} /></MemoryRouter>);
+const Where = () => <output aria-label="location">{useLocation().pathname}</output>;
 const names = () => screen.getAllByRole('treeitem').map((row) => within(row).getByRole('link').textContent);
 
 describe('Tree', () => {
@@ -58,5 +59,22 @@ describe('Tree', () => {
     render(<MemoryRouter><Tree items={items} currentUrlId="nested" /></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'Nested' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Plain page' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('opens the page of the focused row with Enter, from the keyboard alone', async () => {
+    render(<MemoryRouter><Tree items={items} /><Where /></MemoryRouter>);
+    const row = screen.getAllByRole('treeitem')[1] as HTMLElement; // Nested
+    await userEvent.click(row.querySelector('.tree-row') as HTMLElement);
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByLabelText('location').textContent).toBe('/p/nested-nested');
+  });
+
+  it('keeps its rows (and the focus inside them) when the list is read again with the same pages', async () => {
+    const view = render(<MemoryRouter><Tree items={items} /></MemoryRouter>);
+    const toggle = screen.getByRole('button', { name: 'Collapse Welcome' });
+    toggle.focus();
+    view.rerender(<MemoryRouter><Tree items={structuredClone(items)} /></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'Collapse Welcome' })).toBe(toggle);
+    expect(document.activeElement).toBe(toggle);
   });
 });

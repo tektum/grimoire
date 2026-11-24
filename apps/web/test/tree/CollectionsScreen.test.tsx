@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { CollectionsScreen } from '../../src/screens/collections/CollectionsScreen';
@@ -55,5 +55,16 @@ describe('CollectionsScreen', () => {
     renderAt(<CollectionsScreen api={api} collectionId="c1" />);
     expect(await screen.findByText("Couldn't load the collections.")).toBeTruthy();
     await waitFor(() => { expect(screen.getAllByRole('treeitem')).toHaveLength(2); });
+  });
+
+  it('keeps the tree it has when a later read fails, instead of replacing it with an error', async () => {
+    let reads = 0;
+    const { api } = fakeApi({ 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}/tree': () => (reads++ === 0 ? ok(TREE) : { status: 503 }) });
+    renderAt(<CollectionsScreen api={api} collectionId="c1" />);
+    await waitFor(() => { expect(screen.getAllByRole('treeitem')).toHaveLength(2); });
+    fireEvent.focus(window);
+    await waitFor(() => { expect(reads).toBe(2); });
+    await expect(screen.findByRole('alert', {}, { timeout: 200 })).rejects.toThrow(); // no error replaces the tree
+    expect(screen.getAllByRole('treeitem')).toHaveLength(2);
   });
 });
