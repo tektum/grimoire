@@ -25,6 +25,7 @@ describe('GET /v1/config', () => {
       minClientVersion: '1.4.2',
       local: true,
       providerProjectId: null,
+      providerBaseUrl: null,
       fileStoreOrigin: null,
     });
   });
@@ -36,6 +37,13 @@ describe('GET /v1/config', () => {
     const body = (await (await app.request('/v1/config')).json()) as Record<string, unknown>;
     expect(body['providerProjectId']).toBe('P2abc');
     expect(body['fileStoreOrigin']).toBe('https://files.example.test');
+  });
+
+  it('returns the sign-in provider base URL of a regional project, and null when none is set', async () => {
+    const regional = build({ publicCollabUrl: 'wss://docs.example.test/collab', descopeProjectId: 'P2abc', descopeBaseUrl: 'https://api.use1.example.test' });
+    expect(((await (await regional.app.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBe('https://api.use1.example.test');
+    const plain = build({ publicCollabUrl: 'wss://docs.example.test/collab', descopeProjectId: 'P2abc' });
+    expect(((await (await plain.app.request('/v1/config')).json()) as Record<string, unknown>)['providerBaseUrl']).toBeNull();
   });
 
   it('reports local true only in local mode', async () => {

@@ -8,6 +8,7 @@ export const ClientConfigSchema = z
     minClientVersion: z.string().describe('Oldest client version the server accepts'),
     local: z.boolean().describe('True only in local (development) mode'),
     providerProjectId: z.string().nullable().describe('Sign-in provider project id; null when none is configured'),
+    providerBaseUrl: z.string().nullable().describe('Base URL of the sign-in provider for a regional project; null for the default region'),
     fileStoreOrigin: z.string().nullable().describe('Public origin of the file store; null when no store is configured'),
   })
   .openapi('ClientConfig');
@@ -44,6 +45,7 @@ router.openapi(getConfig, (c) => {
       minClientVersion: config.minClientVersion,
       local: config.local,
       providerProjectId: config.descopeProjectId ?? null,
+      providerBaseUrl: config.descopeBaseUrl ?? null,
       fileStoreOrigin: config.files?.publicOrigin ?? null,
     },
     200,
