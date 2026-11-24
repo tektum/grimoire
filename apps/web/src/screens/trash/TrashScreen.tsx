@@ -1,23 +1,15 @@
 import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import type { components } from '@tektum/grimoire-api-client';
 import { type ApiLike, queryKey } from '../../api/query';
 import { Button, notify } from '../../ui/primitives';
 import { HttpError } from '../../tree/useTree';
 import { useCollections } from '../collections/useCollections';
 import './trash.css';
 
-/** A batch of deleted pages as the trash lists it: its root page. */
-interface TrashRow {
-  readonly id: string;
-  readonly title: string;
-  readonly collectionId: string;
-  readonly deletedAt: number;
-  readonly daysLeft: number;
-}
-interface TrashPage {
-  readonly items: readonly TrashRow[];
-  readonly nextCursor: string | null;
-}
+/** A batch of deleted pages and a page of the list, as the API answers them: the generated client's shapes. */
+type TrashRow = Readonly<components['schemas']['TrashItem']>;
+type TrashPage = Readonly<components['schemas']['TrashList']>;
 
 const TRASH_PATH = '/v1/trash';
 const trashKey = queryKey('GET', TRASH_PATH, undefined);
@@ -47,12 +39,16 @@ export function TrashScreen({ api }: { readonly api: ApiLike }) {
     setRestoring((s) => new Set(s).add(row.id));
     try {
       const { response } = await api.POST('/v1/trash/{id}/restore' as never, { params: { path: { id: row.id } } } as never);
-      if (response.ok) notify(`Restored ${row.title === '' ? 'Untitled' : row.title}`);
+      if (response.ok) {
+        notify(`Restored ${row.title === '' ? 'Untitled' : row.title}`);
+        // Off the list at once: a second Restore would be answered 404 (the batch has left the trash), and a new read of the list may fail.
+        client.setQueryData<InfiniteData<TrashPage, string | null>>(trashKey, (data) => data && { ...data, pages: data.pages.map((p) => ({ ...p, items: p.items.filter((i) => i.id !== row.id) })) });
+      }
     } catch {
       // The wrapper has shown why (the network); the row stays, and the list is read again below.
     } finally {
+      await client.invalidateQueries({ queryKey: trashKey }); // the row stays disabled until the list has been read again
       setRestoring((s) => { const next = new Set(s); next.delete(row.id); return next; });
-      await client.invalidateQueries({ queryKey: trashKey });
     }
   };
 

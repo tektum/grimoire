@@ -122,4 +122,45 @@ describe('the trash screen', () => {
     await screen.findByText('Last day');
     expect(rows()[0]?.textContent).toContain('0 days left');
   });
+
+  it('keeps the row disabled while the list is being read again after a restore', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let reads = 0;
+    const { api, calls } = fakeApi({
+      'GET /v1/collections': ok({ items: COLLECTIONS }),
+      'POST /v1/trash/{id}/restore': { status: 200, body: { id: 'a', title: 'Plan for May' } },
+    });
+    const get = api.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    (api as unknown as { GET: typeof get }).GET = async (path, init) => {
+      if (path === '/v1/trash') {
+        reads += 1;
+        if (reads > 1) await gate; // the read that follows the restore stays open
+        return { data: { items: [item('a', 'Plan for May')], nextCursor: null }, response: new Response(null, { status: 200 }) };
+      }
+      return get(path, init);
+    };
+    show(api);
+    const button = await screen.findByRole('button', { name: 'Restore Plan for May' });
+    await userEvent.click(button);
+    await waitFor(() => { expect(reads).toBe(2); });
+    expect(calls.filter((c) => c.startsWith('POST /v1/trash'))).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Restore Plan for May' })?.hasAttribute('disabled') ?? true).toBe(true); // gone, or at least not clickable
+    release();
+  });
+
+  it('takes a restored row off the list at once, so it cannot be restored again when the new read of the list fails', async () => {
+    let reads = 0;
+    const { api, calls } = fakeApi({
+      'GET /v1/collections': ok({ items: COLLECTIONS }),
+      'GET /v1/trash': () => (reads++ === 0 ? ok({ items: [item('a', 'Plan for May'), item('b', 'Old notes')], nextCursor: null }) : { status: 503 }),
+      'POST /v1/trash/{id}/restore': { status: 200, body: { id: 'a', title: 'Plan for May' } },
+    });
+    show(api);
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore Plan for May' }));
+    await waitFor(() => { expect(reads).toBe(2); });
+    expect(screen.queryByRole('button', { name: 'Restore Plan for May' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Restore Old notes' })).toBeTruthy();
+    expect(calls.filter((c) => c.startsWith('POST /v1/trash'))).toHaveLength(1);
+  });
 });
