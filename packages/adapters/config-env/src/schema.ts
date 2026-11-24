@@ -61,6 +61,7 @@ const descopeBaseUrl = httpUrl.superRefine((v, ctx) => {
   if (url.username !== '' || url.password !== '') ctx.addIssue({ code: 'custom', message: 'must not contain username or password credentials' });
 });
 const dbRule = 'must be a postgres:// or postgresql:// URL';
+const dbPassword = z.string(msg('must be a string')).min(16, msg('must be at least 16 characters'));
 const dbUrl = z.url({ protocol: /^postgres(?:ql)?$/, ...msg(dbRule) }).regex(/^postgres(?:ql)?:\/\//, msg(dbRule));
 const originRule = 'must be a comma list of scheme://host[:port] origins with no path and no wildcard';
 // zod has no "origin" format: a URL whose origin equals itself rules out paths, queries and wildcards.
@@ -82,7 +83,7 @@ const domain = z.string(msg(domainRule)).transform((v, ctx) => {
   return v.toLowerCase();
 });
 
-type Purpose = 'server' | 'migrate' | 'files-setup';
+type Purpose = 'server' | 'migrate' | 'files-setup' | 'db-setup';
 type Raw = Readonly<Record<string, string>>;
 type S3Required = 'ENDPOINT' | 'BUCKET';
 const S3_ANY = ['ENDPOINT', 'PUBLIC_ENDPOINT', 'BUCKET', 'ACCESS_KEY', 'SECRET_KEY', 'REGION', 'ADDRESSING_STYLE'] as const;
@@ -113,6 +114,9 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_LOG_LEVEL: field(z.enum(['debug', 'info', 'warn', 'error'], msg('must be one of: debug, info, warn, error'))).default('info'),
   GRIMOIRE_DATABASE_URL: field(dbUrl, purpose === 'server' ? SERVER_ONLY : undefined),
   GRIMOIRE_DATABASE_MIGRATION_URL: field(dbUrl, purpose === 'migrate' ? 'is required to run migrations' : undefined),
+  GRIMOIRE_DATABASE_ADMIN_URL: field(dbUrl, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
+  GRIMOIRE_DB_APP_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
+  GRIMOIRE_DB_MIGRATOR_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
   GRIMOIRE_DESCOPE_PROJECT_ID: field(text),
   GRIMOIRE_DESCOPE_BASE_URL: field(descopeBaseUrl),
   GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS: field(int(1, 86400)).default(86400),
@@ -291,6 +295,11 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       error: () => `is required when the other ${P}S3_ADMIN_* key is set`,
     })
     // The running server never holds the admin key; only a local development stack may pass it (the test harness does).
+    // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
+    .refine(() => !(server && (set('GRIMOIRE_DATABASE_ADMIN_URL') || set('GRIMOIRE_DB_APP_PASSWORD') || set('GRIMOIRE_DB_MIGRATOR_PASSWORD'))), {
+      path: [set('GRIMOIRE_DATABASE_ADMIN_URL') ? 'GRIMOIRE_DATABASE_ADMIN_URL' : set('GRIMOIRE_DB_APP_PASSWORD') ? 'GRIMOIRE_DB_APP_PASSWORD' : 'GRIMOIRE_DB_MIGRATOR_PASSWORD'], when: always,
+      error: () => 'must not be set for the server: only the db-setup step holds the administrator connection and the role passwords',
+    })
     .refine(() => !(server && !local && set('GRIMOIRE_S3_ADMIN_ACCESS_KEY')), {
       path: ['GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
       error: () => 'must not be set for the server outside local mode: only the files-setup step holds the admin key',
@@ -349,6 +358,9 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
     ...(v.GRIMOIRE_DATABASE_URL !== undefined ? { url: v.GRIMOIRE_DATABASE_URL } : {}),
     ...(v.GRIMOIRE_DATABASE_MIGRATION_URL !== undefined ? { migrationUrl: v.GRIMOIRE_DATABASE_MIGRATION_URL } : {}),
   },
+  ...(purpose === 'db-setup' && v.GRIMOIRE_DATABASE_ADMIN_URL !== undefined && v.GRIMOIRE_DB_APP_PASSWORD !== undefined && v.GRIMOIRE_DB_MIGRATOR_PASSWORD !== undefined
+    ? { dbSetup: { adminUrl: v.GRIMOIRE_DATABASE_ADMIN_URL, appPassword: v.GRIMOIRE_DB_APP_PASSWORD, migratorPassword: v.GRIMOIRE_DB_MIGRATOR_PASSWORD } }
+    : {}),
   ...(v.GRIMOIRE_DEV_TOKEN_SECRET !== undefined ? { devTokenSecret: v.GRIMOIRE_DEV_TOKEN_SECRET } : {}),
   localAllowNonLoopback: v.GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK === '1',
   ...(v.GRIMOIRE_DESCOPE_PROJECT_ID !== undefined ? { descopeProjectId: v.GRIMOIRE_DESCOPE_PROJECT_ID } : {}),

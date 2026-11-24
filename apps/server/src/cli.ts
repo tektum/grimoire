@@ -2,7 +2,7 @@
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
-import { composeFilesSetup, composeSeed, runFilesSetup } from './composition.js';
+import { composeDbSetup, composeFilesSetup, composeSeed, runDbSetup, runFilesSetup } from './composition.js';
 import { composeMigrate } from './lifecycle/compose-migrate.js';
 import { seedLocal } from './seed/index.js';
 
@@ -83,6 +83,26 @@ async function filesSetup(): Promise<number> {
   }
 }
 
+/**
+ * `grimoire db-setup`: makes a managed database ready for `grimoire migrate` (the two roles with their passwords, the schemas, citext), as the
+ * database administrator, before the first migration and again whenever a password is rotated. Safe to run again. Prints which roles it made, never a password.
+ */
+async function dbSetup(): Promise<number> {
+  const composed = composeDbSetup();
+  if (!composed.ok) return composed.code;
+  const { db, passwords, log } = composed.ctx;
+  try {
+    const result = await runDbSetup(db, passwords);
+    log.info('db_setup.done', { created: result.created, updated: result.updated });
+    return 0;
+  } catch (e) {
+    log.error('db_setup.failed', { error: e instanceof Error ? e.message : 'unknown error' });
+    return 1;
+  } finally {
+    await db.close().catch(() => undefined);
+  }
+}
+
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'migrate') {
   process.exitCode = await migrate(rest);
@@ -90,9 +110,11 @@ if (command === 'migrate') {
   process.exitCode = await seed();
 } else if (command === 'files-setup') {
   process.exitCode = await filesSetup();
+} else if (command === 'db-setup') {
+  process.exitCode = await dbSetup();
 } else {
   process.stderr.write(
-    'usage: grimoire migrate [--dir <migrations directory>] | grimoire seed | grimoire files-setup\n',
+    'usage: grimoire migrate [--dir <migrations directory>] | grimoire seed | grimoire files-setup | grimoire db-setup\n',
   );
   process.exitCode = 2;
 }

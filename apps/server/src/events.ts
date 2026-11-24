@@ -52,6 +52,8 @@ export interface InfoEvents {
   'migrate.done': { applied: number };
   'migrate.jobs_schema': { tables: number };
   'seed.done': Record<string, never>;
+  /** The database is ready for `grimoire migrate`: which of the two roles were created and which only had their password set. */
+  'db_setup.done': { created: readonly string[]; updated: readonly string[] };
   /** The store set-up finished: the bucket, the origins its CORS rule lists (or was checked for) and who set the rule. */
   'files_setup.done': { bucket: string; origins: readonly string[]; cors: 'api' | 'external' };
 }
@@ -85,6 +87,9 @@ export interface ErrorEvents {
   'process.fault': { kind: 'uncaughtException' | 'unhandledRejection'; errorName: string };
   'migrate.config_invalid': { settings: readonly ConfigProblem[] };
   'migrate.failed': { error: string };
+  'db_setup.config_invalid': { settings: readonly ConfigProblem[] };
+  /** The server's own message (never a password: they are quoted by the server and not part of any text we log). */
+  'db_setup.failed': { error: string };
   'seed.config_invalid': { settings: readonly ConfigProblem[] };
   'seed.refused': { settings: readonly ConfigProblem[] };
   'seed.failed': { error: string };
