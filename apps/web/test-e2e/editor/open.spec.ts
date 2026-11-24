@@ -22,6 +22,35 @@ test.describe('opening a page', () => {
     }
   });
 
+  test('while the connection is held back the saved text stays up, read-only and alone, and the one editor that replaces it is editable', async ({ browser, baseURL }) => {
+    test.slow();
+    const made = await makePage('# Held\n\nThe saved text, before the page has synced.\n');
+    const users = await twoUsers(browser, baseURL);
+    try {
+      const { page } = users.a;
+      // The provider cannot connect for as long as the spec says: each socket is closed at once, so the page stays on its first view.
+      let held = true;
+      await page.routeWebSocket(/.*/, (socket) => (held ? void socket.close({ code: 4000, reason: 'held back by the spec' }) : void socket.connectToServer()));
+      await page.goto(made.path);
+      const surface = page.locator('.ProseMirror');
+      await expect(surface).toHaveCount(1);
+      await expect(surface).toHaveAttribute('contenteditable', 'false');
+      await expect(surface).toContainText('The saved text, before the page has synced.');
+      await expect(page.getByTestId('editor-root')).not.toHaveAttribute('data-collab-state', 'synced');
+
+      held = false;
+      // The page waits out a backoff before its next attempt; the browser's own offline and online events make it connect at once.
+      await page.context().setOffline(true);
+      await page.context().setOffline(false);
+      await waitForSynced(page, { timeout: 60_000 });
+      await expect(surface).toHaveCount(1); // the saved view is gone, not kept beside the live editor
+      await expect(surface).toHaveAttribute('contenteditable', 'true');
+      await expect(surface).toContainText('The saved text, before the page has synced.');
+    } finally {
+      await users.close();
+    }
+  });
+
   test('leaving the page and coming back mounts exactly one editor again: the one that was left is gone', async ({ browser, baseURL }) => {
     const made = await makePage('# Again\n\nOne editor at a time.\n');
     const users = await twoUsers(browser, baseURL);
