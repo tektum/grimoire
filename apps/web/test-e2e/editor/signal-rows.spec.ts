@@ -2,7 +2,6 @@ import { expect, test, type Page } from '@playwright/test';
 import { scriptedCollabServer, type ScriptedCollabServerOptions } from '../support/collab-server';
 import { signInAs } from '../support/sign-in';
 import { recordHandshakes } from './handshakes';
-import { probe } from './probe';
 import { scriptedApi, useScriptedApi } from './scripted';
 
 /**
@@ -10,21 +9,26 @@ import { scriptedApi, useScriptedApi } from './scripted';
  * `page-full`) are driven here by a scripted collaboration server, with the app in a real browser: each says what the page shows and does.
  */
 /**
- * A later sentinel event: after the page's own attempts (made on a clock the test moves, over a real socket that reaches the server a moment later), a socket
- * of the test's own is refused by the same scripted server. Its token arriving means the server has taken everything the page sent before it; what
- * counts for the checks is the tokens that are not the sentinel's.
+ * Lets the page's own pending work run (a socket is made a few turns after the timer that asks for it fires): fifty turns of the browser's message loop,
+ * which the test's fake clock does not control, before an absence is checked in `attempts`.
  */
-const SENTINEL = 'sentinel';
-async function settledTokens(page: Page, collab: { url: string; tokens: string[] }): Promise<string[]> {
-  await probe(page, { collabUrl: collab.url, documentName: SENTINEL, handshake: SENTINEL, stopAtRefusal: true });
-  return collab.tokens.filter((token) => token !== SENTINEL);
+async function letPageSettle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let turn = 0; turn < 50; turn++) {
+      await new Promise<void>((resolve) => {
+        const channel = new MessageChannel();
+        channel.port1.onmessage = () => resolve();
+        channel.port2.postMessage(0);
+      });
+    }
+  });
 }
 
 async function withPage(
   browser: import('@playwright/test').Browser,
   baseURL: string | undefined,
   options: ScriptedCollabServerOptions,
-  body: (run: { page: Page; collab: Awaited<ReturnType<typeof scriptedCollabServer>>; handshakes: ReturnType<typeof recordHandshakes> }) => Promise<void>,
+  body: (run: { page: Page; collab: Awaited<ReturnType<typeof scriptedCollabServer>>; handshakes: ReturnType<typeof recordHandshakes>; attempts: string[] }) => Promise<void>,
 ): Promise<void> {
   const collab = await scriptedCollabServer(options);
   const api = await scriptedApi({ collabUrl: collab.url });
@@ -33,10 +37,13 @@ async function withPage(
     await signInAs(context, 'e2e-rows', 'member', { check: false });
     const page = await context.newPage();
     const handshakes = recordHandshakes(page);
+    // Every socket the page opens, noted when it is created: events reach the test in the order the page's code ran, so after the clock has been moved the count is exact.
+    const attempts: string[] = [];
+    page.on('websocket', (socket) => attempts.push(socket.url()));
     await page.clock.install(); // the waits of the page are the test's to move
     await useScriptedApi(page, api);
     await page.goto('/p/scripted-abc123');
-    await body({ page, collab, handshakes });
+    await body({ page, collab, handshakes, attempts });
   } finally {
     await context.close();
     await api.stop();
@@ -46,23 +53,26 @@ async function withPage(
 
 test.describe('the signal rows the real server cannot produce, on a scripted server', () => {
   test('forbidden: "You no longer have access to this page", the page stops and does not connect again', async ({ browser, baseURL }) => {
-    await withPage(browser, baseURL, { onAuth: { deny: 'forbidden' } }, async ({ page, collab }) => {
+    await withPage(browser, baseURL, { onAuth: { deny: 'forbidden' } }, async ({ page, collab, attempts }) => {
       await expect(page.getByText('You no longer have access to this page')).toBeVisible();
       await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
       expect(collab.tokens).toHaveLength(1);
       await page.clock.runFor(10 * 60_000); // any retry would have fired
-      expect(await settledTokens(page, collab), 'no second attempt').toHaveLength(1);
+      await letPageSettle(page);
+      expect(attempts, 'no second attempt').toHaveLength(1);
     });
   });
 
   test('page-full: the busy text is shown and the next attempt comes no sooner than 10 s', async ({ browser, baseURL }) => {
-    await withPage(browser, baseURL, { onAuth: { deny: 'page-full' } }, async ({ page, collab }) => {
+    await withPage(browser, baseURL, { onAuth: { deny: 'page-full' } }, async ({ page, collab, attempts }) => {
       await expect(page.getByText('This page already has 100 people editing. Try again in a moment.')).toBeVisible();
       expect(collab.tokens).toHaveLength(1);
       await page.clock.runFor(9_000);
-      expect(await settledTokens(page, collab), 'no attempt before the 10 s are up').toHaveLength(1);
+      await letPageSettle(page);
+      expect(attempts, 'no attempt before the 10 s are up').toHaveLength(1);
       await page.clock.runFor(25_000); // the wait is at least 10 s, and grows with each refusal
-      await expect.poll(() => collab.tokens.filter((token) => token !== SENTINEL).length).toBeGreaterThanOrEqual(2); // the sentinel's own token is not an attempt of the page
+      await expect.poll(() => attempts.length, { message: 'the attempt after the wait' }).toBeGreaterThanOrEqual(2); // the socket is made a few turns after the timer fires
+      await expect.poll(() => collab.tokens.length).toBeGreaterThanOrEqual(2);
     });
   });
 

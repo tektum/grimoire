@@ -11,8 +11,8 @@ export interface Observed {
   readonly malformed?: true;
 }
 
-export async function probe(page: Page, options: { collabUrl: string; documentName: string; handshake: string; stopAtRefusal?: boolean }): Promise<Observed> {
-  return page.evaluate(async ({ collabUrl, documentName, handshake, stopAtRefusal }) => {
+export async function probe(page: Page, options: { collabUrl: string; documentName: string; handshake: string }): Promise<Observed> {
+  return page.evaluate(async ({ collabUrl, documentName, handshake }) => {
     const uint = (out: number[], value: number) => {
       let n = value;
       while (n > 127) {
@@ -61,10 +61,10 @@ export async function probe(page: Page, options: { collabUrl: string; documentNa
           readString(bytes, at);
           if (readUint(bytes, at) === 2 && readUint(bytes, at) === 1) {
             seen.denied = readString(bytes, at); // permission denied, with its reason
-            if (stopAtRefusal === true) resolve(seen); // a server that does not close after a refusal (a scripted one) is not waited on
           }
         } catch {
           seen.malformed = true; // a frame the probe cannot read is reported, not waited on
+          socket.close();
           resolve(seen);
         }
       };
