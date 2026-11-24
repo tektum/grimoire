@@ -23,8 +23,10 @@ export function ResetPageDialog({ api, page, open, onOpenChange }: {
   const [problem, setProblem] = useState<string | null>(null);
   const [older, setOlder] = useState(false);
   const sending = useRef(false);
+  const generation = useRef(0); // each closing starts a new one: an answer to a call made before it is not shown
 
   const close = (): void => {
+    generation.current += 1;
     setView('ask');
     setMarkdown('');
     setProblem(null);
@@ -36,6 +38,7 @@ export function ResetPageDialog({ api, page, open, onOpenChange }: {
   const send = async (confirmStale: boolean): Promise<void> => {
     if (sending.current) return;
     sending.current = true;
+    const mine = generation.current;
     setBusy(true);
     setProblem(null);
     try {
@@ -45,6 +48,7 @@ export function ResetPageDialog({ api, page, open, onOpenChange }: {
         error?: { error?: { code?: string; message?: string } };
         response: Response;
       };
+      if (mine !== generation.current) return; // the dialog was closed meanwhile
       if (response.ok && data !== undefined) {
         setOlder(data.markdownStale);
         setView('done');
@@ -55,6 +59,7 @@ export function ResetPageDialog({ api, page, open, onOpenChange }: {
         setProblem(response.status === 422 && error?.error?.message !== undefined ? error.error.message : "The state wasn't reset. Try again.");
       }
     } catch {
+      if (mine !== generation.current) return;
       setView('ask');
       setProblem("The state wasn't reset. Try again.");
     } finally {

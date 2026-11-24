@@ -55,13 +55,32 @@ describe('the reset-state dialog', () => {
   it('does not send twice while the call is on its way', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const { api, of } = fakeApi({ [`POST ${URL}`]: () => { void gate; return ok({ stateEpoch: 3, markdownStale: false }); } });
+    const { api, of } = fakeApi({ [`POST ${URL}`]: async () => { await gate; return ok({ stateEpoch: 3, markdownStale: false }); } });
     show(api);
     const button = within(await dialog()).getByRole('button', { name: 'Reset state' });
-    await userEvent.dblClick(button);
+    await userEvent.click(button);
+    await userEvent.click(button);
+    expect(of('POST', URL)).toHaveLength(1); // held open: the second press found the call still on its way
     release();
     await screen.findByText('The state of Quarterly plan was reset.');
     expect(of('POST', URL)).toHaveLength(1);
+  });
+
+  it('ignores an answer that arrives after the dialog was closed: reopened, it asks the question again with no stale warning', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { api } = fakeApi({ [`POST ${URL}`]: async () => { await gate; return stale; } });
+    show(api);
+    await userEvent.type(within(await dialog()).getByRole('textbox', { name: 'Replacement Markdown (optional)' }), 'typed');
+    await userEvent.click(screen.getByRole('button', { name: 'Reset state' }));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Close' })[0] as HTMLElement);
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull(); });
+    release();
+    await waitFor(() => { expect((screen.getByRole('button', { name: 'Reopen' }) as HTMLButtonElement).disabled).toBe(false); });
+    await userEvent.click(screen.getByRole('button', { name: 'Reopen' }));
+    const d = await dialog();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect((within(d).getByRole('textbox', { name: 'Replacement Markdown (optional)' }) as HTMLTextAreaElement).value).toBe('');
   });
 
   it('on markdown_stale warns that the newest edits would be lost, and sends nothing until that is confirmed too', async () => {
