@@ -29,7 +29,7 @@ export interface Rig {
   readonly store: ReturnType<typeof linkedAccessStore>;
   readonly connections: FakeConnection[];
   /** Admits a document connection as the real host does: `connected` with the context `onAuthenticate` returned. */
-  open(o?: { page?: string; userId?: string; subject?: string; level?: 'read-write' | 'read-only'; expiresInMs?: number; epoch?: number; peerId?: string }): Promise<FakeConnection>;
+  open(o?: { page?: string; userId?: string; subject?: string; level?: 'read-write' | 'read-only'; expiresInMs?: number; epoch?: number; peerId?: string; tenantId?: string }): Promise<FakeConnection>;
   /** Moves the clock and the timers together: the injected clock decides expiry, the (fake) timer decides when a round runs. */
   elapse(ms: number): Promise<void>;
   tokenSync(c: FakeConnection, token: string): Promise<void>;
@@ -37,11 +37,11 @@ export interface Rig {
 }
 
 /** The re-check over fake stores: user `SUBJECT` is a member with row `U1`; user `u2` (row `U2`) is a member too. */
-export function rig(o: { role?: 'admin' | 'member' | 'viewer'; intervalSeconds?: number } = {}): Rig {
+export function rig(o: { role?: 'admin' | 'member' | 'viewer'; intervalSeconds?: number; requireTenant?: boolean } = {}): Rig {
   const t = makeDeps(o.role ?? 'member');
   void t.users.createIfAbsent({ descopeUserId: 'u2', email: 'u2@example.test', name: 'u2', role: 'member' });
   const store = linkedAccessStore(t.users, t.world);
-  t.deps = { ...t.deps, access: createPageAccess(store), config: makeFakeConfig({ collab: { recheckSeconds: o.intervalSeconds ?? INTERVAL_SECONDS } }) } satisfies CollabDeps;
+  t.deps = { ...t.deps, ...(o.requireTenant === undefined ? {} : { requireTenant: o.requireTenant }), access: createPageAccess(store), config: makeFakeConfig({ collab: { recheckSeconds: o.intervalSeconds ?? INTERVAL_SECONDS } }) } satisfies CollabDeps;
   const log = throttleLog(createCollabLog(t.logger));
   const recheck = createRecheck({ deps: t.deps, log });
   const connections: FakeConnection[] = [];
@@ -62,7 +62,7 @@ export function rig(o: { role?: 'admin' | 'member' | 'viewer'; intervalSeconds?:
         onClose(cb) { closeCallbacks.push(cb); },
       };
       c.context = {
-        address: '127.0.0.1', peerId: p.peerId ?? 'p1', userId: p.userId ?? U1, descopeUserId: p.subject ?? SUBJECT,
+        address: '127.0.0.1', peerId: p.peerId ?? 'p1', userId: p.userId ?? U1, descopeUserId: p.subject ?? SUBJECT, ...(p.tenantId === undefined ? {} : { tenantId: p.tenantId }),
         accessLevel: p.level ?? 'read-write', expiresAt: t.clock.now() + (p.expiresInMs ?? 3_600_000), epoch: p.epoch ?? 0,
       };
       await ext.connected?.({ documentName: p.page ?? PAGE, context: c.context, connection: c } as never);

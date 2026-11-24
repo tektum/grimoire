@@ -8,6 +8,8 @@ export interface UserRecord {
   readonly avatarUrl?: string;
   readonly role: Role;
   readonly suspended: boolean;
+  /** The row's `tenant_id` (docs/tenancy.md); a store that knows nothing of tenants leaves it out. */
+  readonly tenantId?: string;
 }
 
 export type CreateUserResult = { kind: 'created' | 'existing'; user: UserRecord } | { kind: 'email-taken' };

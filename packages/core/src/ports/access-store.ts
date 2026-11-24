@@ -4,8 +4,8 @@ export type Permission = 'read' | 'read_write';
 export interface AccessRequest { readonly userId: string; readonly pageId: string }   // userId = users.id
 export interface AccessFacts {
   readonly request: AccessRequest;
-  readonly user?: { readonly role: Role; readonly suspended: boolean };
-  readonly page?: { readonly deleted: boolean; readonly epoch: number;
+  readonly user?: { readonly role: Role; readonly suspended: boolean; /** The user row's `tenant_id` (docs/tenancy.md). A store that knows nothing of tenants leaves it out, on both rows. */ readonly tenantId?: string };
+  readonly page?: { readonly deleted: boolean; readonly epoch: number; /** The page row's `tenant_id`; must equal the user's, or the page is not there for that person. */ readonly tenantId?: string;
     readonly collection: { readonly deleted: boolean; readonly defaultPermission: Permission | null; readonly entries: readonly Permission[] } };  // entries: the user's own entry plus the entries of the user's groups
 }
 export interface CollectionAccessRequest { readonly userId: string; readonly collectionId: string }

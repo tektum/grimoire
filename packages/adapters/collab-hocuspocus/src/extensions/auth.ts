@@ -1,5 +1,5 @@
 import type { Extension, HookPayloadByName } from '@hocuspocus/server';
-import type { VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
+import type { TenantClaim, VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { CollabDeps } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import type { PageAccess } from '@tektum/grimoire-core/authorize';
@@ -32,7 +32,7 @@ export interface AuthOptions {
   readonly admit?: (data: { context: unknown; socketId: string; documentName: string; connectionConfig: object }, userId: string) => void;
 }
 
-export type Verified = { kind: 'ok'; userId: string; expiresAt: number; profile?: Extract<VerifyResult, { kind: 'ok' }>['profile'] } | { kind: 'invalid' } | { kind: 'unavailable' };
+export type Verified = { kind: 'ok'; userId: string; expiresAt: number; profile?: Extract<VerifyResult, { kind: 'ok' }>['profile']; tenant?: TenantClaim } | { kind: 'invalid' } | { kind: 'unavailable' };
 
 /** The verifier's answer, narrowed: only a literal `ok` with a non-empty subject and a finite future expiry admits; a throw is an outage. */
 export async function verify(deps: CollabDeps, token: string): Promise<Verified> {
@@ -40,7 +40,7 @@ export async function verify(deps: CollabDeps, token: string): Promise<Verified>
   try { r = await deps.verifier.verify(token); } catch { return { kind: 'unavailable' }; }
   if (r.kind === 'service-unavailable') return { kind: 'unavailable' };
   if (r.kind !== 'ok' || typeof r.userId !== 'string' || r.userId === '' || !Number.isFinite(r.expiresAt) || r.expiresAt <= deps.clock.now()) return { kind: 'invalid' };
-  return { kind: 'ok', userId: r.userId, expiresAt: r.expiresAt, ...(r.profile !== undefined ? { profile: r.profile } : {}) };
+  return { kind: 'ok', userId: r.userId, expiresAt: r.expiresAt, ...(r.profile !== undefined ? { profile: r.profile } : {}), ...(r.tenant !== undefined ? { tenant: r.tenant } : {}) };
 }
 
 type Resolved = { kind: 'refused'; refusal: Refusal } | { kind: 'allowed'; user: UserRecord; access: Extract<PageAccess, { result: 'allowed' }> };
@@ -57,6 +57,8 @@ async function resolve(deps: CollabDeps, token: string, v: Extract<Verified, { k
   }
   // The provisioner answers `ok` for an existing suspended user: refusing is this caller's job.
   if (user.suspended !== false) return { kind: 'refused', refusal: new Refusal('forbidden', 'suspended') };
+  // The provider's claim and our row must agree (docs/tenancy.md, section 6): a row of another tenant than the token names is a possible fault, refused and logged, not repaired.
+  if (v.tenant?.kind === 'one' && user.tenantId !== undefined && user.tenantId !== v.tenant.id) return { kind: 'refused', refusal: new Refusal('forbidden', 'tenant-mismatch') };
   const access = await deps.access.pageAccess({ userId: user.id, pageId });
   if (access.result !== 'allowed' || (access.access !== 'read-write' && access.access !== 'read-only')) return { kind: 'refused', refusal: new Refusal('not-found') };
   return { kind: 'allowed', user, access };
@@ -101,6 +103,11 @@ export function createAuthExtension(o: AuthOptions): Extension {
       const v = await verify(deps, hs.token);
       if (v.kind === 'unavailable') throw unavailable(data.context, 'verifier');
       if (v.kind !== 'ok') throw new Refusal('invalid-token');
+      // A token with no usable tenant (none, or several: the first version has one for each person) is refused before the database is asked (docs/tenancy.md, section 6), once the
+      // deployment requires tenants (`requireTenant`).
+      // Fail closed: a result with no tenant field at all (a verifier that does not say) is the same as `none`.
+      if (deps.requireTenant === true && (v.tenant === undefined || v.tenant.kind === 'none')) throw new Refusal('forbidden', 'no-tenant');
+      if (deps.requireTenant === true && v.tenant?.kind === 'many') throw new Refusal('forbidden', 'tenant-ambiguous');
       let r: Resolved;
       try {
         r = await bounded(resolve(deps, hs.token, v, data.documentName), AUTH_DATABASE_TIMEOUT_MS);
@@ -112,7 +119,7 @@ export function createAuthExtension(o: AuthOptions): Extension {
       // A client that recorded another epoch (a reset, a restore, or a restored backup) must reload, never merge; checked before admission so a refused reconnect holds no place.
       if (hs.epoch !== undefined && hs.epoch !== r.access.epoch) throw new Refusal('stale-epoch');
       o.admit?.(data, r.user.id); // decided now, in arrival order, before the client is told it is authenticated and before the page loads
-      return { userId: r.user.id, descopeUserId: v.userId, accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch, ...(hs.wrapped ? { wrapped: true } : {}), ...(hs.wrapped && hs.epoch === undefined ? { epochUnknown: true } : {}) };
+      return { userId: r.user.id, descopeUserId: v.userId, ...(v.tenant?.kind === 'one' ? { tenantId: v.tenant.id } : {}), accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch, ...(hs.wrapped ? { wrapped: true } : {}), ...(hs.wrapped && hs.epoch === undefined ? { epochUnknown: true } : {}) };
     },
 
     /**

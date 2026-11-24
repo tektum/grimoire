@@ -53,6 +53,7 @@ interface Tracked {
   readonly documentName: string;
   readonly userId: string;
   readonly descopeUserId: string;
+  readonly tenantId: string | undefined;
   level: 'read-write' | 'read-only';
   expiresAt: number;
   readonly epoch: number;
@@ -201,7 +202,7 @@ export function createRecheck(o: RecheckOptions): Recheck {
       if (c.userId === undefined || c.descopeUserId === undefined || c.accessLevel === undefined || c.expiresAt === undefined || c.epoch === undefined) return;
       const connection = data.connection;
       tracked.set(connection, {
-        documentName: data.documentName, userId: c.userId, descopeUserId: c.descopeUserId, level: c.accessLevel,
+        documentName: data.documentName, userId: c.userId, descopeUserId: c.descopeUserId, tenantId: c.tenantId, level: c.accessLevel,
         expiresAt: c.expiresAt, epoch: c.epoch, windowStart: deps.clock.now(), presentations: 0,
       });
       connection.onClose(() => { untrack(connection); });
@@ -246,6 +247,27 @@ export function createRecheck(o: RecheckOptions): Recheck {
         log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'user-mismatch' });
         closeOne(data.connection, t, 'invalid-token');
         return;
+      }
+      // The same tenant checks as the handshake: a renewal is not a way round them (a person moved to another tenant, or a claim that has become none or several, ends the connection).
+      if ((deps.requireTenant === true && v.tenant?.kind !== 'one') || (v.tenant?.kind === 'one' && t.tenantId !== undefined && v.tenant.id !== t.tenantId)) {
+        log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'tenant-mismatch' });
+        closeOne(data.connection, t, 'invalid-token');
+        return;
+      }
+      // And the row: the claim may lag a move made on our side, so a renewed claim is compared with the user row's tenant too (the row is the truth the handshake checked).
+      if (v.tenant?.kind === 'one') {
+        let row: Awaited<ReturnType<CollabDeps['resolveUser']>> | 'unavailable';
+        try {
+          row = await bounded(deps.resolveUser(token ?? '', { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}) }), TOKEN_VERIFY_TIMEOUT_MS);
+        } catch {
+          row = 'unavailable'; // the periodic re-check decides again by the row, so a failed lookup here does not close
+        }
+        if (!tracked.has(data.connection)) return;
+        if (row !== 'unavailable' && row !== undefined && row.tenantId !== undefined && row.tenantId !== v.tenant.id) {
+          log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'tenant-mismatch' });
+          closeOne(data.connection, t, 'invalid-token');
+          return;
+        }
       }
       t.expiresAt = v.expiresAt;
       updateContext(data.connection.context, { expiresAt: v.expiresAt });

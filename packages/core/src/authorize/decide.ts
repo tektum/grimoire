@@ -43,6 +43,9 @@ export function decide(f: AccessFacts, opts?: AccessOptions): AccessDecision {
   if (!f.user) return { access: 'none', reason: 'no-user' };
   if (f.user.suspended !== false) return { access: 'none', reason: 'suspended' };
   if (!f.page || !Number.isSafeInteger(f.page.epoch) || f.page.epoch < 0) return { access: 'none', reason: 'no-page' };
+  // A page of another tenant is a page that is not there (docs/tenancy.md, 3.3): checked before anything about the page's state, so the trash routes' `includeDeleted` and a
+  // generous collection cannot reach across. Equal means equal when neither says one (a store that knows nothing of tenants); one without the other denies.
+  if (f.user.tenantId !== f.page.tenantId) return { access: 'none', reason: 'no-page' };
   if ((f.page.deleted !== false || f.page.collection.deleted !== false) && opts?.includeDeleted !== true) return { access: 'none', reason: 'deleted' };
   const access = grant(f.user, f.page.collection);
   return access ? { access, epoch: f.page.epoch } : { access: 'none', reason: 'no-access' };

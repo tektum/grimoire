@@ -8,6 +8,8 @@ export interface ConnectionContext {
   peerId: string;
   userId?: string;
   descopeUserId?: string;
+  /** The tenant the token named when the connection was admitted (absent when it named none); a renewed token must name the same one. */
+  tenantId?: string;
   accessLevel?: 'read-write' | 'read-only';
   expiresAt?: number;
   /** `state_epoch` of the page when access was decided; the re-check closes the connection when it changes. */
@@ -27,6 +29,7 @@ export function readContext(value: unknown): Partial<ConnectionContext> {
   if (typeof v['peerId'] === 'string') out.peerId = v['peerId'];
   if (typeof v['userId'] === 'string') out.userId = v['userId'];
   if (typeof v['descopeUserId'] === 'string') out.descopeUserId = v['descopeUserId'];
+  if (typeof v['tenantId'] === 'string') out.tenantId = v['tenantId'];
   if (v['accessLevel'] === 'read-write' || v['accessLevel'] === 'read-only') out.accessLevel = v['accessLevel'];
   if (typeof v['expiresAt'] === 'number') out.expiresAt = v['expiresAt'];
   if (typeof v['epoch'] === 'number') out.epoch = v['epoch'];

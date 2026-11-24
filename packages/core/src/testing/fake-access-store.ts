@@ -4,12 +4,12 @@ import { decideCollection } from '../authorize/decide.js';
 
 /** A small permission world: the same data is loaded into the fake store and into PostgreSQL by the tests. */
 export interface World {
-  users: { id: string; role: Role; suspended: boolean }[];
+  users: { id: string; role: Role; suspended: boolean; tenantId?: string }[];
   groups: { id: string }[];
   members: { groupId: string; userId: string }[];
   collections: { id: string; deleted: boolean; defaultPermission: Permission | null; position?: string }[];
   access: { collectionId: string; userId?: string; groupId?: string; permission: Permission }[];
-  pages: { id: string; collectionId: string; deleted: boolean; epoch: number }[];
+  pages: { id: string; collectionId: string; deleted: boolean; epoch: number; tenantId?: string }[];
 }
 
 export function emptyWorld(): World {
@@ -18,9 +18,9 @@ export function emptyWorld(): World {
 
 /** In-memory AccessStore over a `World`, written independently of the SQL: the reference the PostgreSQL store is compared with. */
 export function createFakeAccessStore(world: World): AccessStore {
-  const userFacts = (id: string): { role: Role; suspended: boolean } | undefined => {
+  const userFacts = (id: string): { role: Role; suspended: boolean; tenantId?: string } | undefined => {
     const u = world.users.find((x) => x.id === id);
-    return u ? { role: u.role, suspended: u.suspended } : undefined;
+    return u ? { role: u.role, suspended: u.suspended, ...(u.tenantId === undefined ? {} : { tenantId: u.tenantId }) } : undefined;
   };
   const collectionOf = (collectionId: string, userId: string) => {
     const c = world.collections.find((x) => x.id === collectionId);
@@ -40,7 +40,7 @@ export function createFakeAccessStore(world: World): AccessStore {
     const user = userFacts(r.userId);
     const p = world.pages.find((x) => x.id === r.pageId);
     const collection = p ? collectionOf(p.collectionId, r.userId) : undefined;
-    return { request: r, ...(user ? { user } : {}), ...(p && collection ? { page: { deleted: p.deleted, epoch: p.epoch, collection } } : {}) };
+    return { request: r, ...(user ? { user } : {}), ...(p && collection ? { page: { deleted: p.deleted, epoch: p.epoch, collection, ...(p.tenantId === undefined ? {} : { tenantId: p.tenantId }) } } : {}) };
   };
   return {
     facts: (rs) => Promise.resolve(rs.map(pageFacts)),
