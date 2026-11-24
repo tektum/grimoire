@@ -3,8 +3,6 @@ import { expectNoAxeViolations } from '../support/axe';
 import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'history-specs-secret-0000001';
-
 // No serious or critical accessibility violation on the list, one version and its changes, in light and dark. Needs a development build of the client
 // (`bunx vite build --mode e2e`); the API is stood in for by `historyApi`.
 const revision = (id: string, over: Partial<MockRevision> = {}): MockRevision => ({

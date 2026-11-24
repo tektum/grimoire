@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { DEV_TOKEN_PATTERN } from '../../test/support/dev-token';
-import { DEV_TOKEN_EXPIRES_STORAGE_KEY, DEV_TOKEN_STORAGE_KEY, signInAs } from './sign-in';
+import { DEV_TOKEN_EXPIRES_STORAGE_KEY, DEV_TOKEN_STORAGE_KEY, signInAs, STAND_IN_SECRET } from './sign-in';
 import { shotPath, shots } from './shots';
 import { twoUsers } from './two-users';
 import { waitForSynced } from './sync';
@@ -60,6 +60,18 @@ test.describe('signInAs', () => {
     const expires = Number(await page.evaluate((key) => window.localStorage.getItem(key), DEV_TOKEN_EXPIRES_STORAGE_KEY));
     expect(expires).toBeGreaterThan(Date.now() + 3_500_000);
     expect(expires).toBeLessThanOrEqual(Date.now() + 3_600_000);
+  });
+
+  test('with check false, a spec that stands in for the API gets a token of the stand-in secret: no request, and the process environment is not read for it', async ({ context }) => {
+    const user = await signInAs(context, 'e2e-alice', 'member', { check: false });
+    expect(user).toEqual({ userId: 'e2e-alice', role: 'member' });
+    expect(seen).toEqual([]);
+    const page = await context.newPage();
+    await page.goto('/stub.html');
+    const token = await page.evaluate((key) => window.localStorage.getItem(key), DEV_TOKEN_STORAGE_KEY);
+    expect(token).toBe(`dev:${STAND_IN_SECRET}:e2e-alice:member`);
+    expect(token).toMatch(DEV_TOKEN_PATTERN);
+    expect(token).not.toContain(SECRET);
   });
 
   test('refuses an uppercase user id before any request, with a plain line', async ({ context }) => {

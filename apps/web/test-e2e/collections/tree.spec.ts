@@ -2,8 +2,6 @@ import { expect, type Page, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // New page, rename, move and delete, as a person does them with the pointer: each shows in the tree, and the server's answer (here a stand-in that keeps the pages
 // in memory and orders them as the API does) is what the tree ends on. Needs a development build of the client (`bunx vite build --mode e2e`).
 const p = (id: string, parentId: string | null, position: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId, position, title, icon: null });

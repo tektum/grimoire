@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { API, mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // A 409 `would_create_cycle` shows its words and the tree is read again (route interception: the server answers the move with the conflict).
 const p = (id: string, parentId: string | null, position: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId, position, title, icon: null });
 

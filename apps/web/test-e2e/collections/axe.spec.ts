@@ -3,8 +3,6 @@ import { expectNoAxeViolations } from '../support/axe';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // No serious or critical accessibility violation on the screens of this task, in light and dark. The collection screen, the trash and the not-found screen. Needs a development build of the client (`bunx vite build --mode e2e`).
 const page0 = (id: string, parentId: string | null, position: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId, position, title, icon: null });
 

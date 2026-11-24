@@ -2,8 +2,6 @@ import { expect, type Page, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // Keyboard only: a page is moved with Tab, Enter on the row menu and the dialog, and no pointer event is made (`page.mouse` and click() are not used).
 const p = (id: string, parentId: string | null, position: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId, position, title, icon: null });
 const tabUntil = async (page: Page, test_: (el: Element | null) => boolean) => {

@@ -3,8 +3,6 @@ import { API, mockApi } from '../collections/mock-api';
 import { signInAs } from '../support/sign-in';
 import { shots } from '../support/shots';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'toaster-specs-secret-0000001';
-
 // A notice follows the theme: its background and text are the tokens of the scheme the page is in, in light and in dark. The notice here is the API wrapper's
 // words for a refused change (409 `collection_full` on New page). Needs a development build of the client (`bunx vite build --mode e2e`).
 const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; } [data-sonner-toaster] { font-family: 'Liberation Sans', Arial, sans-serif; }"; // for the pictures only

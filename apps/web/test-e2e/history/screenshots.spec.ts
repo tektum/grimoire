@@ -3,8 +3,6 @@ import { shots } from '../support/shots';
 import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'history-specs-secret-0000001';
-
 // Screenshots of the history screens, light and dark, 1280 by 800, from the built client with the stand-in API (test-results/shots/M6-T07/). This machine's default
 // sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text, as in the other shots.
 const TASK = 'M6-T07';

@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { adminApi, type MockUser } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'admin-specs-secret-000000001';
-
 // An administrator changes a user's role and suspends a user; each result is read back through the screen after a reload. Needs a development build of the client
 // (`bunx vite build --mode e2e`); the API is stood in for by `adminApi`.
 const u = (id: string, name: string, role: MockUser['role'] = 'member', suspended = false): MockUser => ({ id, name, email: `${name.toLowerCase()}@dev.invalid`, role, suspended });

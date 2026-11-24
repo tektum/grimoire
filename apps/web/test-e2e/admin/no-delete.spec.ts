@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { adminApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'admin-specs-secret-000000001';
-
 // A user is never deleted (decision 148): the users screen has no element named Delete (or Remove) for a user, only Suspend or Reinstate.
 test('the users screen offers Suspend or Reinstate and nothing that deletes a user', async ({ page, context }) => {
   await signInAs(context, 'e2e-alice', 'admin', { check: false });

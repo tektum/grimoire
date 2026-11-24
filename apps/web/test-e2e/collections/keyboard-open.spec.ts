@@ -2,8 +2,6 @@ import { expect, test } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { mockApi } from './mock-api';
 
-process.env['E2E_DEV_TOKEN_SECRET'] ??= 'collections-specs-secret-0001';
-
 // A keyboard user reaches a page from the contents tree without a pointer: Tab into the tree, the arrow keys to a row, Enter. Needs a development build of the
 // client (`bunx vite build --mode e2e`); the API is stood in for by `mockApi`.
 const page0 = (id: string, parentId: string | null, position: string, title: string) => ({ id, urlId: id.padEnd(8, '0'), parentId, position, title, icon: null });
