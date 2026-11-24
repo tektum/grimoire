@@ -12,6 +12,8 @@ type Page = Readonly<{ items: readonly components['schemas']['Revision'][]; next
 export interface HistoryPage {
   readonly id: string;
   readonly title: string;
+  /** What the person may do with the page: only `read-write` may restore. */
+  readonly myPermission: 'read-write' | 'read-only';
 }
 
 /** The versions of a page, newest first, a few at a time (R9.4). A page nobody may read is "not found", whichever the reason (R11.15). */

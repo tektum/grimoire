@@ -4,9 +4,9 @@ import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
 // Screenshots of the history screens, light and dark, 1280 by 800, from the built client with the stand-in API (test-results/shots/M6-T07/). This machine's default
-// sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text, as in the other shots.
+// sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text only, as in the other shots; the text of a version keeps the reading font of the design.
 const TASK = 'M6-T07';
-const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; --font-page: 'Liberation Sans', Arial, sans-serif; }";
+const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }"; // the page text keeps its own reading font (--font-page)
 const at = (day: number, hour: number, minute: number) => Date.UTC(2026, 10, day, hour, minute);
 const alice = { id: 'u1', name: 'Alice Example' };
 const bob = { id: 'u2', name: 'Bob Builder' };
@@ -61,4 +61,38 @@ test('the line diff with added and removed lines, light and dark', async ({ page
   await expect(page.getByRole('tabpanel').locator('ins').first()).toBeVisible();
   await page.mouse.move(0, 0);
   await shots(page, TASK, 'diff');
+});
+
+test('the restore confirmation, light and dark', async ({ page, context }) => {
+  await signInAs(context, 'e2e-alice', 'member', { check: false });
+  await historyApi(page, STATE);
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByTestId('revision-text').locator('.ProseMirror')).toBeVisible();
+  await page.getByRole('button', { name: 'Restore this version' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Restore this version?' })).toBeVisible();
+  await shots(page, TASK, 'restore-confirm');
+});
+
+test('the message that the page is still being saved, light and dark', async ({ page, context }) => {
+  await signInAs(context, 'e2e-alice', 'member', { check: false });
+  await historyApi(page, { ...STATE, staleRestores: 1 });
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await page.getByRole('button', { name: 'Restore this version' }).click();
+  await page.getByRole('alertdialog', { name: 'Restore this version?' }).getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByRole('alert')).toHaveText('The page is still being saved. Try again in a moment.');
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'restore-stale');
+});
+
+test("a viewer's view of a version, with no Restore button, light and dark", async ({ page, context }) => {
+  await signInAs(context, 'e2e-vera', 'viewer', { check: false });
+  await historyApi(page, { ...STATE, role: 'viewer' });
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByTestId('revision-text').locator('.ProseMirror')).toContainText('The older wording');
+  await expect(page.getByRole('button', { name: /Restore/ })).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'viewer');
 });

@@ -17,12 +17,16 @@ export interface HistoryState {
   current: string;
   /** Newest first. */
   revisions: MockRevision[];
+  /** How many restore calls are answered 409 `markdown_stale` before one succeeds (default 0). */
+  staleRestores?: number;
 }
 export interface HistoryApi {
   /** Every request to the history routes, as `METHOD /path`, in order. */
   readonly seen: string[];
   /** Requests made to any host other than the API and the page's own (the safety spec: nothing is fetched from a revision's text). */
   readonly foreign: string[];
+  /** The ids restored, in order (only calls that were answered 200). */
+  readonly restored: string[];
 }
 
 export const SLUG = 'quarterly-plan-abc123';
@@ -34,6 +38,7 @@ export async function historyApi(page: Page, state: HistoryState): Promise<Histo
   await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [] });
   const seen: string[] = [];
   const foreign: string[] = [];
+  const restored: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (!['127.0.0.1', 'localhost'].includes(url.hostname) && url.protocol.startsWith('http')) foreign.push(request.url());
@@ -53,10 +58,22 @@ export async function historyApi(page: Page, state: HistoryState): Promise<Histo
     if (pathname.endsWith('/revisions') && request.method() === 'GET') {
       return json(route, 200, { items: state.revisions.map((r) => ({ id: r.id, createdAt: r.createdAt, title: r.title, reason: r.reason, lastAuthor: r.lastAuthor, authors: r.authors })), nextCursor: null }, cors);
     }
+    const restore = /\/revisions\/([^/]+)\/restore$/.exec(pathname);
+    if (restore !== null && request.method() === 'POST') {
+      if (state.role === 'viewer') return json(route, 403, { error: { code: 'forbidden', message: 'x' } }, cors);
+      const wanted = state.revisions.find((r) => r.id === restore[1]);
+      if (wanted === undefined) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+      if ((state.staleRestores ?? 0) > 0) {
+        state.staleRestores = (state.staleRestores ?? 0) - 1;
+        return json(route, 409, { error: { code: 'markdown_stale', message: 'x' } }, cors);
+      }
+      restored.push(wanted.id);
+      return json(route, 200, { title: wanted.title, markdown: wanted.markdown, safetyRevisionId: null }, cors);
+    }
     const one = /\/revisions\/([^/]+)$/.exec(pathname);
     const found = state.revisions.find((r) => r.id === one?.[1]);
     if (found !== undefined && request.method() === 'GET') return json(route, 200, found, cors);
     return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
   });
-  return { seen, foreign };
+  return { seen, foreign, restored };
 }

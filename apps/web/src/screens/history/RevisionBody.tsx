@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import '../../editor/core/lists.css';
 import type { MountedEditor } from '../../editor/core/mount';
 
 export type MountReadOnly = (element: HTMLElement, markdown: string) => Promise<MountedEditor>;
@@ -32,5 +33,5 @@ export function RevisionBody({ markdown, mount }: { readonly markdown: string; r
       host.remove();
     };
   }, [markdown, mount]);
-  return <div ref={container} data-testid="revision-text" className="history-text" />;
+  return <div ref={container} data-testid="revision-text" className="history-text page-editor page-text" />;
 }
