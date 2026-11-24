@@ -51,6 +51,8 @@ tofu plan
 
 ## CI
 
-`.github/workflows/descope-infra.yml` runs `plan` on pull requests that touch this folder and
-`apply` only on manual dispatch. Both skip with a notice while the secret is not set, and use the environment `descope-dev` and its secret
-`DESCOPE_DEV_MANAGEMENT_KEY`.
+`.github/workflows/descope-infra.yml`:
+
+- Pull requests touching this folder run only `init -backend=false`, `validate` and `fmt -check`, with no secret and no environment, because a secret must not reach pull-request code.
+- `plan` and `apply` run only on a manual dispatch of `main`, with the environment `descope-dev` and its secret `DESCOPE_DEV_MANAGEMENT_KEY`. Both skip with a notice while the secret is not set.
+- The owner should also set the environment's deployment branch to `main` and add required reviewers. Run `plan` first and read it, then dispatch `apply`.

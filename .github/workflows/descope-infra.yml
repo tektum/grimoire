@@ -1,7 +1,8 @@
 name: Descope dev infrastructure
-# `plan` runs on pull requests that touch infra/descope (it changes nothing). `apply` runs only on a
-# manual dispatch. Both use the environment `descope-dev` and its secret DESCOPE_DEV_MANAGEMENT_KEY,
-# so they stop at the first step that needs it until the owner has created them. No state file is kept.
+# Pull requests only check the files (init without a backend, validate, fmt): no secret and no
+# environment, because a secret must not reach pull-request code. `plan` and `apply` run only on a
+# manual dispatch of `main`, with the environment `descope-dev` and its secret DESCOPE_DEV_MANAGEMENT_KEY;
+# they skip with a notice until the owner has created the secret. No state file is kept.
 on:
   pull_request:
     paths:
@@ -9,10 +10,13 @@ on:
       - ".github/workflows/descope-infra.yml"
   workflow_dispatch:
     inputs:
-      apply:
-        description: "Type apply to change the development project"
+      action:
+        description: "plan shows the difference, apply changes the development project"
         required: true
-        type: string
+        type: choice
+        options:
+          - plan
+          - apply
 
 permissions:
   contents: read
@@ -22,9 +26,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    name: Check files
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Init, validate and format check
+        working-directory: infra/descope
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
+          tofu fmt -check -diff
+
   plan:
     name: Plan
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: descope-dev
@@ -60,7 +85,7 @@ jobs:
 
   apply:
     name: Apply
-    if: github.event_name == 'workflow_dispatch' && inputs.apply == 'apply'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: descope-dev
