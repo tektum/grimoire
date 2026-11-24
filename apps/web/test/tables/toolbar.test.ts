@@ -166,6 +166,21 @@ describe('the table toolbar', () => {
     expect(marked()).toEqual(['a']);
   });
 
+  it('Delete row is off when the selection covers every row under the header, and on when it leaves one', async () => {
+    const h = await open('| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |\n');
+    const deleteRow = (): HTMLButtonElement => toolbar(h)?.querySelector('[aria-label="Delete row"]') as HTMLButtonElement;
+    h.selectCells([1, 0], [3, 1]); // all three body rows
+    expect(deleteRow().disabled).toBe(true);
+    const before = h.markdown();
+    press(h, 'Delete row');
+    expect(h.markdown()).toBe(before);
+    h.selectCells([1, 0], [2, 1]); // two of the three
+    expect(deleteRow().disabled).toBe(false);
+    press(h, 'Delete row');
+    expect(rows(h)).toBe(2);
+    expect(h.markdown()).toContain('| 5 | 6 |');
+  });
+
   it('a mouse press on a button does not take the focus from the editor', async () => {
     const h = await open();
     h.cursorInCell(1, 0);

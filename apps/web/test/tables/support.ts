@@ -1,6 +1,7 @@
 import { Editor, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, rootCtx, serializerCtx } from '@milkdown/core';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import { TextSelection } from '@milkdown/prose/state';
+import { CellSelection } from '@milkdown/prose/tables';
 import type { EditorView } from '@milkdown/prose/view';
 import { grimoireEditorPlugins } from '@tektum/grimoire-editor-schema';
 
@@ -13,6 +14,8 @@ export interface Harness {
   /** Puts the cursor in the cell at (row, column) of the first table, or at the start of the document when there is no such cell. */
   cursorInCell(row: number, column: number): void;
   cursorAtStart(): void;
+  /** Selects the cells from (row, column) to (row, column) of the first table, as dragging across them does. */
+  selectCells(from: [number, number], to: [number, number]): void;
   destroy(): Promise<void>;
 }
 
@@ -53,6 +56,20 @@ export async function makeEditor(markdown: string, extra: MilkdownPlugin | Milkd
       select(found >= 0 ? found : 1);
     },
     cursorAtStart: () => { select(1); },
+    selectCells(from, to) {
+      const cellPos = (row: number, column: number): number => {
+        let found = -1;
+        let seen = -1;
+        view.state.doc.descendants((node, pos) => {
+          const isRow = /^table(_header)?_row$/.test(node.type.name);
+          if (isRow) seen += 1;
+          if (isRow && seen === row) node.forEach((_cell, offset, index) => { if (index === column) found = pos + 1 + offset; });
+          return found < 0;
+        });
+        return found;
+      };
+      view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellPos(...from), cellPos(...to))));
+    },
     destroy: async () => {
       await editor.destroy(true);
       root.remove();

@@ -17,7 +17,7 @@ interface Action {
 interface Place {
   readonly at: number;
   readonly inHeader: boolean;
-  /** The table has its header row and one row more: that row cannot be deleted, a table keeps at least one row under its header. */
+  /** Deleting the selected rows would leave no row under the header: a table keeps at least one. */
   readonly lastBodyRow: boolean;
 }
 
@@ -47,7 +47,7 @@ function activeCell(state: EditorState): { from: number; to: number } | null {
 function placeFor(state: EditorState): Place | null {
   if (!isInTable(state)) return null;
   const rect = selectedRect(state);
-  return { at: rect.tableStart - 1 + rect.table.nodeSize, inHeader: rect.top === 0, lastBodyRow: rect.map.height <= 2 };
+  return { at: rect.tableStart - 1 + rect.table.nodeSize, inHeader: rect.top === 0, lastBodyRow: rect.map.height - (rect.bottom - rect.top) < 2 };
 }
 
 /**
