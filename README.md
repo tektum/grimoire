@@ -60,6 +60,10 @@ The live editor.
 
 Lists in a page: bullets, numbered steps and task boxes.
 
+![Two people in one page: each sees the other's cursor and selection with a name label](docs/screenshots/m6-t04/cursors-seen-by-bob-light.png)
+
+Two people in one page: each sees the other's cursor and selection, with the name from the directory.
+
 ![A page opened read-only](docs/screenshots/m6-t04/read-only-page-light.png)
 
 A page opened read-only.

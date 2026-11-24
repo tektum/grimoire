@@ -7,7 +7,10 @@ import { Outline } from '../../outline';
 import { useSession } from '../../auth/session';
 import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
+import { sessionDirectory } from '../../editor/core/directory';
+import { useApiQuery } from '../../api/query';
 import { realEngine, type Engine } from './engine';
+import '../../editor/core/cursors.css';
 import '../../editor/core/lists.css';
 import './page.css';
 
@@ -40,6 +43,10 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const editableRef = useRef<(editable: boolean) => void>(() => undefined);
   const permissionReadOnly = page.myPermission === 'read-only';
   // The effect below outlives a page response: it reads what the person may do now, not what the first response said.
+  // Who is signed in (the same read as the badge's): the id published with the cursor. It may arrive after the editor, and is read when it is needed.
+  const me = useApiQuery<{ id: string }>(session?.api ?? (null as never), '/v1/me', undefined, { enabled: session !== null });
+  const meRef = useRef<string | null>(null);
+  meRef.current = me.data?.id ?? null;
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;
   const staleRef = useRef(page.markdownStale);
@@ -110,7 +117,13 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         saved = null;
         setShowingSaved(false);
         if (synced === null) return;
-        const mounted = await engine.mountLive({ element, session: synced, editable: editable(), isCancelled: () => cancelled });
+        const mounted = await engine.mountLive({
+          element,
+          session: synced,
+          editable: editable(),
+          isCancelled: () => cancelled,
+          presence: { userId: () => meRef.current, directory: sessionDirectory(session.api) },
+        });
         if (mounted === null) return;
         if (!current()) {
           // The document was replaced, or the connection stopped, while the editor was being built: take it down again.
