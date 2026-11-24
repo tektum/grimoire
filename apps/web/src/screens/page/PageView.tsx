@@ -13,6 +13,7 @@ import { useApiQuery } from '../../api/query';
 import { recheckMinClientVersion } from '../../gate/recheck';
 import { Button } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
+import { PageNotFound } from './PageNotFound';
 import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
@@ -225,6 +226,9 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const collab: CollabState = state.stopped !== null ? 'stopped' : state.suspended ? 'disconnected' : state.offline ? 'offline' : liveReady && state.phase === 'synced' ? 'synced' : 'connecting';
   // The 'Read only' text of the scope is the label beside the title, not a second line of status.
   const status = (state.text === 'Read only' ? null : state.text) ?? (collab === 'synced' ? 'Live' : collab === 'connecting' ? 'Connecting…' : null);
+
+  // The server says the page is not there any more (removed while it was open): the not-found screen, with the editor out of sight and nothing more sent.
+  if (state.stopped === 'not-found') return <PageNotFound />;
 
   return (
     <div className="page-layout">

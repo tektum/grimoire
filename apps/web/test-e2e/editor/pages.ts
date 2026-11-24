@@ -22,15 +22,15 @@ function provisionAdministrator(): Promise<void> {
   return administrator;
 }
 
-async function call<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+async function call<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
   await provisionAdministrator();
   const response = await fetch(`${apiUrl()}${path}`, {
     method,
     headers: { Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-admin', 'admin')}`, 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
-    body: JSON.stringify(body),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) throw new Error(`${method} ${path} answered ${response.status}`);
-  return (await response.json()) as T;
+  return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
 /**
@@ -49,4 +49,38 @@ export async function resetPageState(pageId: string, options: { confirmStale?: b
     ...(options.confirmStale === true ? { confirmStale: true } : {}),
     ...(options.markdown === undefined ? {} : { markdown: options.markdown }),
   });
+}
+
+const admin = (): Record<string, string> => ({ Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-admin', 'admin')}` });
+
+/** The page as the API gives it (its state epoch among the rest). */
+export async function readPage(pageId: string): Promise<{ stateEpoch: number; markdownStale: boolean }> {
+  const response = await fetch(`${apiUrl()}/v1/pages/${pageId}`, { headers: admin() });
+  if (!response.ok) throw new Error(`GET /v1/pages/${pageId} answered ${response.status}`);
+  return (await response.json()) as { stateEpoch: number; markdownStale: boolean };
+}
+
+/** The saved Markdown of the page, as the export gives it. */
+export async function readMarkdown(pageId: string): Promise<string> {
+  const response = await fetch(`${apiUrl()}/v1/pages/${pageId}/markdown`, { headers: admin() });
+  if (!response.ok) throw new Error(`GET /v1/pages/${pageId}/markdown answered ${response.status}`);
+  return response.text();
+}
+
+/** Takes the page out of the trash for good: it moves to the trash and is purged, so the server no longer knows the id. */
+export async function removePageForGood(pageId: string): Promise<void> {
+  await call<void>('DELETE', `/v1/pages/${pageId}`);
+  await call<void>('DELETE', `/v1/trash/${pageId}`);
+}
+
+/** The signed-in person as the server knows them: the id presence uses, and the name the directory gives for it. */
+export async function whoIs(userId: string): Promise<{ id: string; name: string }> {
+  const response = await fetch(`${apiUrl()}/v1/me`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), userId, 'member')}` } });
+  if (!response.ok) throw new Error(`GET /v1/me answered ${response.status}`);
+  return (await response.json()) as { id: string; name: string };
+}
+
+/** The status the API gives an administrator for the page: 404 for an id the server no longer knows. */
+export async function pageStatus(pageId: string): Promise<number> {
+  return (await fetch(`${apiUrl()}/v1/pages/${pageId}`, { headers: admin() })).status;
 }

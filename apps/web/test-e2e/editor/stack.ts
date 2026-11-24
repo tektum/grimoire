@@ -1,0 +1,49 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { expect } from '@playwright/test';
+import { apiUrl } from '../support/env';
+import { repoRoot } from '../support/env';
+
+const run = promisify(execFile);
+
+/** Runs `docker compose` against the stack `make up` started (project name `grimoire`), from the repository root. */
+export async function compose(...args: string[]): Promise<string> {
+  const result = await run('docker', ['compose', '-p', 'grimoire', ...args], { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 });
+  return result.stdout;
+}
+
+/** Waits for the app to answer `/readyz` again (after a restart or a start). */
+export async function waitReady(): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        try {
+          return (await fetch(`${apiUrl()}/readyz`)).ok;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 120_000, message: 'the app to answer /readyz' },
+    )
+    .toBe(true);
+}
+
+/** The JSON log lines the app wrote since `since`; other lines are ignored. */
+export async function appEvents(since: Date): Promise<{ event: string; [key: string]: unknown }[]> {
+  const out = await compose('logs', '--no-log-prefix', '--since', since.toISOString(), 'app');
+  const events: { event: string; [key: string]: unknown }[] = [];
+  for (const line of out.split('\n')) {
+    try {
+      const value: unknown = JSON.parse(line);
+      if (typeof value === 'object' && value !== null && 'event' in value && typeof value.event === 'string') events.push(value as { event: string });
+    } catch {
+      // not a JSON line
+    }
+  }
+  return events;
+}
+
+/** Runs SQL as the administrator role inside the PostgreSQL container. */
+export async function psqlAdmin(sql: string): Promise<void> {
+  await compose('exec', '-T', 'postgres', 'psql', '-U', 'grimoire_admin', '-d', 'grimoire', '-v', 'ON_ERROR_STOP=1', '-c', sql);
+}

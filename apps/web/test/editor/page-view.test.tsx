@@ -649,4 +649,31 @@ describe('the page screen', () => {
       Reflect.deleteProperty(navigator, 'onLine');
     }
   });
+
+  it('shows the not-found screen, and nothing of the editor, when the server says the page is gone', async () => {
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed'));
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    // The fake timers are in place before the refusal, so a retry it scheduled would be one that the ten minutes of the page's time below can fire.
+    vi.useFakeTimers();
+    try {
+      await act(async () => void t.sessions[1]!.provider.refuse('not-found'));
+      expect(screen.getByRole('heading', { name: 'Page not found' })).toBeTruthy();
+      expect(screen.queryByTestId('editor-root')).toBeNull();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+      expect(t.sessions).toHaveLength(2);
+      expect(t.sessions[1]!.provider.connects).toBe(1); // asked for once
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows it for a page that is not there when the screen is opened, too', async () => {
+    const t = mountPage();
+    await act(async () => void t.sessions[0]!.provider.refuse('not-found'));
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+    expect(t.sessions).toHaveLength(1);
+  });
 });
