@@ -206,11 +206,11 @@ test('the secondary text and the borders of the controls can be read on the card
   }
 });
 
-test('the first screen of the flow is titled Grimoire, says in one line what it is for, asks for the address as a required field with its own messages, and has one full-width button', () => {
+test('the first screen of the flow says in one line what it is for (the page above the card already carries the title), asks for the address as a required field with its own messages, and has one full-width button', () => {
   const login = JSON.parse(read('infra/descope/flows/sign-up-or-in.json')).screens.find((screen) => screen.screenId === 'new-1');
   const components = Object.values(login.contents);
   const texts = components.filter((c) => c.displayName === 'Text' || c.displayName === 'Subtitle').map((c) => c.props.children.trim());
-  assert.deepEqual(texts, ['Grimoire', 'Sign in or create an account with your email']);
+  assert.deepEqual(texts, ['Sign in or create an account with your email'], 'the title is said once, by the page above the card');
   const email = components.find((c) => c.displayName === 'Email Input').props;
   assert.equal(email.required, true, 'an empty address is stopped by the field, not sent to the provider (which answers "Failed to sign up or in")');
   assert.equal(email['data-errormessage-value-missing'], 'Enter your email address');

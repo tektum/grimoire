@@ -1002,30 +1002,6 @@
             "resolvedName": "EmailInput"
           }
         },
-        "LmrSIGOWZb": {
-          "custom": {},
-          "displayName": "Text",
-          "hidden": false,
-          "isCanvas": false,
-          "linkedNodes": {},
-          "nodes": [],
-          "parent": "ROOT",
-          "props": {
-            "children": "Grimoire",
-            "data-errormessage-value-missing": "Please fill out this field.",
-            "full-width": true,
-            "id": "LmrSIGOWZb",
-            "isEnriched": true,
-            "italic": false,
-            "link-target-blank": true,
-            "mode": "primary",
-            "text-align": "left",
-            "variant": "h3"
-          },
-          "type": {
-            "resolvedName": "Text"
-          }
-        },
         "ROOT": {
           "custom": {},
           "displayName": "Container",
@@ -1033,7 +1009,6 @@
           "isCanvas": true,
           "linkedNodes": {},
           "nodes": [
-            "LmrSIGOWZb",
             "subTitle01",
             "4NbN7_i_pn",
             "iHle_uM5W9",
