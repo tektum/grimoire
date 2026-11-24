@@ -643,3 +643,80 @@ describe('the network, as the browser tells it', () => {
     expect(hidden.h.last().provider.connects).toBe(1);
   });
 });
+
+describe('what a hide leaves behind', () => {
+  it('a token refresh that fails while the tab is hidden does not sign anyone out: it decides nothing, and the tab connects when it is shown', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    finish(false);
+    await flush();
+    expect(h.auth.signOuts).toEqual([]);
+    expect(manager.state()).toMatchObject({ suspended: true, stopped: null });
+    manager.resume();
+    expect(p.connects).toBe(2);
+  });
+
+  it('a token refresh that succeeds after the tab was shown again does not connect a second time', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    manager.resume();
+    expect(p.connects).toBe(2);
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(2);
+  });
+
+  it('the late close of the socket that was let go is not a failure of the connection made on resume: no retry, no offline text', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    manager.suspend();
+    manager.resume();
+    p.disconnected(); // the old socket reports itself gone, after the new one was asked for
+    p.close(1006);
+    expect(manager.state().phase).toBe('connecting');
+    await h.clock.advance(1999);
+    expect(manager.state()).toMatchObject({ phase: 'connecting', offline: false });
+    p.emit({ type: 'status', status: 'connected' }); // the new connection is open
+    await h.clock.advance(60_000);
+    expect(manager.state().offline).toBe(false);
+    expect(p.connects).toBe(2);
+    // From here on a close is the new connection's, and is acted on.
+    p.close(1001);
+    expect(manager.state().phase).toBe('retrying');
+  });
+
+  it('if the connection made on resume never opens, the silence is treated as a failure after a moment, and retried', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.suspend();
+    manager.resume();
+    await h.clock.advance(2000);
+    expect(manager.state().phase).toBe('retrying');
+    await h.clock.advance(5000);
+    expect(h.last().provider.connects).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a connection that becomes healthy has no retry left running', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.close(1001);
+    expect(h.clock.pendingCount()).toBeGreaterThan(0);
+    p.succeed(1); // it connected by itself, another way
+    expect(h.clock.pendingCount()).toBe(0);
+    expect(manager.state().phase).toBe('synced');
+  });
+});

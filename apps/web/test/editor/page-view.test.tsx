@@ -103,11 +103,7 @@ function mountPage(
       };
     }),
   } as unknown as AppSession['api'];
-<<<<<<< HEAD
-  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', apiUrl: 'http://api.test' };
-=======
-  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', ...(options.hiddenMs === undefined ? {} : { hiddenDisconnectMs: options.hiddenMs }) };
->>>>>>> 987e615 (feat(web): a hidden tab lets go of its connection; the hidden-tab, offline, stale-epoch and connection-signals specs (M6-T04))
+  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', apiUrl: 'http://api.test', ...(options.hiddenMs === undefined ? {} : { hiddenDisconnectMs: options.hiddenMs }) };
   const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
   const engine = { ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) };
   const Host = () => {
@@ -548,7 +544,6 @@ describe('the page screen', () => {
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
   });
 
-<<<<<<< HEAD
   it('checks the minimum client version again when the connection is made again after more than a minute, with a plain request, and shows nothing else when the server wants a newer client', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); // only the clock of the page moves: the waits of the test are real
     const asked: string[] = [];
@@ -575,7 +570,8 @@ describe('the page screen', () => {
       vi.unstubAllGlobals();
       vi.useRealTimers();
     }
-=======
+  });
+
   it('lets go of the connection after the tab has been hidden for the configured time, says so on the root, and connects again when it is shown', async () => {
     const setVisibility = (state: 'hidden' | 'visible') => {
       Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
@@ -605,7 +601,6 @@ describe('the page screen', () => {
     await act(async () => setVisibility('visible'));
     expect(t.sessions[0]!.provider.disconnects).toBe(0);
     Reflect.deleteProperty(document, 'visibilityState');
->>>>>>> 987e615 (feat(web): a hidden tab lets go of its connection; the hidden-tab, offline, stale-epoch and connection-signals specs (M6-T04))
   });
 
   it('starts the clock at once for a page that opens in a tab that is already hidden', async () => {

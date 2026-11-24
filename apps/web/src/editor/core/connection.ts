@@ -89,6 +89,7 @@ const TOKEN_RETRY_MS = 5000;
 const REFRESH_WINDOW_MS = 60_000;
 const REFUSAL_CLOSE_WINDOW_MS = 2000;
 const LONG_OFFLINE_MS = 60_000;
+const STALE_EVENTS_MS = 2000;
 
 export class ConnectionManager {
   private readonly timers: Timers;
@@ -108,6 +109,11 @@ export class ConnectionManager {
   /** The wait now running was asked for by the server (it is busy): the network coming back does not cut it short. */
   private busyWait = false;
   private refreshingFor: Session | null = null;
+  /** Counts the refreshes started and those called off (a hide calls off the one running): a completion acts only if it is still the current one. */
+  private refreshRun = 0;
+  /** After a resume, until the new connection says it has started: the late close of the socket that was let go is not a failure of the new one. */
+  private awaitingNewConnection = false;
+  private staleTimer: unknown = null;
   /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
   private large = false;
   /** True after the manager disconnected the provider itself (a stop, or a wait before an error retry): the close that follows is its own doing and says nothing new. */
@@ -202,7 +208,10 @@ export class ConnectionManager {
     this.clearTimers();
     this.clearOffline();
     this.quiet = true;
+    this.refreshRun += 1; // a token refresh that is running is called off: what it decides is decided again when the tab is shown
+    this.refreshingFor = null;
     this.lostAt ??= this.timers.now(); // a long hide counts as time without a connection
+    this.endAwaiting();
     this.session.provider.disconnect();
     // Only the transient text goes: the reason a page is read-only or too large stays.
     this.set({ suspended: true, phase: 'retrying', offline: false, text: this.current.text === TEXTS.offline ? null : this.current.text });
@@ -216,7 +225,20 @@ export class ConnectionManager {
     if (!this.current.suspended || this.session === null) return;
     this.set({ suspended: false, phase: 'connecting' });
     this.attempts = 0;
+    this.awaitingNewConnection = true;
+    // A close that comes in the first moments is the old socket's. If the new connection has not even opened after that, the silence was a failure: it is treated as one.
+    this.staleTimer = this.timers.setTimeout(() => {
+      this.staleTimer = null;
+      this.awaitingNewConnection = false;
+      if (this.current.phase === 'connecting' && !this.current.suspended) this.act(mapSignal({ type: 'close', code: 1006 }));
+    }, STALE_EVENTS_MS);
     this.connectSession();
+  }
+
+  private endAwaiting(): void {
+    this.awaitingNewConnection = false;
+    if (this.staleTimer !== null) this.timers.clearTimeout(this.staleTimer);
+    this.staleTimer = null;
   }
 
   /** Ends the page: no more attempts, the document and the provider are destroyed. */
@@ -289,6 +311,11 @@ export class ConnectionManager {
   private onEvent(from: Session, event: ProviderEvent): void {
     if (from !== this.session) return; // an old session says nothing: its provider is destroyed
     if (this.quiet && (event.type === 'close' || event.type === 'authenticationFailed')) return;
+    if (this.awaitingNewConnection) {
+      // The socket that was let go may still report its close after the new one was asked for: that is the old socket's, not a failure of the new connection.
+      if ((event.type === 'status' && event.status === 'connected') || event.type === 'synced' || event.type === 'authenticated') this.endAwaiting();
+      else if (event.type === 'close' || (event.type === 'status' && event.status === 'disconnected')) return;
+    }
     switch (event.type) {
       case 'status':
         this.onStatus(event.status);
@@ -340,6 +367,7 @@ export class ConnectionManager {
     if (this.pendingEpoch !== null) this.epoch = this.pendingEpoch;
     this.attempts = 0;
     this.errorTries = 0;
+    this.clearRetry(); // a connection that is healthy has no wait left running
     if (this.lostAt !== null && this.timers.now() - this.lostAt > LONG_OFFLINE_MS) this.options.onLongOffline?.();
     this.lostAt = null;
     this.held = null; // accepted: the copy is not needed and no reference to it remains
@@ -449,9 +477,11 @@ export class ConnectionManager {
     }
     this.lastRefreshAt = now;
     const session = this.session;
+    const run = (this.refreshRun += 1);
     session?.provider.disconnect();
     this.refreshingFor = session;
     const refreshed = await this.options.auth.refresh().catch(() => false);
+    if (run !== this.refreshRun) return; // called off while it ran (the tab was hidden): it decides nothing now
     if (this.refreshingFor === session) this.refreshingFor = null;
     // The page may have been stopped, or its session replaced, while the refresh ran: then it is not this one's to reconnect.
     if (this.session === null || this.session !== session || this.current.phase === 'stopped') return;
@@ -503,6 +533,7 @@ export class ConnectionManager {
   }
   private clearTimers(): void {
     this.clearRetry();
+    this.endAwaiting();
     if (this.offlineTimer !== null) this.timers.clearTimeout(this.offlineTimer);
     this.offlineTimer = null;
   }
