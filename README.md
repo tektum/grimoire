@@ -74,7 +74,7 @@ A page that was reset under a tab with unsent changes: the notice, and the copy 
 
 ![A page for an administrator: History, and Reset saved state](docs/screenshots/m6-t04/admin-reset-action-light.png)
 
-An administrator's page: a History link, and the Reset saved state action that opens the dialog below.
+An administrator's page: a History link, and the Reset saved state action (it opens the reset dialog shown further down).
 
 ![The Move to dialog](docs/screenshots/m6-t03/move-to-dialog-light.png)
 
