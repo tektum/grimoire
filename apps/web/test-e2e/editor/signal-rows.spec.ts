@@ -66,7 +66,9 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
     });
   });
 
-  test('access-changed: the page reconnects on a fresh document, with no reset notice and no copy offered', async ({ browser, baseURL }) => {
+  // That the new connection is on a new document (not the same one, as a plain retry would be) is the connection manager's, checked by its unit tests; the
+  // scripted server never syncs content, so nothing here could tell the two apart.
+  test('access-changed: the page connects again, with no reset notice and no copy offered', async ({ browser, baseURL }) => {
     await withPage(browser, baseURL, {}, async ({ page, collab, handshakes }) => {
       await expect.poll(() => collab.tokens.length).toBe(1);
       collab.closeAll(4205, 'access-changed');
