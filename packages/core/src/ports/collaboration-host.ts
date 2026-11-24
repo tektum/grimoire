@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { PageAccessChecker } from '../authorize/index.js';
-import type { AuthVerifier, Profile } from './auth-verifier.js';
+import type { AuthVerifier, Profile, TenantClaim } from './auth-verifier.js';
 import type { Clock } from './clock.js';
 import type { Config } from './config.js';
 import type { Logger } from './logger.js';
@@ -49,7 +49,7 @@ export interface CollabDeps {
    * WebSocket path), in local mode the provisioner with the development role. `undefined`: no such user (refused `forbidden`).
    * The host refuses a returned row that is suspended; it never relies on this function for that. Rejects when the database fails.
    */
-  readonly resolveUser: (token: string, identity: { readonly userId: string; readonly profile?: Profile }) => Promise<UserRecord | undefined>;
+  readonly resolveUser: (token: string, identity: { readonly userId: string; readonly profile?: Profile; readonly tenant?: TenantClaim }) => Promise<UserRecord | undefined>;
   /**
    * Refuse a token whose tenant is none or several (docs/tenancy.md, section 6) at the handshake. Off (the default) until the sign-in flow that gives every person a tenant is in
    * place, so that tokens that predate it are not locked out; the server composition turns it on together with the API's own refusal of the same tokens.

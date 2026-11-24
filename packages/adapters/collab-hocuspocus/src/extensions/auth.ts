@@ -50,7 +50,7 @@ type Resolved = { kind: 'refused'; refusal: Refusal } | { kind: 'allowed'; user:
  * sees why, and both refusals take one user lookup and one access query. Rejects when the database fails.
  */
 async function resolve(deps: CollabDeps, token: string, v: Extract<Verified, { kind: 'ok' }>, pageId: string): Promise<Resolved> {
-  const user = await deps.resolveUser(token, { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}) });
+  const user = await deps.resolveUser(token, { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}), ...(v.tenant !== undefined ? { tenant: v.tenant } : {}) });
   // The row must be the verified subject's own, and never the system user: anything else is no user.
   if (user === undefined || user.descopeUserId !== v.userId || user.descopeUserId === SYSTEM_SUBJECT || typeof user.id !== 'string' || user.id === '') {
     return { kind: 'refused', refusal: new Refusal('forbidden', 'no-user') };

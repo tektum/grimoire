@@ -258,7 +258,7 @@ export function createRecheck(o: RecheckOptions): Recheck {
       if (v.tenant?.kind === 'one') {
         let row: Awaited<ReturnType<CollabDeps['resolveUser']>> | 'unavailable';
         try {
-          row = await bounded(deps.resolveUser(token ?? '', { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}) }), TOKEN_VERIFY_TIMEOUT_MS);
+          row = await bounded(deps.resolveUser(token ?? '', { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}), tenant: v.tenant }), TOKEN_VERIFY_TIMEOUT_MS);
         } catch {
           row = 'unavailable'; // the periodic re-check decides again by the row, so a failed lookup here does not close
         }
