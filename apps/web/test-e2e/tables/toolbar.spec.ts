@@ -59,3 +59,17 @@ test('every control has an accessible name and the Tab key reaches each in turn 
     await editor.stop();
   }
 });
+
+test('cells read in the page text\'s font, and a cell is as tall as its text and its padding (no space of a paragraph under it)', async ({ page }) => {
+  const editor = await openEditor(page, TABLE);
+  try {
+    const font = (selector: string): Promise<string> => page.locator(selector).first().evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(await font('td')).toBe(await font('p'));
+    expect(await font('th')).toBe(await font('p'));
+    const box = await page.locator('td').first().boundingBox();
+    const line = await page.locator('td p').first().boundingBox();
+    expect(box?.height ?? 0).toBeLessThan((line?.height ?? 0) + 40); // the text's own height and the cell's padding, not a second paragraph's space
+  } finally {
+    await editor.stop();
+  }
+});
