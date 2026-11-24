@@ -73,7 +73,9 @@ describe('a block with a huge number of children is refused before the serialize
     const { ms, last: result } = await leastCpu(() => convertInProcess(state));
     expect(result).toMatchObject({ ok: false, reason: 'too-large' });
     expect(ms, `cpu ms ${String(ms)}`).toBeLessThan(5_000); // about 400 ms CPU when idle; the defect it guards against is 100 s
-  });
+    // The guarantee is the CPU time above, which a busy machine or coverage barely changes (about 300 to 800 ms in every run measured). The test's own time limit is only a guard
+    // against a hang: building this state and converting it three times takes about 2 s of wall time when idle, so the default 5 s limit failed it under load with the CPU still low.
+  }, 120_000);
 
   it('30,000 hard breaks in one paragraph are refused; 1,000 convert', async () => {
     const shape = SHAPES.find((candidate) => candidate.name === 'hard breaks');
