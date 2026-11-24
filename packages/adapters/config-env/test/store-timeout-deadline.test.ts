@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const base = {
   GRIMOIRE_LOCAL: '1',
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
 };
 const issues = (env: Record<string, string>): string[] => {

@@ -1,6 +1,8 @@
 export {
   appUrl,
   adminUrl,
+  devDatabaseUrl,
+  HOST,
   migratorUrl,
   createDatabaseSupport,
   mainJs,

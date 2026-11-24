@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const setupEnv = {
-  GRIMOIRE_DATABASE_ADMIN_URL: 'postgresql://admin:admin-password@db.example.test:5432/grimoire',
+  GRIMOIRE_DATABASE_ADMIN_URL: placeholderDatabaseUrl('db.example.test:5432', 'grimoire', 'admin'),
   GRIMOIRE_DB_APP_PASSWORD: 'app-password-0123456789',
   GRIMOIRE_DB_MIGRATOR_PASSWORD: 'migrator-password-0123456789',
 };
@@ -32,11 +33,11 @@ describe('the db-setup purpose', () => {
   });
 
   it('is not part of the other purposes: the server and the migration never carry it', () => {
-    expect(loadConfig({ ...setupEnv, GRIMOIRE_DATABASE_MIGRATION_URL: 'postgresql://m:p@h/grimoire' }, { purpose: 'migrate' }).dbSetup).toBeUndefined();
+    expect(loadConfig({ ...setupEnv, GRIMOIRE_DATABASE_MIGRATION_URL: placeholderDatabaseUrl('h', 'grimoire', 'm') }, { purpose: 'migrate' }).dbSetup).toBeUndefined();
   });
 
   it.each(Object.keys(setupEnv))('the server refuses %s: only the db-setup step holds it', (name) => {
-    const server = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'dev-token-secret-0123456789', GRIMOIRE_DATABASE_URL: 'postgresql://a:b@h/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
+    const server = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'dev-token-secret-0123456789', GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('h'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
     const found = problems({ ...server, [name]: setupEnv[name as keyof typeof setupEnv] }, 'server');
     expect(found).toEqual([`${name}: must not be set for the server: only the db-setup step holds the administrator connection and the role passwords`]);
   });

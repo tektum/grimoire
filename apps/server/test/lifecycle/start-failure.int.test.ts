@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appUrl, createTestDatabase, dropTestDatabase, freePort, mainJs, requireBuild } from '../server/support/harness.js';
 import { listenerReport, spawnWatched, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
 import type { ListenerReport } from '@tektum/grimoire-test-support/harness';
+import { migratorUrl } from '@tektum/grimoire-test-support/database';
 
 const DB = `grimoire_m3t01b_start_${String(process.pid)}`;
 const children = new Set<ReturnType<typeof spawnWatched>>();
@@ -83,7 +84,7 @@ describe('start-time failures (S15)', () => {
 
   it('a failed CLI migration exits 1 and does not expose a listening socket', async () => {
     await createTestDatabase(DB, false); // empty database: the fixture's own migration is the one that runs and fails
-    const result = await runEntrypoint([mainJs.replace(/main\.js$/, 'cli.js'), 'migrate', '--dir', fileURLToPath(new URL('./fixtures/bad-migration', import.meta.url))], { GRIMOIRE_DATABASE_MIGRATION_URL: `postgresql://grimoire_migrator:grimoire-dev@127.0.0.1:55432/${DB}` });
+    const result = await runEntrypoint([mainJs.replace(/main\.js$/, 'cli.js'), 'migrate', '--dir', fileURLToPath(new URL('./fixtures/bad-migration', import.meta.url))], { GRIMOIRE_DATABASE_MIGRATION_URL: migratorUrl(DB) });
     expect(result.code).toBe(1);
     expect(result.output).toContain('"event":"migrate.failed"');
     expect(result.output).toContain('0001_broken'); // the message names the migration that failed

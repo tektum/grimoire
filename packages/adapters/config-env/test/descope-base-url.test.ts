@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/index.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const base = {
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
 };
 
@@ -26,7 +27,7 @@ const nonLocalBase = { ...base, GRIMOIRE_LOCAL: '0', GRIMOIRE_DESCOPE_PROJECT_ID
 
 it.each(['http://example.test', 'https://keys.example.test', 'http://127.0.0.1:9443'])('local mode accepts an uncredentialed URL: %s', (url) => {
   // The whole configuration must load (a migration run needs the migration URL), not only be free of a base URL problem.
-  const env = { ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_DESCOPE_BASE_URL: url, GRIMOIRE_DATABASE_MIGRATION_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire' };
+  const env = { ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DESCOPE_PROJECT_ID: 'P1', GRIMOIRE_DESCOPE_BASE_URL: url, GRIMOIRE_DATABASE_MIGRATION_URL: placeholderDatabaseUrl() };
   expect(() => loadConfig(env, { purpose: 'migrate' })).not.toThrow();
 });
 

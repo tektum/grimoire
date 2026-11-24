@@ -6,8 +6,9 @@ import { composeMigrate } from '../../src/lifecycle/compose-migrate.js';
 import { createRun } from '../../src/lifecycle/run.js';
 import { Shutdown } from '../../src/lifecycle/shutdown.js';
 import { makeContext } from '../server/support/context.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
-const base = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
+const base = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
 
 describe('the single composition root (S1/S7)', () => {
   it('only composition imports adapter implementations', () => {
@@ -41,7 +42,7 @@ describe('the single composition root (S1/S7)', () => {
   });
 
   it('the CLI receives a migration composition instead of constructing adapters', () => {
-    const result = composeMigrate({ env: { GRIMOIRE_DATABASE_MIGRATION_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire' } });
+    const result = composeMigrate({ env: { GRIMOIRE_DATABASE_MIGRATION_URL: placeholderDatabaseUrl() } });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.ctx.config.database.migrationUrl).toContain('postgresql:');
   });

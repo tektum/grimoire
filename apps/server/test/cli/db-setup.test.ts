@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { composeDbSetup } from '../../src/composition.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const env = {
-  GRIMOIRE_DATABASE_ADMIN_URL: 'postgresql://admin:admin-password@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_ADMIN_URL: placeholderDatabaseUrl('127.0.0.1:55432', 'grimoire', 'admin'),
   GRIMOIRE_DB_APP_PASSWORD: 'app-password-0123456789',
   GRIMOIRE_DB_MIGRATOR_PASSWORD: 'migrator-password-0123456789',
 };

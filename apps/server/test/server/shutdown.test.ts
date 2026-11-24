@@ -6,6 +6,7 @@ import { createEventLog } from '../../src/events.js';
 import { Shutdown, SHUTDOWN_PHASES } from '../../src/lifecycle/shutdown.js';
 import type { ShutdownPhase } from '../../src/lifecycle/shutdown.js';
 import { makeContext } from './support/context.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
@@ -68,7 +69,7 @@ describe('Shutdown', () => {
   it('logs shutdown.hook_failed for a throwing hook (name only, no message) and does not stop later phases', async () => {
     const { shutdown, log, logger } = setup();
     const later = vi.fn(() => Promise.resolve());
-    shutdown.register({ name: 'throws', phase: 'stop-timers', deadlineMs: 500, run: () => { throw new TypeError('postgres://u:pw@h/db'); } });
+    shutdown.register({ name: 'throws', phase: 'stop-timers', deadlineMs: 500, run: () => { throw new TypeError(placeholderDatabaseUrl('h', 'db')); } });
     shutdown.register({ name: 'rejects', phase: 'stop-timers', deadlineMs: 500, run: () => Promise.reject(new RangeError('x')) });
     shutdown.register({ name: 'db', phase: 'close-database', deadlineMs: 500, run: later });
     expect(await shutdown.run(log, 'SIGTERM')).toBe(1);

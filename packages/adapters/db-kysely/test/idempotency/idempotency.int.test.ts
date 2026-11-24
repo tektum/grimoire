@@ -6,12 +6,13 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, type KyselyDatabase } from '../../src/index.js';
 import { createIdempotency } from '../../src/idempotency.js';
+import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
 
 // Only tests in this process use this database; its afterAll drops it, never somebody else's runtime database.
 const DATABASE = `grimoire_m4t02_idem_${String(process.pid)}`;
-const APP_URL = `postgresql://grimoire_app:grimoire-dev@127.0.0.1:55432/${DATABASE}`;
-const MIGRATION_URL = `postgresql://grimoire_migrator:grimoire-dev@127.0.0.1:55432/${DATABASE}`;
-const POSTGRES_URL = 'postgresql://grimoire_admin:grimoire-dev@127.0.0.1:55432/postgres';
+const APP_URL = appUrl(DATABASE);
+const MIGRATION_URL = migratorUrl(DATABASE);
+const POSTGRES_URL = adminUrl('postgres');
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 const CLI = path.join(ROOT, 'apps/server/dist/cli.js');
 const exec = promisify(execFile);

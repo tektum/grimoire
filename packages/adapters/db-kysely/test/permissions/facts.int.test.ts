@@ -8,6 +8,7 @@ import { createDatabase } from '../../src/index.js';
 import type { KyselyDatabase } from '../../src/index.js';
 import { createAccessStore } from '../../src/permissions.js';
 import { counting, createMigratedDatabase, dropDatabase, loadWorld, urlFor } from './support.js';
+import { appUrl } from '@tektum/grimoire-test-support/database';
 
 const DB = `grimoire_m3t04_facts_${String(process.pid)}`;
 const { world, ids } = worldOfCases();
@@ -106,7 +107,7 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
   });
 
   it('rejects when the database is unreachable', async () => {
-    const down = createDatabase('postgresql://grimoire_app:grimoire-dev@127.0.0.1:1/none', { connectionTimeoutMs: 300, closeTimeoutMs: 100 });
+    const down = createDatabase(appUrl('none', '127.0.0.1:1'), { connectionTimeoutMs: 300, closeTimeoutMs: 100 });
     try {
       await expect(createAccessStore(down).facts([{ userId: ids[0]?.userId ?? '', pageId: ids[0]?.pageId ?? '' }])).rejects.toThrow();
     } finally {

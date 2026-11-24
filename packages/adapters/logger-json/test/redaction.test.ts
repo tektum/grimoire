@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createJsonLogger } from '../src/index.js';
 import { redactString } from '../src/scrub.js';
+import { dsn } from './dsn.js';
 
 const S = 'LEAKME';
 
@@ -23,11 +24,11 @@ function expectSafe(lines: string[], marker = S): void {
 const stringCases: readonly (readonly [string, string])[] = [
   ['url with bare query', `https://h/p?${S}`],
   ['host/path with bare query', `h.com/p?${S}`],
-  ['password containing @', `postgres://u:p@ss${S}@h/db`],
+  ['password containing @', dsn(`u:p@ss${S}`, 'h/db')],
   ['password containing /', `postgres://u:p/${S}@h/db`],
-  ['password containing :', `postgres://u:a:${S}@h/db`],
-  ['password containing ?', `postgres://u:a?${S}@h/db`],
-  ['password containing #', `postgres://u:a#${S}@h/db`],
+  ['password containing :', dsn(`u:a:${S}`, 'h/db')],
+  ['password containing ?', dsn(`u:a?${S}`, 'h/db')],
+  ['password containing #', dsn(`u:a#${S}`, 'h/db')],
   ['password containing spaces', `postgres://u:a ${S} b@h/db`],
   ['userinfo without password', `https://${S}@h/db`],
   ['connection text Password=', `Server=h;Password=${S}`],
@@ -235,6 +236,6 @@ describe('known limits of the best-effort scrubber (changing one of these is a d
 
   it('known limit: scheme-less credentials (user:secret@tcp(host)/db) are not recognised, unlike URLs with a scheme', () => {
     expect(redactString('root:Sup3rSecret@tcp(10.0.0.5:3306)/app')).toContain('Sup3rSecret');
-    expect(redactString('postgres://root:Sup3rSecret@10.0.0.5:5432/app')).not.toContain('Sup3rSecret');
+    expect(redactString(dsn('root:Sup3rSecret', '10.0.0.5:5432/app'))).not.toContain('Sup3rSecret');
   });
 });

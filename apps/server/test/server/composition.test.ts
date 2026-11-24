@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
 import { createIssuer, PROJECT_ID } from './support/descope-double.js';
+import { appUrl } from '@tektum/grimoire-test-support/database';
 
 const base = {
-  GRIMOIRE_DATABASE_URL: 'postgresql://grimoire_app:grimoire-dev@127.0.0.1:1/grimoire',
+  GRIMOIRE_DATABASE_URL: appUrl('grimoire', '127.0.0.1:1'),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
 };

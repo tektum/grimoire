@@ -3,11 +3,12 @@ import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
 import { createEventLog } from '../../src/events.js';
 import { compose } from '../../src/composition.js';
 import { createRun } from '../../src/lifecycle/run.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const base = {
   GRIMOIRE_LOCAL: '1',
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-  GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:55432/grimoire',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
 };
 

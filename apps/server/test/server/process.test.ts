@@ -8,6 +8,7 @@ import { Shutdown } from '../../src/lifecycle/shutdown.js';
 import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
 import { compose } from '../../src/composition.js';
 import { createRun } from '../../src/lifecycle/run.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
@@ -79,7 +80,7 @@ describe('process handlers', () => {
     const { faults, exits, logger, shutdown } = setup();
     const ran = vi.fn(() => Promise.resolve());
     shutdown.register({ name: 'db', phase: 'close-database', deadlineMs: 10, run: ran });
-    faults.get(kind)?.(new TypeError('postgres://u:pw@h/db'));
+    faults.get(kind)?.(new TypeError(placeholderDatabaseUrl('h', 'db')));
     await flush();
     expect(ran).toHaveBeenCalledOnce();
     expect(exits).toEqual([EXIT.failure]);
@@ -90,7 +91,7 @@ describe('process handlers', () => {
 });
 
 describe('start-up refusals outside local mode (R12.22, R8.4)', () => {
-  const nonLocal = { GRIMOIRE_DATABASE_URL: 'postgresql://u:pw@127.0.0.1:1/grimoire', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
+  const nonLocal = { GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
   async function start(env: Record<string, string>): Promise<{ code: number | undefined; text: string }> {
     const lines: string[] = [];
     const log = createEventLog(createJsonLogger({ destination: { write: (l) => lines.push(l) } }));

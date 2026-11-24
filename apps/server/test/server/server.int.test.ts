@@ -7,6 +7,7 @@ import {
 } from './support/harness.js';
 import { overallShutdownDeadlineMs } from '../../src/lifecycle/budget.js';
 import { listenerReport, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
+import { appUrl } from '@tektum/grimoire-test-support/database';
 
 const MIGRATED = 'grimoire_t07_migrated';
 const EMPTY = 'grimoire_t07_empty';
@@ -45,7 +46,7 @@ describe('readiness against PostgreSQL', () => {
 
   it('/readyz is 503 and /healthz 200 when the database url points at a closed port', async () => {
     const closed = await freePort();
-    const s = await start({ env: { GRIMOIRE_DATABASE_URL: `postgresql://grimoire_app:grimoire-dev@127.0.0.1:${closed}/grimoire` } });
+    const s = await start({ env: { GRIMOIRE_DATABASE_URL: appUrl('grimoire', `127.0.0.1:${String(closed)}`) } });
     expect(await get(`${s.url}/readyz`)).toEqual({ status: 503, body: 'unavailable' });
     expect(await get(`${s.url}/healthz`)).toEqual({ status: 200, body: 'ok' });
   });
