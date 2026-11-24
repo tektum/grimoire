@@ -11,9 +11,9 @@ WORKDIR /app
 COPY . .
 # bun runs a dependency's install script only if it is trusted: the root package.json sets "trustedDependencies": [] (which also switches off bun's built-in default list), so no install script runs, as with npm's --ignore-scripts.
 RUN bun install --frozen-lockfile
-# Only the server and the Markdown adapter (which the server loads, with its worker file) plus what they reference; no test projects.
-RUN bun run tsc -b apps/server packages/adapters/markdown-milkdown
-# The web client, built once for every deployment: its address-dependent files (config.json and the response headers) are made by the server at start from its settings.
+# The root build, in its own order: the server, the OpenAPI document and the client types made from it, then every package (the Markdown adapter with its worker file, and the packages the web client imports).
+RUN bun run build
+# The web client, built once for every deployment (its imports are built above): its address-dependent files (config.json and the response headers) are made by the server at start from its settings.
 RUN bun run --cwd apps/web build
 # Production dependencies only: bun does not prune an existing node_modules, so install again from nothing with just the two workspaces
 # (and what they depend on); the dist directories built above stay in place and the workspace links are made again.
