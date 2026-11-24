@@ -10,7 +10,12 @@ import { fileURLToPath } from "node:url";
 import { SHIPPED_LICENCES } from "./allowed-licences.mjs";
 
 /** Run inside an image: one line per package, `name<TAB>version<TAB>License names joined by |` (`-` when the package has no copyright file). */
-export const COLLECT = String.raw`dpkg-query -W -f='\${Package}\t\${Version}\n' | while IFS="$(printf '\t')" read -r p v; do f=/usr/share/doc/$p/copyright; if [ -r "$f" ]; then l=$(sed -n 's/^License:[[:space:]]*//p' "$f" | sed 's/[[:space:]].*//' | sort -u | paste -sd'|' -); else l=-; fi; printf '%s\t%s\t%s\n' "$p" "$v" "$l"; done`;
+export const COLLECT = [
+  "dpkg-query -W -f='$" + "{Package}\\t$" + "{Version}\\n' | while IFS=\"$(printf '\\t')\" read -r p v; do",
+  ' f=/usr/share/doc/$p/copyright;',
+  ' if [ -r "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]].*//\' | sort -u | paste -sd\'|\' -); else l=-; fi;',
+  " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
+].join('');
 
 export function parseList(text) {
   return text.split("\n").filter((l) => l !== "").map((line) => {

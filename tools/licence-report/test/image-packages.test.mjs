@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { addedPackages, evaluate, normaliseLicence, parseList, report } from "../image-packages.mjs";
+import { COLLECT, addedPackages, evaluate, normaliseLicence, parseList, report } from "../image-packages.mjs";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "image-packages.mjs");
 
@@ -12,6 +12,11 @@ const script = join(dirname(fileURLToPath(import.meta.url)), "..", "image-packag
 // A package list is what the collecting script prints in an image: name, version and the `License:` names of its copyright file, tab separated; `-` is no copyright file.
 const OLD = ["libc6\t2.36-9\tGPL-2|LGPL-2.1", "tzdata\t2024a\tPublic-Domain", "zlib1g\t1.2.13\tZlib"].join("\n");
 const NEW = ["libc6\t2.36-9\tGPL-2|LGPL-2.1", "tzdata\t2024a\tPublic-Domain", "zlib1g\t1.2.13\tZlib", "postgresql-17-pgvector\t0.8.5-1\tPostgreSQL", "libfoo\t1.0\tExpat|BSD-3-clause"].join("\n");
+
+test("the collecting script asks dpkg for plain fields (an escaped dollar printed the field name with a dollar in front of it in CI)", () => {
+  assert.ok(COLLECT.includes("-f='${Package}\\t${Version}\\n'"));
+  assert.ok(!COLLECT.includes("\\$"));
+});
 
 test("a list is parsed per package, and a malformed line is an error, not skipped", () => {
   assert.deepEqual(parseList("a\t1\tMIT|ISC\nb\t2\t-\nc\t3\t"), [

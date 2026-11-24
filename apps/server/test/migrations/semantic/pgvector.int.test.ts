@@ -1,6 +1,6 @@
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appUrl, createTestDatabase, dropTestDatabase, sqlAdmin } from '../../server/support/harness.js';
+import { adminUrl, appUrl, createTestDatabase, dropTestDatabase, sqlAdmin } from '../../server/support/harness.js';
 
 // M7-T10 (R2.46): the Compose database has pgvector. The database `grimoire` is made by the image's init step (`db/init/03-vector.sql`); the scratch database below stands in for
 // a migrated one (an extension is per database) and is where a table with a `vector` column is tried. The version is read, not assumed: it is 0.8.5 on the default image
@@ -18,8 +18,13 @@ afterAll(async () => { await dropTestDatabase(SCRATCH); await dropTestDatabase(B
 
 describe('pgvector in the database image', () => {
   it('is installed in the database the image creates, at the version of the image', async () => {
-    const rows = await sqlAdmin<{ extversion: string }>('grimoire', `select extversion from pg_extension where extname = 'vector'`);
-    expect(rows.map((r) => r.extversion)).toEqual([VERSION]);
+    const init = createDatabase(adminUrl('grimoire'), { maxConnections: 1 }); // `sqlAdmin` takes the names of test databases only
+    try {
+      const rows = await init.query<{ extversion: string }>(`select extversion from pg_extension where extname = 'vector'`);
+      expect(rows.map((r) => r.extversion)).toEqual([VERSION]);
+    } finally {
+      await init.close();
+    }
   });
 
   it('lets the runtime role use the type and the distance operator, and does not let it create the extension', async () => {
