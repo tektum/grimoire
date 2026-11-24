@@ -172,6 +172,16 @@ The line under the title says Saving while changes wait for the server, Saved on
 
 After ten seconds without a connection: the changes are kept in the tab.
 
+![A page that already has 100 people editing](docs/screenshots/m6-t06/page-full-light.png)
+
+When the page is full, the line says so and when to try again.
+
+![A page too large to edit, with the reset action for admins](docs/screenshots/m6-t06/too-large-admin-light.png)
+
+A page past its size limit stays readable; an admin has the reset action in the header.
+
+![The size-limit banner](docs/screenshots/m6-t06/size-limit-banner-light.png)
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

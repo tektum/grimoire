@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ConnectionState } from '../editor/core/connection';
 import { TEXTS } from '../editor/core/map-signal';
 
-type StatusState = Pick<ConnectionState, 'text' | 'unsynced' | 'changes' | 'readOnly'>;
+type StatusState = Pick<ConnectionState, 'text' | 'unsynced' | 'changes' | 'readOnly' | 'stopped'>;
 
 /** What the page's editor is doing with its connection, as the screen tells it (the same words the page styles by). */
 export type StatusScope = 'connecting' | 'synced' | 'offline' | 'stopped' | 'disconnected';
@@ -10,11 +10,15 @@ export type StatusScope = 'connecting' | 'synced' | 'offline' | 'stopped' | 'dis
 /** How long nothing has to be waiting before the line says Saved: typing goes on after each answer of the server, and a line that flipped on every keystroke would be noise. */
 export const SAVED_HOLD_MS = 600;
 
+const CANNOT_OPEN = "This page can't be opened right now.";
+
 /**
  * The words of the status line (R11.12, R11.14), most important first: a message of the table (a refusal, a limit, the offline text), then Connecting, then, once the page is
  * synced, Saving while the server has not acknowledged changes of this tab and Saved when it has. A reader has nothing to save: Live.
  */
-export function statusText(state: Pick<ConnectionState, 'text' | 'unsynced' | 'readOnly'>, scope: StatusScope): string | null {
+export function statusText(state: Pick<ConnectionState, 'text' | 'unsynced' | 'readOnly' | 'stopped'>, scope: StatusScope): string | null {
+  // Stopped for good, the text of a page that is tried again would lie: it is not, until the person asks.
+  if (scope === 'stopped' && state.stopped === 'cannot-open' && state.text === TEXTS.cannotOpen) return CANNOT_OPEN;
   if (state.text !== null && state.text !== TEXTS.readOnly) return state.text; // includes the offline text
   if (scope === 'offline') return TEXTS.offline;
   if (scope === 'connecting') return 'Connecting…';
@@ -26,7 +30,7 @@ export function statusText(state: Pick<ConnectionState, 'text' | 'unsynced' | 'r
  * The status line, and the page's one polite live region: it receives Saving and Saved, the offline text and every refusal or limit text of the table, and never takes the
  * focus. Saving shows at once; Saved waits for {@link SAVED_HOLD_MS} of nothing waiting.
  */
-export function StatusLine({ state, collab }: { readonly state: StatusState; readonly collab: StatusScope }) {
+export function StatusLine({ state, collab, onRetry }: { readonly state: StatusState; readonly collab: StatusScope; readonly onRetry?: () => void }) {
   // `settled` is the last change the line has shown as saved. A change that was acknowledged before the screen drew still counts as one (`changes` went up), so Saving shows
   // for the moment however fast the server is; the line itself is one element that stays, and only its text changes.
   const [settled, setSettled] = useState(state.changes);
@@ -41,6 +45,14 @@ export function StatusLine({ state, collab }: { readonly state: StatusState; rea
   return (
     <p className="page-status" role="status" aria-live="polite" aria-atomic="true" data-state={collab}>
       {text}
+      {collab === 'stopped' && state.stopped === 'cannot-open' && state.text === TEXTS.cannotOpen && onRetry !== undefined ? (
+        <>
+          {' '}
+          <button type="button" className="page-status-action" onClick={onRetry}>
+            Try again
+          </button>
+        </>
+      ) : null}
     </p>
   );
 }
