@@ -8,3 +8,5 @@ import { isSafeUrl } from '@tektum/grimoire-editor-schema';
 export function isSafeHref(value: unknown): boolean {
   return isSafeUrl(value, 'link');
 }
+
+export { rawHtmlPlugin, rawHtmlView } from './raw-html';

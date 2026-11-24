@@ -16,6 +16,7 @@ import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
 import '../../editor/core/lists.css';
+import '../../safety/raw-html.css';
 import './page.css';
 
 export type PageMeta = components['schemas']['Page'];
