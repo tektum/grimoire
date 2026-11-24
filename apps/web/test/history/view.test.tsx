@@ -162,6 +162,12 @@ describe('one revision', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('calls a version with no title Untitled, so the section has a name', async () => {
+    const { api } = fakeApi({ [ONE]: ok({ ...rev('r1', { title: '' }), markdown: OLD }), [CURRENT]: ok(NOW) });
+    show(api);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Untitled' })).toBeTruthy();
+  });
+
   it('offers to try again when the revision cannot be read', async () => {
     let attempt = 0;
     const { api } = fakeApi({ [ONE]: () => (attempt++ === 0 ? { status: 503 } : ok({ ...rev('r1'), markdown: OLD })), [CURRENT]: ok(NOW) });

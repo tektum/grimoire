@@ -77,7 +77,7 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
   return (
     <section aria-labelledby="screen-title" className="history-screen">
       {back}
-      <h1 id="screen-title">{data.title}</h1>
+      <h1 id="screen-title">{data.title === '' ? 'Untitled' : data.title}</h1>
       <RevisionMeta revision={data} />
       <div role="tablist" aria-label="View" className="history-tabs">
         <Button role="tab" id="tab-text" aria-selected={tab === 'text'} aria-controls="panel-text" onClick={() => { setTab('text'); }}>Text</Button>

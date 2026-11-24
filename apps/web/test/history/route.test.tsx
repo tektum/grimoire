@@ -34,6 +34,12 @@ describe('the history routes', () => {
     expect(of('GET', '/v1/pages/{id}/revisions')[0]?.params.path).toEqual({ id: 'p1' });
   });
 
+  it('calls a page with no title Untitled, in the heading and the way back', async () => {
+    open('/p/untitled-abc123/history', { [BY_URL]: ok({ ...PAGE, title: '' }), 'GET /v1/pages/{id}/revisions': ok({ items: [rev('r1')], nextCursor: null }) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'History of Untitled' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to Untitled' })).toBeTruthy();
+  });
+
   it('opens one version at /history/:revisionId', async () => {
     const { of } = open('/p/quarterly-plan-abc123/history/r7', { [BY_URL]: ok(PAGE), 'GET /v1/pages/{id}/revisions/{rid}': ok({ ...rev('r7'), markdown: '# x' }), 'GET /v1/pages/{id}/markdown': ok('# y') });
     expect(await screen.findByRole('heading', { level: 1, name: 'Quarterly plan' })).toBeTruthy();
