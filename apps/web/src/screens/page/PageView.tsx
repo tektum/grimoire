@@ -143,7 +143,7 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
         </p>
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}
-        <div ref={rootRef} className="page-editor" data-collab-state={collab} data-testid="editor-root" />
+        <div ref={rootRef} className="page-editor page-text" data-collab-state={collab} data-testid="editor-root" />
       </article>
       <div className="page-margin">
         <Outline />

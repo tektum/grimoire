@@ -261,4 +261,9 @@ describe('the page screen', () => {
     act(() => void t.sessions[0]!.provider.emit({ type: 'authenticated', scope: 'readonly' }));
     expect(screen.getAllByText('Read only')).toHaveLength(1);
   });
+
+  it('sets the text in the reading column: the page-text class (the page font and the measure) is on the editor root', async () => {
+    const t = mountPage();
+    expect(t.root().classList.contains('page-text')).toBe(true);
+  });
 });
