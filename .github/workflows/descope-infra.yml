@@ -3,13 +3,16 @@ name: SST infrastructure
 # `diff` and `deploy` run only by manual dispatch of `main`, in the environment `descope-dev`, which deploys from `main` only. There is no stored
 # secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
 # second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
-# Until the owner has created those variables the job stops at its first step with a notice.
+# The Descope provider plugin is installed from a release asset with a checksum held in this repository (infra/provider-checksums.txt) before either credential is
+# requested. Until the owner has created the variables the job stops at its first step with a notice.
 on:
   pull_request:
     paths:
       - "sst.config.ts"
       - "infra/**"
       - "tsconfig.sst.json"
+      - "package.json"
+      - "bun.lock"
       - ".github/workflows/descope-infra.yml"
   workflow_dispatch:
     inputs:
@@ -82,6 +85,11 @@ jobs:
           install_args: node bun
       - run: bun install --frozen-lockfile
         if: steps.gate.outputs.blocked != 'true'
+      - name: Install the Descope provider plugin from a pinned checksum, before any credential exists
+        if: steps.gate.outputs.blocked != 'true'
+        run: |
+          bunx sst install
+          infra/install-provider.sh
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         if: steps.gate.outputs.blocked != 'true'
         with:

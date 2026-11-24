@@ -11,6 +11,7 @@ set -eu
 account="${1:?usage: aws-github-oidc.sh <account-id> <region> [--print]}"
 region="${2:?usage: aws-github-oidc.sh <account-id> <region> [--print]}"
 mode="${3:-apply}"
+case "$mode" in apply|--print) ;; *) echo "unknown option: $mode (only --print)" >&2; exit 2;; esac
 here="$(cd "$(dirname "$0")" && pwd)"
 issuer="token.actions.githubusercontent.com"
 

@@ -33,11 +33,11 @@ infra/bootstrap/aws-github-oidc.sh <account-id> <region> --print   # shows every
 infra/bootstrap/aws-github-oidc.sh <account-id> <region>           # needs the aws CLI and administrator credentials
 ```
 
-It checks that the credentials belong to that account, creates the provider for `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if it is missing, then creates or updates two roles and prints their ARNs. Put each ARN in the variable `AWS_ROLE_ARN` of its GitHub environment (`descope-dev`, `staging`) and the region in `AWS_REGION`. The roles are separate on purpose: the Descope job can never create infrastructure.
+It checks that the credentials belong to that account, creates the provider for `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if it is missing, then creates or updates two roles and prints their ARNs. Put each ARN in the variable `AWS_ROLE_ARN` of its GitHub environment (`descope-dev`, `staging`) and the region in `AWS_REGION`. The roles are separate on purpose: the Descope job can never create infrastructure, and its SSM access is limited to the `descope-dev` stage (its passphrase and secrets, and SST's shared bootstrap parameter), so it cannot read the staging passphrase or secrets. Both stages share one SST home, so the state bucket (`sst-state-*`) is shared too: a `descope-dev` run can read and write the state objects of every stage in it. For a hard boundary, give each stage its own account or region and run the bootstrap script there.
 
 | Role | Trusts only | Permissions |
 |---|---|---|
-| `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | SST's bootstrap and secrets statements, nothing else (below) |
+| `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | SST's bootstrap and secrets statements, with the SSM parameters limited to the `descope-dev` stage, nothing else (below) |
 | `grimoire-deploy-staging` | `repo:tektum/grimoire:environment:staging` | SST's documented deploy policy, `infra/bootstrap/permissions-staging.json`, including its `Deployments` wildcard statement: narrow it once the staging stack exists |
 
 Trust policy of each role (`<environment>` is `descope-dev` or `staging`; the file is `infra/bootstrap/trust.json`):
@@ -149,6 +149,10 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
 ```
 
 A run of the script is tested with `--print` only (`tools/ci/test/aws-bootstrap.test.mjs`): it checks the documents are valid JSON, each role trusts exactly its own environment, and the Descope role has no wildcard statement. Applying them needs a real account and has not been run.
+
+## The provider plugin
+
+The Descope plugin is a binary that runs with the Descope token in its environment. Pulumi would download it on first use with no checksum, so the workflow installs it first, before the job holds the AWS role or the Descope token: `infra/install-provider.sh` downloads the release asset named in `infra/provider-checksums.txt`, checks its sha256 (a mismatch installs nothing), and gives it to Pulumi with `plugin install --file`. To update the provider: change the version in `sst.config.ts`, download the new `linux-amd64` asset, and put its sha256 and file name in the checksums file (`tools/ci/test/provider-checksums.test.mjs` fails if the two disagree). The official Pulumi AWS plugin is still downloaded by SST on demand and is not pinned; it runs in the same job and inherits the Descope token in its environment. Pinning it the same way is not done.
 
 ## Running it
 

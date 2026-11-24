@@ -56,7 +56,7 @@
         "ssm:PutParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/passphrase/*",
+        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/passphrase/grimoire/descope-dev",
         "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/bootstrap"
       ]
     },
@@ -73,7 +73,7 @@
         "ssm:ListTagsForResource"
       ],
       "Resource": [
-        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/*"
+        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/grimoire/descope-dev/*"
       ]
     }
   ]

@@ -34,8 +34,21 @@ test('the Descope role can bootstrap SST state and nothing else: no wildcard dep
   assert.ok(permissions['role grimoire-deploy-staging: permissions'].Statement.some((s) => s.Sid === 'Deployments'), 'the staging role has the deploy statement');
 });
 
+test('the Descope role reaches only its own stage in SSM: not the passphrase or the secrets of staging', () => {
+  const dev = documents().find(([name]) => name === 'role grimoire-deploy-descope-dev: permissions')[1].Statement;
+  const resources = dev.flatMap((s) => s.Resource).filter((r) => r.includes(':parameter/'));
+  assert.ok(resources.length >= 3);
+  for (const r of resources) assert.match(r, /parameter\/sst\/(bootstrap$|passphrase\/grimoire\/descope-dev$|grimoire\/descope-dev\/\*$)/, r);
+});
+
 test('refuses a wrong account id or region before calling anything', () => {
   const run = (...args) => spawnSync('bash', [script, ...args, '--print'], { encoding: 'utf8' });
   assert.equal(run('12345', 'eu-west-1').status, 2);
   assert.equal(run('123456789012', 'nowhere').status, 2);
+});
+
+test('an unknown option is refused instead of falling through to apply (a mistyped dry run must not change an account)', () => {
+  const result = spawnSync('bash', [script, '123456789012', 'eu-west-1', '--pritn'], { encoding: 'utf8' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /unknown option/);
 });
