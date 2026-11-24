@@ -68,6 +68,14 @@ Two people in one page: each sees the other's cursor and selection, with the nam
 
 A page opened read-only.
 
+![Raw HTML in a page, shown as text with an Edit source button](docs/screenshots/m6-t11/raw-html-block-light.png)
+
+Raw HTML in a page is shown as inert text, with an Edit source button.
+
+![The same raw HTML block in the dark theme](docs/screenshots/m6-t11/raw-html-block-dark.png)
+
+The same block in the dark theme.
+
 ![A page that was reset while you had unsent changes](docs/screenshots/m6-t04/reset-notice-light.png)
 
 A page that was reset under a tab with unsent changes: the notice, and the copy to download or copy.

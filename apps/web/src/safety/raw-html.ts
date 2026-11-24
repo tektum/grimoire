@@ -1,4 +1,4 @@
-import { htmlSchema } from '@milkdown/preset-commonmark';
+import { htmlBreakIsHardBreak } from '@tektum/grimoire-editor-schema';
 import { $view } from '@milkdown/utils';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import type { EditorView, NodeView } from '@milkdown/prose/view';
@@ -42,4 +42,5 @@ export function rawHtmlView(node: ProseNode, view: EditorView, getPos: () => num
 }
 
 /** The Milkdown plugin that puts the view on the `html` node. */
-export const rawHtmlPlugin = $view(htmlSchema.node, () => rawHtmlView);
+// The editor schema replaces the preset's `html` node with this extended one, so the view is attached to the one that is in the schema.
+export const rawHtmlPlugin = $view(htmlBreakIsHardBreak.node, () => rawHtmlView);
