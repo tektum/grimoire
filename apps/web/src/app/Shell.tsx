@@ -4,6 +4,7 @@ import { useSession } from '../auth/session';
 import { ContentsPanel } from '../tree/ContentsPanel';
 import { inPageHref } from '../ui/inpage';
 import { ErrorBoundary } from './ErrorBoundary';
+import { screenKey } from './routes';
 
 /** Header, contents area and main (contracts section 3). The contents area holds the tree of the open collection or page once there is a session. */
 export function Shell() {
@@ -26,7 +27,7 @@ export function Shell() {
           {session === null ? <p>Contents</p> : <ContentsPanel api={session.api} />}
         </aside>
         <main className="shell-main" id="main" tabIndex={-1}>
-          <ErrorBoundary key={pathname}>
+          <ErrorBoundary key={screenKey(pathname)}>
             <Outlet />
           </ErrorBoundary>
         </main>

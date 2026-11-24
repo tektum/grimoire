@@ -16,7 +16,7 @@ async function open(page: Page, context: Parameters<typeof signInAs>[0], pages =
   return api;
 }
 
-test('click the title, type, Enter: the page and the tree have the new title, one rename went to the API, and the editor is not remounted', async ({ page, context }) => {
+test('click the title, type, Enter: the page, the tree and the address have the new title, one rename went to the API, and the editor is not remounted', async ({ page, context }) => {
   const api = await open(page, context);
   await page.evaluate(() => document.querySelector('[data-testid="editor-root"]')?.setAttribute('data-mounted-before', 'yes')); // a remount would give a new element without it
   await heading(page).getByRole('button').click();
@@ -27,7 +27,7 @@ test('click the title, type, Enter: the page and the tree have the new title, on
   await expect(heading(page)).toHaveText('Handbook 2');
   await expect(heading(page).getByRole('button')).toBeFocused();
   await expect.poll(() => names(page)).toEqual(['Handbook 2', 'Notes']);
-  await expect(page).toHaveURL(/\/p\/welcome-a0000000$/); // the address keeps its slug: a new one would remount the page
+  await expect(page).toHaveURL(/\/p\/handbook-2-a0000000$/); // the address follows the title, and the page was not rebuilt for it (the editor element below is the same one)
   expect(await page.evaluate(() => document.querySelector('[data-testid="editor-root"]')?.getAttribute('data-mounted-before'))).toBe('yes');
   expect(api.writes()).toEqual(['PATCH /v1/pages/a']);
 });
@@ -75,7 +75,7 @@ test('a new page opens with its title field focused and empty, and what is typed
   await page.keyboard.press('Enter');
   await expect(heading(page)).toHaveText('Roadmap');
   await expect.poll(() => names(page)).toEqual(['Welcome', 'Notes', 'Roadmap']);
-  await expect(page).toHaveURL(/\/p\/page-new10000$/);
+  await expect(page).toHaveURL(/\/p\/roadmap-new10000$/);
   expect(api.writes()).toEqual(['POST /v1/pages', 'PATCH /v1/pages/new1']);
 });
 
@@ -87,4 +87,16 @@ test('a new page left without a title stays "Untitled", and its heading is still
   await expect(heading(page)).toHaveText('Untitled');
   await expect.poll(() => names(page)).toEqual(['Welcome', 'Notes', 'Untitled']);
   expect(api.writes()).toEqual(['POST /v1/pages']);
+});
+
+test('an old address of a renamed page still opens it, and so does the new one after a reload', async ({ page, context }) => {
+  await open(page, context);
+  await heading(page).getByRole('button').click();
+  await page.getByRole('textbox', { name: 'Page title' }).fill('Renamed');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/p\/renamed-a0000000$/);
+  await page.goto('/p/welcome-a0000000'); // a link made before the rename
+  await expect(heading(page)).toHaveText('Renamed');
+  await page.reload();
+  await expect(heading(page)).toHaveText('Renamed');
 });

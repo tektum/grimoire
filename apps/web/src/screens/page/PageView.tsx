@@ -85,14 +85,15 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const client = useQueryClient();
   const treeActions = useTreeActions(session?.api ?? (null as never), page.collectionId);
   /**
-   * Saves the title through the rename the tree uses (the tree shows it at once), then shows it here; false when the server refused it. The address keeps the slug it has (the id at its end is what
-   * finds the page): a new address would remount the page, and with it the editor and its connection, for a name.
+   * Saves the title through the rename the tree uses (the tree shows it at once), then shows it here and in the address (the slug of the address follows the title; an old address still finds the page by
+   * the id at its end); false when the server refused it. The page is not rebuilt for it: the main area is keyed by the page's id, not by its address.
    */
   const saveTitle = async (title: string): Promise<boolean> => {
     const outcome = await treeActions.rename(page.id, title);
     if (!outcome.ok) return false;
     // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
     client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
+    navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
     return true;
   };
 

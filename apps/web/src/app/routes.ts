@@ -26,6 +26,15 @@ export function urlIdOf(slug: string): string {
   return slug.slice(slug.lastIndexOf('-') + 1);
 }
 
+/**
+ * What makes the main area a new screen: the address, except that the slug of a page's address stands for its id. A page that is renamed (its address follows its title) is the same screen, and must not
+ * be rebuilt (the editor and its connection would restart for a name); the page and its history are different screens, as are two pages.
+ */
+export function screenKey(pathname: string): string {
+  const page = /^\/p\/([^/]+)(\/.*)?$/.exec(pathname);
+  return page === null ? pathname : `/p/${urlIdOf(page[1]!)}${page[2] ?? ''}`;
+}
+
 /** A `?return=` value is followed only if it is a path of this app: one leading `/`, no `\`, no scheme. Anything else gives `/`. */
 export function safeReturn(value: string | null | undefined): string {
   if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\') || /[\u0000-\u001f]/.test(value) || /^\/[^/?#]*:/.test(value)) return '/';
