@@ -64,7 +64,7 @@ function build(options: { files?: boolean } = {}) {
   const uploaded = async (who: string, pageId: string, bytes: Uint8Array = PNG, over: object = {}) => {
     const res = await create(who, pageId, { size: bytes.length, ...over });
     const body = (await res.json()) as { id: string };
-    await files.put(`attachments/${body.id}`, bytes, { size: bytes.length, contentType: 'image/png' });
+    await files.put((await attachments.get(body.id))!.key, bytes, { size: bytes.length, contentType: 'image/png' });
     return body.id;
   };
   return { send, create, uploaded, meta, rw, ro, closed, world, attachments, files, logs: t.logger, clock: t.clock, uid: (name: string) => idRows[Object.keys(ROLES).indexOf(name)] as string };
@@ -211,7 +211,7 @@ describe('POST /v1/attachments/{id}/complete', () => {
     const wrong = await complete(t, 'writer', id);
     expect([wrong.status, await code(wrong)]).toEqual([409, 'size_mismatch']);
     expect(await t.attachments.get(id)).toBeUndefined();
-    await expect(t.files.head(`attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
+    await expect(t.files.head(`tenants/legacy/attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
   });
 
   it('is 422 type_mismatch for bytes that are not the declared image, deleting object and row, and not for a type that is not checked', async () => {
@@ -221,7 +221,7 @@ describe('POST /v1/attachments/{id}/complete', () => {
     const res = await complete(t, 'writer', id);
     expect([res.status, await code(res)]).toEqual([422, 'type_mismatch']);
     expect(await t.attachments.get(id)).toBeUndefined();
-    await expect(t.files.head(`attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
+    await expect(t.files.head(`tenants/legacy/attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
     const plain = await t.uploaded('writer', t.rw, text, { fileName: 'n.txt', contentType: 'text/plain' });
     expect((await complete(t, 'writer', plain)).status).toBe(200);
   });
@@ -298,7 +298,7 @@ describe('GET /v1/attachments/{id}', () => {
     t.world.pages[0]!.deleted = true;
     expect((await link(t, 'reader', id)).status).toBe(404);
     t.world.pages[0]!.deleted = false;
-    await t.files.delete(`attachments/${id}`);
+    await t.files.delete(`tenants/legacy/attachments/${id}`);
     expect((await link(t, 'reader', id)).status).toBe(404);
     expect((await t.send(undefined, 'GET', `/v1/attachments/${id}`)).status).toBe(401);
   });
@@ -366,3 +366,42 @@ describe('what the log may hold', () => {
     for (const bad of ['X-Amz-', 'attachments/0', 'fake.invalid', 'secret-store-message']) expect(text, bad).not.toContain(bad);
   });
 });
+
+// docs/tenancy.md 3.5 (section 7, item 3): an attachment of another tenant is not found, whatever page it names, and no link is signed for it.
+describe('attachments and tenants', () => {
+  const OTHER = '00000000-0000-4000-8000-0000000003bb';
+  const foreign = (t: ReturnType<typeof build>, over: object = {}) => t.attachments.seed({
+    id: OTHER, pageId: t.rw, uploaderId: t.uid('writer'), fileName: 'b.png', contentType: 'image/png', size: 1, key: `tenants/tenant-b/attachments/${OTHER}`,
+    tenantId: 'tenant-b', status: 'ready', expiresAt: null, createdAt: 0, readyAt: 0, ...over,
+  });
+
+  it('puts the key of a new upload under the caller\'s tenant', async () => {
+    const t = build();
+    const id = await t.uploaded('writer', t.rw);
+    expect((await t.attachments.get(id))?.key).toBe(`tenants/legacy/attachments/${id}`);
+  });
+
+  it('is 404 for the link to a ready attachment of another tenant, even on a page the caller can read, and signs nothing', async () => {
+    const t = build();
+    foreign(t);
+    const before = t.files.signed.length;
+    expect((await t.send('reader', 'GET', `/v1/attachments/${OTHER}`)).status).toBe(404);
+    expect(t.files.signed.length).toBe(before);
+  });
+
+  it('leaves an attachment of another tenant out of the batch of links, as one that does not exist', async () => {
+    const t = build();
+    const mine = await t.uploaded('writer', t.rw);
+    await t.send('writer', 'POST', `/v1/attachments/${mine}/complete`);
+    foreign(t);
+    const res = await t.send('reader', 'POST', '/v1/attachments/urls', { ids: [mine, OTHER] });
+    expect(((await res.json()) as { urls: { id: string }[] }).urls.map((u) => u.id)).toEqual([mine]);
+  });
+
+  it('is 404 to complete an upload of another tenant, and 409 to replay its create', async () => {
+    const t = build();
+    foreign(t, { status: 'pending', expiresAt: 9e12 });
+    expect((await t.send('writer', 'POST', `/v1/attachments/${OTHER}/complete`)).status).toBe(404);
+  });
+});
+

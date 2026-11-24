@@ -108,7 +108,7 @@ export async function readyAttachment(api: Api, pageId: string, bytes: Uint8Arra
 }
 
 /** Whether the store has the object of an attachment (the runtime identity looks). */
-export const objectExists = (id: string): Promise<boolean> => runtimeStore().head(`attachments/${id}`).then(() => true, (error: unknown) => {
+export const objectExists = (id: string): Promise<boolean> => runtimeStore().head(`tenants/legacy/attachments/${id}`).then(() => true, (error: unknown) => {
   if (typeof error === 'object' && error !== null && 'kind' in error && error.kind === 'not-found') return false;
   throw error;
 });

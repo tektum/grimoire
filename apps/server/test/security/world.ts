@@ -85,7 +85,7 @@ export async function buildWorld() {
   const files = new FakeFileStorage({ clock: t.clock });
   const attachment = (n: number, pageId: string, status: 'ready' | 'pending'): string => {
     const id = uuid(900 + n);
-    attachments.seed({ id, pageId, uploaderId: USER_ID.member, fileName: 'a.png', contentType: 'image/png', size: PNG_BYTES.length, key: `attachments/${id}`, status, expiresAt: status === 'pending' ? t.clock.now() + 3_600_000 : null, createdAt: t.clock.now(), readyAt: status === 'ready' ? t.clock.now() : null });
+    attachments.seed({ id, pageId, uploaderId: USER_ID.member, fileName: 'a.png', contentType: 'image/png', size: PNG_BYTES.length, tenantId: 'legacy', key: `attachments/${id}`, status, expiresAt: status === 'pending' ? t.clock.now() + 3_600_000 : null, createdAt: t.clock.now(), readyAt: status === 'ready' ? t.clock.now() : null });
     return id;
   };
   const readyAttachment = attachment(1, page.id, 'ready');

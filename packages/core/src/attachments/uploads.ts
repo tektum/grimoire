@@ -2,7 +2,7 @@ import type { AttachmentRepo, AttachmentRow } from '../ports/attachment-repo.js'
 import { FileStorageError } from '../ports/file-storage.js';
 import type { FileStorage } from '../ports/file-storage.js';
 import { cleanFileName } from './file-name.js';
-import { attachmentKey, markdownPathFor } from './key.js';
+import { attachmentKey, LEGACY, markdownPathFor } from './key.js';
 import { isCheckedType, isInlineType, validateAttachmentMeta } from './validate.js';
 import type { AttachmentLimits } from './validate.js';
 
@@ -42,7 +42,7 @@ const sign = (d: AttachmentDeps, row: Pick<AttachmentRow, 'key' | 'size' | 'cont
  */
 export async function createUpload(
   d: AttachmentDeps,
-  input: { readonly pageId: string; readonly uploaderId: string; readonly fileName: string; readonly contentType: string; readonly size: number },
+  input: { readonly pageId: string; readonly uploaderId: string; readonly fileName: string; readonly contentType: string; readonly size: number; readonly tenantId?: string },
   limits: AttachmentLimits & { readonly pendingMaxPerUser: number },
 ): Promise<CreateResult> {
   const meta = validateAttachmentMeta(input, limits);
@@ -51,7 +51,7 @@ export async function createUpload(
   const id = d.newId();
   const now = d.now();
   const created = await d.repo.createPending(
-    { id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: cleanFileName(input.fileName), contentType: input.contentType.toLowerCase(), size: input.size, key: attachmentKey(id), expiresAt: now + PENDING_TTL_MS },
+    { id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: cleanFileName(input.fileName), contentType: input.contentType.toLowerCase(), size: input.size, key: attachmentKey(id, input.tenantId), ...(input.tenantId === undefined ? {} : { tenantId: input.tenantId }), expiresAt: now + PENDING_TTL_MS },
     limits.pendingMaxPerUser,
     now,
   );
@@ -72,18 +72,18 @@ export const markdownPathOf = (row: Pick<AttachmentRow, 'id' | 'fileName'>): str
  * A retry of a create with the same Idempotency-Key: while the row is still pending and has not expired, a fresh upload URL is signed (a stored one may have
  * expired, and a URL is never stored), for no longer than the row has left, so no upload can land after the clean-up has removed the row; after that the answer is `gone`. Only the uploader's own row answers.
  */
-export async function resignUpload(d: AttachmentDeps, id: string, userId: string): Promise<{ readonly kind: 'resigned'; readonly upload: SignedUpload; readonly markdownPath: string } | { readonly kind: 'gone' }> {
+export async function resignUpload(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<{ readonly kind: 'resigned'; readonly upload: SignedUpload; readonly markdownPath: string } | { readonly kind: 'gone' }> {
   const row = await d.repo.get(id);
-  if (row === undefined || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
+  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
   const left = Math.floor((row.expiresAt - d.now()) / 1000);
   if (left < 1) return { kind: 'gone' };
   return { kind: 'resigned', upload: await sign(d, row, Math.min(UPLOAD_TTL_SECONDS, left)), markdownPath: markdownPathOf(row) };
 }
 
 /** The row an upload may be completed through: the caller's own, and either ready already or pending and not expired. Anything else is not found. */
-export async function findUploadOf(d: AttachmentDeps, id: string, userId: string): Promise<AttachmentRow | undefined> {
+export async function findUploadOf(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<AttachmentRow | undefined> {
   const row = await d.repo.get(id);
-  if (row === undefined || row.uploaderId !== userId) return undefined;
+  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId) return undefined;
   if (row.status === 'pending' && (row.expiresAt === null || row.expiresAt <= d.now())) return undefined;
   return row;
 }

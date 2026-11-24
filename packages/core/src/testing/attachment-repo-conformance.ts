@@ -36,7 +36,7 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
       if (made.kind !== 'created') return;
       assert.deepEqual(
         { ...made.row, createdAt: 0 },
-        { id: made.row.id, pageId: h.pageId, uploaderId: h.userId, fileName: 'r\u00e9sum\u00e9.pdf', contentType: 'application/pdf', size: 1234, key: `attachments/${made.row.id}`, status: 'pending', expiresAt: h.now + HOUR, createdAt: 0, readyAt: null },
+        { id: made.row.id, pageId: h.pageId, uploaderId: h.userId, fileName: 'r\u00e9sum\u00e9.pdf', contentType: 'application/pdf', size: 1234, key: `attachments/${made.row.id}`, tenantId: 'legacy', status: 'pending', expiresAt: h.now + HOUR, createdAt: 0, readyAt: null },
       );
       assert.deepEqual(await h.repo.get(made.row.id), made.row);
       assert.equal(await h.repo.get(randomUUID()), undefined);
@@ -137,7 +137,7 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
     async run(h) {
       const id = randomUUID();
       const row = await h.repo.insertReady({ id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, readyAt: h.now }, undefined);
-      assert.deepEqual(row, { id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, status: 'ready', expiresAt: null, createdAt: h.now, readyAt: h.now });
+      assert.deepEqual(row, { id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, tenantId: 'legacy', status: 'ready', expiresAt: null, createdAt: h.now, readyAt: h.now });
       assert.deepEqual(await h.repo.get(id), row);
     },
   },

@@ -7,7 +7,7 @@ import type { AttachmentRow } from '@tektum/grimoire-core/ports/attachment-repo'
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { attachmentDeps } from '../attachments/deps.js';
 import type { UploadLimits } from '../attachments/deps.js';
-import { caller } from '../http/collection-guard.js';
+import { caller, callerTenant } from '../http/collection-guard.js';
 import { fail } from '../http/error.js';
 import type { AppEnv } from '../http/env.js';
 import { createRouter, defineRoute } from '../http/factory.js';
@@ -129,9 +129,9 @@ export const replayCreateAttachment: ReplayRebuild = async (stored, c) => {
   const { deps: d } = usable(c, 'create');
   const id = storedId(stored);
   const row = await d.repo.get(id);
-  if (row === undefined) return fail('conflict');
+  if (row === undefined || row.tenantId !== callerTenant(c)) return fail('conflict');
   await guardPage(c, row.pageId, 'write');
-  const again = await viaStore(c, 'create', () => resignUpload(d, id, caller(c).id));
+  const again = await viaStore(c, 'create', () => resignUpload(d, id, caller(c).id, callerTenant(c)));
   if (again.kind === 'gone') return fail('conflict');
   return Response.json({ id, upload: again.upload, markdownPath: again.markdownPath }, { status: stored.status, headers: { 'cache-control': 'no-store' } });
 };
@@ -143,7 +143,7 @@ router.openapi(createAttachment, async (c) => {
   const body = c.req.valid('json');
   await guardPage(c, body.pageId, 'write');
   const { deps: d, limits } = usable(c, 'create');
-  const result = await viaStore(c, 'create', () => createUpload(d, { ...body, uploaderId: user.id }, limits));
+  const result = await viaStore(c, 'create', () => createUpload(d, { ...body, uploaderId: user.id, tenantId: callerTenant(c) }, limits));
   if (result.kind === 'refused') return fail(result.reason === 'no-page' || result.reason === 'no-user' ? 'not_found' : result.reason);
   c.get('deps').log.info('attachments.upload_created', { attachmentId: result.id, size: body.size });
   noStore(c);
@@ -160,7 +160,7 @@ router.openapi(completeAttachment, async (c) => {
   const user = caller(c);
   const { id } = c.req.valid('param');
   const { deps: d } = usable(c, 'complete');
-  const row = await findUploadOf(d, id, user.id);
+  const row = await findUploadOf(d, id, user.id, callerTenant(c));
   if (row === undefined || !(await mayWrite(c, row))) return fail('not_found');
   const result = await viaStore(c, 'complete', () => completeUpload(d, row));
   if (result.kind === 'gone') return fail('not_found');
@@ -178,7 +178,7 @@ router.openapi(getAttachmentLink, async (c) => {
   const download = c.req.valid('query').download === 'true';
   const { deps: d } = usable(c, 'download');
   const row = await d.repo.get(id);
-  if (row === undefined || row.status !== 'ready') return fail('not_found');
+  if (row === undefined || row.status !== 'ready' || row.tenantId !== callerTenant(c)) return fail('not_found');
   await guardPage(c, row.pageId, 'read');
   const link = await viaStore(c, 'download', async () => {
     try {
@@ -187,7 +187,7 @@ router.openapi(getAttachmentLink, async (c) => {
       if (error instanceof FileStorageError && error.kind === 'not-found') return undefined;
       throw error;
     }
-    return signedDownload(d.files, row, download);
+    return signedDownload(d.files, row, download, callerTenant(c));
   });
   if (link === undefined) return fail('not_found');
   noStore(c);
@@ -198,10 +198,10 @@ router.openapi(getAttachmentLinks, async (c) => {
   const user = caller(c);
   const { ids, download } = c.req.valid('json');
   const { deps: d } = usable(c, 'urls');
-  const rows = (await d.repo.getMany([...new Set(ids)])).filter((r) => r.status === 'ready');
+  const rows = (await d.repo.getMany([...new Set(ids)])).filter((r) => r.status === 'ready' && r.tenantId === callerTenant(c));
   const access = await c.get('deps').access.pageAccessMany(rows.map((r) => ({ userId: user.id, pageId: r.pageId })));
   const readable = rows.filter((_, i) => access[i]?.result === 'allowed');
-  const urls = await viaStore(c, 'urls', () => Promise.all(readable.map(async (r) => ({ id: r.id, ...(await signedDownload(d.files, r, download === true)) }))));
+  const urls = await viaStore(c, 'urls', () => Promise.all(readable.map(async (r) => ({ id: r.id, ...(await signedDownload(d.files, r, download === true, callerTenant(c))) }))));
   noStore(c);
   return c.json({ urls }, 200);
 });
