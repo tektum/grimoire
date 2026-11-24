@@ -9,6 +9,8 @@ const ROLE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 const MIN_PASSWORD_LENGTH = 16;
 
 const SCRAM_ITERATIONS = 4096;
+/** The attributes a role of the product must not have, as `pg_roles` columns and the clause that removes each. */
+const RESETTABLE = [['rolsuper', 'nosuperuser'], ['rolcreatedb', 'nocreatedb'], ['rolcreaterole', 'nocreaterole'], ['rolreplication', 'noreplication'], ['rolbypassrls', 'nobypassrls']] as const;
 
 /**
  * The SCRAM-SHA-256 verifier PostgreSQL stores for a password (RFC 5802, as `pg_authid.rolpassword` holds it). Giving the server this instead of the password
@@ -27,7 +29,7 @@ export interface SetupResult { readonly created: readonly string[]; readonly upd
 /**
  * Makes a managed database ready for `grimoire migrate`, as the cluster's administrator (the master user of a managed service, or a superuser): the same end
  * state as `db/init/roles.psql`, which does this for the local stack, but safe to run again. The two login roles exist with the given passwords (a run with
- * new passwords rotates them) as plain LOGIN roles with no other attribute, the public may not connect (a role that already holds an explicit grant keeps it: that is the
+ * new passwords rotates them) as plain LOGIN roles with no other attribute (no privilege attribute, no connection limit, no expiry), the public may not connect (a role that already holds an explicit grant keeps it: that is the
  * administrator's decision), the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may
  * use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists (the migration role cannot create one).
  * All of it happens in one transaction, so a failure leaves the database as it was. A role that exists and is a member of another role is refused. The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
@@ -58,9 +60,18 @@ export async function setupDatabase(
     const created: string[] = [];
     const updated: string[] = [];
     for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app]] as const) {
-      const exists = (await tx.query('select 1 from pg_roles where rolname = $1', [name])).length > 0;
-      await tx.query(`${exists ? 'alter' : 'create'} role ${await quote('ident', name)} with login nosuperuser nocreatedb nocreaterole noreplication nobypassrls password ${await quote('literal', scramVerifier(password))}`);
-      (exists ? updated : created).push(name);
+      const [current] = await tx.query<Record<(typeof RESETTABLE)[number][0], boolean>>('select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1', [name]);
+      // Only what an existing role has too much of is named: a managed master user is not a superuser, and may not even name SUPERUSER, REPLICATION or BYPASSRLS on a role that has none of them.
+      const reset = current === undefined ? [] : RESETTABLE.filter(([column]) => current[column]).map(([, clause]) => clause);
+      const statement = `${current === undefined ? 'create' : 'alter'} role ${await quote('ident', name)} with login ${reset.join(' ')} inherit connection limit -1 valid until 'infinity' password ${await quote('literal', scramVerifier(password))}`;
+      try {
+        await tx.query(statement);
+      } catch (error) {
+        // PostgreSQL 16 and later: a non-superuser may change a privilege attribute of another role only if it holds that attribute itself. Say what to do instead of "permission denied".
+        if (reset.length === 0) throw error;
+        throw new Error(`cannot reset ${reset.join(', ')} on the existing role ${name}: the administrator may not change those attributes (it must hold them itself, or be a superuser). Reset them as a superuser, or drop the role and run again`, { cause: error });
+      }
+      (current === undefined ? created : updated).push(name);
     }
     const app = await quote('ident', roles.app);
     const migrator = await quote('ident', roles.migrator);

@@ -12,7 +12,8 @@ Run it before the first migration, in the same pre-rollout step, and again whene
 
 End state, in one transaction (a failure leaves the database as it was):
 
-- Both roles exist as plain `LOGIN` roles with no other attribute. A role that exists already has its attributes reset, and the command refuses a role that is a member of another role.
+- Both roles exist as plain `LOGIN` roles with no other attribute: no privilege attribute, no connection limit, no expiry. A role that exists already is reset to that, and the command refuses a role that is a member of another role.
+- A non-superuser administrator can only reset a privilege attribute (`CREATEDB`, `CREATEROLE`, `REPLICATION`, `BYPASSRLS`) that it holds itself, on PostgreSQL 16 and later. When it cannot, the command fails, changes nothing and says to reset the role as a superuser or drop it. A clean database never hits this.
 - Both roles have the password you gave. A run with new passwords changes them.
 - The public may not connect to the database. A role that already holds an explicit grant keeps it: that is the administrator's decision.
 - The migration role owns schema `public` and the job queue's schema `pgboss`, also when `pgboss` was there before.

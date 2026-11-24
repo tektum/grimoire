@@ -87,6 +87,15 @@ describe('setupDatabase on a database that is not clean', () => {
     expect(await roleFlags(ROLES.app)).toEqual([{ rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false }]);
   });
 
+  it('resets an expired password and a connection limit of 0, which would keep an existing role from logging in', async () => {
+    await reset();
+    await asSuperuser('postgres', (q) => q(`create role ${ROLES.app} login connection limit 0 valid until '2000-01-01' password 'old-password-0123456789'`));
+    expect(await canConnect(ROLES.app, 'old-password-0123456789')).toBe(false);
+    await setup(SUPER, PASSWORDS);
+    expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
+    expect(await asSuperuser('postgres', (q) => q('select rolconnlimit, rolvaliduntil::text as until from pg_roles where rolname = $1', [ROLES.app]))).toEqual([{ rolconnlimit: -1, until: 'infinity' }]);
+  });
+
   it('refuses a role that is a member of another role, and changes nothing', async () => {
     await reset();
     await asSuperuser('postgres', async (q) => { await q(`create role ${OTHER}`); await q(`create role ${ROLES.app} login`); await q(`grant ${OTHER} to ${ROLES.app}`); });
@@ -128,6 +137,21 @@ describe('setupDatabase as the master user of a managed service (not a superuser
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
     const owner = await asSuperuser(DATABASE, (q) => q(`select r.rolname as owner from pg_namespace n join pg_roles r on r.oid = n.nspowner where n.nspname = 'public'`));
     expect(owner).toEqual([{ owner: ROLES.migrator }]);
+  });
+
+  it('can run again and rotate the passwords, which on PostgreSQL 16 and later a non-superuser may not do to the privilege attributes of a role that has none', async () => {
+    const managed = { role: MANAGED_ADMIN, password: 'managed-admin-password-0123' };
+    const rotated = { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789' };
+    expect(await setup(managed, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app] });
+    expect(await canConnect(ROLES.app, rotated.app)).toBe(true);
+    expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(false);
+  });
+
+  it('says what to do when an existing role has an attribute the administrator may not reset, and changes nothing', async () => {
+    await asSuperuser('postgres', (q) => q(`alter role ${ROLES.app} createdb`));
+    await expect(setup({ role: MANAGED_ADMIN, password: 'managed-admin-password-0123' }, PASSWORDS)).rejects.toThrow(/cannot reset nocreatedb on the existing role .*superuser/);
+    expect(await canConnect(ROLES.app, 'rotated-app-password-0123456789')).toBe(true); // the rotation of the migration role and of the others was rolled back with it
+    await asSuperuser('postgres', (q) => q(`alter role ${ROLES.app} nocreatedb`));
   });
 });
 
