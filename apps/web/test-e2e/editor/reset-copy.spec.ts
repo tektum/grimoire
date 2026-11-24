@@ -56,6 +56,7 @@ test.describe('a page that is reset under a tab with unsent changes', () => {
       };
       expect(await comesBack(5000)).toBe(false);
       await context.setOffline(true);
+      await expect(page.getByTestId('editor-root')).not.toHaveAttribute('data-collab-state', 'synced', { timeout: 30_000 }); // the connection is really gone
       await context.setOffline(false);
       await waitForSynced(page);
       expect(await comesBack(2000)).toBe(false);
