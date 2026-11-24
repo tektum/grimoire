@@ -38,7 +38,7 @@ function refuse(log: HttpDeps['log'], c: Context, scope: 'user' | 'address' | 'r
  * `exempt` names the requests that do not count against the credential limit of an address (the pages and assets of the web client): a browser loads a page as anonymous requests,
  * and a few reloads, or several people behind one address, would exhaust a limit meant for credential traffic. They still count against the flood ceiling.
  */
-export function addressLimiter(http: HttpConfig, trustedProxies: readonly string[], log: HttpDeps['log'], exempt: (c: Context) => boolean = () => false): MiddlewareHandler<AppEnv> {
+export function addressLimiter(http: HttpConfig, trustedProxies: readonly string[], log: HttpDeps['log'], exempt: (c: Context) => boolean): MiddlewareHandler<AppEnv> {
   const ceiling = new RateLimiterMemory({ points: http.addressCeilingPerMinute, duration: WINDOW_SECONDS });
   const credentials = new RateLimiterMemory({ points: http.addressLimitPerMinute, duration: WINDOW_SECONDS });
   const trusted = trustedProxyList(trustedProxies);
