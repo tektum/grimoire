@@ -83,6 +83,7 @@ const ERROR_RETRY_MS = 30_000;
 const ERROR_TRIES = 3;
 const TOKEN_RETRY_MS = 5000;
 const REFRESH_WINDOW_MS = 60_000;
+const REFUSAL_CLOSE_WINDOW_MS = 2000;
 
 export class ConnectionManager {
   private readonly timers: Timers;
@@ -96,6 +97,8 @@ export class ConnectionManager {
   private retryTimer: unknown = null;
   private offlineTimer: unknown = null;
   private lastRefreshAt = Number.NEGATIVE_INFINITY;
+  private refusedAt = Number.NEGATIVE_INFINITY;
+  private refreshing = false;
   /** The copy taken before a close that may turn out to be a reset: offered when the next connect is refused `stale-epoch`, dropped when it is accepted. */
   private held: string | null = null;
   private current: ConnectionState = {
@@ -148,7 +151,7 @@ export class ConnectionManager {
 
   dismissCopy(): void {
     this.held = null;
-    this.set({ copy: null });
+    this.set({ copy: null, notice: this.current.notice === TEXTS.reset ? null : this.current.notice });
   }
 
   /** Ends the page: no more attempts, the document and the provider are destroyed. */
@@ -204,6 +207,9 @@ export class ConnectionManager {
     if (session !== null && options.capture === true && this.held === null) this.held = this.options.captureCopy?.(session) ?? null;
     this.clearTimers();
     this.teardown();
+    // What the old session said about this person's access and the size of the page does not carry over to the new one.
+    const carried = this.current.text;
+    this.set({ readOnly: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge ? { text: null } : {}) });
     this.pendingEpoch = null;
     this.attempts = 0;
     this.open();
@@ -218,17 +224,29 @@ export class ConnectionManager {
         this.onStatus(event.status);
         return;
       case 'authenticated':
-        this.act(mapSignal({ type: 'scope', readOnly: event.scope === 'readonly' }));
+        if (event.scope !== 'readonly') {
+          // Signed in with the right to write: the read-only state of an earlier connection (a reader who was upgraded) ends here.
+          this.set({ readOnly: false, text: this.current.text === TEXTS.readOnly ? null : this.current.text });
+          return;
+        }
+        this.act(mapSignal({ type: 'scope', readOnly: true }));
         return;
       case 'synced':
         this.onSynced();
         return;
-      case 'authenticationFailed':
-        this.act(mapSignal({ type: 'authenticationFailed', reason: event.reason }));
+      case 'authenticationFailed': {
+        const mapping = mapSignal({ type: 'authenticationFailed', reason: event.reason });
+        if (mapping.behaviour === 'REFRESH') this.refusedAt = this.timers.now();
+        this.act(mapping);
         return;
-      case 'close':
-        this.act(mapSignal({ type: 'close', code: event.code, ...(event.reason === undefined ? {} : { reason: event.reason }) }));
+      }
+      case 'close': {
+        const mapping = mapSignal({ type: 'close', code: event.code, ...(event.reason === undefined ? {} : { reason: event.reason }) });
+        // The server closes the socket a moment after it refused the token: that close is the same event, not a second refusal.
+        if (mapping.behaviour === 'REFRESH' && this.timers.now() - this.refusedAt < REFUSAL_CLOSE_WINDOW_MS) return;
+        this.act(mapping);
         return;
+      }
       case 'stateless':
         this.act(mapSignal({ type: 'stateless', payload: event.payload }));
         return;
@@ -250,7 +268,8 @@ export class ConnectionManager {
     this.errorTries = 0;
     this.held = null; // accepted: the copy is not needed and no reference to it remains
     this.clearOffline();
-    this.set({ phase: 'synced', text: null, notice: null });
+    // The reset notice stays while the copy it speaks of is offered: it is the reason the copy is there.
+    this.set({ phase: 'synced', text: null, notice: this.current.copy !== null ? this.current.notice : null });
   }
 
   // ---- behaviours ----
@@ -341,15 +360,20 @@ export class ConnectionManager {
   }
 
   private async refreshThenRetry(): Promise<void> {
+    if (this.refreshing) return; // one refresh at a time: a second signal for the same cause arrives while it runs
     const now = this.timers.now();
     if (now - this.lastRefreshAt < REFRESH_WINDOW_MS) {
       await this.signOut();
       return;
     }
     this.lastRefreshAt = now;
-    this.session?.provider.disconnect();
+    const session = this.session;
+    session?.provider.disconnect();
+    this.refreshing = true;
     const refreshed = await this.options.auth.refresh().catch(() => false);
-    if (this.session === null) return;
+    this.refreshing = false;
+    // The page may have been stopped, or its session replaced, while the refresh ran: then it is not this one's to reconnect.
+    if (this.session === null || this.session !== session || this.current.phase === 'stopped') return;
     if (!refreshed) {
       await this.signOut();
       return;

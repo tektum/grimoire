@@ -289,3 +289,79 @@ describe('with the real clock', () => {
     expect(manager.currentSession()).toBeNull();
   });
 });
+
+describe('what the first review found', () => {
+  it('a read-only session that is replaced does not leave the new one locked: a reader who was upgraded can type, and so can a page that was too large and was recreated', async () => {
+    const reader = start();
+    await flush();
+    reader.h.last().provider.emit({ type: 'authenticated', scope: 'readonly' });
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    reader.h.last().provider.emit({ type: 'authenticated', scope: 'read-write' }); // upgraded: the next connect signs in with the right to write
+    expect(reader.manager.state()).toMatchObject({ readOnly: false, text: null });
+
+    const large = start();
+    await flush();
+    large.h.last().provider.succeed(2);
+    large.h.last().provider.stateless({ kind: 'refusal', code: 'state-cap' });
+    expect(large.manager.state().readOnly).toBe(true);
+    large.h.last().provider.close(4205, 'access-changed'); // a new session for the same page
+    await flush();
+    expect(large.manager.state()).toMatchObject({ readOnly: false, text: null });
+  });
+
+  it('keeps the reset notice with the copy through the sync of the reopened page, and drops it with the copy', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(3);
+    h.last().doc.text = 'unsent edits';
+    h.last().provider.close(4409, 'stale-epoch');
+    await flush();
+    h.last().provider.succeed(4);
+    expect(manager.state()).toMatchObject({ notice: TEXTS.reset, copy: 'unsent edits' });
+    manager.dismissCopy();
+    expect(manager.state()).toMatchObject({ notice: null, copy: null });
+  });
+
+  it('a refusal of the token and the close that follows it a moment later are one event: one refresh, no sign-out, one reconnect', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    p.close(4401, 'invalid-token'); // the server closes the socket about 250 ms after the refusal
+    await flush();
+    expect(h.auth.refreshes).toBe(1);
+    expect(h.auth.signOuts).toEqual([]);
+    expect(p.connects).toBe(2);
+    expect(manager.state().stopped).toBeNull();
+  });
+
+  it('a second signal while a refresh is still running does not start another', async () => {
+    const { h } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    h.clock.advance(5000); // not within the pairing window of a close: a second refusal of its own
+    p.refuse('invalid-token');
+    finish(true);
+    await flush();
+    expect(h.auth.signOuts).toEqual([]);
+    expect(p.connects).toBe(2);
+  });
+
+  it('a refresh that finishes after the page was stopped does not reconnect it', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    p.refuse('forbidden'); // the page is stopped while the refresh runs
+    expect(manager.state().stopped).toBe('no-access');
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(1);
+    expect(manager.state()).toMatchObject({ phase: 'stopped', stopped: 'no-access' });
+  });
+});
