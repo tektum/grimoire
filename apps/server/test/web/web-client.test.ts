@@ -16,9 +16,9 @@ const ASSET = 'console.log("app");';
 const FILES = { endpoint: 'http://s3.invalid', publicEndpoint: 'https://files.example.test', publicOrigin: 'https://files.example.test', bucket: 'b', region: 'r', addressing: 'virtual' as const, createOnlyHeader: 'if-none-match' as const, corsMode: 'external' as const, maxBytes: 1000, allowedTypes: ['image/png'], pendingMaxPerUser: 10 };
 let root: string;
 
-const build = (over: Record<string, unknown> = {}) => {
+const build = (over: Record<string, unknown> = {}, providerBaseUrl: string | null = null) => {
   const t = makeContext();
-  return createApp({ ...t.ctx, config: makeFakeConfig({ webRoot: root, publicApiUrl: 'https://grimoire.example.test', publicCollabUrl: 'https://grimoire.example.test/collab', files: FILES, ...over }) });
+  return createApp({ ...t.ctx, http: { ...t.ctx.http, providerBaseUrl }, config: makeFakeConfig({ webRoot: root, publicApiUrl: 'https://grimoire.example.test', publicCollabUrl: 'https://grimoire.example.test/collab', files: FILES, ...over }) });
 };
 
 beforeAll(() => {
@@ -62,6 +62,36 @@ describe('the web client served by the server', () => {
     expect(api.headers.get('content-security-policy')).toBeNull();
     expect(api.headers.get('x-frame-options')).toBe('SAMEORIGIN'); // the defaults still cover the API
     expect((await build().request('/')).headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('lays its own headers over the defaults, which stay on every document, asset and the config', async () => {
+    const app = build();
+    for (const target of ['/', '/login', '/config.json', '/assets/index-abcd1234.js']) {
+      const res = await app.request(target);
+      expect(res.status, target).toBe(200);
+      expect(res.headers.get('strict-transport-security'), target).not.toBeNull();
+      expect(res.headers.get('cross-origin-opener-policy'), target).not.toBeNull();
+      expect(res.headers.get('x-frame-options'), target).toBe('DENY');
+    }
+    expect((await app.request('/')).headers.get('content-security-policy')).toContain("default-src 'none'");
+  });
+
+  it('answers a path that is not a valid encoding with a 404, not a failure', async () => {
+    for (const target of ['/a%.js', '/x%E0.css', '/assets/%.js']) expect((await build().request(target)).status, target).toBe(404);
+  });
+
+  it('does not count the pages and assets against the credential limit of an address, and the API still is', async () => {
+    const app = build({ http: { addressLimitPerMinute: 2 } });
+    for (const target of ['/', '/', '/', '/login', '/config.json', '/assets/index-abcd1234.js']) expect((await app.request(target)).status, target).toBe(200);
+    const api = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) api.push((await app.request('/v1/pages')).status);
+    expect(api).toEqual([401, 401, 429]);
+  });
+
+  it('allows the regional sign-in origin the server itself calls (derived from the project), without GRIMOIRE_DESCOPE_BASE_URL', async () => {
+    const res = await build({}, 'https://api.eu1.descope.test').request('/');
+    expect(res.headers.get('content-security-policy')).toContain('https://api.eu1.descope.test');
+    expect((await build().request('/')).headers.get('content-security-policy')).not.toContain('eu1');
   });
 
   it('serves hashed assets for a year and other files revalidated, and a missing file is a 404, never the app', async () => {

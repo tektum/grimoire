@@ -72,17 +72,18 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
     c.set('deps', ctx.http);
     await next();
   });
-  // The web client, when configured, sets its own response headers (a content security policy per document, X-Frame-Options and the rest): the defaults below would overwrite them.
+  // The web client, when configured, serves its own documents with their own response headers (a content security policy for each, X-Frame-Options DENY): `finish` is outside the
+  // security header defaults of the API, so it sets them last, and every other default (HSTS, cross-origin policies, ...) stays on the documents too.
   const web = ctx.config.webRoot === undefined || ctx.config.publicApiUrl === undefined || ctx.config.publicCollabUrl === undefined || ctx.config.files === undefined
     ? undefined
-    : webClient({ root: ctx.config.webRoot, apiUrl: ctx.config.publicApiUrl, collabUrl: ctx.config.publicCollabUrl, storeOrigin: ctx.config.files.publicOrigin, descopeUrl: ctx.config.descopeBaseUrl });
-  const defaults = secureHeaders();
-  app.use((c, next) => (web?.serves(c.req.path) === true ? next() : defaults(c, next)));
+    : webClient({ root: ctx.config.webRoot, apiUrl: ctx.config.publicApiUrl, collabUrl: ctx.config.publicCollabUrl, storeOrigin: ctx.config.files.publicOrigin, descopeUrl: ctx.http.providerBaseUrl ?? undefined });
+  if (web !== undefined) app.use(web.finish);
+  app.use(secureHeaders());
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   // CORS covers the API paths and comes before the body limit, so a 413 can be read from an allowed origin. The health routes stay plain.
   app.use('/v1/*', corsMiddleware(ctx.config.allowedOrigins));
   // Before the body limit, which answers an oversized request without calling `next()`: every request counts against the address limits.
-  app.use(addressLimiter(ctx.config.http, ctx.config.trustedProxies, ctx.log));
+  app.use(addressLimiter(ctx.config.http, ctx.config.trustedProxies, ctx.log, (c) => web !== undefined && (c.req.method === 'GET' || c.req.method === 'HEAD') && web.serves(c.req.path)));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
