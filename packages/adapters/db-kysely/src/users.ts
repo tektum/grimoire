@@ -29,11 +29,14 @@ export function createUserStore(db: Queryable): UserStore {
     findByDescopeId: (id) => get(db, id),
     async createIfAbsent(input: NewUser): Promise<CreateUserResult> {
       try {
-        // The tenant and the person are one statement: a refused person (the email is taken) leaves no tenant behind. The tenant is named after the domain and admits it.
-        const insertUser = 'insert into users (descope_user_id, email, name, avatar_url, role, last_seen_at, tenant_id) values ($1, $2, $3, $4, $5, now(), $6) on conflict (descope_user_id) do nothing returning descope_user_id';
+        // The tenant and the person are one statement, and the tenant is made only when the person row is: a refused person (the email is taken) and the loser of a race
+        // between two first sign-ins of one subject both leave no tenant behind. The tenant is named after the domain and admits it; its key is checked at the end of the statement.
+        const insertUser = (tenantParam: string): string => `insert into users (descope_user_id, email, name, avatar_url, role, last_seen_at, tenant_id) values ($1, $2, $3, $4, $5, now(), ${tenantParam}) on conflict (descope_user_id) do nothing returning descope_user_id`;
         const inserted = await db.query<{ descope_user_id: string }>(
-          input.tenant === undefined ? insertUser : `with t as (insert into tenants (id, name, domain) values ($6, $7, $7) on conflict (id) do nothing) ${insertUser}`,
-          [input.descopeUserId, input.email, input.name, input.avatarUrl ?? null, input.role, ...(input.tenant === undefined ? ['legacy'] : [input.tenant.id, input.tenant.name])],
+          input.tenant === undefined
+            ? insertUser("'legacy'")
+            : `with u as (${insertUser('$6')}), t as (insert into tenants (id, name, domain) select $6, $7, $7 where exists (select 1 from u) on conflict (id) do nothing) select descope_user_id from u`,
+          [input.descopeUserId, input.email, input.name, input.avatarUrl ?? null, input.role, ...(input.tenant === undefined ? [] : [input.tenant.id, input.tenant.name])],
         );
         const user = await get(db, input.descopeUserId);
         if (!user) throw new Error('users row missing after insert conflict'); // Impossible unless an out-of-band actor deletes it.

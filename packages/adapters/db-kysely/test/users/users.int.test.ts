@@ -197,6 +197,13 @@ describe('the tenant of a new person (docs/tenancy.md section 3.1)', () => {
     expect((await tenants()).map((t) => t.id)).not.toContain('T-c');
   });
 
+  it('leaves no tenant behind when the person already exists, as the loser of a race between two first sign-ins of one subject', async () => {
+    await store().createIfAbsent({ ...person('e'), tenant: { id: 'T-e', name: 'tenant-e.test' } });
+    const loser = await store().createIfAbsent({ ...person('e'), tenant: { id: 'T-e-late', name: 'tenant-e-late.test' } });
+    expect(loser).toMatchObject({ kind: 'existing', user: { tenantId: 'T-e' } });
+    expect((await tenants()).map((t) => t.id)).not.toContain('T-e-late');
+  });
+
   it('refuses a tenant id outside the shape the database allows, and makes nothing', async () => {
     await expect(store().createIfAbsent({ ...person('d'), tenant: { id: 'not a valid id', name: 'tenant-d.test' } })).rejects.toMatchObject({ code: '23514' });
     expect(await store().findByDescopeId('tenant-subject-d')).toBeUndefined();
