@@ -56,6 +56,10 @@ A page with the tree beside it.
 
 The live editor.
 
+![Lists in a page: bullets, numbers and task boxes](docs/screenshots/m6-t04/lists-light.png)
+
+Lists in a page: bullets, numbered steps and task boxes.
+
 ![A page opened read-only](docs/screenshots/m6-t04/read-only-page-light.png)
 
 A page opened read-only.
