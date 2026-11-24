@@ -1,6 +1,7 @@
 import './results.ts';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
 import { createApiClient } from '@tektum/grimoire-api-client';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -36,7 +37,28 @@ export function setting(name: string, fallback?: string): string {
 }
 
 /** The first bytes of a PNG followed by random bytes: a file of the declared type, different every run. */
-export const pngBytes = (extra = 64): Uint8Array => Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, ...randomBytes(extra)]);
+/** A real, minimal PNG (1 by 1 pixel) padded to a chosen size with an ancillary text chunk. The application sniffs the first bytes, so random bytes after the signature are not a PNG. */
+export const pngBytes = (extra = 64): Uint8Array => {
+  const chunk = (type: string, data: Uint8Array): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header.set([8, 0, 0, 0, 0], 8); // 8 bits, grayscale, no interlace
+  return new Uint8Array(Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('tEXt', Buffer.concat([Buffer.from('pad\0', 'latin1'), randomBytes(extra)])),
+    chunk('IDAT', deflateSync(Buffer.from([0, 0]))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]));
+};
 export const textBytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 /** SQL as the administrator role in the PostgreSQL container; the answer is the unaligned rows. */

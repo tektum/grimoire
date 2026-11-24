@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { apiFor, errorCode, pageIn, pngBytes, scenario, signInAll, sql, startUpload } from '../support.ts';
+import { apiFor, errorCode, expectStatus, pageIn, pngBytes, scenario, signInAll, sql, startUpload } from '../support.ts';
 
 // The cap on uploads that wait for their completion (R9.13): a user may have 10 (the default, nothing is set here); the eleventh is 429 `rate_limited`; the cap is the
 // user's own; and when the waiting uploads have expired they no longer count, so the user can start again. Expiry is set with SQL as the administrator role.
@@ -10,6 +10,7 @@ await scenario('pending-cap', 180_000, async (t) => { // timeout: about 40 reque
   const user = apiFor(name);
   const other = apiFor(`${name}-other`);
   const bytes = pngBytes();
+  expectStatus(await other.GET('/v1/me'), 200, 'the other user signs in (GET /v1/me provisions a first sign-in)');
   const me = (await user.GET('/v1/me')).data;
   if (me === undefined) throw new Error('the user did not sign in');
 
