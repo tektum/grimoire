@@ -21,11 +21,13 @@ export async function axeBothSchemes(page: Page, stop: string): Promise<StopRepo
   const reports: StopReport[] = [];
   try {
     for (const scheme of SCHEMES) {
-      await page.emulateMedia({ colorScheme: scheme });
+      // Reduced motion with the scheme: the colours of a button change over 120 ms when the scheme changes, and axe measuring in the middle of that sees colours that are neither.
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+      await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)).then(() => undefined));
       reports.push({ stop, scheme, violations: await axeViolations(page, { minImpact: 'minor' }) });
     }
   } finally {
-    await page.emulateMedia({ colorScheme: null });
+    await page.emulateMedia({ colorScheme: null, reducedMotion: null });
   }
   return reports;
 }

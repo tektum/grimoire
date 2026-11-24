@@ -150,6 +150,7 @@ test('the trash: a page is restored', async ({ browser, baseURL }) => {
 test('the admin screens: a role is changed, a group is made, the default access is changed', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/admin/users');
+    await expect(page.getByRole('searchbox', { name: 'Search users' }), 'the screen is drawn (the page asks who is signed in first)').toBeVisible();
     await tabTo(page, isLabelled, { arg: 'Search users' });
     await page.keyboard.type(world.colleague.name);
     await page.keyboard.press('Enter');
@@ -159,6 +160,7 @@ test('the admin screens: a role is changed, a group is made, the default access 
     await expect(page.getByLabel(`Role of ${world.colleague.name}`)).toHaveValue('viewer');
 
     await page.goto('/admin/groups');
+    await expect(page.getByRole('textbox', { name: 'New group name' })).toBeVisible();
     const group = `Made with keys ${Date.now()}`; // a group name is unique on the stack, and the tour can be run again
     await tabTo(page, isLabelled, { arg: 'New group name' });
     await page.keyboard.type(group);

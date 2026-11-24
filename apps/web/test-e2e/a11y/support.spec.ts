@@ -16,6 +16,10 @@ test.beforeAll(async () => {
     '/moving': PAGE('<h1>Moving</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}.spin{animation:s 2s infinite}@keyframes s{to{opacity:.5}}'),
     '/still': PAGE('<h1>Still</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}'),
     '/clean': PAGE('<h1>Clean</h1><button>Named</button>'),
+    '/fading': PAGE(
+      '<h1>Fading</h1><button>Fades</button>',
+      'button{color:#000;background:#fff;border:1px solid #000;transition:background 3s}@media (prefers-color-scheme: dark){body{background:#000}button{color:#fff;background:#000;border-color:#fff}}@media (prefers-reduced-motion: reduce){*{transition:none!important}}',
+    ),
     '/broken': PAGE('<h1>Broken</h1><button></button>'),
   });
 });
@@ -85,6 +89,11 @@ test('a transition or an animation that lasts is found, and nothing is under red
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(server.url('/still'));
   expect((await lastingMotion(page)).length).toBeGreaterThan(0);
+});
+
+test('axe does not measure the colours of a button that is still changing with the scheme', async ({ page }) => {
+  await page.goto(server.url('/fading'));
+  expect(blockingText(await axeBothSchemes(page, 'fading'))).toBe('');
 });
 
 test('axe is run in both schemes: a clean page reports nothing serious, a button with no name is critical, and the scheme is put back', async ({ page }) => {
