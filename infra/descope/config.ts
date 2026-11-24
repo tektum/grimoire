@@ -4,13 +4,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildStyles, readTokens } from './theme.ts';
 import type { TokenSets } from './theme.ts';
-
-export type DescopeStage = 'descope-dev' | 'staging';
+import { HOST } from '../stages.ts';
+import type { StageConfig } from '../stages.ts';
 
 export interface ProjectConfig {
   readonly name: string;
   readonly tags: readonly string[];
-  /** Left unset for development and staging projects; `production` only for a production project. */
+  /** Left unset for every stage but production, which sets `production`. */
   readonly environment: string | undefined;
   readonly appUrl: string;
   /** Hosts only, no port: the provider takes none. */
@@ -25,10 +25,6 @@ export interface ProjectConfig {
   readonly styles: string;
 }
 
-const HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
-
-const stageNames: Record<DescopeStage, string> = { 'descope-dev': 'Grimoire development', staging: 'Grimoire staging' };
-
 /**
  * The flows of a project: every `.json` file of `infra/descope/flows`, the file name (without `.json`) being the flow id and the content the console's export of the flow, as JSON text.
  * An empty folder is an error, and a file that is not JSON stops the run, so a flow added to the folder is deployed or the deploy fails.
@@ -40,10 +36,10 @@ export function readFlows(repoRoot: string = process.cwd()): Record<string, stri
   return Object.fromEntries(files.map((name) => [name.slice(0, -'.json'.length), JSON.stringify(JSON.parse(readFileSync(path.join(dir, name), 'utf8')))]));
 }
 
-export function projectConfig(stage: DescopeStage, options: { readonly stagingDomain?: string | undefined; readonly tokens?: TokenSets; readonly flows?: Record<string, string> } = {}): ProjectConfig {
+export function projectConfig(stage: StageConfig, options: { readonly domain: string; readonly tokens?: TokenSets; readonly flows?: Record<string, string> }): ProjectConfig {
   const common = {
-    name: stageNames[stage],
-    tags: ['grimoire', stage === 'descope-dev' ? 'development' : stage],
+    name: stage.name,
+    tags: ['grimoire', stage.tag],
     environment: undefined,
     session: { sessionTokenExpiration: '10 minutes', refreshTokenExpiration: '3 weeks', refreshTokenRotation: true },
     disabledMethods: ['password', 'magiclink', 'enchantedlink', 'embeddedlink', 'totp', 'passkey', 'oauth'] as const,
@@ -56,8 +52,7 @@ export function projectConfig(stage: DescopeStage, options: { readonly stagingDo
     flows: options.flows ?? readFlows(),
     styles: JSON.stringify(buildStyles(options.tokens ?? readTokens())),
   };
-  if (stage === 'descope-dev') return { ...common, appUrl: 'http://127.0.0.1:4173', approvedDomains: ['127.0.0.1', 'localhost'] };
-  const domain = options.stagingDomain;
-  if (domain === undefined || !HOST.test(domain)) throw new Error('STAGING_DOMAIN must be the host name of the staging site, for example app.example.test (a variable of the staging environment)');
-  return { ...common, appUrl: `https://${domain}`, approvedDomains: [domain] };
+  const domain = options.domain;
+  if (!HOST.test(domain)) throw new Error('GRIMOIRE_DOMAIN must be the host name of the site, for example app.example.test (a variable of the stage\'s environment).');
+  return { ...common, appUrl: `https://${domain}`, approvedDomains: [domain, ...stage.localHosts] };
 }

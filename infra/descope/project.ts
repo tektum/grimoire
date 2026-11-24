@@ -1,12 +1,12 @@
 import { projectConfig } from './config.ts';
-import type { DescopeStage } from './config.ts';
+import type { StageConfig } from '../stages.ts';
 
 /**
  * The Descope project of a stage, created and configured entirely here, and the id the rest of the stack takes from it. The project is protected from deletion (the provider's
  * default, stated): destroying one needs `deletionProtection: false` applied first.
  */
-export function descopeProject(stage: DescopeStage, stagingDomain?: string) {
-  const config = projectConfig(stage, { stagingDomain });
+export function descopeProject(stage: StageConfig, domain: string) {
+  const config = projectConfig(stage, { domain });
   const project = new descope.Project('Project', { name: config.name, tags: [...config.tags], deletionProtection: true, ...(config.environment === undefined ? {} : { environment: config.environment }) });
   const projectId = project.id;
   const settings = new descope.ProjectSettings('Settings', { projectId, appUrl: config.appUrl, approvedDomains: [...config.approvedDomains] });

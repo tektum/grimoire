@@ -1,6 +1,6 @@
 name: SST infrastructure
 # Pull requests only typecheck the SST config (no credentials, no environment: a secret or a cloud role must not reach pull-request code).
-# `diff` and `deploy` run only by manual dispatch of `main`, in the environment of the chosen stage (`descope-dev` or `staging`), each of which deploys from `main` only. There is no stored
+# `diff` and `deploy` run only by manual dispatch of `main`, in the environment of the chosen stage (`dev` or `staging`, the same stack with its own settings), each of which deploys from `main` only. There is no stored
 # secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
 # second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
 # The provider plugins (infra/pulumi-plugins.txt: Descope, AWS and the others a deploy loads) are installed with Pulumi's `plugin install --checksum` before either credential is
@@ -24,11 +24,11 @@ on:
           - diff
           - deploy
       stage:
-        description: "descope-dev is the development identity-provider project, staging is the hosted staging site with its own project"
+        description: "dev and staging are the same stack with their own address, sizes and Descope project: the same commit is deployed to each in turn"
         required: true
         type: choice
         options:
-          - descope-dev
+          - dev
           - staging
 
 permissions:
@@ -76,19 +76,14 @@ jobs:
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           KEY_ID: ${{ vars.DESCOPE_MANAGEMENT_KEY_ID }}
-          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
-          STAGING_ALLOWED_EMAIL_DOMAINS: ${{ vars.STAGING_ALLOWED_EMAIL_DOMAINS }}
+          GRIMOIRE_DOMAIN: ${{ vars.GRIMOIRE_DOMAIN }}
+          GRIMOIRE_ALLOWED_EMAIL_DOMAINS: ${{ vars.GRIMOIRE_ALLOWED_EMAIL_DOMAINS }}
         run: |
           # Every variable the stage needs is checked here, before the job assumes the AWS role or asks for the Descope token.
           missing=""
-          for name in AWS_ROLE_ARN AWS_REGION KEY_ID; do
+          for name in AWS_ROLE_ARN AWS_REGION KEY_ID GRIMOIRE_DOMAIN GRIMOIRE_ALLOWED_EMAIL_DOMAINS; do
             [ -n "${!name}" ] || missing="${missing} ${name}"
           done
-          if [ "${STAGE}" = "staging" ]; then
-            for name in STAGING_DOMAIN STAGING_ALLOWED_EMAIL_DOMAINS; do
-              [ -n "${!name}" ] || missing="${missing} ${name}"
-            done
-          fi
           if [ -n "${missing}" ]; then
             echo "::notice title=Skipped::The variable(s)${missing} of the environment ${STAGE} are not set (KEY_ID is the variable DESCOPE_MANAGEMENT_KEY_ID), so nothing ran. This is expected until the owner creates them."
             echo "blocked=true" >> "$GITHUB_OUTPUT"
@@ -140,7 +135,8 @@ jobs:
           ACTION: ${{ inputs.action }}
           STAGE: ${{ inputs.stage }}
           PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION: "true" # a plugin that is not in infra/pulumi-plugins.txt stops the run instead of being downloaded unchecked
-          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
-          STAGING_ALLOWED_EMAIL_DOMAINS: ${{ vars.STAGING_ALLOWED_EMAIL_DOMAINS }}
-          STAGING_FIRST_ADMIN_EMAILS: ${{ vars.STAGING_FIRST_ADMIN_EMAILS }}
+          GRIMOIRE_DOMAIN: ${{ vars.GRIMOIRE_DOMAIN }}
+          GRIMOIRE_ALLOWED_EMAIL_DOMAINS: ${{ vars.GRIMOIRE_ALLOWED_EMAIL_DOMAINS }}
+          GRIMOIRE_REFUSED_EMAIL_DOMAINS: ${{ vars.GRIMOIRE_REFUSED_EMAIL_DOMAINS }}
+          GRIMOIRE_FIRST_ADMIN_EMAILS: ${{ vars.GRIMOIRE_FIRST_ADMIN_EMAILS }}
         run: bunx sst "$ACTION" --stage "$STAGE"

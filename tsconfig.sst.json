@@ -7,11 +7,13 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": [],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
   "include": [
     "sst.config.ts",
     "infra/**/*.ts",
+    "infra/**/*.json",
     ".sst/platform/config.d.ts"
   ]
 }

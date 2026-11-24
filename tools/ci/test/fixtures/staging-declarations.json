@@ -1,0 +1,381 @@
+{
+  "calls": [
+    {
+      "type": "descope:Project",
+      "name": "Project",
+      "args": {
+        "name": "Grimoire staging",
+        "tags": [
+          "grimoire",
+          "staging"
+        ],
+        "deletionProtection": true
+      }
+    },
+    {
+      "type": "descope:ProjectSettings",
+      "name": "Settings",
+      "args": {
+        "projectId": "<Project.id>",
+        "appUrl": "https://grimoire.descope.io",
+        "approvedDomains": [
+          "grimoire.descope.io"
+        ]
+      }
+    },
+    {
+      "type": "descope:OtpSettings",
+      "name": "Otp",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": false,
+        "expirationTime": "5 minutes"
+      }
+    },
+    {
+      "type": "descope:JwtTemplate",
+      "name": "UserToken",
+      "args": {
+        "projectId": "<Project.id>",
+        "name": "grimoire-user",
+        "description": "The tenant and the profile of the person, read by the server",
+        "type": "user",
+        "autoTenantClaim": true,
+        "template": "{\"email\":\"{{user.email}}\",\"name\":\"{{user.name}}\",\"emailVerified\":\"{{user.verifiedEmail}}\"}"
+      }
+    },
+    {
+      "type": "descope:SessionSettings",
+      "name": "Session",
+      "args": {
+        "projectId": "<Project.id>",
+        "sessionTokenExpiration": "10 minutes",
+        "refreshTokenExpiration": "3 weeks",
+        "refreshTokenRotation": true,
+        "userJwtTemplate": "<UserToken.id>"
+      }
+    },
+    {
+      "type": "descope:PasswordSettings",
+      "name": "Password",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:MagiclinkSettings",
+      "name": "Magiclink",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:EnchantedlinkSettings",
+      "name": "Enchantedlink",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:EmbeddedlinkSettings",
+      "name": "Embeddedlink",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:TotpSettings",
+      "name": "Totp",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:PasskeySettings",
+      "name": "Passkey",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:OauthSettings",
+      "name": "Oauth",
+      "args": {
+        "projectId": "<Project.id>",
+        "disabled": true
+      }
+    },
+    {
+      "type": "descope:Styles",
+      "name": "Styles",
+      "args": {
+        "projectId": "<Project.id>",
+        "data": "<document>"
+      }
+    },
+    {
+      "type": "descope:Flow",
+      "name": "Flow-sign-up-or-in",
+      "args": {
+        "projectId": "<Project.id>",
+        "flowId": "sign-up-or-in",
+        "data": "<document>"
+      },
+      "opts": {
+        "dependsOn": [
+          "<Styles>",
+          "<Settings>"
+        ]
+      }
+    },
+    {
+      "type": "sst.aws:Vpc",
+      "name": "Vpc",
+      "args": {
+        "nat": "ec2"
+      }
+    },
+    {
+      "type": "sst.aws:Postgres",
+      "name": "Db",
+      "args": {
+        "vpc": "<Vpc>",
+        "version": "17"
+      }
+    },
+    {
+      "type": "random:RandomPassword",
+      "name": "DbAppPassword",
+      "args": {
+        "length": 40,
+        "special": false
+      }
+    },
+    {
+      "type": "random:RandomPassword",
+      "name": "DbMigratorPassword",
+      "args": {
+        "length": 40,
+        "special": false
+      }
+    },
+    {
+      "type": "sst.aws:Bucket",
+      "name": "Files",
+      "args": {
+        "cors": {
+          "allowOrigins": [
+            "https://grimoire.descope.io"
+          ],
+          "allowMethods": [
+            "GET",
+            "PUT",
+            "HEAD"
+          ],
+          "allowHeaders": [
+            "content-type",
+            "content-disposition",
+            "if-none-match",
+            "x-amz-*"
+          ],
+          "exposeHeaders": [
+            "ETag"
+          ],
+          "maxAge": "10 minutes"
+        }
+      }
+    },
+    {
+      "type": "sst.aws:Cluster",
+      "name": "Cluster",
+      "args": {
+        "vpc": "<Vpc>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "AdminUrl",
+      "args": {
+        "type": "SecureString",
+        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "AppPassword",
+      "args": {
+        "type": "SecureString",
+        "value": "<DbAppPassword.result>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "MigratorPassword",
+      "args": {
+        "type": "SecureString",
+        "value": "<DbMigratorPassword.result>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "MigratorUrl",
+      "args": {
+        "type": "SecureString",
+        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "AppUrl",
+      "args": {
+        "type": "SecureString",
+        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+      }
+    },
+    {
+      "type": "sst.aws:Service",
+      "name": "Server",
+      "args": {
+        "cluster": "<Cluster>",
+        "cpu": "0.5 vCPU",
+        "memory": "2 GB",
+        "scaling": {
+          "min": 1,
+          "max": 1
+        },
+        "containers": [
+          {
+            "name": "db-setup",
+            "image": {
+              "context": ".",
+              "dockerfile": "Dockerfile"
+            },
+            "command": [
+              "apps/server/dist/cli.js",
+              "db-setup"
+            ],
+            "environment": {
+              "NODE_EXTRA_CA_CERTS": "/app/certs/global-bundle.pem"
+            },
+            "ssm": {
+              "GRIMOIRE_DATABASE_ADMIN_URL": "<AdminUrl.arn>",
+              "GRIMOIRE_DB_APP_PASSWORD": "<AppPassword.arn>",
+              "GRIMOIRE_DB_MIGRATOR_PASSWORD": "<MigratorPassword.arn>"
+            }
+          },
+          {
+            "name": "migrate",
+            "image": {
+              "context": ".",
+              "dockerfile": "Dockerfile"
+            },
+            "command": [
+              "apps/server/dist/cli.js",
+              "migrate"
+            ],
+            "environment": {
+              "NODE_EXTRA_CA_CERTS": "/app/certs/global-bundle.pem"
+            },
+            "ssm": {
+              "GRIMOIRE_DATABASE_MIGRATION_URL": "<MigratorUrl.arn>"
+            }
+          },
+          {
+            "name": "app",
+            "image": {
+              "context": ".",
+              "dockerfile": "Dockerfile"
+            },
+            "environment": {
+              "NODE_EXTRA_CA_CERTS": "/app/certs/global-bundle.pem",
+              "GRIMOIRE_HOST": "0.0.0.0",
+              "GRIMOIRE_PORT": "8080",
+              "GRIMOIRE_ALLOWED_ORIGINS": "https://grimoire.descope.io",
+              "GRIMOIRE_TRUSTED_PROXY": "10.0.0.0/16",
+              "GRIMOIRE_DESCOPE_PROJECT_ID": "<Project.id>",
+              "GRIMOIRE_ALLOWED_EMAIL_DOMAINS": "descope.com",
+              "GRIMOIRE_FIRST_ADMIN_EMAILS": "omer@descope.com",
+              "GRIMOIRE_PUBLIC_API_URL": "https://grimoire.descope.io",
+              "GRIMOIRE_PUBLIC_COLLAB_URL": "wss://grimoire.descope.io/collab",
+              "GRIMOIRE_WEB_ROOT": "/app/web",
+              "GRIMOIRE_S3_ENDPOINT": "<interpolate:https://s3.{<aws.getRegionOutput.region>}.amazonaws.com>",
+              "GRIMOIRE_S3_REGION": "<aws.getRegionOutput.region>",
+              "GRIMOIRE_S3_BUCKET": "<Files.name>",
+              "GRIMOIRE_S3_ADDRESSING_STYLE": "virtual",
+              "GRIMOIRE_S3_CORS_MODE": "external"
+            },
+            "ssm": {
+              "GRIMOIRE_DATABASE_URL": "<AppUrl.arn>"
+            }
+          }
+        ],
+        "permissions": [
+          {
+            "actions": [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject"
+            ],
+            "resources": [
+              "<interpolate:{<Files.arn>}/*>"
+            ]
+          },
+          {
+            "actions": [
+              "s3:ListBucket"
+            ],
+            "resources": [
+              "<Files.arn>"
+            ]
+          }
+        ],
+        "loadBalancer": {
+          "domain": {
+            "name": "grimoire.descope.io",
+            "dns": {
+              "call": "sst.aws.dns",
+              "args": {
+                "zone": "Z09474701DSI18DNI458V"
+              }
+            }
+          },
+          "rules": [
+            {
+              "listen": "80/http",
+              "redirect": "443/https",
+              "container": "app"
+            },
+            {
+              "listen": "443/https",
+              "forward": "8080/http",
+              "container": "app"
+            }
+          ],
+          "health": {
+            "8080/http": {
+              "path": "/readyz",
+              "interval": "15 seconds",
+              "timeout": "5 seconds",
+              "healthyThreshold": 2,
+              "unhealthyThreshold": 3,
+              "successCodes": "200"
+            }
+          }
+        },
+        "transform": {
+          "taskDefinition": "<function>"
+        }
+      }
+    }
+  ],
+  "returned": {
+    "url": "<Server.url>",
+    "projectId": "<Project.id>"
+  }
+}
