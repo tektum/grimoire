@@ -21,6 +21,8 @@ export interface PageDetail extends PageMeta {
   readonly breadcrumb: readonly { readonly id: string; readonly title: string }[];
   /** When the saved Markdown fell behind the editor state, epoch milliseconds; null when it is current. */
   readonly markdownStaleSince: number | null;
+  /** The saved Markdown is behind the editor state: a stale time is recorded, or the page has state and no Markdown at all (then the time is null). */
+  readonly markdownStale: boolean;
 }
 
 /** What `markdownOf` returns: the stored Markdown with the facts that go with it, from one row. */

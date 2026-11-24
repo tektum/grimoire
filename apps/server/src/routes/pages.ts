@@ -34,7 +34,7 @@ export const PageMetaSchema = z
 export const PageSchema = PageMetaSchema.extend({
   myPermission: z.enum(['read-write', 'read-only']).describe('What the caller may do with the page'),
   breadcrumb: z.array(z.object({ id: z.string().uuid(), title: z.string() })).describe('Ancestors, root first, without the page itself'),
-  markdownStale: z.boolean().describe('True when the saved Markdown is older than the editor state'),
+  markdownStale: z.boolean().describe('True when the saved Markdown is older than the editor state, or the page has state and no Markdown (then markdownStaleSince is null)'),
   markdownStaleSince: z.number().nullable().describe('Epoch milliseconds the Markdown fell behind; null when current'),
 }).openapi('Page');
 
@@ -162,7 +162,7 @@ async function present(c: Parameters<typeof guardPage>[0], id: string) {
   const mine = await guardPage(c, id, 'read');
   const page = await c.get('deps').pages.get(id);
   if (page === undefined) return fail('not_found');
-  return { ...page, myPermission: mine, markdownStale: page.markdownStaleSince !== null };
+  return { ...page, myPermission: mine };
 }
 
 router.openapi(getPageByUrlId, async (c) => {
