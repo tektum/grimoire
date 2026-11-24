@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { historyApi, SLUG } from '../history/mock-api';
-import { axeViolations } from '../support/axe';
+import { expectNoAxeViolations } from '../support/axe';
 import { signInAs } from '../support/sign-in';
 
 // The outline against a stand-in API: the page's saved text is drawn by the read-only editor while the live connection is not there, so the outline's work on what the
@@ -49,9 +49,7 @@ test('Tab reaches the outline, the arrow keys and Enter go to a heading, and axe
   await open(page, 1400);
   const nav = page.getByRole('navigation', { name: 'Page outline' });
   await expect(nav.getByRole('link')).toHaveCount(4);
-  // Everything but the editor's own editing surface, which the page screen leaves without an accessible name (aria-input-field-name on .ProseMirror: the editor's, not the outline's).
-  const found = (await axeViolations(page, { minImpact: 'serious' })).filter((v) => !v.targets.every((t) => t.startsWith('.ProseMirror')));
-  expect(found).toEqual([]);
+  await expectNoAxeViolations(page, { minImpact: 'serious' });
   const inOutline = (): Promise<boolean> => page.evaluate(() => document.activeElement?.closest('nav[aria-label="Page outline"]') != null);
   for (let i = 0; i < 40 && !(await inOutline()); i += 1) await page.keyboard.press('Tab');
   expect(await inOutline()).toBe(true);
