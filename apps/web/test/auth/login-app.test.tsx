@@ -1,4 +1,5 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LOGIN_TEXTS } from '../../src/screens/login/LoginScreen';
 import { LoginApp, type LoginAppProps } from '../../src/screens/login/LoginApp';
@@ -50,12 +51,30 @@ describe('the sign-in document as a whole', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does nothing with a late answer after it has gone away', async () => {
-    let resolve: (v: { apiUrl: string; hiddenDisconnectMs: number }) => void = () => {};
-    const slow = new Promise<{ apiUrl: string; hiddenDisconnectMs: number }>((r) => (resolve = r));
-    const { unmount } = app({ loadConfig: () => slow });
-    unmount();
-    resolve({ apiUrl: 'http://api.test', hiddenDisconnectMs: 1 });
-    await waitFor(() => expect(document.body.textContent).toBe(''));
+  it('ignores the answer of a settings read that a re-run of the effect has replaced (strict mode runs it twice): a late failure cannot overwrite the success', async () => {
+    vi.stubGlobal('fetch', configResponse({ local: true }));
+    let failFirst: (e: Error) => void = () => {};
+    const first = new Promise<{ apiUrl: string; hiddenDisconnectMs: number }>((_, reject) => (failFirst = reject));
+    const loadConfig = vi.fn<LoginAppProps['loadConfig']>().mockReturnValueOnce(first).mockResolvedValue({ apiUrl: 'http://api.test', hiddenDisconnectMs: 1 });
+    render(
+      <StrictMode>
+        <LoginApp
+          loadConfig={loadConfig}
+          search=""
+          devBuild
+          storage={fakeStorage().storage}
+          go={() => {}}
+          loadDevForm={async () => ({ default: () => <p>dev form</p> })}
+          loadDescopeFlow={async () => ({ default: () => <p>provider flow</p> })}
+        />
+      </StrictMode>,
+    );
+    expect(await screen.findByText('dev form')).toBeTruthy();
+    expect(loadConfig).toHaveBeenCalledTimes(2);
+    failFirst(new Error('config.json: HTTP 500')); // the first read fails after the second has already succeeded
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByText('dev form')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    vi.unstubAllGlobals();
   });
 });
