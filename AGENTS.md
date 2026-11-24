@@ -81,7 +81,7 @@ paths are not under the workspace (blobs carry the absolute paths of the machine
 because a floor that matches nothing passes without checking anything
 (`tools/ci/check-floor-matches.mjs`).
 
-`mise.toml` lists node, bun, gitleaks, actionlint and zizmor, with their checksums in
+`mise.toml` lists node, bun, gitleaks, actionlint, zizmor and opentofu (for `infra/descope`), with their checksums in
 `mise.lock`. A tool missing from `mise.toml` is added there in a pull request.
 
 Today the integration, container and benchmark commands find no tests and exit
