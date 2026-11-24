@@ -1,4 +1,5 @@
 import { descopeProject } from './descope/project.ts';
+import { databaseUrl, RDS_CA_BUNDLE } from './staging/database-url.ts';
 import { inStartOrder } from './staging/init-order.ts';
 
 /** The Route 53 zone of the staging domain: it exists already (the parent delegates to it), so it is looked up and never made here. */
@@ -16,7 +17,7 @@ const setting = (name: string): string => {
 
 /**
  * The staging stage: the product on one Fargate task behind a load balancer, with its own database, file bucket and Descope project. One task on purpose: the
- * migrations take no lock, so only one task may start at a time (a deploy replaces it, the old one serving until the new one is ready).
+ * migrations run under a database lock, so a second task would only wait, but staging needs no more (a deploy replaces the task, the old one serving until the new one is ready).
  */
 export default function staging() {
   const domain = setting('STAGING_DOMAIN');
@@ -29,8 +30,10 @@ export default function staging() {
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
-  // The managed database requires TLS; its certificate chain is Amazon's, which the container's trust store does not hold, so the connection is encrypted but not verified (it never leaves the VPC).
-  const databaseUrl = (user: $util.Input<string>, secret: $util.Input<string>) => $interpolate`postgresql://${user}:${secret}@${db.host}:${db.port}/${db.database}?sslmode=no-verify`;
+  // The managed database requires TLS: the connections verify it against Amazon's bundle, which the image holds (NODE_EXTRA_CA_CERTS names it).
+  const urlOf = (user: $util.Input<string>, secret: $util.Input<string>) =>
+    $resolve({ user, secret, host: db.host, port: db.port, name: db.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
+  const trust = { NODE_EXTRA_CA_CERTS: RDS_CA_BUNDLE };
 
   // The CORS rule is the one `grimoire files-setup` writes for a store the application sets up itself (external mode: the infrastructure owns it).
   const files = new sst.aws.Bucket('Files', {
@@ -49,20 +52,22 @@ export default function staging() {
         image: IMAGE,
         command: ['apps/server/dist/cli.js', 'db-setup'],
         environment: {
-          GRIMOIRE_DATABASE_ADMIN_URL: databaseUrl(db.username, db.password),
+          ...trust,
+          GRIMOIRE_DATABASE_ADMIN_URL: urlOf(db.username, db.password),
           GRIMOIRE_DB_APP_PASSWORD: appPassword,
           GRIMOIRE_DB_MIGRATOR_PASSWORD: migratorPassword,
         },
       },
-      { name: 'migrate', image: IMAGE, command: ['apps/server/dist/cli.js', 'migrate'], environment: { GRIMOIRE_DATABASE_MIGRATION_URL: databaseUrl('grimoire_migrator', migratorPassword) } },
+      { name: 'migrate', image: IMAGE, command: ['apps/server/dist/cli.js', 'migrate'], environment: { ...trust, GRIMOIRE_DATABASE_MIGRATION_URL: urlOf('grimoire_migrator', migratorPassword) } },
       {
         name: 'app',
         image: IMAGE,
         environment: {
+          ...trust,
           GRIMOIRE_HOST: '0.0.0.0',
           GRIMOIRE_PORT: String(PORT),
-          GRIMOIRE_DATABASE_URL: databaseUrl('grimoire_app', appPassword),
-          GRIMOIRE_DATABASE_MIGRATION_URL: databaseUrl('grimoire_migrator', migratorPassword),
+          GRIMOIRE_DATABASE_URL: urlOf('grimoire_app', appPassword),
+          GRIMOIRE_DATABASE_MIGRATION_URL: urlOf('grimoire_migrator', migratorPassword),
           GRIMOIRE_ALLOWED_ORIGINS: url,
           GRIMOIRE_TRUSTED_PROXY: VPC_CIDR,
           GRIMOIRE_DESCOPE_PROJECT_ID: descope.projectId,

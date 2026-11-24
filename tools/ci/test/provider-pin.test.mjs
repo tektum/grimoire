@@ -6,19 +6,11 @@ import { fileURLToPath } from 'node:url';
 const read = (path) => readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), 'utf8');
 const workflow = read('.github/workflows/descope-infra.yml');
 
-test('the plugin pinned in the workflow is the version sst.config.ts asks for, with a full sha256', () => {
-  const version = /DESCOPE_PROVIDER_VERSION: "([^"]+)"/.exec(workflow)?.[1];
-  const sha = /DESCOPE_PROVIDER_SHA256: "([^"]+)"/.exec(workflow)?.[1];
-  assert.match(sha ?? '', /^[0-9a-f]{64}$/);
-  const configured = /package: '@descope\/pulumi-descope', version: '([^']+)'/.exec(read('sst.config.ts'))?.[1];
-  assert.equal(version, configured, 'the workflow pins another version than sst.config.ts uses: update both');
-});
-
-test('the plugin is installed with a checksum, into SST\'s home, before the job holds the AWS role or asks for the Descope token', () => {
-  const install = workflow.indexOf('plugin install resource descope');
+test('the plugins are installed with a checksum, into SST\'s home, before the job holds the AWS role or asks for the Descope token (the list and its versions: pulumi-plugins.test.mjs)', () => {
+  const install = workflow.indexOf('plugin install resource "$name"');
   assert.ok(install > 0);
   const line = workflow.slice(install, workflow.indexOf('\n', install));
-  assert.match(line, /--checksum "\$DESCOPE_PROVIDER_SHA256"/);
+  assert.match(line, /--checksum "\$sha256"/);
   assert.match(line, /--reinstall/, 'without --reinstall an unchecked copy that is already installed would be kept');
   assert.match(workflow.slice(0, install), /PULUMI_HOME="\$HOME\/\.config\/sst"/);
   assert.ok(install < workflow.indexOf('configure-aws-credentials'));

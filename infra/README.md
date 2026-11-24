@@ -29,7 +29,7 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 | Part | Resource | Notes |
 |---|---|---|
 | network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway) |
-| database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate`; the two role passwords are random and live in the state |
+| database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate` (under a database lock, so a second one waits); the connections use `sslmode=verify-full` against Amazon's database CA bundle, which the image fetches with a pinned checksum into `/app/certs`; the two role passwords are random and live in the state |
 | files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the server runs in `external` CORS mode, so it checks the rule and never writes it) | virtual addressing; the file origin in the policy names the bucket host |
 | identity | the Descope project of the stage | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID` |
 | task | `db-setup`, then `migrate`, then `app` (`init-order.ts`) | the first two are not essential and the next container waits for each one's exit with 0 (ECS `dependsOn` with `SUCCESS`): a failing step stops the task before it serves, the old task keeps serving |
@@ -37,7 +37,7 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 
 Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_ALLOWED_EMAIL_DOMAINS` (comma separated) and `STAGING_FIRST_ADMIN_EMAILS` (optional). Run `diff` for `staging` first.
 
-Stated plainly: one task only (`scaling` is 1 to 1), because the migrations take no lock and two new tasks would race. The database connection is encrypted but not verified (`sslmode=no-verify`): the managed database requires TLS and its certificate chain is not in the container's trust store; the connection stays inside the VPC. Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the file store check at start.
+Stated plainly: one task only (`scaling` is 1 to 1); the migration lock would make a second task wait, but staging needs no more. When Amazon publishes a new CA bundle, the image build fails at its checksum until the checksum in the `Dockerfile` is updated. The images are built three times from one Dockerfile (one for each container: SST names its build and its cache by container and has no way to share one, and the layers are the same, so the second and third builds are cache hits and push nothing new). Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the file store check at start.
 
 ## What it does not make
 
@@ -63,9 +63,9 @@ Until the three variables exist the job stops at its first step with a notice, a
 
 Both environments (`descope-dev`, `staging`) assume one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum@271704328/grimoire@1466314324:environment:descope-dev` and `repo:tektum@271704328/grimoire@1466314324:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
 
-## The provider plugin
+## The provider plugins
 
-The Descope plugin is a binary that runs with the Descope token in its environment. Pulumi would download it on first use with no check, so the workflow installs it first, before the job holds the AWS role or the Descope token, with Pulumi's own `plugin install --checksum`: it downloads the release asset, compares its sha256 with the value in the workflow, and installs nothing on a mismatch (shown by hand). It installs into SST's own Pulumi home (`~/.config/sst`, where SST looks for plugins) with `--reinstall`, which replaces a copy that is already there. To update the provider, change the version in `sst.config.ts` and the version and sha256 in the workflow (`tools/ci/test/provider-pin.test.mjs` fails if the versions disagree). The official Pulumi AWS plugin is still downloaded by SST on demand and is not pinned; it runs in the same job and inherits the Descope token in its environment.
+Provider plugins are binaries that run with the AWS role and the Descope token in their environment. Pulumi would download them on first use with no check, so the workflow installs every one first, before the job holds the AWS role or the Descope token, with Pulumi's own `plugin install --checksum`: it downloads the release archive, compares its sha256 with the value in `pulumi-plugins.txt`, and installs nothing on a mismatch. The run itself then sets `PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION`, so a plugin missing from the list stops the run, naming itself, instead of being downloaded unchecked. The list holds the Descope, AWS and random providers (their versions must equal `sst.config.ts`, a test checks) and the docker-build, command and tls providers SST 4.17.2 bundles. To update one, change its version and sha256 (of the linux-amd64 archive from the provider's GitHub release) together.
 
 ## Running it
 
