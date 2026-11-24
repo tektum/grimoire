@@ -17,7 +17,7 @@ const ordering = new FakeOrdering();
 const NOW = 1_700_000_000_000;
 
 const newPage = async (): Promise<string> => {
-  const collection = await createCollections(t.app).append({ name: `c${randomUUID().slice(0, 8)}`, createdBy: userId }, (last) => ordering.between(last, null));
+  const collection = await createCollections(t.app).append('legacy', { name: `c${randomUUID().slice(0, 8)}`, createdBy: userId }, (last) => ordering.between(last, null));
   const made = await createPages(t.app).create({ collectionId: collection.id, parentId: null, afterId: null, title: 'T', createdBy: userId }, { maxDepth: 32, maxPages: 10_000 }, (a, b) => ordering.between(a, b));
   if (made.kind !== 'created') throw new Error(made.kind);
   return made.page.id;

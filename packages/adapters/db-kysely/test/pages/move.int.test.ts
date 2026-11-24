@@ -13,7 +13,7 @@ const ordering = new FakeOrdering();
 const between = (a: string | null, b: string | null): string => ordering.between(a, b);
 const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const pages = () => createPages(t.app);
-const newCollection = async (name: string): Promise<string> => (await createCollections(t.app).append({ name, createdBy: user }, (last) => ordering.between(last, null))).id;
+const newCollection = async (name: string): Promise<string> => (await createCollections(t.app).append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 const make = async (collectionId: string, parentId: string | null = null): Promise<string> => {
   const r = await pages().create({ collectionId, parentId, afterId: null, title: 'P', createdBy: user }, limits, between);
   if (r.kind !== 'created') throw new Error(r.kind);
@@ -131,7 +131,7 @@ describe('the PostgreSQL PageRepo move', () => {
     const dead = await newCollection('dead');
     const page = await make(live);
     const inDead = await make(dead);
-    await createCollections(t.app).softDelete(dead, user);
+    await createCollections(t.app).softDelete('legacy', dead, user);
     expect(await move(page, { collectionId: dead })).toEqual({ kind: 'collection-deleted' });
     expect(await move(inDead, {})).toEqual({ kind: 'not-found' });
     expect((await row(page))?.collection_id).toBe(live);

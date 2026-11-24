@@ -39,7 +39,7 @@ const audits = (id: string) => t.admin.query<{ actor_id: string; detail: Record<
 beforeAll(async () => {
   t = await createTestDatabase('pagestate');
   admin = await addUser(t.app, 'ada', 'admin');
-  collectionId = (await createCollections(t.app).append({ name: 'Docs', createdBy: admin }, (last) => ordering.between(last, null))).id;
+  collectionId = (await createCollections(t.app).append('legacy', { name: 'Docs', createdBy: admin }, (last) => ordering.between(last, null))).id;
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
 
@@ -147,7 +147,7 @@ describe('the PostgreSQL PageStateRepo', () => {
   it('does not find a deleted page, a page in a deleted collection, or an unknown id', async () => {
     const gone = await makePage('gone');
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
-    const other = (await createCollections(t.app).append({ name: 'Other', createdBy: admin }, (last) => ordering.between(last, null))).id;
+    const other = (await createCollections(t.app).append('legacy', { name: 'Other', createdBy: admin }, (last) => ordering.between(last, null))).id;
     const inOther = (await createPages(t.app).create({ collectionId: other, parentId: null, afterId: null, title: 'T', createdBy: admin, content: await seeded('o') }, { maxDepth: 32, maxPages: 10 }, between));
     if (inOther.kind !== 'created') throw new Error(inOther.kind);
     await t.admin.query(`update collections set deleted_at = now() where id = $1`, [other]);

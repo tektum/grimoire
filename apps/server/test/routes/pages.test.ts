@@ -169,7 +169,7 @@ describe('a retry with the same Idempotency-Key', () => {
   it('is refused 403 when write access was taken away since the first answer, and creates nothing new', async () => {
     const b = build();
     expect((await first(b)).status).toBe(201);
-    await b.collections.update(b.shared.id, { defaultPermission: 'read' }, b.rows[0]?.id as string);
+    await b.collections.update('legacy', b.shared.id, { defaultPermission: 'read' }, b.rows[0]?.id as string);
     const res = await retry(b);
     expect([res.status, await code(res), b.pages.count()]).toEqual([403, 'forbidden', 1]);
   });
@@ -177,11 +177,11 @@ describe('a retry with the same Idempotency-Key', () => {
   it('is refused 404 when read access was taken away or the collection was deleted', async () => {
     const gone = build();
     await first(gone);
-    await gone.collections.update(gone.shared.id, { defaultPermission: null }, gone.rows[0]?.id as string);
+    await gone.collections.update('legacy', gone.shared.id, { defaultPermission: null }, gone.rows[0]?.id as string);
     expect((await retry(gone)).status).toBe(404);
     const deleted = build();
     await first(deleted);
-    await deleted.collections.softDelete(deleted.shared.id, deleted.rows[0]?.id as string);
+    await deleted.collections.softDelete('legacy', deleted.shared.id, deleted.rows[0]?.id as string);
     expect((await retry(deleted)).status).toBe(404);
   });
 
@@ -332,7 +332,7 @@ describe('GET /v1/pages/{id}', () => {
     expect(bodies[0]).toEqual([404, { error: { code: 'not_found', message: 'Not found.' } }]);
     expect(bodies[1]).toEqual(bodies[0]);
     expect((await b.call('member', 'GET', '/v1/pages/not-an-id')).status).toBe(422);
-    await b.collections.softDelete(b.closed.id, b.rows[0]?.id as string);
+    await b.collections.softDelete('legacy', b.closed.id, b.rows[0]?.id as string);
     expect((await b.call('admin', 'GET', `/v1/pages/${hidden.id}`)).status).toBe(404);
   });
 

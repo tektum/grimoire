@@ -31,7 +31,7 @@ async function make(title: string, markdown?: string): Promise<string> {
 beforeAll(async () => {
   t = await createTestDatabase('markdownof');
   user = await addUser(t.app, 'ada', 'admin');
-  collection = (await createCollections(t.app).append({ name: 'md', createdBy: user }, (last) => ordering.between(last, null))).id;
+  collection = (await createCollections(t.app).append('legacy', { name: 'md', createdBy: user }, (last) => ordering.between(last, null))).id;
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
 
@@ -68,7 +68,7 @@ describe('PageRepo.markdownOf', () => {
     const gone = await make('Gone', 'x');
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
     expect(await pages().markdownOf(gone)).toBeUndefined();
-    const other = (await createCollections(t.app).append({ name: 'md2', createdBy: user }, (last) => ordering.between(last, null))).id;
+    const other = (await createCollections(t.app).append('legacy', { name: 'md2', createdBy: user }, (last) => ordering.between(last, null))).id;
     const r = await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In other', createdBy: user }, limits, (a, b) => ordering.between(a, b));
     if (r.kind !== 'created') throw new Error(r.kind);
     await t.admin.query(`update collections set deleted_at = now() where id = $1`, [other]);

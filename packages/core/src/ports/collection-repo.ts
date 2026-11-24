@@ -64,30 +64,33 @@ export interface TreePage {
   readonly icon: string | null;
 }
 
-/** Collections and their access entries. Every change that can take access away also writes its audit row in the same transaction. */
+/**
+ * Collections and their access entries. Every change that can take access away also writes its audit row in the same transaction. Every method works inside one tenant
+ * (docs/tenancy.md section 3.3): a collection of another tenant is absent, and an entry can name only a person or a group of the collection's own tenant (`no-principal`).
+ */
 export interface CollectionRepo {
   /** The live collections among `ids`, in `position` order. */
-  listLive(ids: readonly string[]): Promise<readonly CollectionRecord[]>;
+  listLive(tenantId: string, ids: readonly string[]): Promise<readonly CollectionRecord[]>;
   /** A live collection, or undefined. */
-  get(id: string): Promise<CollectionRecord | undefined>;
+  get(tenantId: string, id: string): Promise<CollectionRecord | undefined>;
   /**
    * Adds a collection after the last live one. `positionAfter` gets that last position (null when there is none) and returns the new
    * one; the read and the insert are one step, so two creates never choose the same position.
    */
-  append(input: NewCollection, positionAfter: (last: string | null) => string): Promise<CollectionRecord>;
+  append(tenantId: string, input: NewCollection, positionAfter: (last: string | null) => string): Promise<CollectionRecord>;
   /** Applies the patch to a live collection. A change of `defaultPermission` writes the audit row `collection.default_permission_changed`. */
-  update(id: string, patch: CollectionPatch, actorId: string): Promise<UpdateResult>;
+  update(tenantId: string, id: string, patch: CollectionPatch, actorId: string): Promise<UpdateResult>;
   /** The default permission and the entries of a live collection (oldest entry first), or undefined. */
-  listAccess(collectionId: string): Promise<AccessList | undefined>;
+  listAccess(tenantId: string, collectionId: string): Promise<AccessList | undefined>;
   /** Inserts the entry, or changes the permission of the principal's existing one (the id stays). Writes the audit row `collection.access_upserted`. */
-  upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult>;
+  upsertAccess(tenantId: string, collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult>;
   /** Removes an entry of this collection. Writes the audit row `collection.access_removed`. False when the collection has no such entry. */
-  removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean>;
+  removeAccess(tenantId: string, collectionId: string, entryId: string, actorId: string): Promise<boolean>;
   /** The live pages of a live collection, flat, in `position` order; undefined when the collection is not live. */
-  tree(collectionId: string): Promise<readonly TreePage[] | undefined>;
+  tree(tenantId: string, collectionId: string): Promise<readonly TreePage[] | undefined>;
   /**
    * Soft-deletes a live collection and every live page in it as one batch: one fresh batch id on all of them, no row removed. Pages that
    * were already deleted keep their own batch. Writes the audit row `collection.deleted`. Undefined when the collection is not live.
    */
-  softDelete(collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined>;
+  softDelete(tenantId: string, collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined>;
 }

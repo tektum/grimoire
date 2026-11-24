@@ -18,7 +18,7 @@ const trash = () => createTrash(t.app);
 const place = (before: string | null, after: string | null) => ordering.between(before, after);
 
 async function newCollection(name: string): Promise<string> {
-  return (await createCollections(t.app).append({ name, createdBy: user }, (last) => ordering.between(last, null))).id;
+  return (await createCollections(t.app).append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 }
 async function make(title: string, parentId: string | null = null, collectionId = collection): Promise<string> {
   const r = await pages().create({ collectionId, parentId, afterId: null, title, createdBy: user }, limits, place);
@@ -95,7 +95,7 @@ describe('TrashRepo.roots and rootOf', () => {
     expect(await trash().rootOf(child)).toBeUndefined();
     expect(await trash().rootOf(live)).toBeUndefined();
     expect(await trash().rootOf('00000000-0000-4000-8000-000000000999')).toBeUndefined();
-    await createCollections(t.app).softDelete(collection, user);
+    await createCollections(t.app).softDelete('legacy', collection, user);
     expect((await trash().rootOf(live))?.collectionDeleted).toBe(true);
   });
 });
@@ -215,7 +215,7 @@ describe('TrashRepo.restore', () => {
     expect(await state(root)).toBe('deleted');
     expect((await trash().restore(child, collection, limits, place)).kind).toBe('not-found');
     expect((await trash().restore('00000000-0000-4000-8000-000000000999', collection, limits, place)).kind).toBe('not-found');
-    await createCollections(t.app).softDelete(collection, user);
+    await createCollections(t.app).softDelete('legacy', collection, user);
     expect((await trash().restore(root, collection, limits, place)).kind).toBe('collection-deleted');
     expect(await state(root)).toBe('deleted');
   });
@@ -357,7 +357,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
   it('removes the pages of a deleted collection by their shared batch', async () => {
     const a = await make('a');
     const b = await make('b');
-    await createCollections(t.app).softDelete(collection, user);
+    await createCollections(t.app).softDelete('legacy', collection, user);
     const info = await trash().rootOf(a);
     expect(info?.batch).toBeDefined();
     expect(info?.batch).not.toBe(a);

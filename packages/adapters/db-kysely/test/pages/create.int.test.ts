@@ -15,7 +15,7 @@ const ordering = new FakeOrdering();
 const between = (before: string | null, after: string | null): string => ordering.between(before, after);
 const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const collectionsRepo = () => createCollections(t.app);
-const newCollection = async (name: string): Promise<string> => (await collectionsRepo().append({ name, createdBy: user }, (last) => ordering.between(last, null))).id;
+const newCollection = async (name: string): Promise<string> => (await collectionsRepo().append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 const create = (collectionId: string, extra: { parentId?: string; afterId?: string; beforeId?: string; title?: string } = {}, l: PageLimits = limits) =>
   createPages(t.app).create({ collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, beforeId: extra.beforeId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
 const created = async (r: ReturnType<typeof create>) => {

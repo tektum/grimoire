@@ -76,7 +76,7 @@ export async function buildWorld() {
   const made = await admin.createGroup('legacy', 'Writers', USER_ID.admin);
   if (made.kind !== 'saved') throw new Error('group');
   await admin.addMember('legacy', made.group.id, USER_ID.member, USER_ID.admin);
-  const granted = await collections.upsertAccess(open.id, { principalType: 'user', principalId: USER_ID.member, permission: 'read_write' }, USER_ID.admin);
+  const granted = await collections.upsertAccess('legacy', open.id, { principalType: 'user', principalId: USER_ID.member, permission: 'read_write' }, USER_ID.admin);
   if (granted.kind !== 'saved') throw new Error('access entry');
   const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });
   // Limits that the walk cannot reach: it sends a handful of requests per credential, not a flood.

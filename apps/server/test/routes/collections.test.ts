@@ -134,7 +134,7 @@ describe('POST /v1/collections', () => {
     const second = await call('admin', 'POST', '/v1/collections', { name: 'Once' }, { 'idempotency-key': 'k1' });
     expect([first.status, second.status, second.headers.get('idempotent-replay')]).toEqual([201, 201, 'true']);
     expect(await second.json()).toEqual(await first.json());
-    expect((await collections.listLive(collections.world.collections.map((c) => c.id))).filter((c) => c.name === 'Once')).toHaveLength(1);
+    expect((await collections.listLive('legacy', collections.world.collections.map((c) => c.id))).filter((c) => c.name === 'Once')).toHaveLength(1);
   });
 });
 
@@ -157,7 +157,7 @@ describe('a retry of a collection create with the same Idempotency-Key', () => {
     const post = () => b.call('admin', 'POST', '/v1/collections', { name: 'Once' }, { 'idempotency-key': 'k' });
     const first = (await (await post()).json()) as { id: string };
     expect((await post()).headers.get('idempotent-replay')).toBe('true');
-    await b.collections.softDelete(first.id, b.rows[0]?.id as string);
+    await b.collections.softDelete('legacy', first.id, b.rows[0]?.id as string);
     expect((await post()).status).toBe(404);
     const demoted = build();
     const again = () => demoted.call('admin', 'POST', '/v1/collections', { name: 'Twice' }, { 'idempotency-key': 'k2' });

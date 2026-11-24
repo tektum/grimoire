@@ -40,36 +40,36 @@ describe('the PostgreSQL AuditLog', () => {
 describe('the audit row of a collection change', () => {
   it('a default-permission change writes exactly one row, and a change of other fields writes none', async () => {
     const repo = createCollections(t.app);
-    const c = await repo.append({ name: 'audited', createdBy: admin }, after);
-    await repo.update(c.id, { name: 'renamed' }, admin);
+    const c = await repo.append('legacy', { name: 'audited', createdBy: admin }, after);
+    await repo.update('legacy', c.id, { name: 'renamed' }, admin);
     expect(await events(c.id)).toEqual([]);
-    await repo.update(c.id, { defaultPermission: 'read' }, admin);
+    await repo.update('legacy', c.id, { defaultPermission: 'read' }, admin);
     expect(await events(c.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: c.id, actor_id: admin }]);
-    await repo.update(c.id, { defaultPermission: 'read' }, admin);
+    await repo.update('legacy', c.id, { defaultPermission: 'read' }, admin);
     expect(await events(c.id)).toHaveLength(1);
   });
 
   it('creating with a default permission writes one row, and without one none', async () => {
     const repo = createCollections(t.app);
-    const plain = await repo.append({ name: 'plain', createdBy: admin }, after);
-    const shared = await repo.append({ name: 'shared', defaultPermission: 'read', createdBy: admin }, after);
+    const plain = await repo.append('legacy', { name: 'plain', createdBy: admin }, after);
+    const shared = await repo.append('legacy', { name: 'shared', defaultPermission: 'read', createdBy: admin }, after);
     expect(await events(plain.id)).toEqual([]);
     expect(await events(shared.id)).toEqual([{ action: 'collection.default_permission_changed', target_type: 'collection', target_id: shared.id, actor_id: admin }]);
   });
 
   it('an access upsert and an access removal each write exactly one row', async () => {
     const repo = createCollections(t.app);
-    const c = await repo.append({ name: 'acl-audit', createdBy: admin }, after);
+    const c = await repo.append('legacy', { name: 'acl-audit', createdBy: admin }, after);
     const group = await addGroup(t.app, 'Audited');
-    const saved = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    const saved = await repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
     if (saved.kind !== 'saved') throw new Error('not saved');
     expect(await events(c.id)).toEqual([{ action: 'collection.access_upserted', target_type: 'collection', target_id: c.id, actor_id: admin }]);
-    await repo.removeAccess(c.id, saved.entry.id, admin);
+    await repo.removeAccess('legacy', c.id, saved.entry.id, admin);
     expect((await events(c.id)).map((e) => e.action)).toEqual(['collection.access_upserted', 'collection.access_removed']);
-    expect(await repo.removeAccess(c.id, saved.entry.id, admin)).toBe(false);
+    expect(await repo.removeAccess('legacy', c.id, saved.entry.id, admin)).toBe(false);
     expect(await events(c.id)).toHaveLength(2);
-    const again = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read_write' }, admin);
-    const changed = await repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
+    const again = await repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: 'read_write' }, admin);
+    const changed = await repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
     if (again.kind !== 'saved' || changed.kind !== 'saved') throw new Error('not saved');
     const details = await t.admin.query<{ detail: unknown }>(`select detail from audit_events where target_id = $1 and action = 'collection.access_upserted' order by id`, [c.id]);
     expect(details.map((d) => d.detail)).toEqual([
@@ -81,7 +81,7 @@ describe('the audit row of a collection change', () => {
 
   it('first grants to one principal wait for each other on the collection, so only the first records a previous permission of null', async () => {
     const repo = createCollections(t.app);
-    const c = await repo.append({ name: 'acl-race', createdBy: admin }, after);
+    const c = await repo.append('legacy', { name: 'acl-race', createdBy: admin }, after);
     const group = await addGroup(t.app, 'Racers');
     // Another transaction holds the collection; the grants are started while it does, and must queue behind it (a lock that is missing fails the wait).
     let release!: () => void;
@@ -95,7 +95,7 @@ describe('the audit row of a collection change', () => {
     });
     await locked;
     const grants = Promise.all(['read', 'read_write', 'read', 'read_write'].map((permission) =>
-      repo.upsertAccess(c.id, { principalType: 'group', principalId: group, permission: permission as 'read' }, admin)));
+      repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: permission as 'read' }, admin)));
     await vi.waitFor(async () => {
       const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
       expect(Number(waiting[0]?.n)).toBe(4);
@@ -109,28 +109,28 @@ describe('the audit row of a collection change', () => {
 
   it('deleting a collection writes one row naming the batch', async () => {
     const repo = createCollections(t.app);
-    const c = await repo.append({ name: 'del-audit', createdBy: admin }, after);
-    const result = await repo.softDelete(c.id, admin);
+    const c = await repo.append('legacy', { name: 'del-audit', createdBy: admin }, after);
+    const result = await repo.softDelete('legacy', c.id, admin);
     expect(await events(c.id)).toEqual([{ action: 'collection.deleted', target_type: 'collection', target_id: c.id, actor_id: admin }]);
     const detail = (await t.admin.query<{ detail: unknown }>(`select detail from audit_events where target_id = $1`, [c.id]))[0]?.detail;
     expect(detail).toEqual({ batch: result?.batch, pages: 0 });
-    expect(await repo.softDelete(c.id, admin)).toBeUndefined();
+    expect(await repo.softDelete('legacy', c.id, admin)).toBeUndefined();
     expect(await events(c.id)).toHaveLength(1);
   });
 
   it('a failed upsert leaves no audit row', async () => {
     const repo = createCollections(t.app);
-    const c = await repo.append({ name: 'acl-fail', createdBy: admin }, after);
-    expect(await repo.upsertAccess(c.id, { principalType: 'user', principalId: '00000000-0000-4000-8000-000000000000', permission: 'read' }, admin)).toEqual({ kind: 'no-principal' });
+    const c = await repo.append('legacy', { name: 'acl-fail', createdBy: admin }, after);
+    expect(await repo.upsertAccess('legacy', c.id, { principalType: 'user', principalId: '00000000-0000-4000-8000-000000000000', permission: 'read' }, admin)).toEqual({ kind: 'no-principal' });
     expect(await events(c.id)).toEqual([]);
   });
 
   it('a change that fails leaves no audit row and no change: both are one transaction', async () => {
     const repo = createCollections(t.app);
-    const x = await repo.append({ name: 'tx1', createdBy: admin }, after);
-    const y = await repo.append({ name: 'tx2', createdBy: admin }, after);
-    expect(await repo.update(y.id, { defaultPermission: 'read_write', position: x.position }, admin)).toEqual({ kind: 'position-taken' });
+    const x = await repo.append('legacy', { name: 'tx1', createdBy: admin }, after);
+    const y = await repo.append('legacy', { name: 'tx2', createdBy: admin }, after);
+    expect(await repo.update('legacy', y.id, { defaultPermission: 'read_write', position: x.position }, admin)).toEqual({ kind: 'position-taken' });
     expect(await events(y.id)).toEqual([]);
-    expect((await repo.get(y.id))?.defaultPermission).toBeNull();
+    expect((await repo.get('legacy', y.id))?.defaultPermission).toBeNull();
   });
 });

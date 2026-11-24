@@ -20,12 +20,18 @@ export class FakeCollectionRepo implements CollectionRepo {
   private written = new Set<World['access'][number]>();
   /** Test setup: display names of users and groups (the id is the name otherwise). */
   readonly names = new Map<string, string>();
+  /** Test setup: the tenant of a user or a group (`legacy` otherwise). */
+  readonly principalTenants = new Map<string, string>();
+  /** The tenant of each collection (`legacy` unless seeded with another). */
+  private readonly tenants = new Map<string, string>();
 
   constructor(readonly world: World = emptyWorld(), readonly audit: FakeAuditLog = new FakeAuditLog()) {}
 
   /** Test setup: a collection that exists, also as a fact of the world. */
-  seed(row: Omit<CollectionRecord, 'id'> & { id?: string }): CollectionRecord {
-    const record: CollectionRecord = { ...row, id: row.id ?? randomUUID() };
+  seed(row: Omit<CollectionRecord, 'id'> & { id?: string; tenantId?: string }): CollectionRecord {
+    const { tenantId, ...fields } = row;
+    const record: CollectionRecord = { ...fields, id: row.id ?? randomUUID() };
+    this.tenants.set(record.id, tenantId ?? 'legacy');
     this.store(record);
     return record;
   }
@@ -51,17 +57,26 @@ export class FakeCollectionRepo implements CollectionRepo {
     this.rows.delete(id);
   }
 
-  listLive(ids: readonly string[]): Promise<readonly CollectionRecord[]> {
-    return Promise.resolve(this.live().filter((c) => ids.includes(c.id)));
+  private mine(tenantId: string, id: string): CollectionRecord | undefined {
+    return this.tenants.get(id) === tenantId ? this.rows.get(id) : undefined;
   }
 
-  get(id: string): Promise<CollectionRecord | undefined> {
-    return Promise.resolve(this.rows.get(id));
+  private liveIn(tenantId: string): CollectionRecord[] {
+    return this.live().filter((c) => this.tenants.get(c.id) === tenantId);
   }
 
-  append(input: NewCollection, positionAfter: (last: string | null) => string): Promise<CollectionRecord> {
-    const last = this.live().at(-1);
+  listLive(tenantId: string, ids: readonly string[]): Promise<readonly CollectionRecord[]> {
+    return Promise.resolve(this.liveIn(tenantId).filter((c) => ids.includes(c.id)));
+  }
+
+  get(tenantId: string, id: string): Promise<CollectionRecord | undefined> {
+    return Promise.resolve(this.mine(tenantId, id));
+  }
+
+  append(tenantId: string, input: NewCollection, positionAfter: (last: string | null) => string): Promise<CollectionRecord> {
+    const last = this.liveIn(tenantId).at(-1);
     const record = this.seed({
+      tenantId,
       name: input.name, description: input.description ?? null, icon: input.icon ?? null, color: input.color ?? null,
       position: positionAfter(last?.position ?? null), defaultPermission: input.defaultPermission ?? null,
     });
@@ -74,10 +89,10 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve(record);
   }
 
-  update(id: string, patch: CollectionPatch, actorId: string): Promise<UpdateResult> {
-    const current = this.rows.get(id);
+  update(tenantId: string, id: string, patch: CollectionPatch, actorId: string): Promise<UpdateResult> {
+    const current = this.mine(tenantId, id);
     if (current === undefined) return Promise.resolve({ kind: 'not-found' });
-    if (patch.position !== undefined && this.live().some((c) => c.id !== id && c.position === patch.position)) return Promise.resolve({ kind: 'position-taken' });
+    if (patch.position !== undefined && this.liveIn(tenantId).some((c) => c.id !== id && c.position === patch.position)) return Promise.resolve({ kind: 'position-taken' });
     const next: CollectionRecord = {
       ...current,
       ...(patch.name === undefined ? {} : { name: patch.name }),
@@ -97,16 +112,16 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve({ kind: 'updated', collection: next });
   }
 
-  listAccess(collectionId: string): Promise<AccessList | undefined> {
-    const c = this.rows.get(collectionId);
+  listAccess(tenantId: string, collectionId: string): Promise<AccessList | undefined> {
+    const c = this.mine(tenantId, collectionId);
     if (c === undefined) return Promise.resolve(undefined);
     return Promise.resolve({ defaultPermission: c.defaultPermission, entries: this.entries.filter((e) => e.collectionId === collectionId).map(visible) });
   }
 
-  upsertAccess(collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult> {
-    if (!this.rows.has(collectionId)) return Promise.resolve({ kind: 'not-found' });
+  upsertAccess(tenantId: string, collectionId: string, grant: AccessGrant, actorId: string): Promise<UpsertAccessResult> {
+    if (this.mine(tenantId, collectionId) === undefined) return Promise.resolve({ kind: 'not-found' });
     const known = grant.principalType === 'user' ? this.world.users : this.world.groups;
-    if (!known.some((p) => p.id === grant.principalId)) return Promise.resolve({ kind: 'no-principal' });
+    if (!known.some((p) => p.id === grant.principalId) || (this.principalTenants.get(grant.principalId) ?? 'legacy') !== tenantId) return Promise.resolve({ kind: 'no-principal' });
     const previous = this.entries.find((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId)?.permission ?? null;
     const at = this.entries.findIndex((e) => e.collectionId === collectionId && e.principalType === grant.principalType && e.principalId === grant.principalId);
     const entry = { id: at < 0 ? randomUUID() : (this.entries[at] as AccessEntry).id, collectionId, ...grant, name: this.names.get(grant.principalId) ?? grant.principalId };
@@ -118,10 +133,10 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve({ kind: 'saved', entry: visible(entry) });
   }
 
-  removeAccess(collectionId: string, entryId: string, actorId: string): Promise<boolean> {
+  removeAccess(tenantId: string, collectionId: string, entryId: string, actorId: string): Promise<boolean> {
     const at = this.entries.findIndex((e) => e.id === entryId && e.collectionId === collectionId);
     const entry = this.entries[at];
-    if (entry === undefined || !this.rows.has(collectionId)) return Promise.resolve(false);
+    if (entry === undefined || this.mine(tenantId, collectionId) === undefined) return Promise.resolve(false);
     this.entries.splice(at, 1);
     this.changed = [{ collectionId, permission: entry.permission, ...(entry.principalType === 'user' ? { userId: entry.principalId } : { groupId: entry.principalId }) }];
     this.mirrorEntries();
@@ -132,14 +147,14 @@ export class FakeCollectionRepo implements CollectionRepo {
     return Promise.resolve(true);
   }
 
-  tree(collectionId: string): Promise<readonly TreePage[] | undefined> {
-    if (!this.rows.has(collectionId)) return Promise.resolve(undefined);
+  tree(tenantId: string, collectionId: string): Promise<readonly TreePage[] | undefined> {
+    if (this.mine(tenantId, collectionId) === undefined) return Promise.resolve(undefined);
     const pages = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return Promise.resolve(pages.map(({ id, urlId, parentId, position, title, icon }) => ({ id, urlId, parentId, position, title, icon })));
   }
 
-  softDelete(collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined> {
-    if (!this.rows.has(collectionId)) return Promise.resolve(undefined);
+  softDelete(tenantId: string, collectionId: string, actorId: string): Promise<{ readonly batch: string; readonly pages: number } | undefined> {
+    if (this.mine(tenantId, collectionId) === undefined) return Promise.resolve(undefined);
     const batch = randomUUID();
     const live = this.pageRows.filter((p) => p.collectionId === collectionId && !p.deleted);
     for (const page of live) {

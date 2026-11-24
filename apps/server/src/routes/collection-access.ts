@@ -1,7 +1,7 @@
 import { z } from '@hono/zod-openapi';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
-import { caller, guardCollection } from '../http/collection-guard.js';
+import { caller, callerTenant, guardCollection } from '../http/collection-guard.js';
 
 const Permission = z.enum(['read', 'read_write']);
 const IdParam = z.object({ id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }) });
@@ -50,14 +50,14 @@ const router = createRouter();
 router.openapi(listCollectionAccess, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  const list = await c.get('deps').collections.listAccess(id);
+  const list = await c.get('deps').collections.listAccess(callerTenant(c), id);
   return list === undefined ? fail('not_found') : c.json(list, 200);
 });
 
 router.openapi(putCollectionAccess, async (c) => {
   const { id } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  const result = await c.get('deps').collections.upsertAccess(id, c.req.valid('json'), caller(c).id);
+  const result = await c.get('deps').collections.upsertAccess(callerTenant(c), id, c.req.valid('json'), caller(c).id);
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'no-principal') return fail('invalid');
   return c.json(result.entry, 200);
@@ -66,7 +66,7 @@ router.openapi(putCollectionAccess, async (c) => {
 router.openapi(deleteCollectionAccess, async (c) => {
   const { id, entryId } = c.req.valid('param');
   await guardCollection(c, id, 'admin');
-  return (await c.get('deps').collections.removeAccess(id, entryId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
+  return (await c.get('deps').collections.removeAccess(callerTenant(c), id, entryId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
 });
 
 export default router;
