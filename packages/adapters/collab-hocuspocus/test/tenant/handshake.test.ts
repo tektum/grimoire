@@ -13,9 +13,9 @@ const MISSING = '0b6f4f0e-3c1d-4a53-9a62-5d1c2a7e9999';
 const A: TenantClaim = { kind: 'one', id: 'tenant-a' };
 
 /** A member whose token, user row and (when `page` is given) page are of the tenants named. */
-function setup(o: { claim?: TenantClaim | undefined; user?: string | undefined; page?: string | undefined; role?: 'admin' | 'member' } = { claim: A, user: 'tenant-a', page: 'tenant-a' }) {
+function setup(o: { claim?: TenantClaim | undefined; user?: string | undefined; page?: string | undefined; role?: 'admin' | 'member'; requireTenant?: boolean } = { claim: A, user: 'tenant-a', page: 'tenant-a' }) {
   const t = makeDeps(o.role ?? 'member');
-  t.deps = { ...t.deps, requireTenant: true };
+  t.deps = { ...t.deps, requireTenant: o.requireTenant ?? true };
   t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: 10_000_000, ...(o.claim === undefined ? {} : { tenant: o.claim }) };
   if (o.user !== undefined) t.users.setTenant(SUBJECT, o.user);
   for (const page of t.world.pages) if (o.page !== undefined) page.tenantId = o.page;
@@ -59,8 +59,9 @@ describe('the handshake and the tenant of the page', () => {
 describe('the token and the tenant', () => {
   it.each([
     ['names no tenant', { kind: 'none' } as TenantClaim, 'no-tenant'],
+    ['carries no tenant claim at all (the verifier left the field out)', undefined, 'no-tenant'],
     ['names several tenants', { kind: 'many' } as TenantClaim, 'tenant-ambiguous'],
-  ])('a token that %s is refused forbidden before the user row or the page are asked about, with a fixed detail in the log', async (_name, claim, detail) => {
+  ])('a token that %s is refused forbidden before the user row or the page are asked about, with a fixed detail in the log', async (_name, claim: TenantClaim | undefined, detail) => {
     const s = setup({ claim, user: 'tenant-a', page: 'tenant-a' });
     await expect(s.authenticate()).rejects.toMatchObject({ reason: 'forbidden', detail });
     expect(s.resolve.calls).toBe(0);
@@ -83,8 +84,8 @@ describe('the token and the tenant', () => {
     }
   });
 
-  it('is unchanged for a verifier that knows nothing of tenants (no claim, rows with no tenant)', async () => {
-    await expect(setup({ claim: undefined, user: undefined, page: undefined }).authenticate()).resolves.toMatchObject({ userId: U1 });
+  it('is unchanged, while tenants are not required, for a verifier that knows nothing of them (no claim, rows with no tenant)', async () => {
+    await expect(setup({ claim: undefined, user: undefined, page: undefined, requireTenant: false }).authenticate()).resolves.toMatchObject({ userId: U1 });
   });
 
   it('does not admit a token of tenant A whose user row says nothing of tenants to a page of tenant A (one side without the other denies)', async () => {

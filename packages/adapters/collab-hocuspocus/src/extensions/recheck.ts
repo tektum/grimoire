@@ -249,7 +249,7 @@ export function createRecheck(o: RecheckOptions): Recheck {
         return;
       }
       // The same tenant checks as the handshake: a renewal is not a way round them (a person moved to another tenant, or a claim that has become none or several, ends the connection).
-      if ((deps.requireTenant === true && (v.tenant?.kind === 'none' || v.tenant?.kind === 'many')) || (v.tenant?.kind === 'one' && t.tenantId !== undefined && v.tenant.id !== t.tenantId)) {
+      if ((deps.requireTenant === true && v.tenant?.kind !== 'one') || (v.tenant?.kind === 'one' && t.tenantId !== undefined && v.tenant.id !== t.tenantId)) {
         log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'tenant-mismatch' });
         closeOne(data.connection, t, 'invalid-token');
         return;

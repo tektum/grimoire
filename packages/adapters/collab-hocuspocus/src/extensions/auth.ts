@@ -105,7 +105,8 @@ export function createAuthExtension(o: AuthOptions): Extension {
       if (v.kind !== 'ok') throw new Refusal('invalid-token');
       // A token with no usable tenant (none, or several: the first version has one for each person) is refused before the database is asked (docs/tenancy.md, section 6), once the
       // deployment requires tenants (`requireTenant`).
-      if (deps.requireTenant === true && v.tenant?.kind === 'none') throw new Refusal('forbidden', 'no-tenant');
+      // Fail closed: a result with no tenant field at all (a verifier that does not say) is the same as `none`.
+      if (deps.requireTenant === true && (v.tenant === undefined || v.tenant.kind === 'none')) throw new Refusal('forbidden', 'no-tenant');
       if (deps.requireTenant === true && v.tenant?.kind === 'many') throw new Refusal('forbidden', 'tenant-ambiguous');
       let r: Resolved;
       try {

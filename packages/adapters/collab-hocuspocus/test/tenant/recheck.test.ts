@@ -80,6 +80,17 @@ describe('a renewed token and the tenant (the same checks as the handshake)', ()
     expect(c.context['expiresAt']).not.toBe(fresh);
   });
 
+  it('closes it on a renewed token with no tenant claim at all when tenants are required (fail closed), and lets it through when they are not', async () => {
+    const run = async (requireTenant: boolean) => {
+      const r = started(rig({ requireTenant }));
+      const c = await r.open({ expiresInMs: 5000, tenantId: 'tenant-a' });
+      r.t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: r.t.clock.now() + 3_600_000 };
+      await r.tokenSync(c, 'renewed');
+      return c.closes.length;
+    };
+    expect([await run(true), await run(false)]).toEqual([1, 0]);
+  });
+
   it.each([{ kind: 'none' }, { kind: 'many', ids: ['a', 'b'] }] as const)('closes it on a renewed token with %j when tenants are required, and lets it through when they are not', async (claim) => {
     expect((await renew(claim as never, true)).c.closes).toHaveLength(1);
     expect((await renew(claim as never, false)).c.closes).toEqual([]);
