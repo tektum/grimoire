@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createFileStorage, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
 import { createAccessStore, createAttachments, createAudit, createCollections, createDatabase, createIdempotency, createPages, createTrash, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
+import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
+import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
@@ -19,13 +22,47 @@ const FILES = {
   endpoint: 'http://s3.invalid', publicEndpoint: 'http://s3.invalid', publicOrigin: 'http://s3.invalid', bucket: 'b', accessKey: 'a', secretKey: 's', region: 'r',
   addressing: 'path' as const, createOnlyHeader: 'if-none-match' as const, corsMode: 'external' as const, maxBytes: 1000, allowedTypes: ['image/png'], pendingMaxPerUser: 5,
 };
+// The Compose store of `make db-up`, with the development identities of .env.example (the runtime one and the set-up one), as the store's own tests use it.
+const env = (name: string, fallback: string): string => process.env[name] ?? fallback;
+const storeEndpoint = env('GRIMOIRE_S3_ENDPOINT', 'http://127.0.0.1:8333');
+const storeBucket = env('GRIMOIRE_S3_BUCKET', 'grimoire');
+const filesConfig = (over: Partial<FilesConfig> = {}): FilesConfig => ({
+  endpoint: storeEndpoint, publicEndpoint: storeEndpoint.replace('127.0.0.1', 'localhost'), publicOrigin: new URL(storeEndpoint.replace('127.0.0.1', 'localhost')).origin, bucket: storeBucket,
+  accessKey: env('GRIMOIRE_S3_ACCESS_KEY', 'grimoire-app'), secretKey: env('GRIMOIRE_S3_SECRET_KEY', 'grimoire-app-dev-secret'), region: 'us-east-1', addressing: 'path',
+  createOnlyHeader: 'if-none-match', corsMode: 'api', maxBytes: 26_214_400, allowedTypes: ['image/png'], pendingMaxPerUser: 20, ...over,
+});
+const adminOptions = () => ({
+  endpoint: storeEndpoint, bucket: storeBucket, region: 'us-east-1', addressing: 'path' as const, accessKey: env('GRIMOIRE_DEV_S3_ACCESS_KEY', 'grimoire-dev'),
+  secretKey: env('GRIMOIRE_DEV_S3_SECRET_KEY', 'grimoire-dev-secret'), allowedOrigins: env('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.0.1:8080,http://localhost:8080').split(','),
+});
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
 const run = (sql: string) => sqlAdmin(DB, sql);
 
 let db: KyselyDatabase;
 let files: FakeFileStorage;
-let call: (who: string, method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<Response>;
+let call: ReturnType<typeof caller>;
 let pageId: string;
+
+function appOver(store: FileStorage, settings: FilesConfig = FILES) {
+  const t = makeContext();
+  const config = makeFakeConfig({ files: settings, allowedEmailDomains: ['example.com'] });
+  const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
+  const users = createUserStore(db);
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const access = createAccessStore(db);
+  return createApp({
+    ...t.ctx, config, auth: { verifier }, signInPolicy,
+    http: {
+      ...t.ctx.http, config, users, access: createPageAccess(access), authorizer: createAuthorizer(access), provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
+      idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db), pages: createPages(db), trash: createTrash(db),
+      attachments: createAttachments(db), files: store, deleteFiles: deleteObjects(store),
+    },
+  });
+}
+
+const caller = (app: ReturnType<typeof appOver>) => (who: string, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => app.request(path, {
+  method, headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
 
 beforeAll(async () => {
   requireBuild();
@@ -35,24 +72,8 @@ beforeAll(async () => {
   await insertUser(run, { descope_user_id: 'd-admin', email: 'admin@example.com', role: 'admin' });
   const collection = await insertCollection(run, { default_permission: 'read_write' });
   pageId = await insertPage(run, { collection_id: collection });
-  const t = makeContext();
-  files = new FakeFileStorage({ clock: t.clock });
-  const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'] });
-  const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
-  const users = createUserStore(db);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
-  const store = createAccessStore(db);
-  const app = createApp({
-    ...t.ctx, config, auth: { verifier }, signInPolicy,
-    http: {
-      ...t.ctx.http, config, users, access: createPageAccess(store), authorizer: createAuthorizer(store), provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
-      idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db), pages: createPages(db), trash: createTrash(db),
-      attachments: createAttachments(db), files, deleteFiles: deleteObjects(files),
-    },
-  });
-  call = (who, method, path, body, headers = {}) => app.request(path, {
-    method, headers: { authorization: `Bearer ${who}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  files = new FakeFileStorage();
+  call = caller(appOver(files));
 }, 120_000);
 
 afterAll(async () => {
@@ -89,4 +110,24 @@ describe('POST /v1/attachments on the real database', () => {
     await expect(files.head(`attachments/${created.id}`)).rejects.toMatchObject({ kind: 'not-found' });
     expect(Number(((await run(`select count(*) as n from attachments where page_id = '${pageId}'`)) as { n: string }[])[0]?.n)).toBe(0);
   });
+});
+
+describe('a purge on the real store', () => {
+  it('removes the stored object of a completed attachment, and leaves no row', async () => {
+    await ensureBucket(adminOptions());
+    const real = createFileStorage(filesConfig({ allowedTypes: ['image/png'] }));
+    const realCall = caller(appOver(real, filesConfig({ allowedTypes: ['image/png'] })));
+    const collection = await insertCollection(run, { default_permission: 'read_write' });
+    const page = await insertPage(run, { collection_id: collection });
+    const created = (await (await realCall('member', 'POST', '/v1/attachments', { pageId: page, fileName: 'a.png', contentType: 'image/png', size: PNG.length })).json()) as { id: string; upload: { url: string; headers: Record<string, string> } };
+    const key = `attachments/${created.id}`;
+    const sent = await fetch(created.upload.url, { method: 'PUT', headers: created.upload.headers, body: PNG });
+    expect(sent.status).toBeLessThan(300);
+    expect((await realCall('member', 'POST', `/v1/attachments/${created.id}/complete`)).status).toBe(200);
+    await expect(real.head(key)).resolves.toMatchObject({ size: PNG.length });
+    expect((await realCall('member', 'DELETE', `/v1/pages/${page}`)).status).toBeLessThan(300);
+    expect((await realCall('admin', 'DELETE', `/v1/trash/${page}`)).status).toBeLessThan(300);
+    await expect(real.head(key)).rejects.toMatchObject({ kind: 'not-found' });
+    expect(Number(((await run(`select count(*) as n from attachments where page_id = '${page}'`)) as { n: string }[])[0]?.n)).toBe(0);
+  }, 60_000);
 });
