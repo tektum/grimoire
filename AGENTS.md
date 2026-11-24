@@ -16,6 +16,19 @@ that OMP reads:
 `small-pull-request`, `answer-review`, `verify-claim`, `add-allow-list-entry`
 and `pull-request-visuals`. Use the one that matches your task.
 
+Descope skills (vendored from upstream, see
+[the notice](.agents/skills/DESCOPE-SKILLS-NOTICE.md)); use the one that matches:
+
+- `descope-auth`: adding sign-in, sign-up, SSO, MFA or other login methods to an app.
+- `auth-review`: a security review of authentication and authorisation code.
+- `descope-flows`: building or changing Descope flows through the Descope MCP.
+- `descope-terraform`: managing Descope projects, roles and settings as Terraform.
+- `descope-fga-schema`: writing or changing a Descope FGA (fine-grained access) schema.
+- `descope-byos-builder`: building custom React screens on top of a Descope flow.
+
+Descope work follows these skills and prefers the Descope SDKs and widgets over
+custom code.
+
 ## Set-up
 
 - Install [mise](https://mise.jdx.dev), then run `mise install` in the
