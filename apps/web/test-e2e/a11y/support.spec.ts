@@ -29,6 +29,10 @@ test('the tour has a stop for every route of the route table, and none twice', (
   expect(new Set(stops).size, 'a route with two stops').toBe(stops.length);
 });
 
+test('the routes whose screens are not built are named, with the task that builds them', () => {
+  expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/search pending M6-T09', '/import pending M6-T12a']);
+});
+
 test('a route that has no stop is found', () => {
   const stops = STOPS.filter((s) => s.route !== '/trash').map((s) => s.route);
   expect([...ROUTES.map((r) => r.path), '/'].filter((route) => !stops.includes(route))).toEqual(['/trash']);

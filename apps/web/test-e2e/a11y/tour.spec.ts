@@ -1,7 +1,7 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
-import { STOPS, stopReady } from './routes';
+import { PLACEHOLDER_TEXT, STOPS, stopReady } from './routes';
 import { axeBothSchemes, blockingText, summaryLine, type StopReport } from './support';
 import { prepareWorld, type World } from './world';
 
@@ -34,14 +34,19 @@ test.afterAll(() => {
 test('every route has no serious or critical violation, in the light and the dark scheme', async ({ browser, baseURL }) => {
   test.slow();
   const found: StopReport[] = [];
+  const marks: string[] = [];
   for (const stop of STOPS) {
     await visit(browser, baseURL, stop.who === 'nobody' ? 'nobody' : stop.who === 'admin' ? 'admin' : 'member', async (page) => {
       await page.goto(stop.path(world));
       await stopReady(stop, page, world);
-      found.push(...(await axeBothSchemes(page, stop.route)));
+      found.push(...(await axeBothSchemes(page, stop.pending === undefined ? stop.route : `${stop.route} [pending ${stop.pending}: a placeholder]`)));
+      const placeholder = (await page.getByText(PLACEHOLDER_TEXT).count()) > 0;
+      if (placeholder !== (stop.pending !== undefined))
+        marks.push(`${stop.route}: ${placeholder ? 'is a placeholder but not marked pending' : `is marked pending ${String(stop.pending)} but its screen is built: remove the mark and add the screen's steps`}`);
     });
   }
   reports.push(...found);
+  expect(marks, 'stops whose pending mark does not match the screen').toEqual([]);
   expect(blockingText(found), 'serious or critical violations').toBe('');
 });
 

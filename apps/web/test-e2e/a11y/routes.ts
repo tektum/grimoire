@@ -12,8 +12,8 @@ export interface Stop {
   readonly path: (world: World) => string;
   /** What to wait for once the page is open (the default is a first-level heading). */
   readonly ready?: (page: Page, world: World) => Promise<void>;
-  /** Added at the end of the report's name, for a stop that shows a screen in a state of its own. */
-  readonly state?: string;
+  /** The task whose screen is not built yet: the route shows a placeholder, and the stop says so in the report until the screen lands (then the mark goes and its own steps come). */
+  readonly pending?: 'M6-T09' | 'M6-T12a';
 }
 
 /** Every route of the route table (contracts section 3), each with the page it is visited at. The tour fails when the route table has a route that is not here. */
@@ -24,15 +24,18 @@ export const STOPS: readonly Stop[] = [
   { route: '/p/:slug', who: 'member', path: (w) => w.alpha.path, ready: async (page) => waitForSynced(page) },
   { route: '/p/:slug/history', who: 'member', path: (w) => `${w.alpha.path}/history` },
   { route: '/p/:slug/history/:revisionId', who: 'member', path: (w) => `${w.alpha.path}/history/${w.revisionId}` },
-  { route: '/search', who: 'member', path: () => '/search?q=paragraph' },
+  { route: '/search', who: 'member', path: () => '/search?q=paragraph', pending: 'M6-T09' },
   { route: '/trash', who: 'member', path: () => '/trash' },
-  { route: '/import', who: 'member', path: () => '/import' },
+  { route: '/import', who: 'member', path: () => '/import', pending: 'M6-T12a' },
   { route: '/admin/users', who: 'admin', path: () => '/admin/users' },
   { route: '/admin/groups', who: 'admin', path: () => '/admin/groups' },
   { route: '/admin/collections/:id/access', who: 'admin', path: (w) => `/admin/collections/${w.collectionId}/access` },
   { route: '/help', who: 'member', path: () => '/help' },
   { route: '*', who: 'member', path: () => '/nowhere/at/all' },
 ];
+
+/** What a placeholder screen says: a stop marked `pending` shows it, and a stop that is not marked must not. */
+export const PLACEHOLDER_TEXT = 'This screen is not built yet.';
 
 export const stopReady = async (stop: Stop, page: Page, world: World): Promise<void> => {
   await (stop.ready ?? headingVisible)(page, world);
