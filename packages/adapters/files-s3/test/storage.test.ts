@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createFileStorage, mapError } from '../src/index.js';
+import { MIN_CREDENTIAL_LIFETIME_MS, signingCredentials } from '../src/client.js';
 import { bucket, config, recorder, useRecordingServer, type Seen } from './recording-server.js';
 
 useRecordingServer();
@@ -22,6 +23,34 @@ const text = async (body: AsyncIterable<Uint8Array>) => {
   for await (const part of body) out += new TextDecoder().decode(part);
   return out;
 };
+
+describe('the credentials of the clients', () => {
+  const { accessKey, secretKey, ...withoutKeys } = config();
+
+  it('are the key pair of the settings when there is one (a store with its own identity)', async () => {
+    const s = createFileStorage(config({ accessKey, secretKey }), { maxAttempts: 1 });
+    for (const client of [s.client, s.signer]) expect(await client.config.credentials()).toMatchObject({ accessKeyId: accessKey, secretAccessKey: secretKey });
+    expect(new URL((await s.signDownload('k', { ttlSeconds: 60, disposition: 'inline' })).url).searchParams.get('X-Amz-Credential')).toContain(`${accessKey}/`);
+  });
+
+  it('come from the AWS default credential chain when there is none (the task role on Fargate), temporary token included', async () => {
+    // The chain reads more than these three variables: a named profile, shared files, a container or web identity source and the instance metadata come first or after. None may reach this test.
+    for (const name of ['AWS_PROFILE', 'AWS_DEFAULT_PROFILE', 'AWS_CONFIG_FILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI', 'AWS_CONTAINER_CREDENTIALS_FULL_URI', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'AWS_ROLE_ARN', 'AWS_SSO_SESSION']) vi.stubEnv(name, undefined);
+    vi.stubEnv('AWS_EC2_METADATA_DISABLED', 'true');
+    vi.stubEnv('AWS_ACCESS_KEY_ID', 'AKIAFROMCHAIN00000000');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'secret-from-the-chain');
+    vi.stubEnv('AWS_SESSION_TOKEN', 'token-from-the-chain');
+    try {
+      const s = createFileStorage(withoutKeys, { maxAttempts: 1 });
+      for (const client of [s.client, s.signer]) expect(await client.config.credentials()).toMatchObject({ accessKeyId: 'AKIAFROMCHAIN00000000', sessionToken: 'token-from-the-chain' });
+      const signed = new URL((await s.signDownload('k', { ttlSeconds: 60, disposition: 'inline' })).url);
+      expect(signed.searchParams.get('X-Amz-Credential')).toContain('AKIAFROMCHAIN00000000/');
+      expect(signed.searchParams.get('X-Amz-Security-Token')).toBe('token-from-the-chain');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe('the clients', () => {
   it('compute and validate checksums only where required, in both clients', async () => {
@@ -267,5 +296,44 @@ describe('mapError', () => {
   it('passes a port error through unchanged', () => {
     const own = new FileStorageError('invalid-key', 'x');
     expect(mapError(own)).toBe(own);
+  });
+});
+
+describe('the credentials a URL is signed with', () => {
+  const NOW = Date.UTC(2026, 0, 1);
+  const at = (msFromNow: number | undefined, id = 'AKIA') => ({ accessKeyId: id, secretAccessKey: 's', ...(msFromNow === undefined ? {} : { expiration: new Date(NOW + msFromNow) }) });
+  const chainOf = (first: ReturnType<typeof at>, refreshed: ReturnType<typeof at>) => {
+    const calls: unknown[] = [];
+    const chain = ((properties?: { forceRefresh?: boolean }) => { calls.push(properties?.forceRefresh === true); return Promise.resolve(properties?.forceRefresh === true ? refreshed : first); }) as Parameters<typeof signingCredentials>[0];
+    return { chain, calls };
+  };
+
+  it('are used as they are, but reported as expiring early, while they have plenty of life left', async () => {
+    const { chain, calls } = chainOf(at(60 * 60_000, 'OLD'), at(6 * 60 * 60_000, 'NEW'));
+    const got = await signingCredentials(chain, () => NOW)();
+    expect(got.accessKeyId).toBe('OLD');
+    expect(calls).toEqual([false]);
+    expect(got.expiration?.getTime()).toBe(NOW + 60 * 60_000 - MIN_CREDENTIAL_LIFETIME_MS); // so the SDK asks again before a 10 minute URL could outlive them
+  });
+
+  it('are refreshed when they would expire inside the lifetime of a signed URL, which the SDK alone would not do until 5 minutes before', async () => {
+    const { chain, calls } = chainOf(at(7 * 60_000, 'OLD'), at(6 * 60 * 60_000, 'NEW'));
+    const got = await signingCredentials(chain, () => NOW)();
+    expect(got.accessKeyId).toBe('NEW');
+    expect(calls).toEqual([false, true]);
+  });
+
+  it('stay in use when the forced refresh fails (a transient error of the credential endpoint), instead of failing the request', async () => {
+    const chain = ((properties?: { forceRefresh?: boolean }) => (properties?.forceRefresh === true ? Promise.reject(new Error('credential endpoint unavailable')) : Promise.resolve(at(7 * 60_000, 'STILL-VALID')))) as Parameters<typeof signingCredentials>[0];
+    expect((await signingCredentials(chain, () => NOW)()).accessKeyId).toBe('STILL-VALID');
+  });
+
+  it('are used when the source has nothing longer to give, and credentials that never expire are passed on untouched', async () => {
+    const short = chainOf(at(2 * 60_000, 'SHORT'), at(3 * 60_000, 'STILL-SHORT'));
+    expect((await signingCredentials(short.chain, () => NOW)()).accessKeyId).toBe('STILL-SHORT');
+    const forever = chainOf(at(undefined, 'FOREVER'), at(undefined, 'OTHER'));
+    const got = await signingCredentials(forever.chain, () => NOW)();
+    expect(got).toEqual(at(undefined, 'FOREVER'));
+    expect(forever.calls).toEqual([false]);
   });
 });

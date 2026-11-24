@@ -65,8 +65,9 @@ export interface FilesConfig {
   /** Origin of `publicEndpoint`: what the Content-Security-Policy lists as the store origin. */
   readonly publicOrigin: string;
   readonly bucket: string;
-  readonly accessKey: string;
-  readonly secretKey: string;
+  /** The runtime key pair, both or neither. Absent: the AWS default credential chain (a task role on AWS); present: a store with its own keys (local development). */
+  readonly accessKey?: string;
+  readonly secretKey?: string;
   readonly region: string;
   readonly addressing: 'path' | 'virtual';
   /** Header that makes a signed PUT create-only. */
