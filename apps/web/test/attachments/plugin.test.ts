@@ -154,6 +154,56 @@ describe('opening an attachment link', () => {
     expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id: ID }, query: { download: true } } });
   });
 
+  describe('with no opener of the host (the real browser path)', () => {
+    const fakeTab = () => ({ opener: 'x' as unknown, location: { replace: vi.fn() }, close: vi.fn() });
+    beforeEach(() => {
+      dispose();
+      dispose = provideAttachments(harness.root, { fetchUrls: async () => new Map(), api: { GET } as never });
+    });
+
+    it('opens the new tab in the click itself, before the answer comes, then sends it to the signed link', async () => {
+      const tab = fakeTab();
+      const opener = vi.spyOn(window, 'open').mockReturnValue(tab as never);
+      let answer: (v: never) => void = () => undefined;
+      GET.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      expect(opener).toHaveBeenCalledTimes(1); // synchronous with the click: a pop-up blocker allows it
+      expect(tab.opener).toBeNull(); // the page that opened it cannot be reached from it
+      answer({ data: { url: 'https://files.test/signed?download' }, response: new Response('{}', { status: 200 }) } as never);
+      await vi.waitFor(() => expect(tab.location.replace).toHaveBeenCalledWith('https://files.test/signed?download'));
+      expect(tab.close).not.toHaveBeenCalled();
+    });
+
+    it('closes that tab when the server has no link, or the request fails, and raises nothing', async () => {
+      const tab = fakeTab();
+      vi.spyOn(window, 'open').mockReturnValue(tab as never);
+      GET.mockRejectedValueOnce(new Error('offline'));
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await vi.waitFor(() => expect(tab.close).toHaveBeenCalledTimes(1));
+      const tab2 = fakeTab();
+      vi.spyOn(window, 'open').mockReturnValue(tab2 as never);
+      GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status: 404 }) } as never);
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await vi.waitFor(() => expect(tab2.close).toHaveBeenCalledTimes(1));
+      expect(tab.location.replace).not.toHaveBeenCalled();
+    });
+
+    it('does nothing more when the browser refused the new tab', async () => {
+      vi.spyOn(window, 'open').mockReturnValue(null);
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await Promise.resolve();
+      expect(GET).not.toHaveBeenCalled();
+    });
+  });
+
+  it('opens nothing and raises nothing when the request for the link fails', async () => {
+    GET.mockRejectedValueOnce(new Error('offline'));
+    click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+    await vi.waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(open).not.toHaveBeenCalled();
+  });
+
   it('leaves other links alone', () => {
     const event = click(harness.root.querySelector('a[href="https://example.test/x"]')!);
     expect(event.defaultPrevented).toBe(false);

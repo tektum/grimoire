@@ -1,6 +1,6 @@
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { linksOf } from '../../src/editor/attachments/host';
+import { linksOf, providedFor } from '../../src/editor/attachments/host';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { RevisionBody } from '../../src/screens/history/RevisionBody';
 import '../support/dom';
@@ -28,6 +28,24 @@ describe('the text of a version', () => {
     const host = seen!.host;
     view.unmount();
     expect(linksOf(host)).toBeNull();
+  });
+
+  it('passes the session client too, so a click on an attachment link in an old version can ask for its signed link', async () => {
+    const GET = vi.fn(async () => ({ data: { url: 'https://files.test/s' }, response: new Response('{}', { status: 200 }) }));
+    const session = { auth: {}, api: { POST: vi.fn(), GET }, collabUrl: 'ws://x' } as unknown as Session;
+    let provided: ReturnType<typeof providedFor> = null;
+    const mount = vi.fn(async (host: HTMLElement) => {
+      provided = providedFor(host);
+      return fakeEditor as never;
+    });
+    render(
+      <SessionContext.Provider value={session}>
+        <RevisionBody markdown="x" mount={mount} />
+      </SessionContext.Provider>,
+    );
+    await waitFor(() => expect(provided).not.toBeNull());
+    expect(provided!.host.api).toBe(session.api);
+    expect(provided!.host.pageId).toBeUndefined(); // an old version is read, nothing is uploaded into it
   });
 
   it('still draws with no session (a screen on its own)', async () => {

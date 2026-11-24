@@ -6,6 +6,8 @@ import { Plugin } from '@milkdown/prose/state';
 import { Decoration } from '@milkdown/prose/view';
 import { $prose } from '@milkdown/utils';
 import { storeFetch } from '../../api/store';
+import { log } from '../../logging';
+import { anchorPlugin } from './anchor';
 import { providedFor } from './host';
 import { imagePlugin } from './image-view';
 import { attachmentId } from './path';
@@ -80,13 +82,31 @@ const openOnClick = $prose(
     }),
 );
 
+/**
+ * The new tab is opened in the click itself (a pop-up blocker allows only that), blank and with no way back to this page, and sent to the signed link when the server has
+ * given it; when it has not, or the request failed, the tab is closed again. A host that opens links itself (a test) gets the address instead of a tab.
+ */
 async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>['host'], id: string): Promise<void> {
   if (host.api === undefined) return;
-  const { data, response } = await host.api.GET('/v1/attachments/{id}' as never, { params: { path: { id }, query: { download: true } } } as never);
-  if (!response.ok) return;
-  const url = (data as { url?: string } | undefined)?.url;
-  if (url !== undefined) (host.open ?? ((target: string) => void window.open(target, '_blank', 'noopener,noreferrer')))(url);
+  let tab: Window | null = null;
+  if (host.open === undefined) {
+    tab = window.open('', '_blank');
+    if (tab === null) return; // the browser refused it: nothing to send anywhere
+    tab.opener = null;
+  }
+  try {
+    const { data, response } = await host.api.GET('/v1/attachments/{id}' as never, { params: { path: { id }, query: { download: true } } } as never);
+    const url = (data as { url?: string } | undefined)?.url;
+    if (response.ok && url !== undefined) {
+      if (host.open !== undefined) host.open(url);
+      else tab?.location.replace(url);
+      return;
+    }
+  } catch {
+    log('warn', 'web.attachment_open_failed');
+  }
+  tab?.close();
 }
 
 /** Images, the upload of files by paste and drop, and the opening of attachment links. */
-export const attachmentPlugins: MilkdownPlugin[] = [imagePlugin, ...upload, configureUpload, openOnClick].flat();
+export const attachmentPlugins: MilkdownPlugin[] = [imagePlugin, ...upload, configureUpload, openOnClick, anchorPlugin].flat();

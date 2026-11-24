@@ -19,7 +19,7 @@ export function RevisionBody({ markdown, mount }: { readonly markdown: string; r
     const host = document.createElement('div');
     parent.append(host);
     // The uploaded images of an old version are shown as in the page: through the signed links of the session.
-    const takeBack = session === null ? () => undefined : provideAttachments(host, { fetchUrls: signedUrlsFrom(session.api) });
+    const takeBack = session === null ? () => undefined : provideAttachments(host, { fetchUrls: signedUrlsFrom(session.api), api: session.api });
     let cancelled = false;
     let mounted: MountedEditor | null = null;
     void mount(host, markdown).then(
