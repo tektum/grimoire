@@ -3,7 +3,6 @@ import { expectNoAxeViolations } from '../support/axe';
 import { shots } from '../support/shots';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
-import { controlNetwork } from './network';
 import { makePage } from './pages';
 
 const MARKDOWN = [
@@ -29,9 +28,9 @@ test.describe('the page text: first view and live editor', () => {
     const users = await twoUsers(browser, baseURL);
     try {
       const { page } = users.a;
-      // The first view stays on screen while the connection cannot be made.
-      const network = await controlNetwork(page);
-      await network.cut();
+      // The first view stays on screen while the connection cannot be made: only the sockets are refused, so the page and its saved text load as usual.
+      let refuse = true;
+      await page.routeWebSocket(/.*/, (socket) => (refuse ? void socket.close({ code: 4000, reason: 'held back by the spec' }) : void socket.connectToServer()));
       await page.goto(made.path);
       const surface = page.locator('.ProseMirror');
       await expect(surface.locator('h6')).toHaveText('Heading six');
@@ -50,14 +49,15 @@ test.describe('the page text: first view and live editor', () => {
       const first = await look();
       await shots(page, 'm6-t04', 'page-text-first-view');
 
-      await network.restore();
+      refuse = false; // the next attempt of the page's own retry connects
       await waitForSynced(page);
       await expect(surface).toHaveAttribute('aria-label', 'Page text');
       await expectNoAxeViolations(page);
       const live = await look();
       expect(first, 'nothing jumps when the live editor replaces the first view').toEqual(live);
 
-      expect(first.p.font).toContain('serif'); // the reading font, not the UI font
+      expect(first.p.font).toContain('Georgia'); // the reading font, which only --font-page names
+      expect(first.p.font).not.toContain('sans-serif'); // not the UI font
       for (const level of ['h3', 'h4', 'h5', 'h6'] as const) expect(first[level].weight, `${level} is bold`).toBeGreaterThanOrEqual(600);
       expect(first.h1.size).toBeGreaterThan(first.h3.size);
       expect(first.h3.size).toBeGreaterThan(first.p.size);
