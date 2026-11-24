@@ -6,6 +6,7 @@ import type * as Y from 'yjs';
 import { applyMarkdown, markdownOf } from './api';
 import { presenceAwareness } from './awareness';
 import { cursorBuilders } from './cursor';
+import { guardLinks } from './links';
 import type { Directory } from './directory';
 import { uiPlugins } from './plugins';
 
@@ -49,7 +50,7 @@ export async function mountReadOnly(element: HTMLElement, markdown: string): Pro
   const flag = { editable: false };
   const editor = base(element, flag).config((ctx) => void ctx.set(defaultValueCtx, markdown));
   await editor.create();
-  return wrap(editor, flag);
+  return wrap(editor, flag, guardLinks(element));
 }
 
 /**
@@ -78,7 +79,9 @@ export async function mountLive(options: {
     const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
     ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
+  const stopGuarding = guardLinks(options.element);
   return wrap(editor, flag, () => {
+    stopGuarding();
     cursors.dispose();
     // Unbinds the document and the awareness while the editor can still answer, so that taking the editor down does not apply a last change to a view that is going.
     try {
