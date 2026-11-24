@@ -55,6 +55,8 @@ export interface ConnectionOptions {
   /** Logs an event by name with ids and counts only: never a token, a text or a name. */
   readonly log?: (event: string, fields?: Readonly<Record<string, string | number>>) => void;
   readonly onSignOut?: () => void;
+  /** A connection was made again after more than a minute without one (an outage or a hidden tab): the screen checks the minimum client version once more. */
+  readonly onLongOffline?: () => void;
 }
 
 export type StopReason = 'no-access' | 'not-found' | 'reload' | 'cannot-open' | 'sign-out';
@@ -84,6 +86,7 @@ const ERROR_TRIES = 3;
 const TOKEN_RETRY_MS = 5000;
 const REFRESH_WINDOW_MS = 60_000;
 const REFUSAL_CLOSE_WINDOW_MS = 2000;
+const LONG_OFFLINE_MS = 60_000;
 
 export class ConnectionManager {
   private readonly timers: Timers;
@@ -98,6 +101,8 @@ export class ConnectionManager {
   private offlineTimer: unknown = null;
   private lastRefreshAt = Number.NEGATIVE_INFINITY;
   private refusedAt = Number.NEGATIVE_INFINITY;
+  /** When the connection was lost, until it is made again. */
+  private lostAt: number | null = null;
   private refreshingFor: Session | null = null;
   /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
   private large = false;
@@ -263,6 +268,7 @@ export class ConnectionManager {
   }
 
   private onStatus(status: 'connecting' | 'connected' | 'disconnected'): void {
+    if (status === 'disconnected' && this.lostAt === null) this.lostAt = this.timers.now();
     if (status === 'disconnected') {
       if (this.offlineTimer === null && this.current.phase !== 'stopped') this.offlineTimer = this.timers.setTimeout(() => this.set({ offline: true, text: TEXTS.offline }), OFFLINE_AFTER_MS);
       return;
@@ -275,6 +281,8 @@ export class ConnectionManager {
     if (this.pendingEpoch !== null) this.epoch = this.pendingEpoch;
     this.attempts = 0;
     this.errorTries = 0;
+    if (this.lostAt !== null && this.timers.now() - this.lostAt > LONG_OFFLINE_MS) this.options.onLongOffline?.();
+    this.lostAt = null;
     this.held = null; // accepted: the copy is not needed and no reference to it remains
     this.clearOffline();
     // The reset notice stays while the copy it speaks of is offered: it is the reason the copy is there.
@@ -340,6 +348,7 @@ export class ConnectionManager {
 
   /** RETRY: keep the document, reconnect after a growing delay (1 s, doubling, at most 30 s, jittered), never sooner than the row's minimum. */
   private scheduleRetry(mapping: Mapping): void {
+    this.lostAt ??= this.timers.now();
     this.clearRetry();
     const base = Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.max(0, this.attempts - 1));
     const jittered = base * (1 + (this.random() * 2 - 1) * JITTER);

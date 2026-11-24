@@ -10,6 +10,7 @@ import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
 import { sessionDirectory } from '../../editor/core/directory';
 import { useApiQuery } from '../../api/query';
+import { recheckMinClientVersion } from '../../gate/recheck';
 import { Button } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { ResetNotice } from './ResetNotice';
@@ -84,6 +85,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       createSession: (token) => engine.createSession({ url: session.collabUrl, pageId: page.id, token }),
       captureCopy: () => live?.markdown() ?? null,
       log: (event, fields) => log('warn', event, fields),
+      onLongOffline: () => void recheckMinClientVersion(session.api),
     });
 
     const showSaved = (): void => {
