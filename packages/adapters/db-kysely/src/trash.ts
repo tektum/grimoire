@@ -100,6 +100,10 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
       return rows.map((r) => r.s3_key);
     },
 
+    async markFilesRemoved(keys) {
+      if (keys.length > 0) await db.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and deleted_at is null`, [[...keys]]);
+    },
+
     purge(batch, actorId, removedKeys) {
       return db.transaction(async (tx) => {
         // One statement: the composite foreign key between pages is deferred, so pages that point at each other go together. `deleted_at is not

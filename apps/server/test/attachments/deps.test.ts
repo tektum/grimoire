@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeAttachmentRepo } from '@tektum/grimoire-core/testing/fake-attachment-repo';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
+import { PartialFileDeletion } from '@tektum/grimoire-core/pages/purge';
 import { attachmentDeps, deleteObjects, sniffType } from '../../src/attachments/deps.js';
 
 const bytes = (...b: number[]) => new Uint8Array([...b, ...new Array<number>(32).fill(0)]);
@@ -47,5 +48,16 @@ describe('deleteObjects', () => {
     await expect(files.head('attachments/a')).rejects.toMatchObject({ kind: 'not-found' });
     await expect(files.head('attachments/b')).rejects.toMatchObject({ kind: 'not-found' });
     await expect(deleteObjects(undefined)(['attachments/a'])).resolves.toBeUndefined();
+  });
+
+  it('stops at the first key the store fails on and reports which keys it had removed, with the failure as the cause', async () => {
+    const files = new FakeFileStorage();
+    const failing = { ...files, delete: async (key: string) => { if (key === 'attachments/b') throw new Error('store down'); await files.delete(key); } } as unknown as FakeFileStorage;
+    await files.put('attachments/a', new Uint8Array([1]), { size: 1, contentType: 'image/png' });
+    const error = await deleteObjects(failing)(['attachments/a', 'attachments/b', 'attachments/c']).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PartialFileDeletion);
+    expect((error as PartialFileDeletion).removed).toEqual(['attachments/a']);
+    expect(((error as PartialFileDeletion).cause as Error).message).toBe('store down');
+    await expect(files.head('attachments/a')).rejects.toMatchObject({ kind: 'not-found' });
   });
 });

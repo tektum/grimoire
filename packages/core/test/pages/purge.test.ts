@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { purgeBatch } from '../../src/pages/purge.js';
+import { PartialFileDeletion, purgeBatch } from '../../src/pages/purge.js';
 import { FakeTrashRepo } from '../../src/testing/fake-trash-repo.js';
 
 const ADMIN = '00000000-0000-4000-8000-000000000001';
@@ -42,6 +42,27 @@ describe('purgeBatch', () => {
     expect(b.trash.audit.events).toEqual([]);
     fail = false;
     expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
+  });
+
+  it('marks the attachments whose objects the store did remove before it failed, and rethrows the failure; a retry completes', async () => {
+    let fail = true;
+    const b = build(async (keys) => {
+      if (fail) throw new PartialFileDeletion([keys[0] as string], new Error('store down'));
+    });
+    await expect(purgeBatch(b.deps, b.root, ADMIN)).rejects.toThrow('store down');
+    expect([b.trash.keyDeleted('attachments/a/1/x.png'), b.trash.keyDeleted('attachments/a/2/y.png')]).toEqual([true, false]);
+    expect([b.trash.state(b.root), b.trash.state(b.child)]).toEqual(['deleted', 'deleted']);
+    expect(b.trash.audit.events).toEqual([]);
+    fail = false;
+    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
+  });
+
+  it('marks nothing when the store removed nothing, and passes any other failure on as it is', async () => {
+    const none = build(() => Promise.reject(new PartialFileDeletion([], new Error('first key failed'))));
+    await expect(purgeBatch(none.deps, none.root, ADMIN)).rejects.toThrow('first key failed');
+    expect(none.trash.keyDeleted('attachments/a/1/x.png')).toBe(false);
+    const other = build(() => Promise.reject(new Error('plain')));
+    await expect(purgeBatch(other.deps, other.root, ADMIN)).rejects.toThrow('plain');
   });
 
   it('is a no-op for a batch that is already gone: no files asked for, no second audit row', async () => {

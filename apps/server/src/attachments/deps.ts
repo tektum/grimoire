@@ -2,6 +2,7 @@ import { fileTypeFromBuffer } from 'file-type';
 import { v7 } from 'uuid';
 import type { AttachmentDeps } from '@tektum/grimoire-core/attachments/uploads';
 import type { AttachmentLimits } from '@tektum/grimoire-core/attachments/validate';
+import { PartialFileDeletion } from '@tektum/grimoire-core/pages/purge';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { HttpDeps } from '../http/env.js';
 
@@ -19,8 +20,19 @@ export function attachmentDeps(http: Pick<HttpDeps, 'attachments' | 'files' | 'c
   return { deps: { repo: http.attachments, files: http.files, now: () => http.clock.now(), newId: () => v7(), sniff: sniffType }, limits };
 }
 
-/** What a purge calls with the keys of the attachments it is about to delete: the objects go first, one by one (a missing object is a success); without a store there is nothing to remove. */
+/**
+ * What a purge calls with the keys of the attachments it is about to delete: the objects go first, one by one (a missing object is a success); without a store there is
+ * nothing to remove. When the store fails part-way, the failure is `PartialFileDeletion` with the keys already removed, so the purge can mark their rows.
+ */
 export const deleteObjects = (files: FileStorage | undefined) => async (keys: readonly string[]): Promise<void> => {
   if (files === undefined) return;
-  for (const key of keys) await files.delete(key);
+  const removed: string[] = [];
+  for (const key of keys) {
+    try {
+      await files.delete(key);
+    } catch (error) {
+      throw new PartialFileDeletion(removed, error);
+    }
+    removed.push(key);
+  }
 };

@@ -131,3 +131,62 @@ describe('a purge on the real store', () => {
     expect(Number(((await run(`select count(*) as n from attachments where page_id = '${page}'`)) as { n: string }[])[0]?.n)).toBe(0);
   }, 60_000);
 });
+
+describe('a purge that the store fails half-way', () => {
+  /** Two completed attachments on a page that was deleted; the store refuses to delete the second one while `failing` is set. */
+  async function deletedPageWithTwoFiles() {
+    const collection = await insertCollection(run, { default_permission: 'read_write' });
+    const page = await insertPage(run, { collection_id: collection });
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const made = (await (await call('member', 'POST', '/v1/attachments', { pageId: page, fileName: `f${String(i)}.png`, contentType: 'image/png', size: PNG.length })).json()) as { id: string };
+      await files.put(`attachments/${made.id}`, PNG, { size: PNG.length, contentType: 'image/png' });
+      expect((await call('member', 'POST', `/v1/attachments/${made.id}/complete`)).status).toBe(200);
+      ids.push(made.id);
+    }
+    expect((await call('member', 'DELETE', `/v1/pages/${page}`)).status).toBeLessThan(300);
+    return { page, first: ids[0] as string, second: ids[1] as string };
+  }
+  /** The store deletes the first key it is asked for and fails on the second, while `on.failing` is set; `done` lists the keys it removed. */
+  const failOnSecond = (on: { failing: boolean }) => {
+    const original = files.delete.bind(files);
+    const done: string[] = [];
+    let calls = 0;
+    files.delete = async (key) => {
+      calls += 1;
+      if (on.failing && calls === 2) throw new Error('store down');
+      await original(key);
+      done.push(key);
+    };
+    return { done, undo: () => { files.delete = original; } };
+  };
+
+  it('hides the removed object from a restored page, keeps the other, and a retry of the purge completes', async () => {
+    const a = await deletedPageWithTwoFiles();
+    const store = failOnSecond({ failing: true });
+    expect((await call('admin', 'DELETE', `/v1/trash/${a.page}`)).status).toBe(503);
+    const removed = store.done[0]?.replace('attachments/', '') as string;
+    const kept = removed === a.first ? a.second : a.first;
+    expect(store.done).toHaveLength(1);
+    // The object the store removed is marked; the one it did not reach is not.
+    const rows = (await run(`select id, deleted_at is not null as gone from attachments where page_id = '${a.page}'`)) as { id: string; gone: boolean }[];
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.gone]))).toEqual({ [removed]: true, [kept]: false });
+    // A restore of the batch shows an attachment only where its object is still there.
+    expect((await call('admin', 'POST', `/v1/trash/${a.page}/restore`)).status).toBeLessThan(300);
+    expect((await call('member', 'GET', `/v1/attachments/${kept}`)).status).toBe(200);
+    expect((await call('member', 'GET', `/v1/attachments/${removed}`)).status).toBe(404);
+    store.undo();
+  }, 60_000);
+
+  it('can be run again: the retry removes the rest and the page', async () => {
+    const b = await deletedPageWithTwoFiles();
+    const on = { failing: true };
+    const store = failOnSecond(on);
+    expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBe(503);
+    on.failing = false;
+    expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBeLessThan(300);
+    for (const id of [b.first, b.second]) await expect(files.head(`attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
+    expect(Number(((await run(`select count(*) as n from attachments where page_id = '${b.page}'`)) as { n: string }[])[0]?.n)).toBe(0);
+    store.undo();
+  }, 60_000);
+});

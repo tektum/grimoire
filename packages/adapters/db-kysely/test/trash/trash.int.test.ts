@@ -271,6 +271,20 @@ describe('TrashRepo.purge and purgeBatch', () => {
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(1);
   });
 
+  it('marks the attachment rows of the keys it is given as deleted, and leaves the others, unknown keys and an empty list alone', async () => {
+    const { root, child } = await batchWithFiles();
+    const [row] = await t.admin.query<{ s3_key: string }>(`select s3_key from attachments where page_id = $1`, [child]);
+    const key = (row as { s3_key: string }).s3_key;
+    await trash().markFilesRemoved([]);
+    await trash().markFilesRemoved(['attachments/not-a-key']);
+    expect(await count(`select count(*) as n from attachments where s3_key = $1 and deleted_at is not null`, key)).toBe(0);
+    await trash().markFilesRemoved([key]);
+    expect(await count(`select count(*) as n from attachments where s3_key = $1 and deleted_at is not null`, key)).toBe(1);
+    await trash().markFilesRemoved([key]); // again: unchanged
+    expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, child)).toBe(1);
+    expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, root, user)).toMatchObject({ pages: 2 });
+  });
+
   it('asks for the files first, and leaves every row and writes nothing when that fails', async () => {
     const { root, child } = await batchWithFiles();
     const seen: (readonly string[])[] = [];
