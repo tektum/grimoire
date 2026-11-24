@@ -227,3 +227,28 @@ test('the first screen of the flow says in one line what it is for (the page abo
   assert.equal(buttons[0].props.children, 'Continue');
   assert.equal(login.interactions[0].label, 'Continue');
 });
+
+test('a public mail provider is stopped before the provider signs anyone up: the check comes right after the address, a free address reaches a screen with one way back, and nothing else is changed', () => {
+  const flow = JSON.parse(read('infra/descope/flows/sign-up-or-in.json'));
+  const tasks = flow.contents.tasks;
+  const byAction = (action) => Object.values(tasks).find((task) => task.action === action);
+  const check = byAction('check-if-free-email');
+  assert.equal(tasks['1'].next.rules[0].taskId, check.id, 'the address goes to the check first');
+  const split = tasks[check.next.rules[0].taskId];
+  assert.equal(split.type, 'condition');
+  const free = split.conditions.find((c) => c.interactionId !== 'ELSE');
+  assert.deepEqual(free.atomicConditions, [{ operator: 'is-true', target: { type: 'context', value: 'isFreeEmailProvider' } }]);
+  const toFree = split.next.rules.find((r) => r.interactionId === free.interactionId).taskId;
+  const toElse = split.next.rules.find((r) => r.interactionId === 'ELSE').taskId;
+  assert.equal(tasks[toElse].action, 'load-mail-provider-host', 'a work address goes on to the code, as before');
+  const stop = tasks[toFree];
+  assert.equal(stop.type, 'screen');
+  assert.equal(stop.screenId, `new-${stop.id}`, 'a screen is named after its task: the provider only serves a screen it has renamed that way (found by running it)');
+  assert.deepEqual(stop.next.rules.map((r) => r.taskId), ['1'], 'the only way out is back to the address');
+  const screen = flow.screens.find((s) => s.screenId === stop.screenId);
+  assert.equal(Object.values(screen.contents).filter((c) => c.displayName === 'Email Input').length, 0, 'it asks for nothing');
+  assert.match(Object.values(screen.contents).map((c) => c.props.children ?? '').join(' '), /work email address/);
+  // nothing reaches the tenant steps without the check: every path from the address to the code goes through it
+  const reach = (from, avoid, seen = new Set()) => { if (from === avoid || seen.has(from)) return seen; seen.add(from); for (const r of tasks[from]?.next?.rules ?? []) reach(r.taskId, avoid, seen); return seen; };
+  assert.equal(reach('1', check.id).has('2'), false, 'the mail host and the code are only reached through the check');
+});

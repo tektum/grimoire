@@ -23,7 +23,7 @@
           "rules": [
             {
               "interactionId": "iHle_uM5W9",
-              "taskId": "2"
+              "taskId": "20"
             }
           ]
         },
@@ -386,6 +386,83 @@
         "view": {
           "x": 132,
           "y": 336
+        }
+      },
+      "20": {
+        "action": "check-if-free-email",
+        "id": "20",
+        "name": "Check if a public mail provider",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "success",
+              "taskId": "21"
+            }
+          ]
+        },
+        "type": "automated",
+        "view": {
+          "x": 560,
+          "y": 288
+        }
+      },
+      "21": {
+        "conditions": [
+          {
+            "atomicConditions": [
+              {
+                "operator": "is-true",
+                "target": {
+                  "type": "context",
+                  "value": "isFreeEmailProvider"
+                }
+              }
+            ],
+            "interactionId": "free-mail",
+            "name": "a public mail provider"
+          },
+          {
+            "interactionId": "ELSE",
+            "name": "ELSE"
+          }
+        ],
+        "id": "21",
+        "name": "Is it a public mail provider",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "free-mail",
+              "taskId": "22"
+            },
+            {
+              "interactionId": "ELSE",
+              "taskId": "2"
+            }
+          ]
+        },
+        "type": "condition",
+        "view": {
+          "x": 744,
+          "y": 200
+        }
+      },
+      "22": {
+        "id": "22",
+        "inputKeys": [],
+        "name": "Work email needed",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "iHle_uM5W9",
+              "taskId": "1"
+            }
+          ]
+        },
+        "screenId": "new-22",
+        "type": "screen",
+        "view": {
+          "x": 930,
+          "y": 100
         }
       }
     }
@@ -1390,6 +1467,93 @@
         }
       ],
       "screenId": "new-7"
+    },
+    {
+      "contents": {
+        "ROOT": {
+          "custom": {},
+          "displayName": "Container",
+          "hidden": false,
+          "isCanvas": true,
+          "linkedNodes": {},
+          "nodes": [
+            "subTitle01",
+            "iHle_uM5W9"
+          ],
+          "props": {
+            "align": "center",
+            "background": "",
+            "data-editor-type": "container",
+            "direction": "column",
+            "id": "ROOT",
+            "justify": "center",
+            "paddingX": "4",
+            "paddingY": "8",
+            "spaceBetween": "4",
+            "st-items-grow": 0,
+            "width": "100%"
+          },
+          "type": {
+            "resolvedName": "Container"
+          }
+        },
+        "iHle_uM5W9": {
+          "custom": {
+            "type": "button"
+          },
+          "displayName": "Button",
+          "hidden": false,
+          "isCanvas": false,
+          "linkedNodes": {},
+          "nodes": [],
+          "parent": "ROOT",
+          "props": {
+            "children": "Use another address",
+            "color": "primary",
+            "data-type": "button",
+            "formNoValidate": false,
+            "full-width": true,
+            "id": "iHle_uM5W9",
+            "mode": "primary",
+            "size": "md",
+            "variant": "contained"
+          },
+          "type": {
+            "resolvedName": "Button"
+          }
+        },
+        "subTitle01": {
+          "custom": {},
+          "displayName": "Subtitle",
+          "hidden": false,
+          "isCanvas": false,
+          "linkedNodes": {},
+          "nodes": [],
+          "parent": "ROOT",
+          "props": {
+            "children": "Use your work email address. Public mail providers are not accepted.",
+            "data-errormessage-value-missing": "Please fill out this field.",
+            "full-width": true,
+            "id": "subTitle01",
+            "isEnriched": true,
+            "italic": false,
+            "link-target-blank": true,
+            "mode": "secondary",
+            "text-align": "left",
+            "variant": "body1"
+          },
+          "type": {
+            "resolvedName": "Text"
+          }
+        }
+      },
+      "interactions": [
+        {
+          "id": "iHle_uM5W9",
+          "label": "Use another address"
+        }
+      ],
+      "screenId": "new-22"
     }
   ]
 }
