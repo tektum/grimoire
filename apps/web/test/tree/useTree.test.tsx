@@ -53,4 +53,26 @@ describe('useCollectionTree', () => {
     await waitFor(() => { expect(result.current.error).toBeInstanceOf(HttpError); });
     expect(result.current.error?.status).toBe(404);
   });
+
+  it('reuses the read that the minute started when the window gets the focus meanwhile, instead of cancelling it and asking again', async () => {
+    vi.useFakeTimers();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let reads = 0;
+    const GET = vi.fn(async () => {
+      reads += 1;
+      if (reads > 1) await gate; // the first read answers at once; the one the minute starts stays open
+      return { data: { pages }, response: new Response(null, { status: 200 }) };
+    });
+    const api = { GET } as unknown as ApiLike;
+    renderHook(() => useCollectionTree(api, 'c1'), { wrapper });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(GET).toHaveBeenCalledTimes(2); // the minute's read is under way
+    await act(async () => { window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(10); });
+    expect(GET).toHaveBeenCalledTimes(2); // the focus asked for nothing more
+    release();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(GET).toHaveBeenCalledTimes(2);
+  });
 });

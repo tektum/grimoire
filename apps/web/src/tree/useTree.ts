@@ -34,7 +34,8 @@ export function useCollectionTree(api: ApiLike, collectionId: string) {
   });
   const { refetch } = query;
   useEffect(() => {
-    const onFocus = (): void => void refetch();
+    // `cancelRefetch: false`: a read already under way is reused, not cancelled and started again.
+    const onFocus = (): void => void refetch({ cancelRefetch: false });
     window.addEventListener('focus', onFocus);
     return () => { window.removeEventListener('focus', onFocus); };
   }, [refetch]);

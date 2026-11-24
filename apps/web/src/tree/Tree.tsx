@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useRef } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { type NodeRendererProps, Tree as Arborist } from 'react-arborist';
+import { type NodeRendererProps, type TreeApi, Tree as Arborist } from 'react-arborist';
 import { pagePath, type TreeItem } from './model';
 import './tree.css';
 
@@ -34,7 +34,7 @@ function Row({ node, style, dragHandle }: NodeRendererProps<TreeItem>) {
       ) : (
         <span className="tree-toggle" aria-hidden />
       )}
-      <Link to={pagePath(item.name, item.urlId)} className="tree-link" tabIndex={-1} onClick={(e) => { e.stopPropagation(); }} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
+      <Link to={pagePath(item.title, item.urlId)} className="tree-link" tabIndex={-1} onClick={(e) => { e.stopPropagation(); }} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
         {item.icon !== null && <span aria-hidden className="tree-icon">{item.icon}</span>}
         {item.name}
       </Link>
@@ -44,10 +44,21 @@ function Row({ node, style, dragHandle }: NodeRendererProps<TreeItem>) {
 
 export function Tree({ items, currentUrlId }: TreeProps) {
   const navigate = useNavigate();
+  const tree = useRef<TreeApi<TreeItem> | undefined>(undefined);
   if (items.length === 0) return <p className="tree-empty">No pages yet</p>;
   return (
     <CurrentPage.Provider value={currentUrlId}>
+      {/* Enter on a focused row opens its page. The tree itself uses Enter only to rename, which is off here, and Space opens a leaf and toggles a branch; a button inside the row keeps its own Enter. */}
+      <div
+        onKeyDown={(e) => {
+          const node = tree.current?.focusedNode;
+          if (e.key !== 'Enter' || node === null || node === undefined || (e.target as HTMLElement).getAttribute('role') !== 'treeitem') return;
+          e.preventDefault();
+          navigate(pagePath(node.data.title, node.data.urlId));
+        }}
+      >
       <Arborist<TreeItem>
+        ref={tree}
         data={items as TreeItem[]}
         width="100%"
         height={TREE_HEIGHT}
@@ -58,7 +69,7 @@ export function Tree({ items, currentUrlId }: TreeProps) {
         openByDefault={false}
         initialOpenState={initialOpen(items)}
         // Enter on the focused row opens its page: the links are not in the tab order (the tree is one stop; the arrow keys move inside it).
-        onActivate={(node) => { navigate(pagePath(node.data.name, node.data.urlId)); }}
+        onActivate={(node) => { navigate(pagePath(node.data.title, node.data.urlId)); }}
         disableDrag
         disableDrop
         disableEdit
@@ -66,6 +77,7 @@ export function Tree({ items, currentUrlId }: TreeProps) {
       >
         {Row}
       </Arborist>
+      </div>
     </CurrentPage.Provider>
   );
 }

@@ -2,13 +2,14 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
+import { buildTree } from '../../src/tree/model';
 import { Tree } from '../../src/tree/Tree';
 import type { TreeItem } from '../../src/tree/model';
 import '../support/dom';
 
-const leaf = (id: string, name: string): TreeItem => ({ id, urlId: id, name, icon: null });
+const leaf = (id: string, name: string): TreeItem => ({ id, urlId: id, title: name, name, icon: null });
 const items: TreeItem[] = [
-  { id: 'welcome', urlId: 'welcome', name: 'Welcome', icon: '📘', children: [leaf('nested', 'Nested'), { id: 'deep', urlId: 'deep', name: 'Deep', icon: null, children: [leaf('deeper', 'Deeper')] }] },
+  { id: 'welcome', urlId: 'welcome', title: 'Welcome', name: 'Welcome', icon: '📘', children: [leaf('nested', 'Nested'), { id: 'deep', urlId: 'deep', title: 'Deep', name: 'Deep', icon: null, children: [leaf('deeper', 'Deeper')] }] },
   leaf('plain', 'Plain page'),
 ];
 const show = () => render(<MemoryRouter><Tree items={items} /></MemoryRouter>);
@@ -61,12 +62,18 @@ describe('Tree', () => {
     expect(screen.getByRole('link', { name: 'Plain page' }).getAttribute('aria-current')).toBeNull();
   });
 
-  it('opens the page of the focused row with Enter, from the keyboard alone', async () => {
+  it('opens the page of the focused row with Enter, reaching the row with Tab and the arrow keys only', async () => {
     render(<MemoryRouter><Tree items={items} /><Where /></MemoryRouter>);
-    const row = screen.getAllByRole('treeitem')[1] as HTMLElement; // Nested
-    await userEvent.click(row.querySelector('.tree-row') as HTMLElement);
+    await userEvent.tab(); // into the tree: the first row
+    await userEvent.keyboard('{ArrowDown}'); // Nested
+    expect(screen.getByLabelText('location').textContent).toBe('/'); // nothing has opened a page yet
     await userEvent.keyboard('{Enter}');
     expect(screen.getByLabelText('location').textContent).toBe('/p/nested-nested');
+  });
+
+  it('gives a page with no title the slug "page", not the shown "Untitled"', () => {
+    render(<MemoryRouter><Tree items={buildTree([{ id: 'n1', urlId: 'a1b2c3d4', parentId: null, position: 'p1', title: '', icon: null }])} /></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'Untitled' }).getAttribute('href')).toBe('/p/page-a1b2c3d4');
   });
 
   it('keeps its rows (and the focus inside them) when the list is read again with the same pages', async () => {

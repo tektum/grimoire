@@ -1,17 +1,14 @@
-/** A page as `GET /v1/collections/{id}/tree` lists it: flat, with its parent and its sort key among siblings. */
-export interface FlatPage {
-  readonly id: string;
-  readonly urlId: string;
-  readonly parentId: string | null;
-  readonly position: string;
-  readonly title: string;
-  readonly icon: string | null;
-}
+import type { components } from '@tektum/grimoire-api-client';
+
+/** A page as `GET /v1/collections/{id}/tree` lists it: flat, with its parent and its sort key among siblings. The shape is the generated client's. */
+export type FlatPage = Readonly<components['schemas']['CollectionTreePage']>;
 
 /** A node as `react-arborist` reads it: `name` is the shown title, `children` is absent for a leaf. */
 export interface TreeItem {
   readonly id: string;
   readonly urlId: string;
+  /** The title as stored (empty for a page nobody has named): the link's slug is made from it, not from the shown `name`. */
+  readonly title: string;
   readonly name: string;
   readonly icon: string | null;
   readonly children?: TreeItem[];
@@ -38,7 +35,7 @@ export function buildTree(pages: readonly FlatPage[]): TreeItem[] {
   }
   const make = (p: FlatPage): TreeItem => {
     const below = children.get(p.id);
-    return { id: p.id, urlId: p.urlId, name: p.title === '' ? UNTITLED : p.title, icon: p.icon, ...(below === undefined ? {} : { children: below.map(make) }) };
+    return { id: p.id, urlId: p.urlId, title: p.title, name: p.title === '' ? UNTITLED : p.title, icon: p.icon, ...(below === undefined ? {} : { children: below.map(make) }) };
   };
   return (children.get(null) ?? []).map(make);
 }

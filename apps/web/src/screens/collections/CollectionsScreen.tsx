@@ -1,3 +1,4 @@
+import type { components } from '@tektum/grimoire-api-client';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { Link } from 'react-router';
@@ -9,12 +10,8 @@ import { HttpError, useCollectionTree } from '../../tree/useTree';
 import NotFoundScreen from '../notfound';
 import './collections.css';
 
-interface CollectionItem {
-  readonly id: string;
-  readonly name: string;
-  readonly icon: string | null;
-  readonly myPermission: 'read-write' | 'read-only';
-}
+/** A collection as the API lists it: the generated client's shape. */
+type CollectionItem = Readonly<components['schemas']['Collection']>;
 
 const LIST_PATH = '/v1/collections';
 
