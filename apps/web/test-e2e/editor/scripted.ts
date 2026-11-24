@@ -7,6 +7,8 @@ export const SCRIPTED_URL_ID = 'abc123';
 export interface ScriptedApiOptions {
   /** The address of the collaboration server the client is told to use (`GET /v1/config`). */
   readonly collabUrl: string;
+  /** The page is flagged as showing text that may lag behind the live page (`markdownStale`, and the header of the Markdown answer). */
+  readonly stale?: boolean;
 }
 
 export interface ScriptedApi {
@@ -55,13 +57,15 @@ export async function scriptedApi(options: ScriptedApiOptions): Promise<Scripted
         lastEditedAt: null,
         lastEditedBy: null,
         breadcrumb: [],
-        markdownStale: false,
-        markdownStaleSince: null,
+        markdownStale: options.stale === true,
+        markdownStaleSince: options.stale === true ? 0 : null,
         myPermission: 'read-write',
       });
     }
     if (url.pathname === `/v1/pages/${SCRIPTED_PAGE_ID}/markdown`) {
-      return void res.writeHead(200, { ...CORS, 'content-type': 'text/markdown', 'x-grimoire-markdown-stale': 'false' }).end('The saved text of the scripted page.\n');
+      return void res
+        .writeHead(200, { ...CORS, 'content-type': 'text/markdown', 'x-grimoire-markdown-stale': options.stale === true ? 'true' : 'false' })
+        .end('The saved text of the scripted page.\n');
     }
     if (url.pathname === '/v1/users/names') return json(200, { items: [] });
     return json(404, { error: { code: 'not_found', message: 'not found' } });
