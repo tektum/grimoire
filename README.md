@@ -72,6 +72,10 @@ A page opened read-only.
 
 A page that was reset under a tab with unsent changes: the notice, and the copy to download or copy.
 
+![A page for an administrator: History, and Reset saved state](docs/screenshots/m6-t04/admin-reset-action-light.png)
+
+An administrator's page: a History link, and the Reset saved state action that opens the dialog below.
+
 ![The Move to dialog](docs/screenshots/m6-t03/move-to-dialog-light.png)
 
 Moving a page with Move to.
@@ -104,9 +108,11 @@ Administrators: a group and its members.
 
 Administrators: who may read and write a collection.
 
-The same page in the dark theme:
+In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
+
+![A page that was reset while you had unsent changes, dark theme](docs/screenshots/m6-t04/reset-notice-dark.png)
 
 ## How it is built
 
