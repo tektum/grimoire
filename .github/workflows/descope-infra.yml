@@ -1,0 +1,122 @@
+name: Descope dev infrastructure
+# Pull requests only check the files (init without a backend, validate, fmt): no secret and no
+# environment, because a secret must not reach pull-request code. `plan` and `apply` run only on a
+# manual dispatch of `main`, with the environment `descope-dev` and its secret DESCOPE_DEV_MANAGEMENT_KEY;
+# they skip with a notice until the owner has created the secret. No state file is kept.
+on:
+  pull_request:
+    paths:
+      - "infra/descope/**"
+      - ".github/workflows/descope-infra.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "plan shows the difference, apply changes the development project"
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+
+env:
+  MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
+
+concurrency:
+  group: descope-infra
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check files
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Init, validate and format check
+        working-directory: infra/descope
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
+          tofu fmt -check -diff
+
+  plan:
+    name: Plan
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: descope-dev
+    steps:
+      - name: Stop cleanly while the secret does not exist
+        id: gate
+        env:
+          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Plan
+        if: steps.gate.outputs.blocked != 'true'
+        working-directory: infra/descope
+        env:
+          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          tofu init -input=false
+          tofu validate
+          tofu plan -input=false -lock=false -no-color
+
+  apply:
+    name: Apply
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: descope-dev
+    steps:
+      - name: Stop cleanly while the secret does not exist
+        id: gate
+        env:
+          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        if: steps.gate.outputs.blocked != 'true'
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Apply
+        if: steps.gate.outputs.blocked != 'true'
+        working-directory: infra/descope
+        env:
+          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          tofu init -input=false
+          tofu apply -input=false -auto-approve -no-color
