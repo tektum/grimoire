@@ -36,10 +36,9 @@ export function activeInline(state: EditorState): Record<InlineKind, boolean> {
 export function linkAt(state: EditorState): string | null {
   const type = state.schema.marks['link'];
   const { from, to } = state.selection;
-  if (type === undefined) return null;
   let href: string | null = null;
   state.doc.nodesBetween(from, to, (node) => {
-    const mark = node.isText ? type.isInSet(node.marks) : undefined;
+    const mark = type !== undefined && node.isText ? type.isInSet(node.marks) : undefined;
     if (href === null && mark !== undefined && mark !== null && typeof mark.attrs['href'] === 'string') href = mark.attrs['href'];
   });
   return href;

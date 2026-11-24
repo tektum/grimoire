@@ -117,6 +117,16 @@ describe('the menu in the editor', () => {
     expect(shown).toEqual(['slash-option-table', 'slash-option-text', 'slash-option-heading-1']);
   });
 
+  it('moving the pointer over an item makes it the active one', async () => {
+    const t = await emptyParagraph();
+    typeText(t, '/');
+    await vi.waitFor(() => expect(open(t)).toBe(true));
+    host(t)
+      .querySelector('#slash-option-quote')!
+      .dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+    await vi.waitFor(() => expect(t.view().dom.getAttribute('aria-activedescendant')).toBe('slash-option-quote'));
+  });
+
   it('Tab chooses too, and a click on an item chooses that one', async () => {
     const t = await emptyParagraph();
     typeText(t, '/quote');

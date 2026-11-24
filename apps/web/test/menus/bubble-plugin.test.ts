@@ -79,6 +79,17 @@ describe('the bubble in the editor', () => {
     await vi.waitFor(() => expect(field(t)).toBeNull());
   });
 
+  it('leaving the link editor for somewhere outside the bubble and the text closes it; moving to the text or inside it does not', async () => {
+    const t = await open();
+    button(t, 'Link').click();
+    await vi.waitFor(() => expect(field(t)).not.toBeNull());
+    host(t).dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: t.view().dom }));
+    host(t).dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: field(t) }));
+    expect(field(t)).not.toBeNull();
+    host(t).dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }));
+    await vi.waitFor(() => expect(field(t)).toBeNull());
+  });
+
   it('is not for code, and not for an editor that cannot be edited; the key is left alone then', async () => {
     current = await plainEditor('```\ncode here\n```');
     const t = current;
