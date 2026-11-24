@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { callerTenant } from '../http/collection-guard.js';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { guardPage } from '../http/page-guard.js';
@@ -44,7 +45,7 @@ router.openapi(getPageMarkdown, async (c) => {
   const { id } = c.req.valid('param');
   await guardPage(c, id, 'read');
   // One row, one statement: the body and the times that say how current it is belong together.
-  const page = await c.get('deps').pages.markdownOf(id);
+  const page = await c.get('deps').pages.markdownOf(callerTenant(c), id);
   // Deleted between the access check and the read: the same answer as a page that was never there.
   if (page === undefined) return fail('not_found');
   const headers: Record<string, string> = {

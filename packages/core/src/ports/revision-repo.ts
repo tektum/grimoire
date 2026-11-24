@@ -71,12 +71,15 @@ export interface CaughtUpRevision {
   readonly revisionId: string;
 }
 
-/** The history of pages. The runtime role can insert and read revisions, never change or remove one (R9.5). */
+/**
+ * The history of pages. The runtime role can insert and read revisions, never change or remove one (R9.5). A revision belongs to the tenant of its page: reads take the
+ * caller's tenant, writes take the page row's (their callers, the collaboration host and the catch-up job, know a page, not a tenant).
+ */
 export interface RevisionRepo {
-  /** The revisions of a page, newest first (ties by id), after the cursor. */
-  list(pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]>;
-  /** One revision of this page with its Markdown, or undefined. */
-  get(pageId: string, revisionId: string): Promise<Revision | undefined>;
+  /** The revisions of a page of the tenant, newest first (ties by id), after the cursor; none for a page of another tenant. */
+  list(tenantId: string, pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]>;
+  /** One revision of this page of the tenant with its Markdown, or undefined. */
+  get(tenantId: string, pageId: string, revisionId: string): Promise<Revision | undefined>;
   /**
    * Makes a revision of the page's saved state, reading the page in the same transaction: skipped when the stored title and Markdown
    * equal the latest revision, and refused while the saved Markdown is stale.

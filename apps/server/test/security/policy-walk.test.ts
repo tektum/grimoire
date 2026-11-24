@@ -124,7 +124,7 @@ describe.each(ops.filter((o) => bodyFields(o).includes('collectionId') && o.poli
     // The content, and where the page is: the collection, the parent and the position (`stored` does not hold them), and the fact the access decisions read.
     const where = async (): Promise<string> => JSON.stringify({
       stored: w.pages.stored(w.ids.page),
-      meta: await w.pages.get(w.ids.page),
+      meta: await w.pages.get('legacy', w.ids.page),
       fact: w.world.pages.find((p) => p.id === w.ids.page),
     });
     const before = await where();

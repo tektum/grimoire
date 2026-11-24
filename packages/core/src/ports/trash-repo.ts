@@ -33,15 +33,18 @@ export type RestoreResult =
   /** The page is in another collection than the one the caller's access was checked against (it moved since): nothing is restored. */
   | { readonly kind: 'conflict' };
 
-/** Deleted pages: the batches the trash lists, restores and purges. The only place that removes page rows. */
+/**
+ * Deleted pages: the batches the trash lists, restores and purges. The only place that removes page rows. Listing, finding, restoring and purging work inside one tenant
+ * (docs/tenancy.md section 3.3): a batch of another tenant is absent.
+ */
 export interface TrashRepo {
   /**
-   * Roots of deleted batches, newest first: a root is a deleted page whose parent is none or is not in its batch. `collectionIds` null
-   * is every collection. Fetch `limit` rows (the caller asks for one more than a page to know whether there is a next one).
+   * Roots of deleted batches of the tenant, newest first: a root is a deleted page whose parent is none or is not in its batch. `collectionIds`
+   * null is every collection of the tenant. Fetch `limit` rows (the caller asks for one more than a page to know whether there is a next one).
    */
-  roots(collectionIds: readonly string[] | null, limit: number, after?: TrashCursor): Promise<readonly TrashRoot[]>;
+  roots(tenantId: string, collectionIds: readonly string[] | null, limit: number, after?: TrashCursor): Promise<readonly TrashRoot[]>;
   /** The root page `id` of a deleted batch, or undefined when it is not one. */
-  rootOf(id: string): Promise<TrashRootInfo | undefined>;
+  rootOf(tenantId: string, id: string): Promise<TrashRootInfo | undefined>;
   /**
    * Restores the whole batch of the root page `id` in one transaction under the collection's lock, only if the page is still in
    * `expectedCollectionId`, the collection the caller's access check was made against (else `conflict`). A root whose parent is gone
@@ -49,7 +52,7 @@ export interface TrashRepo {
    * sibling; otherwise (a live parent, or no parent) it keeps its place, or goes last among the siblings when a live page took the
    * place. Refused when the collection is deleted, or when the live pages and the batch together would pass `maxPages`.
    */
-  restore(id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult>;
+  restore(tenantId: string, id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult>;
   /**
    * The object keys of the attachments of every page the purge of the batch removes: the batch and any page below it that was deleted
    * earlier, in a batch of its own (a page cannot be removed while a child still points at it).
@@ -65,6 +68,7 @@ export interface TrashRepo {
    * them) and writes the audit row `page.purged`, ids only, in the same transaction. A batch already gone deletes nothing and writes no
    * row (`pages: 0`). `removedKeys` are the objects the caller has already removed: an attachment row of a page that a restore brought
    * back in the meantime is marked deleted, so no live page keeps a row whose object is gone.
+   * Only a batch of the tenant is removed, and the audit row carries the tenant.
    */
-  purge(batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ readonly pages: number }>;
+  purge(tenantId: string, batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ readonly pages: number }>;
 }

@@ -6,6 +6,7 @@ import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
 interface Row extends PageMeta {
+  readonly tenantId: string;
   readonly deleted: boolean;
   readonly markdown: string | null;
   readonly state: Uint8Array | null;
@@ -26,9 +27,14 @@ function around_(siblings: readonly { id: string; position: string }[], afterId:
   return at === -1 ? undefined : { before: siblings[at]?.position ?? null, next: siblings[at + 1]?.position ?? null };
 }
 
-/** In-memory PageRepo for tests. Collections are the `World`'s (so a delete there is seen here); pages are mirrored into it. */
+/**
+ * In-memory PageRepo for tests. Collections are the `World`'s (so a delete there is seen here); pages are mirrored into it. A page belongs to the tenant of its collection
+ * (`collectionTenants`, legacy otherwise); one of another tenant is absent, as in the database.
+ */
 export class FakePageRepo implements PageRepo {
   private readonly rows: Row[] = [];
+  /** Test setup: the tenant of a collection (`legacy` unless set). */
+  readonly collectionTenants = new Map<string, string>();
   /** The batch a deleted page carries, or undefined when it is not deleted (or unknown). */
   batchOf(id: string): string | null | undefined {
     const row = this.rows.find((r) => r.id === id);
@@ -50,8 +56,8 @@ export class FakePageRepo implements PageRepo {
     return this.rows.length;
   }
 
-  /** Test setup: a live page, also a fact of the world. */
-  seed(page: Partial<PageMeta> & { collectionId: string; markdown?: string; markdownStaleSince?: number; hasState?: boolean }): PageMeta {
+  /** Test setup: a live page, also a fact of the world (with its tenant when it is not legacy, as a store that knows nothing of tenants says none). */
+  seed(page: Partial<PageMeta> & { collectionId: string; markdown?: string; markdownStaleSince?: number; hasState?: boolean; tenantId?: string }): PageMeta {
     const id = page.id ?? randomUUID();
     const meta: PageMeta = {
       id, urlId: page.urlId ?? id.slice(0, 8), collectionId: page.collectionId, parentId: page.parentId ?? null,
@@ -59,16 +65,21 @@ export class FakePageRepo implements PageRepo {
       createdBy: page.createdBy ?? randomUUID(), lastEditedBy: null, lastEditedAt: null, savedAt: page.savedAt ?? 0, stateEpoch: 0,
     };
     const title = meta.title;
+    const tenantId = page.tenantId ?? 'legacy';
     this.rows.push({
-      ...meta, deleted: false, markdown: page.markdown ?? null, state: page.hasState === true ? new Uint8Array([1]) : null,
+      ...meta, tenantId, deleted: false, markdown: page.markdown ?? null, state: page.hasState === true ? new Uint8Array([1]) : null,
       hash: page.markdown === undefined ? null : markdownHash(title, page.markdown), staleSince: page.markdownStaleSince ?? null,
     });
-    this.world.pages.push({ id, collectionId: page.collectionId, deleted: false, epoch: 0 });
+    this.world.pages.push({ id, collectionId: page.collectionId, deleted: false, epoch: 0, ...(tenantId === 'legacy' ? {} : { tenantId }) });
     return meta;
   }
 
-  create(input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult> {
-    const collection = this.world.collections.find((c) => c.id === input.collectionId);
+  private collectionIn(tenantId: string, id: string): World['collections'][number] | undefined {
+    return (this.collectionTenants.get(id) ?? 'legacy') === tenantId ? this.world.collections.find((c) => c.id === id) : undefined;
+  }
+
+  create(tenantId: string, input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult> {
+    const collection = this.collectionIn(tenantId, input.collectionId);
     if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });
     this.beforeInsert?.();
     if (this.world.collections.find((c) => c.id === input.collectionId)?.deleted === true) return Promise.resolve({ kind: 'collection-deleted' });
@@ -84,18 +95,18 @@ export class FakePageRepo implements PageRepo {
     if (depth > limits.maxDepth) return Promise.resolve({ kind: 'too-deep' });
     if (live.length >= limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
     const { before, next } = around;
-    const page = this.seed({ collectionId: input.collectionId, parentId: input.parentId, title: input.title, createdBy: input.createdBy, position: position(before, next) });
+    const page = this.seed({ collectionId: input.collectionId, parentId: input.parentId, title: input.title, createdBy: input.createdBy, position: position(before, next), tenantId });
     const row = this.rows.find((r) => r.id === page.id) as Row;
     this.rows[this.rows.indexOf(row)] = { ...row, markdown: input.content?.markdown ?? null, state: input.content?.state ?? null, hash: input.content?.hash ?? null };
     return Promise.resolve({ kind: 'created', page });
   }
 
-  move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult> {
-    const row = this.livePage(id);
+  move(tenantId: string, id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult> {
+    const row = this.livePage(tenantId, id);
     if (row === undefined) return Promise.resolve({ kind: 'not-found' });
     if (row.collectionId !== to.expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     const target = to.collectionId ?? row.collectionId;
-    const collection = this.world.collections.find((c) => c.id === target);
+    const collection = this.collectionIn(tenantId, target);
     if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });
     const inTarget = this.rows.filter((r) => !r.deleted && r.collectionId === target);
     const parent = to.parentId === null ? undefined : inTarget.find((r) => r.id === to.parentId);
@@ -122,8 +133,8 @@ export class FakePageRepo implements PageRepo {
     return Promise.resolve({ kind: 'moved', page: this.meta(moved) });
   }
 
-  softDelete(id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult> {
-    const row = this.livePage(id);
+  softDelete(tenantId: string, id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult> {
+    const row = this.livePage(tenantId, id);
     if (row === undefined) return Promise.resolve({ kind: 'not-found' });
     if (row.collectionId !== expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     const live = this.subtree(id).filter((r) => !r.deleted);
@@ -149,33 +160,33 @@ export class FakePageRepo implements PageRepo {
     return out;
   }
 
-  private livePage(id: string): Row | undefined {
-    const row = this.rows.find((r) => r.id === id && !r.deleted);
+  private livePage(tenantId: string, id: string): Row | undefined {
+    const row = this.rows.find((r) => r.id === id && r.tenantId === tenantId && !r.deleted);
     const collection = row === undefined ? undefined : this.world.collections.find((c) => c.id === row.collectionId);
     return collection === undefined || collection.deleted ? undefined : row;
   }
 
-  get(id: string): Promise<PageDetail | undefined> {
-    const row = this.livePage(id);
+  get(tenantId: string, id: string): Promise<PageDetail | undefined> {
+    const row = this.livePage(tenantId, id);
     if (row === undefined) return Promise.resolve(undefined);
     const breadcrumb: { id: string; title: string }[] = [];
     for (let up = this.rows.find((r) => r.id === row.parentId); up !== undefined; up = this.rows.find((r) => r.id === up?.parentId)) breadcrumb.unshift({ id: up.id, title: up.title });
     return Promise.resolve({ ...this.meta(row), breadcrumb, markdownStaleSince: row.staleSince, markdownStale: row.staleSince !== null || (row.markdown === null && row.state !== null) });
   }
 
-  markdownOf(id: string): Promise<MarkdownOfPage | undefined> {
-    const row = this.livePage(id);
+  markdownOf(tenantId: string, id: string): Promise<MarkdownOfPage | undefined> {
+    const row = this.livePage(tenantId, id);
     return Promise.resolve(
       row === undefined ? undefined : { markdown: row.markdown, hasState: row.state !== null, title: row.title, savedAt: row.savedAt, markdownStaleSince: row.staleSince },
     );
   }
 
-  idOfUrlId(urlId: string): Promise<string | undefined> {
-    return Promise.resolve(this.rows.find((r) => r.urlId === urlId)?.id);
+  idOfUrlId(tenantId: string, urlId: string): Promise<string | undefined> {
+    return Promise.resolve(this.rows.find((r) => r.urlId === urlId && r.tenantId === tenantId)?.id);
   }
 
-  updateMeta(id: string, patch: PageMetaPatch): Promise<PageMeta | undefined> {
-    const row = this.livePage(id);
+  updateMeta(tenantId: string, id: string, patch: PageMetaPatch): Promise<PageMeta | undefined> {
+    const row = this.livePage(tenantId, id);
     if (row === undefined) return Promise.resolve(undefined);
     const title = patch.title ?? row.title;
     const next: Row = {

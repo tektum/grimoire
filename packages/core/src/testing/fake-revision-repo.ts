@@ -28,10 +28,12 @@ export interface FakePageState {
   readonly lastEditedBy?: string | null;
 }
 
-/** In-memory RevisionRepo for tests: newest first, ties by id, as the database orders them. */
+/** In-memory RevisionRepo for tests: newest first, ties by id, as the database orders them. The revisions of a page of another tenant are absent. */
 export class FakeRevisionRepo implements RevisionRepo {
   private readonly rows: (Revision & { readonly pageId: string; readonly micros: number; readonly hash: Buffer })[] = [];
   private readonly pageStates = new Map<string, FakePageState>();
+  /** Test setup: the tenant of a page (`legacy` unless set). */
+  readonly pageTenants = new Map<string, string>();
   /** Every call that reads or writes pages for revisions, in order: a test counts the database work with it. */
   readonly calls: string[] = [];
   /** Test setup: make the next `createFromPage` or `catchUp` reject with this. */
@@ -122,17 +124,17 @@ export class FakeRevisionRepo implements RevisionRepo {
     return { createdAt, extraMicros: micros - createdAt * 1000 };
   }
 
-  list(pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]> {
+  list(tenantId: string, pageId: string, query: RevisionListQuery): Promise<readonly ListedRevision[]> {
     const after = query.after;
     const rows = this.rows
-      .filter((r) => r.pageId === pageId)
+      .filter((r) => r.pageId === pageId && (this.pageTenants.get(pageId) ?? 'legacy') === tenantId)
       .sort((a, b) => b.micros - a.micros || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .filter((r) => after === undefined || r.micros < after[0] || (r.micros === after[0] && r.id > after[1]));
     return Promise.resolve(rows.slice(0, query.limit).map((r) => ({ ...summaryOf(r), sortKey: r.micros })));
   }
 
-  get(pageId: string, revisionId: string): Promise<Revision | undefined> {
-    const row = this.rows.find((r) => r.pageId === pageId && r.id === revisionId);
+  get(tenantId: string, pageId: string, revisionId: string): Promise<Revision | undefined> {
+    const row = this.rows.find((r) => r.pageId === pageId && r.id === revisionId && (this.pageTenants.get(pageId) ?? 'legacy') === tenantId);
     if (row === undefined) return Promise.resolve(undefined);
     return Promise.resolve({ ...summaryOf(row), markdown: row.markdown });
   }

@@ -1,6 +1,6 @@
 import { z } from '@hono/zod-openapi';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
-import { caller } from '../http/collection-guard.js';
+import { caller, callerTenant } from '../http/collection-guard.js';
 import { fail } from '../http/error.js';
 import type { ReplayRebuild } from '../http/idempotency.js';
 import { createRouter, defineRoute } from '../http/factory.js';
@@ -46,7 +46,7 @@ router.openapi(resetPageState, async (c) => {
   const admin = caller(c);
   const body = c.req.valid('json');
   const { converter, pages, pageState } = c.get('deps');
-  const page = await pages.get(id);
+  const page = await pages.get(callerTenant(c), id);
   if (page === undefined) return fail('not_found');
   // The conversion runs before the transaction, never under the row lock, and with the admin's id as key.
   let content;

@@ -19,7 +19,7 @@ export interface PurgeDeps {
  * removed this throws (the store's own failure) and no page row is touched, so the purge can be run again; attachment rows whose objects were removed before the failure are marked deleted; running it again for a batch that is gone is a no-op. A restore that lands between the two steps cannot leave a live page with an attachment whose object is gone: the repository marks those attachments deleted. The
  * same function serves the administrator's `DELETE /v1/trash/{id}` and the daily job.
  */
-export async function purgeBatch(deps: PurgeDeps, batch: string, actorId: string): Promise<{ readonly pages: number; readonly files: number }> {
+export async function purgeBatch(deps: PurgeDeps, tenantId: string, batch: string, actorId: string): Promise<{ readonly pages: number; readonly files: number }> {
   const keys = await deps.trash.attachmentKeys(batch);
   if (keys.length > 0) {
     try {
@@ -39,6 +39,6 @@ export async function purgeBatch(deps: PurgeDeps, batch: string, actorId: string
       throw error.cause;
     }
   }
-  const { pages } = await deps.trash.purge(batch, actorId, keys);
+  const { pages } = await deps.trash.purge(tenantId, batch, actorId, keys);
   return { pages, files: keys.length };
 }

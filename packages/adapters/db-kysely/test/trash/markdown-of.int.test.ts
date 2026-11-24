@@ -23,7 +23,7 @@ async function make(title: string, markdown?: string): Promise<string> {
     if (isSeedRefusal(seeded)) throw new Error('refused');
     content = seeded;
   }
-  const r = await pages().create({ collectionId: collection, parentId: null, afterId: null, title, createdBy: user, content }, limits, (a, b) => ordering.between(a, b));
+  const r = await pages().create('legacy', { collectionId: collection, parentId: null, afterId: null, title, createdBy: user, content }, limits, (a, b) => ordering.between(a, b));
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 }
@@ -38,40 +38,40 @@ afterAll(async () => { await t?.drop(); });
 describe('PageRepo.markdownOf', () => {
   it('returns the stored Markdown and says the row has a state, for a page made from Markdown', async () => {
     const id = await make('From text', '# Hello\n\nworld\n');
-    const got = await pages().markdownOf(id);
+    const got = await pages().markdownOf('legacy', id);
     expect(got).toMatchObject({ markdown: '# Hello\n\nworld\n', hasState: true, title: 'From text', markdownStaleSince: null });
-    expect(got?.savedAt).toBe((await pages().get(id))?.savedAt);
+    expect(got?.savedAt).toBe((await pages().get('legacy', id))?.savedAt);
   });
 
   it('returns no Markdown and no state for a page made without content', async () => {
     const id = await make('Empty');
-    expect(await pages().markdownOf(id)).toMatchObject({ markdown: null, hasState: false, title: 'Empty' });
+    expect(await pages().markdownOf('legacy', id)).toMatchObject({ markdown: null, hasState: false, title: 'Empty' });
   });
 
   it('returns a state without Markdown when only the state is stored', async () => {
     const id = await make('State only');
     await t.admin.query(`update pages set ydoc = '\\x0102', markdown = null where id = $1`, [id]);
-    expect(await pages().markdownOf(id)).toMatchObject({ markdown: null, hasState: true });
+    expect(await pages().markdownOf('legacy', id)).toMatchObject({ markdown: null, hasState: true });
   });
 
   it('gives the stale time as the same epoch milliseconds the page read gives, from the same row as the text', async () => {
     const id = await make('Behind', 'old');
     await t.admin.query(`update pages set markdown_stale_since = to_timestamp(1700000000.456) where id = $1`, [id]);
-    const got = await pages().markdownOf(id);
+    const got = await pages().markdownOf('legacy', id);
     expect(got?.markdownStaleSince).toBe(1_700_000_000_456);
-    expect(got?.markdownStaleSince).toBe((await pages().get(id))?.markdownStaleSince);
+    expect(got?.markdownStaleSince).toBe((await pages().get('legacy', id))?.markdownStaleSince);
     expect(got?.markdown).toBe('old');
   });
 
   it('is undefined for an unknown page, a deleted page and a page of a deleted collection', async () => {
-    expect(await pages().markdownOf('00000000-0000-4000-8000-000000000999')).toBeUndefined();
+    expect(await pages().markdownOf('legacy', '00000000-0000-4000-8000-000000000999')).toBeUndefined();
     const gone = await make('Gone', 'x');
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
-    expect(await pages().markdownOf(gone)).toBeUndefined();
+    expect(await pages().markdownOf('legacy', gone)).toBeUndefined();
     const other = (await createCollections(t.app).append('legacy', { name: 'md2', createdBy: user }, (last) => ordering.between(last, null))).id;
-    const r = await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In other', createdBy: user }, limits, (a, b) => ordering.between(a, b));
+    const r = await pages().create('legacy', { collectionId: other, parentId: null, afterId: null, title: 'In other', createdBy: user }, limits, (a, b) => ordering.between(a, b));
     if (r.kind !== 'created') throw new Error(r.kind);
     await t.admin.query(`update collections set deleted_at = now() where id = $1`, [other]);
-    expect(await pages().markdownOf(r.page.id)).toBeUndefined();
+    expect(await pages().markdownOf('legacy', r.page.id)).toBeUndefined();
   });
 });

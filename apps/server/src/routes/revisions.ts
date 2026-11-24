@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { callerTenant } from '../http/collection-guard.js';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
@@ -64,7 +65,7 @@ router.openapi(listRevisions, async (c) => {
   const keys = decodeCursor('revisions', cursor, 2);
   // A hand-made key must not reach the database: a time is a non-negative whole number of microseconds, an id is a UUID.
   if (keys !== undefined && (!Number.isSafeInteger(keys[0]) || (keys[0] as number) < 0 || !z.string().uuid().safeParse(keys[1]).success)) return fail('invalid');
-  const rows = await c.get('deps').revisions.list(id, { limit: limit + 1, ...(keys === undefined ? {} : { after: [keys[0] as number, keys[1] as string] as const }) });
+  const rows = await c.get('deps').revisions.list(callerTenant(c), id, { limit: limit + 1, ...(keys === undefined ? {} : { after: [keys[0] as number, keys[1] as string] as const }) });
   const page = toPage('revisions', rows, limit, (r) => [r.sortKey, r.id]);
   // The sort position is for the cursor only: the answer carries the summary.
   return c.json({ items: page.items.map((r) => ({ id: r.id, createdAt: r.createdAt, title: r.title, lastAuthor: r.lastAuthor, authors: r.authors, reason: r.reason })), nextCursor: page.nextCursor }, 200);
@@ -73,7 +74,7 @@ router.openapi(listRevisions, async (c) => {
 router.openapi(getRevision, async (c) => {
   const { id, rid } = c.req.valid('param');
   await guardPage(c, id, 'read');
-  const revision = await c.get('deps').revisions.get(id, rid);
+  const revision = await c.get('deps').revisions.get(callerTenant(c), id, rid);
   return revision === undefined ? fail('not_found') : c.json(revision, 200);
 });
 
@@ -81,7 +82,7 @@ router.openapi(restoreRevision, async (c) => {
   const { id, rid } = c.req.valid('param');
   await guardPage(c, id, 'write');
   const { revisions } = c.get('deps');
-  const revision = await revisions.get(id, rid);
+  const revision = await revisions.get(callerTenant(c), id, rid);
   if (revision === undefined) return fail('not_found');
   // The safety copy first (R9.6); the live document is never touched here: the client applies the returned Markdown as ordinary edits.
   const copy = await revisions.snapshotBeforeRestore(id).catch(() => fail('save_failed'));

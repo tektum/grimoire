@@ -34,7 +34,7 @@ describe('the PostgreSQL RevisionRepo', () => {
   it('lists newest first with the authors and the last author by name, and no Markdown', async () => {
     const old = await add(page, 1_700_000_010_000, 'Old', [ana], ana);
     const recent = await add(page, 1_700_000_020_123, 'Recent', [ana, bob], bob, 'last_editor_left');
-    const list = await createRevisions(t.app).list(page, { limit: 10 });
+    const list = await createRevisions(t.app).list('legacy', page, { limit: 10 });
     expect(list.map((r) => r.id)).toEqual([recent, old]);
     expect(list[0]).toEqual({
       id: recent, createdAt: 1_700_000_020_123, sortKey: 1_700_000_020_123_000, title: 'Recent', reason: 'last_editor_left',
@@ -51,7 +51,7 @@ describe('the PostgreSQL RevisionRepo', () => {
     const seen: string[] = [];
     let after: readonly [number, string] | undefined;
     for (let guard = 0; guard < 10; guard += 1) {
-      const rows = await repo.list(p, { limit: 2, ...(after === undefined ? {} : { after }) });
+      const rows = await repo.list('legacy', p, { limit: 2, ...(after === undefined ? {} : { after }) });
       if (rows.length === 0) break;
       seen.push(...rows.map((r) => r.id));
       const last = rows.at(-1);
@@ -59,7 +59,7 @@ describe('the PostgreSQL RevisionRepo', () => {
     }
     expect(seen).toHaveLength(5);
     expect(new Set(seen)).toEqual(new Set(ids));
-    const times = await Promise.all(seen.map(async (id) => (await repo.get(p, id))?.createdAt as number));
+    const times = await Promise.all(seen.map(async (id) => (await repo.get('legacy', p, id))?.createdAt as number));
     expect(times).toEqual([5000, 5000, 5000, 4000, 3000]);
   });
 
@@ -77,7 +77,7 @@ describe('the PostgreSQL RevisionRepo', () => {
     const seen: string[] = [];
     let after: readonly [number, string] | undefined;
     for (let guard = 0; guard < 10; guard += 1) {
-      const rows = await repo.list(p, { limit: 1, ...(after === undefined ? {} : { after }) });
+      const rows = await repo.list('legacy', p, { limit: 1, ...(after === undefined ? {} : { after }) });
       if (rows.length === 0) break;
       seen.push(...rows.map((r) => r.title));
       after = [rows[0]?.sortKey as number, rows[0]?.id as string];
@@ -89,9 +89,9 @@ describe('the PostgreSQL RevisionRepo', () => {
   it('shows a revision with its Markdown, a last author of null once that user is gone, and nothing for another page', async () => {
     const id = await add(page, 1_700_000_030_000, 'Solo', [ana], null);
     const repo = createRevisions(t.app);
-    expect(await repo.get(page, id)).toMatchObject({ id, title: 'Solo', markdown: 'text of Solo', lastAuthor: null, authors: [{ id: ana, name: 'ana' }] });
-    expect(await repo.get(other, id)).toBeUndefined();
-    expect(await repo.get(page, '00000000-0000-4000-8000-000000000000')).toBeUndefined();
+    expect(await repo.get('legacy', page, id)).toMatchObject({ id, title: 'Solo', markdown: 'text of Solo', lastAuthor: null, authors: [{ id: ana, name: 'ana' }] });
+    expect(await repo.get('legacy', other, id)).toBeUndefined();
+    expect(await repo.get('legacy', page, '00000000-0000-4000-8000-000000000000')).toBeUndefined();
   });
 
   it('is append only for the runtime role: insert and select work, update and delete fail with 42501', async () => {
@@ -219,7 +219,7 @@ describe('RevisionRepo.catchUp', () => {
     await repo.catchUp(NOW - 5 * 60_000, 100);
     await t.admin.query(`update pages set title = 'New name', markdown_hash = $2 where id = $1`, [id, markdownHash('New name', 'unchanged text')]);
     await repo.catchUp(NOW - 5 * 60_000, 100);
-    expect((await repo.list(id, { limit: 10 })).map((r) => r.title)).toEqual(['New name', 'Old name']);
+    expect((await repo.list('legacy', id, { limit: 10 })).map((r) => r.title)).toEqual(['New name', 'Old name']);
   });
 
   const rows = () => t.admin.query<{ id: string }>(`select id from revisions`);
@@ -295,7 +295,7 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     await t.admin.query(`update pages set title = 'After rename', markdown_hash = $2 where id = $1`, [id, markdownHash('After rename', 'same text')]);
     const second = await repo.snapshotBeforeRestore(id);
     expect([first.kind, second.kind]).toEqual(['created', 'created']);
-    const listed = await repo.list(id, { limit: 10 });
+    const listed = await repo.list('legacy', id, { limit: 10 });
     expect(listed.map((r) => r.title)).toEqual(['After rename', 'Before rename']);
     // The date a person sees is still the last edit; only the exact sort position moves, by a microsecond.
     expect(listed.map((r) => r.createdAt)).toEqual([1_700_001_300_000, 1_700_001_300_000]);

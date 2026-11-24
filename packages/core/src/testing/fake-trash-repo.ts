@@ -7,6 +7,7 @@ import type { World } from './fake-access-store.js';
 
 interface Row {
   id: string;
+  tenantId: string;
   collectionId: string;
   parentId: string | null;
   position: string;
@@ -20,6 +21,8 @@ interface Row {
 export interface FakePage {
   readonly id?: string;
   readonly collectionId: string;
+  /** The tenant of the page (legacy when unset). */
+  readonly tenantId?: string;
   readonly parentId?: string | null;
   readonly position?: string;
   readonly title?: string;
@@ -31,7 +34,7 @@ export interface FakePage {
   readonly attachments?: readonly string[];
 }
 
-/** In-memory TrashRepo for tests. Pages here are the trash's own; the `World` carries the facts the access checks read. */
+/** In-memory TrashRepo for tests. Pages here are the trash's own; the `World` carries the facts the access checks read. A page of another tenant is absent. */
 export class FakeTrashRepo implements TrashRepo {
   private readonly rows: Row[] = [];
   private readonly deletedKeys = new Set<string>();
@@ -72,8 +75,10 @@ export class FakeTrashRepo implements TrashRepo {
 
   private add(page: FakePage, deleted: boolean): string {
     const id = page.id ?? randomUUID();
+    const tenantId = page.tenantId ?? 'legacy';
     this.rows.push({
       id,
+      tenantId,
       collectionId: page.collectionId,
       parentId: page.parentId ?? null,
       position: page.position ?? `p${String(this.rows.length).padStart(5, '0')}`,
@@ -83,7 +88,7 @@ export class FakeTrashRepo implements TrashRepo {
       batch: deleted ? (page.batch ?? id) : null,
       attachments: [...(page.attachments ?? [])],
     });
-    this.world.pages.push({ id, collectionId: page.collectionId, deleted, epoch: 0 });
+    this.world.pages.push({ id, collectionId: page.collectionId, deleted, epoch: 0, ...(tenantId === 'legacy' ? {} : { tenantId }) });
     return id;
   }
 
@@ -93,9 +98,9 @@ export class FakeTrashRepo implements TrashRepo {
     return parent === undefined || parent.batch !== row.batch;
   }
 
-  roots(collectionIds: readonly string[] | null, limit: number, after?: TrashCursor): Promise<readonly TrashRoot[]> {
+  roots(tenantId: string, collectionIds: readonly string[] | null, limit: number, after?: TrashCursor): Promise<readonly TrashRoot[]> {
     const rows = this.rows
-      .filter((r) => this.isRoot(r) && (collectionIds === null || collectionIds.includes(r.collectionId)))
+      .filter((r) => r.tenantId === tenantId && this.isRoot(r) && (collectionIds === null || collectionIds.includes(r.collectionId)))
       .sort((a, b) => (b.deletedAt as number) - (a.deletedAt as number) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0))
       .filter((r) => after === undefined || (r.deletedAt as number) < after.deletedAt || ((r.deletedAt as number) === after.deletedAt && r.id < after.id));
     return Promise.resolve(
@@ -103,8 +108,8 @@ export class FakeTrashRepo implements TrashRepo {
     );
   }
 
-  rootOf(id: string): Promise<TrashRootInfo | undefined> {
-    const row = this.rows.find((r) => r.id === id);
+  rootOf(tenantId: string, id: string): Promise<TrashRootInfo | undefined> {
+    const row = this.rows.find((r) => r.id === id && r.tenantId === tenantId);
     if (row === undefined || !this.isRoot(row)) return Promise.resolve(undefined);
     const collectionDeleted = this.world.collections.find((c) => c.id === row.collectionId)?.deleted === true;
     return Promise.resolve({ id, collectionId: row.collectionId, batch: row.batch as string, collectionDeleted });
@@ -128,9 +133,9 @@ export class FakeTrashRepo implements TrashRepo {
     return down(root);
   }
 
-  restore(id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
+  restore(tenantId: string, id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
     this.beforeRestore?.();
-    const root = this.rows.find((r) => r.id === id);
+    const root = this.rows.find((r) => r.id === id && r.tenantId === tenantId);
     if (root === undefined || !this.isRoot(root)) return Promise.resolve({ kind: 'not-found' });
     if (root.collectionId !== expectedCollectionId) return Promise.resolve({ kind: 'conflict' });
     if (this.world.collections.find((c) => c.id === root.collectionId)?.deleted === true) return Promise.resolve({ kind: 'collection-deleted' });
@@ -183,8 +188,8 @@ export class FakeTrashRepo implements TrashRepo {
     return Promise.resolve();
   }
 
-  purge(batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ pages: number }> {
-    const gone = this.purgeSet(batch);
+  purge(tenantId: string, batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ pages: number }> {
+    const gone = this.purgeSet(batch).filter((r) => r.tenantId === tenantId);
     for (const row of gone) {
       this.rows.splice(this.rows.indexOf(row), 1);
       const at = this.world.pages.findIndex((p) => p.id === row.id);
@@ -193,7 +198,7 @@ export class FakeTrashRepo implements TrashRepo {
     // Objects already removed whose page is still there (a restore came in between): mark them, so no live page keeps a row for a missing object.
     for (const row of this.rows) for (const key of row.attachments) if (removedKeys.includes(key)) this.deletedKeys.add(key);
     if (gone.length === 0) return Promise.resolve({ pages: 0 });
-    this.audit.events.push({ actorId, action: 'page.purged', targetType: 'page', targetId: batch, detail: { batch, pages: gone.length } });
+    this.audit.events.push({ actorId, action: 'page.purged', targetType: 'page', targetId: batch, detail: { batch, pages: gone.length }, tenantId });
     return Promise.resolve({ pages: gone.length });
   }
 }

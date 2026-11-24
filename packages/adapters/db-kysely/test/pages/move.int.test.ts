@@ -15,12 +15,12 @@ const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const pages = () => createPages(t.app);
 const newCollection = async (name: string): Promise<string> => (await createCollections(t.app).append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 const make = async (collectionId: string, parentId: string | null = null): Promise<string> => {
-  const r = await pages().create({ collectionId, parentId, afterId: null, title: 'P', createdBy: user }, limits, between);
+  const r = await pages().create('legacy', { collectionId, parentId, afterId: null, title: 'P', createdBy: user }, limits, between);
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 };
 const move = async (id: string, to: { collectionId?: string; parentId?: string | null; afterId?: string | null; beforeId?: string | null; expected?: string }, l: PageLimits = limits, repo = pages()): Promise<MovePageResult> =>
-  repo.move(id, { expectedCollectionId: to.expected ?? (await row(id))?.collection_id ?? '00000000-0000-4000-8000-000000000000', collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null, beforeId: to.beforeId ?? null }, l, between);
+  repo.move('legacy', id, { expectedCollectionId: to.expected ?? (await row(id))?.collection_id ?? '00000000-0000-4000-8000-000000000000', collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null, beforeId: to.beforeId ?? null }, l, between);
 const row = async (id: string) => (await t.admin.query<{ collection_id: string; parent_id: string | null; position: string; deleted_at: Date | null }>(
   `select collection_id, parent_id, position, deleted_at from pages where id = $1`, [id]))[0];
 /** A database whose transactions are aborted the first `failures` times, as serialization failures are. */

@@ -208,7 +208,7 @@ describe('POST /v1/trash/{id}/restore', () => {
   it('is 404 when the batch is purged between the checks and the restore', async () => {
     const b = build();
     const root = b.trash.seedDeleted({ collectionId: b.shared.id });
-    b.trash.beforeRestore = () => void b.trash.purge(root, b.rows[0]?.id as string, []); // an administrator purges it after the access check
+    b.trash.beforeRestore = () => void b.trash.purge('legacy', root, b.rows[0]?.id as string, []); // an administrator purges it after the access check
     const res = await b.call('member', 'POST', `/v1/trash/${root}/restore`);
     expect([res.status, await code(res)]).toEqual([404, 'not_found']);
   });
@@ -276,7 +276,7 @@ describe('DELETE /v1/trash/{id}', () => {
     expect(asked).toEqual(['attachments/p/1/a.png']);
     expect(rowsWhenAsked).toBe('deleted');
     expect([b.trash.state(root), b.trash.state(child)]).toEqual(['gone', 'gone']);
-    expect(b.trash.audit.events).toEqual([{ actorId: b.rows[0]?.id, action: 'page.purged', targetType: 'page', targetId: root, detail: { batch: root, pages: 2 } }]);
+    expect(b.trash.audit.events).toEqual([{ actorId: b.rows[0]?.id, action: 'page.purged', targetType: 'page', targetId: root, detail: { batch: root, pages: 2 }, tenantId: 'legacy' }]);
     expect((await b.call('admin', 'DELETE', `/v1/trash/${root}`)).status).toBe(404);
   });
 

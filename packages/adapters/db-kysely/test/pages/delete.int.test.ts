@@ -13,7 +13,7 @@ const ordering = new FakeOrdering();
 const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const pages = () => createPages(t.app);
 const make = async (parentId: string | null = null): Promise<string> => {
-  const r = await pages().create({ collectionId: collection, parentId, afterId: null, title: 'P', createdBy: user }, limits, (a, b) => ordering.between(a, b));
+  const r = await pages().create('legacy', { collectionId: collection, parentId, afterId: null, title: 'P', createdBy: user }, limits, (a, b) => ordering.between(a, b));
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 };
@@ -34,35 +34,35 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     const grandkid = await make(kid);
     const earlier = await make(top);
     const sibling = await make();
-    expect(await pages().softDelete(earlier, user, collection)).toEqual({ kind: 'deleted', pages: 1 });
+    expect(await pages().softDelete('legacy', earlier, user, collection)).toEqual({ kind: 'deleted', pages: 1 });
     const before = Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages`))[0]?.n);
 
-    expect(await pages().softDelete(top, user, collection)).toEqual({ kind: 'deleted', pages: 3 });
+    expect(await pages().softDelete('legacy', top, user, collection)).toEqual({ kind: 'deleted', pages: 3 });
     for (const id of [top, kid, grandkid]) expect(await row(id)).toMatchObject({ deleted_batch: top, deleted_by: user });
     expect((await row(earlier))?.deleted_batch).toBe(earlier);
     expect((await row(sibling))?.deleted_at).toBeNull();
     expect(Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages`))[0]?.n)).toBe(before);
     expect((await t.admin.query<{ id: string }>(`select id from pages where collection_id = $1 and deleted_at is null`, [collection])).map((r) => r.id)).toContain(sibling);
-    expect(await pages().get(kid)).toBeUndefined();
+    expect(await pages().get('legacy', kid)).toBeUndefined();
   });
 
   it('is not-found for a page that is already deleted, unknown, or in a deleted collection', async () => {
     const page = await make();
-    await pages().softDelete(page, user, collection);
-    expect(await pages().softDelete(page, user, collection)).toEqual({ kind: 'not-found' });
-    expect(await pages().softDelete('00000000-0000-4000-8000-000000000000', user, collection)).toEqual({ kind: 'not-found' });
+    await pages().softDelete('legacy', page, user, collection);
+    expect(await pages().softDelete('legacy', page, user, collection)).toEqual({ kind: 'not-found' });
+    expect(await pages().softDelete('legacy', '00000000-0000-4000-8000-000000000000', user, collection)).toEqual({ kind: 'not-found' });
     const other = (await createCollections(t.app).append('legacy', { name: 'del2', createdBy: user }, (last) => ordering.between(last, null))).id;
-    const inside = await pages().create({ collectionId: other, parentId: null, afterId: null, title: 'In', createdBy: user }, limits, (a, b) => ordering.between(a, b));
+    const inside = await pages().create('legacy', { collectionId: other, parentId: null, afterId: null, title: 'In', createdBy: user }, limits, (a, b) => ordering.between(a, b));
     if (inside.kind !== 'created') throw new Error(inside.kind);
     await createCollections(t.app).softDelete('legacy', other, user);
-    expect(await pages().softDelete(inside.page.id, user, other)).toEqual({ kind: 'not-found' });
+    expect(await pages().softDelete('legacy', inside.page.id, user, other)).toEqual({ kind: 'not-found' });
   });
 
   it('deletes nothing when the page is not in the collection the caller was checked against', async () => {
     const elsewhere = (await createCollections(t.app).append('legacy', { name: 'del3', createdBy: user }, (last) => ordering.between(last, null))).id;
     const page = await make();
     const kid = await make(page);
-    expect(await pages().softDelete(page, user, elsewhere)).toEqual({ kind: 'conflict' });
+    expect(await pages().softDelete('legacy', page, user, elsewhere)).toEqual({ kind: 'conflict' });
     expect([(await row(page))?.deleted_at, (await row(kid))?.deleted_at]).toEqual([null, null]);
   });
 
@@ -80,7 +80,7 @@ describe('the PostgreSQL PageRepo softDelete', () => {
       await tx.query(`update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $1 where id = $1`, [page, user]);
     });
     await locked;
-    const second = pages().softDelete(page, user, collection);
+    const second = pages().softDelete('legacy', page, user, collection);
     await vi.waitFor(async () => {
       const waiting = await t.app.query<{ n: string }>(`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
       expect(Number(waiting[0]?.n)).toBe(1);

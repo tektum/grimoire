@@ -99,7 +99,10 @@ export type SoftDeleteResult =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'conflict' };
 
-/** Pages and the page tree. */
+/**
+ * Pages and the page tree. Every method works inside one tenant (docs/tenancy.md section 3.3): a page or a collection of another tenant is absent, and a page is created and moved
+ * only within the collections of its own tenant.
+ */
 export interface PageRepo {
   /**
    * Adds a page in one transaction: the collection row is locked first (so a delete of the collection and other creates run one at a
@@ -107,34 +110,34 @@ export interface PageRepo {
    * checked, and the row is inserted in ONE statement together with its Markdown and state. `position` gets the keys of the
    * neighbours (null for an open end) and returns the new key.
    */
-  create(input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
+  create(tenantId: string, input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
   /** A live page of a live collection with its breadcrumb, or undefined. */
-  get(id: string): Promise<PageDetail | undefined>;
+  get(tenantId: string, id: string): Promise<PageDetail | undefined>;
   /**
    * What the Markdown export serves, read from one row in one statement (so the body and its times belong together): the saved Markdown
    * (null when none was ever saved), whether the row has an editor state, the title, `savedAt` and `markdownStaleSince` (epoch
    * milliseconds, as in `PageDetail`), for a live page of a live collection; undefined otherwise. Never converts anything.
    */
-  markdownOf(id: string): Promise<MarkdownOfPage | undefined>;
+  markdownOf(tenantId: string, id: string): Promise<MarkdownOfPage | undefined>;
   /** The id of the page with this URL id, deleted or not (the caller decides access from the id), or undefined. */
-  idOfUrlId(urlId: string): Promise<string | undefined>;
+  idOfUrlId(tenantId: string, urlId: string): Promise<string | undefined>;
   /**
    * Changes the title and icon of a live page. A title change recomputes the stored Markdown hash from the stored Markdown in the same
    * transaction, so an editor save with identical content that follows is a skip (R4.21). Undefined when the page is not live.
    */
-  updateMeta(id: string, patch: PageMetaPatch): Promise<PageMeta | undefined>;
+  updateMeta(tenantId: string, id: string, patch: PageMetaPatch): Promise<PageMeta | undefined>;
   /**
    * Moves a live page with its whole subtree (deleted descendants too, so every parent link stays inside one collection) in one
    * serializable transaction, retried at most three times when the database aborts it. The collection rows involved are locked first,
    * in id order. Refuses a target under the page itself or one of its descendants, the level after the deepest (the whole moved subtree
    * counts), and a target collection the subtree would take above `maxPages`.
    */
-  move(id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult>;
+  move(tenantId: string, id: string, to: PageMove, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<MovePageResult>;
   /**
    * Soft-deletes a live page and every live descendant in one transaction, all with `deleted_batch` = the page's own id; no row is
    * removed. Descendants deleted earlier keep their own batch. The collection row is locked first, as create and move do, and the page
    * must still be in `expectedCollectionId`, the collection the caller's access check was made against: a page that moved since is not
    * deleted on that check (`conflict`).
    */
-  softDelete(id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult>;
+  softDelete(tenantId: string, id: string, deletedBy: string, expectedCollectionId: string): Promise<SoftDeleteResult>;
 }
