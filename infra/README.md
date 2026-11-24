@@ -6,7 +6,7 @@ Every stage is the same stack, built by one function (`stage.ts`) from its row i
 
 | Stage | Address | Size of the task | Descope project | Protected |
 |---|---|---|---|---|
-| `dev` | its own, `GRIMOIRE_DOMAIN` of the environment `dev` | 0.25 vCPU, 2 GB | "Grimoire development" (also approves `127.0.0.1` and `localhost`, so that a local run signs in against it) | no |
+| `dev` | its own, `GRIMOIRE_DOMAIN` of the environment `dev` | 0.25 vCPU, 2 GB | "Grimoire dev stage" (also approves `127.0.0.1` and `localhost`, so that a local run signs in against it) | no |
 | `staging` | `GRIMOIRE_DOMAIN` of the environment `staging` | 0.5 vCPU, 2 GB | "Grimoire staging" | yes |
 
 A new stage is a row in `stages.json` and a GitHub environment with the variables below. Local runs (`make up`) stay in Compose and take the project id of `dev` (`GRIMOIRE_DESCOPE_PROJECT_ID`).

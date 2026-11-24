@@ -74,7 +74,9 @@ test('every flow file of the folder is a flow of the project, and an empty folde
 
 test('the development project is made and named by code, signs in at the address of its stage and, for local runs, at the loopback names', () => {
   const c = projectConfig(dev, { domain: DEV_HOST, tokens });
-  assert.equal(c.name, 'Grimoire development');
+  assert.equal(c.name, 'Grimoire dev stage');
+  // The company already has a project named "Grimoire development" (the one of the stage this replaces) and Descope refuses a second of the same name: the first deploy of dev stopped there.
+  assert.notEqual(c.name, 'Grimoire development');
   assert.equal(c.appUrl, `https://${DEV_HOST}`);
   assert.deepEqual(c.approvedDomains, [DEV_HOST, '127.0.0.1', 'localhost']);
   assert.equal(c.environment, undefined);
