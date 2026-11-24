@@ -119,9 +119,11 @@ test('history: a version is opened and restored', async ({ browser, baseURL }) =
     await tabTo(page, (el) => el?.tagName === 'A' && el.textContent?.trim().startsWith('History') === true);
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/history$/);
+    await expect(page.getByRole('link', { name: /^Open this version/ }).first(), 'the list of versions is drawn (it is fetched after the page)').toBeVisible();
     await tabTo(page, (el) => el?.tagName === 'A' && (el.getAttribute('aria-label') ?? '').startsWith('Open this version'));
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/history\/[^/]+$/);
+    await expect(page.getByRole('button', { name: 'Restore this version' })).toBeVisible();
     await tabTo(page, (el) => el?.textContent?.trim() === 'Restore this version');
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('alertdialog', { name: 'Restore this version?' });
@@ -151,6 +153,7 @@ test('the admin screens: a role is changed, a group is made, the default access 
     await tabTo(page, isLabelled, { arg: 'Search users' });
     await page.keyboard.type(world.colleague.name);
     await page.keyboard.press('Enter');
+    await expect(page.getByLabel(`Role of ${world.colleague.name}`), 'the list is drawn after the search').toBeVisible();
     await tabTo(page, isLabelled, { arg: `Role of ${world.colleague.name}` });
     await page.keyboard.press('ArrowDown'); // member to viewer
     await expect(page.getByLabel(`Role of ${world.colleague.name}`)).toHaveValue('viewer');
@@ -163,6 +166,7 @@ test('the admin screens: a role is changed, a group is made, the default access 
     await expect(page.getByText(group, { exact: true })).toBeVisible();
 
     await page.goto(`/admin/collections/${world.collectionId}/access`);
+    await expect(page.getByLabel('Everyone with an account can')).toBeVisible();
     await tabTo(page, isLabelled, { arg: 'Everyone with an account can' });
     const before = await page.getByLabel('Everyone with an account can').inputValue();
     await page.keyboard.press('ArrowDown');

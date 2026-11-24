@@ -61,13 +61,17 @@ export async function tabTo<A = undefined>(page: Page, match: (element: Element 
   const limit = options.limit ?? 60;
   const call = `(${match.toString()})(document.activeElement, ${JSON.stringify(options.arg) ?? 'undefined'})`;
   const reached = (): Promise<boolean> => page.evaluate(call);
+  const seen: string[] = [];
+  const here = (): Promise<string> =>
+    page.evaluate(() => `${document.activeElement?.tagName.toLowerCase() ?? 'nothing'} "${(document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '').trim().slice(0, 30)}"`);
   for (let i = 0; i < limit; i += 1) {
     if (await reached()) return;
+    const at = await here();
+    if (!seen.includes(at)) seen.push(at);
     await page.keyboard.press('Tab');
   }
   if (await reached()) return;
-  const at = await page.evaluate(() => `${document.activeElement?.tagName ?? 'nothing'} ${document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent?.slice(0, 40) ?? ''}`);
-  throw new Error(`the focus never reached the element in ${limit} Tab presses (it is on ${at})`);
+  throw new Error(`the focus never reached the element in ${limit} Tab presses (it is on ${await here()}; it went over: ${seen.slice(0, 12).join(', ')})`);
 }
 
 /** The element is the one the person has the focus on. */
