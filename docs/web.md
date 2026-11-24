@@ -64,4 +64,4 @@ In each the close reason repeats the refusal reason. A server that requires the 
 
 `forbidden` is sent only for a person who is missing or suspended; a page the person may not read is `not-found`. A suspended person is signed out by the API ("Your account is suspended") before the editor shows anything. Lowering write to read leaves the page as it is (no reset, the same state epoch): the editor goes read-only and keeps its text.
 
-`session-expired` is not in this table: it cannot occur on the test stack (the development sign-in has no expiry), so the client's answer to it is driven by a scripted server (`signal-rows.spec.ts`) and the connection manager's unit tests.
+`session-expired` is not in this table: a development token lives one hour, longer than a spec can wait, so the client's answer to it is driven by a scripted server (`signal-rows.spec.ts`) and the connection manager's unit tests.
