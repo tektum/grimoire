@@ -11,12 +11,15 @@ export type Expectation =
   | 'inert'
   /** Pasted HTML: active content (script, frames, forms, styles, event handlers) is gone, the text stays. */
   | 'sanitised'
-  /** An image that is not an uploaded one: not loaded (no request), shown as "External image not loaded: <host>". */
+  /** An image that is not an uploaded one (a web address, a network-path address, a relative path, a `data:` address): never loaded, no request for it; shown as "External image not loaded: <host or path>", and a `data:` one as its alt text. */
   | 'image-blocked'
-  /** An image with a relative path: allowed. */
+  /** An uploaded image (`attachments/<uuid>/<name>`): shown through a signed link, so a test of it must answer the application's request for links. */
   | 'image-kept'
   /** Large or deeply nested input: handled within the limits, without hanging the page. */
   | 'bounded';
+
+/** The id of the uploaded file of the corpus: the test-e2e attachment specs answer for this one (`ID` of test-e2e/attachments/support.ts is the same value). */
+export const UPLOADED_ID = '3f2a9c1e-8b7d-4e6f-9a1b-2c3d4e5f6a7b';
 
 export interface XssEntry {
   readonly id: string;
@@ -96,7 +99,8 @@ export const xssCorpus: readonly XssEntry[] = [
   markdown('md-image-remote', '![remote](https://evil.example/x.png)', 'image-blocked'),
   markdown('md-image-data', '![data](data:image/png;base64,iVBORw0KGgo=)', 'image-blocked'),
   markdown('md-image-protocol-relative', '![p](//evil.example/x.png)', 'image-blocked'),
-  markdown('md-image-relative', '![local](./files/a.png)', 'image-kept'),
+  markdown('md-image-relative', '![local](./files/a.png)', 'image-blocked'),
+  markdown('md-image-attachment', `![uploaded](attachments/${UPLOADED_ID}/a.png)`, 'image-kept'),
   // Link addresses that must be refused: every spelling of the unsafe schemes
   href('href-javascript', 'javascript:alert(1)', 'link-refused'),
   href('href-javascript-mixed-case', 'JaVaScRiPt:alert(1)', 'link-refused'),
