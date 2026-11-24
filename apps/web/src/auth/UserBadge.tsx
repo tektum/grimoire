@@ -4,8 +4,12 @@ import { useSession } from './session';
 
 interface Me {
   readonly name: string;
+  readonly email: string;
   readonly role: 'admin' | 'member' | 'viewer';
 }
+
+/** The name to show: the display name, or the sign-in email when the account has no name (an identity provider may send none). */
+export const shownName = (me: { readonly name: string; readonly email: string }): string => (me.name.trim() === '' ? me.email : me.name);
 
 /** Who is signed in, and what they may do: a viewer is shown as read-only. Nothing without a session. */
 export function UserBadge() {
@@ -21,7 +25,9 @@ function Badge({ session }: { session: NonNullable<ReturnType<typeof useSession>
     <span className="user-badge">
       {me.data !== undefined && (
         <>
-          <span data-testid="user-name">{me.data.name}</span>{' '}
+          <span className="user-badge-name" data-testid="user-name" title={shownName(me.data)}>
+            {shownName(me.data)}
+          </span>{' '}
           <span data-testid="user-role" data-role={me.data.role}>
             {me.data.role === 'viewer' ? 'viewer (read-only)' : me.data.role}
           </span>{' '}
