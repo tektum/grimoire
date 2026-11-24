@@ -4,9 +4,9 @@ import { shots } from '../support/shots';
 import { signInAs } from '../support/sign-in';
 
 // Screenshots of the outline beside a page at 1400 pixels wide, with the current heading marked, and of the same page at 1000 pixels (no outline), light and dark
-// (test-results/shots/M6-T05b/). This machine's default sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the text, as in the other shots.
+// (test-results/shots/M6-T05b/). This machine's default sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text only, as in the other shots; the page text keeps the reading font of the design.
 const TASK = 'M6-T05b';
-const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; --font-page: 'Liberation Sans', Arial, sans-serif; }";
+const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }"; // the page text keeps its own reading font (--font-page)
 const MARKDOWN = [
   '# Planning the autumn release',
   'The plan in one place: what ships, who does what, and what we leave for later.',

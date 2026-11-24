@@ -32,7 +32,7 @@ const NOT_TEXT = '.ProseMirror-yjs-cursor, .ProseMirror-widget, .cursor-label';
 function textOf(element: HTMLElement): string {
   const copy = element.cloneNode(true) as HTMLElement;
   copy.querySelectorAll(NOT_TEXT).forEach((extra) => { extra.remove(); });
-  return (copy.textContent ?? '').replace(/\s+/gu, ' ').trim();
+  return (copy.textContent ?? '').replace(/[\s\u200b-\u200d\u2060\ufeff]+/gu, ' ').trim();
 }
 
 /** The editor's element in the page screen's layout (page.css), or null when there is no page. */
@@ -109,11 +109,20 @@ export function Outline() {
     };
   }, [wide]);
 
-  /** Puts the cursor at the start of the heading and brings it into view. The document is read again at the click: the list may be a moment behind. */
-  const go = useCallback((index: number): void => {
+  /**
+   * Puts the cursor at the start of the heading and brings it into view. The document is read again at the click, because the list may be a moment behind; the heading
+   * is the one at the same place if it still has the clicked text and level, else the nearest one that has, else none (nothing moves rather than going somewhere else).
+   */
+  const go = useCallback((index: number, clicked: Entry): void => {
     const root = editorElement();
-    const target = root === null ? undefined : headingsOf(root)[index]?.element;
-    if (root === null || target === undefined) return;
+    if (root === null) return;
+    const fresh = headingsOf(root);
+    const same = (i: number): boolean => fresh[i]?.entry.text === clicked.text && fresh[i].entry.level === clicked.level;
+    let at = -1;
+    if (same(index)) at = index;
+    else for (let distance = 1; distance < fresh.length && at < 0; distance += 1) at = same(index - distance) ? index - distance : same(index + distance) ? index + distance : -1;
+    const target = fresh[at]?.element;
+    if (target === undefined) return;
     const surface = root.querySelector<HTMLElement>('.ProseMirror') ?? root;
     surface.focus({ preventScroll: true });
     window.getSelection()?.collapse(target, 0);
@@ -148,7 +157,7 @@ export function Outline() {
               onFocus={() => { setStop(i); }}
               onClick={(event) => {
                 event.preventDefault();
-                go(i);
+                go(i, entry);
               }}
             >
               {entry.text}

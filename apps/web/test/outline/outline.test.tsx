@@ -147,10 +147,11 @@ describe('the outline of a page', () => {
     const widget = (name: string): HTMLElement => {
       const caret = document.createElement('span');
       caret.className = 'ProseMirror-yjs-cursor cursor';
+      caret.append('\u2060'); // the caret's two word joiners, as the editor draws it
       const label = document.createElement('div');
       label.className = 'cursor-label';
       label.textContent = name;
-      caret.append(label);
+      caret.append(label, '\u2060');
       return caret;
     };
     editor.querySelectorAll('h2')[0]?.append(widget('Bob Builder'));
@@ -163,6 +164,28 @@ describe('the outline of a page', () => {
     expect(names()).toEqual(['Title', 'Plan', 'Marker']);
     expect(nav().textContent).not.toContain('Bob');
     expect(nav().textContent).not.toContain('Carol');
+  });
+
+  it('goes to the heading that was clicked even when the document changed above it since the list was drawn', async () => {
+    const { editor } = renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
+    const scrolls: string[] = [];
+    for (const heading of Array.from(editor.children) as HTMLElement[]) heading.scrollIntoView = () => { scrolls.push(heading.textContent ?? ''); };
+    const added = document.createElement('h2');
+    added.textContent = 'Added above';
+    added.scrollIntoView = () => { scrolls.push('Added above'); };
+    editor.insertBefore(added, editor.firstChild); // the list still shows A, B, C: the change is not read yet
+    await userEvent.click(screen.getByRole('link', { name: 'C' }));
+    expect(scrolls).toEqual(['C']);
+    expect(window.getSelection()?.anchorNode?.parentElement?.textContent ?? window.getSelection()?.anchorNode?.textContent).toContain('C');
+  });
+
+  it('does nothing, rather than go somewhere else, when the clicked heading is no longer there', async () => {
+    const { editor } = renderPage([[1, 'A'], [1, 'B']]);
+    const scroll = vi.fn();
+    for (const heading of Array.from(editor.children) as HTMLElement[]) heading.scrollIntoView = scroll;
+    editor.querySelectorAll('h1')[1]?.remove(); // B is gone, the list has not caught up
+    await userEvent.click(screen.getByRole('link', { name: 'B' }));
+    expect(scroll).not.toHaveBeenCalled();
   });
 
   it('keeps the keyboard focus on the same link when a heading is added before it', async () => {
