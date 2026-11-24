@@ -10,6 +10,8 @@ export const ClientConfigSchema = z
     providerProjectId: z.string().nullable().describe('Sign-in provider project id; null when none is configured'),
     providerBaseUrl: z.string().nullable().describe('The endpoint of the sign-in provider that browsers use, the same one the server calls (a regional project has its own); null when no project is configured'),
     fileStoreOrigin: z.string().nullable().describe('Public origin of the file store; null when no store is configured'),
+    maxAttachmentBytes: z.number().int().nullable().describe('The largest upload the server accepts, in bytes; null when no store is configured'),
+    pendingUploadsMax: z.number().int().nullable().describe('How many unfinished uploads one person may have at once; null when no store is configured'),
   })
   .openapi('ClientConfig');
 
@@ -48,6 +50,8 @@ router.openapi(getConfig, (c) => {
       providerProjectId: config.descopeProjectId ?? null,
       providerBaseUrl: deps.providerBaseUrl ?? null,
       fileStoreOrigin: config.files?.publicOrigin ?? null,
+      maxAttachmentBytes: config.files?.maxBytes ?? null,
+      pendingUploadsMax: config.files?.pendingMaxPerUser ?? null,
     },
     200,
   );

@@ -27,6 +27,8 @@ describe('GET /v1/config', () => {
       providerProjectId: null,
       providerBaseUrl: null,
       fileStoreOrigin: null,
+      maxAttachmentBytes: null,
+      pendingUploadsMax: null,
     });
   });
 
@@ -37,6 +39,19 @@ describe('GET /v1/config', () => {
     const body = (await (await app.request('/v1/config')).json()) as Record<string, unknown>;
     expect(body['providerProjectId']).toBe('P2abc');
     expect(body['fileStoreOrigin']).toBe('https://files.example.test');
+  });
+
+  it('tells the client the largest upload and how many uploads a person may leave waiting, from the file settings, and null when there is no store', async () => {
+    const base = makeFakeConfig();
+    const files = { ...(base.files ?? {}), publicOrigin: 'https://files.example.test', maxBytes: 26_214_400, pendingMaxPerUser: 10 } as NonNullable<Config['files']>;
+    const withStore = build({ publicCollabUrl: 'wss://docs.example.test/collab', files });
+    const body = (await (await withStore.app.request('/v1/config')).json()) as Record<string, unknown>;
+    expect(body['maxAttachmentBytes']).toBe(26_214_400);
+    expect(body['pendingUploadsMax']).toBe(10);
+    const without = build({ publicCollabUrl: 'wss://docs.example.test/collab' });
+    const none = (await (await without.app.request('/v1/config')).json()) as Record<string, unknown>;
+    expect(none['maxAttachmentBytes']).toBeNull();
+    expect(none['pendingUploadsMax']).toBeNull();
   });
 
   it('returns the sign-in provider endpoint the server was composed with, and null when there is none', async () => {
