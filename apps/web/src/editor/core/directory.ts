@@ -3,6 +3,20 @@ import type { ApiLike } from '../../api/query';
 /** What a cursor says for a person the directory does not know (or cannot be asked about). */
 export const UNKNOWN_NAME = 'Someone';
 const MAX_IDS_PER_REQUEST = 50;
+/** The longest a collaborator's name is shown. */
+export const DISPLAY_NAME_MAX = 40;
+/** Control and format characters (line breaks, NUL, escape, the delete character, C1 controls, zero-width characters, bidirectional overrides and isolates) and the line and paragraph separators. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+
+/**
+ * A name from the directory made safe to show (security review F10): it is only ever put into the page as text, but it is also cut to {@link DISPLAY_NAME_MAX} characters,
+ * and stripped of what draws nothing or reorders what is around it. White space inside it becomes one space. A name that is nothing once cleaned is "Someone".
+ */
+export function displayName(raw: string): string {
+  const cleaned = raw.replace(/\s+/gu, ' ').replace(INVISIBLE, '').trim();
+  const cut = [...cleaned].slice(0, DISPLAY_NAME_MAX).join('').trim();
+  return cut === '' ? UNKNOWN_NAME : cut;
+}
 const BATCH_MS = 30;
 const RETRY_AFTER_MS = 5000;
 /** Failed lookups are tried again by themselves this many times; after that a name is asked for again when a cursor asks. */
@@ -45,7 +59,10 @@ export function createDirectory(options: DirectoryOptions): Directory {
       options.fetchNames(chunk).then(
         (items) => {
           const found = new Map(items.map((item) => [item.id.toLowerCase(), item.name]));
-          for (const id of chunk) names.set(id, found.get(id.toLowerCase()) ?? UNKNOWN_NAME);
+          for (const id of chunk) {
+            const name = found.get(id.toLowerCase());
+            names.set(id, name === undefined ? UNKNOWN_NAME : displayName(name));
+          }
           for (const id of chunk) retries.delete(id);
           listeners.forEach((listener) => listener());
         },
