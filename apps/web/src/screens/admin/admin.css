@@ -88,6 +88,7 @@
 }
 .admin-table th,
 .admin-table td {
+  box-sizing: border-box; /* a column width is the whole cell, padding included */
   overflow-wrap: anywhere;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
@@ -100,7 +101,7 @@
   width: 8rem;
 }
 .admin-table th:nth-child(4) {
-  width: 5.5rem;
+  width: 7.5rem;
 }
 .admin-table td button,
 .admin-table select {
@@ -166,8 +167,8 @@
 .admin-list a[aria-current='true'] {
   font-weight: 600;
 }
-/* Last in the file, so that it wins over the rules above (equal specificity, later wins). A narrow window: the columns that hold a control keep the room it needs, the name takes the rest and wraps, and the cells give up their side padding. */
-@media (max-width: 40rem) {
+/* Last in the file, so that it wins over the rules above (equal specificity, later wins). A window of up to 52rem, where the contents take 18rem beside the page and the table has little room (above 40rem the shell is two columns): the columns that hold a control keep the room it needs, the name takes the rest and wraps, and the cells give up their side padding. */
+@media (max-width: 52rem) {
   .admin-table th,
   .admin-table td {
     padding-inline: var(--space-1);
