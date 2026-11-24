@@ -61,9 +61,23 @@ describe('the bubble', () => {
     expect(onApply).toHaveBeenCalledWith('');
   });
 
+  it("keeps the focus where the press is not on the address field: a press on a button, the label or the gaps is the editor's, so it is not lost before the click", () => {
+    render(<Bubble {...props({ mode: 'link', link: 'https://example.com' })} />);
+    const press = (target: Element): boolean => {
+      const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(press(screen.getByRole('button', { name: 'Apply' }))).toBe(true);
+    expect(press(screen.getByRole('button', { name: 'Remove link' }))).toBe(true);
+    expect(press(screen.getByRole('button', { name: 'Cancel' }))).toBe(true);
+    expect(press(screen.getByText('Link address'))).toBe(true);
+    expect(press(screen.getByRole('textbox', { name: 'Link address' }))).toBe(false); // the field takes the focus
+  });
+
   it('shows a refusal as an alert, tied to the field, and the field is marked invalid', () => {
-    render(<Bubble {...props({ mode: 'link', refusal: 'Only web, mail and relative links are allowed' })} />);
-    expect(screen.getByRole('alert').textContent).toBe('Only web, mail and relative links are allowed');
+    render(<Bubble {...props({ mode: 'link', refusal: "This kind of link isn't allowed" })} />);
+    expect(screen.getByRole('alert').textContent).toBe("This kind of link isn't allowed");
     expect(screen.getByRole('alert').id).toBe(LINK_ERROR_ID);
     const field = screen.getByRole('textbox', { name: 'Link address' });
     expect(field.getAttribute('aria-invalid')).toBe('true');

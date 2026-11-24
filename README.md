@@ -74,7 +74,7 @@ The bubble over selected text: bold, italic, strikethrough, code and a link; Ctr
 
 ![The link editor refusing an address that is not allowed](docs/screenshots/m6-t05/bubble-link-refused-light.png)
 
-The link editor says why an address is refused: only web, mail and relative links are allowed.
+The link editor refuses an address of a kind that is not allowed (a script address, for one) and says so, in a message the screen reader announces.
 
 ![The block handle beside a paragraph](docs/screenshots/m6-t05/block-handle-light.png)
 

@@ -71,7 +71,23 @@ describe('the bubble helpers', () => {
       expect(linkAt(view.state)).toBeNull();
       select(t, 3, 3);
       expect(setLink(view, 'https://example.com'), 'no range, no link').toBe('refused');
-      expect(LINK_REFUSAL).toBe('Only web, mail and relative links are allowed');
+      expect(LINK_REFUSAL).toBe("This kind of link isn't allowed");
+    } finally {
+      await t.destroy();
+    }
+  });
+
+  it('change only the address of a link that is there: its title stays', async () => {
+    const t = await plainEditor('see [the page](https://a.test "A title") here');
+    try {
+      const view = t.view();
+      const at = view.state.doc.textContent.indexOf('the page') + 1;
+      select(t, at, at + 8);
+      expect(setLink(view, 'https://b.test')).toBe('linked');
+      expect(t.markdown()).toContain('[the page](https://b.test "A title")');
+      select(t, at, at + 8);
+      expect(setLink(view, 'https://b.test')).toBe('linked'); // applying again, unchanged
+      expect(t.markdown()).toContain('"A title"');
     } finally {
       await t.destroy();
     }

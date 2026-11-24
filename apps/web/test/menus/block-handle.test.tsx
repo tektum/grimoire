@@ -17,6 +17,13 @@ describe('the block handle button and its menu', () => {
     expect(onToggle).toHaveBeenCalled();
   });
 
+  it('points the button at the item Enter would choose while the menu is open, and at nothing when it is closed', () => {
+    const { rerender } = render(<BlockHandle open kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'Block menu' }).getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-1');
+    rerender(<BlockHandle open={false} kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'Block menu' }).hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
   it('open, it shows the list of kinds, points the button at it, and a press on a kind chooses it', () => {
     const onPick = vi.fn();
     render(<BlockHandle open kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={onPick} onHover={() => undefined} />);

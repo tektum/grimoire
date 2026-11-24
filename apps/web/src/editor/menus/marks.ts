@@ -7,7 +7,7 @@ import { TextSelection, type EditorState } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 
 /** The text the link editor shows when an address is refused. */
-export const LINK_REFUSAL = 'Only web, mail and relative links are allowed';
+export const LINK_REFUSAL = "This kind of link isn't allowed";
 
 export type InlineKind = 'bold' | 'italic' | 'strike' | 'code';
 export const INLINE_KINDS: readonly { readonly id: InlineKind; readonly label: string; readonly mark: string }[] = [
@@ -73,7 +73,13 @@ export function setLink(view: EditorView, address: string): 'linked' | 'unlinked
     return 'unlinked';
   }
   if (!isSafeUrl(href, 'link')) return 'refused';
-  view.dispatch(view.state.tr.removeMark(from, to, type).addMark(from, to, type.create({ href })));
+  // The link that is there keeps its other attributes (a title): only the address changes.
+  let existing: Record<string, unknown> = {};
+  view.state.doc.nodesBetween(from, to, (node) => {
+    const mark = node.isText ? type.isInSet(node.marks) : null;
+    if (mark !== null && mark !== undefined && Object.keys(existing).length === 0) existing = mark.attrs;
+  });
+  view.dispatch(view.state.tr.removeMark(from, to, type).addMark(from, to, type.create({ ...existing, href })));
   return 'linked';
 }
 

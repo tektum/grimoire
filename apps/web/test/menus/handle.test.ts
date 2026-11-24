@@ -48,8 +48,9 @@ describe('the handle button, its menu and its keys', () => {
     const t = current;
     const doc = t.view().state.doc;
     const secondStart = doc.child(0).nodeSize;
+    const hovered = t.view().dom.children[1] as HTMLElement; // the element the pointer is over: taken now, as the library has it
     let on = true;
-    const { host } = createHandleHost(await t.editor.action((ctx) => ctx), () => (on ? { $pos: t.view().state.doc.resolve(secondStart) } : null));
+    const { host } = createHandleHost(await t.editor.action((ctx) => ctx), () => (on ? { el: hovered } : null));
     document.body.append(host);
     return { t, host, secondStart, setActive: (value) => void (on = value) };
   }
@@ -102,6 +103,21 @@ describe('the handle button, its menu and its keys', () => {
     const quote = Array.from(host.querySelectorAll('[role=option]')).find((o) => o.textContent?.startsWith('Quote'))!;
     quote.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     expect(t.view().state.doc.child(1).type.name).toBe('blockquote');
+    host.remove();
+  });
+
+  it('finds the block when a kind is chosen, not when the pointer went over it: content added above in between does not change which block is turned', async () => {
+    const { t, host } = await handleOnSecond();
+    const view = t.view();
+    view.dispatch(view.state.tr.insert(0, view.state.schema.nodes['paragraph']!.create(null, view.state.schema.text('Added above.')))); // someone else's paragraph, before the hovered one
+    expect(view.state.doc.childCount).toBe(3);
+    button(host).click();
+    await vi.waitFor(() => expect(optionIds(host)).toHaveLength(14));
+    press(host, 'ArrowDown'); // Heading 1
+    press(host, 'Enter');
+    expect(view.state.doc.child(0).attrs['level']).toBe(0); // the paragraph added above is not the one
+    expect(view.state.doc.child(2).attrs['level']).toBe(1); // the hovered block, which is the third now
+    expect(view.state.doc.child(2).textContent).toBe('Second.');
     host.remove();
   });
 

@@ -1,6 +1,6 @@
 import { GripVertical } from 'lucide-react';
 import type { BlockKind } from './blocks';
-import { SlashMenu } from './SlashMenu';
+import { SlashMenu, optionId } from './SlashMenu';
 
 export const HANDLE_MENU_ID = 'block-handle-menu';
 
@@ -18,6 +18,8 @@ export function BlockHandle(props: { open: boolean; kinds: readonly BlockKind[];
         aria-haspopup="listbox"
         aria-expanded={props.open}
         aria-controls={props.open ? HANDLE_MENU_ID : undefined}
+        // The focus stays on the button while the menu is open: it points at the item Enter would choose.
+        aria-activedescendant={props.open && props.kinds[props.active] !== undefined ? optionId(HANDLE_MENU_ID, props.kinds[props.active] as BlockKind) : undefined}
         onClick={props.onToggle}
       >
         <GripVertical size={16} aria-hidden="true" />

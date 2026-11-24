@@ -3,23 +3,26 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import type { Ctx, MilkdownPlugin } from '@milkdown/ctx';
 import { BlockProvider, block, blockSpec } from '@milkdown/plugin-block';
-import type { ResolvedPos } from '@milkdown/prose/model';
 import { TextSelection } from '@milkdown/prose/state';
 import { editorViewCtx } from '@milkdown/core';
 import { BLOCK_KINDS, type BlockKind } from './blocks';
 import { BlockHandle, HANDLE_MENU_ID } from './BlockHandle';
 import { optionId } from './SlashMenu';
 
-/** The block the handle is on: where it starts. */
+/** The block the handle is on, as the library knows it: its element. Where it is in the document is worked out when a kind is chosen, not when the pointer was over it. */
 export interface ActiveBlock {
-  readonly $pos: ResolvedPos;
+  readonly el: HTMLElement;
 }
 
-/** Puts the cursor inside the block the handle is on, so that a command acts on it, and runs the kind. */
+/**
+ * Puts the cursor inside the block the handle is on, so that a command acts on it, and runs the kind. The block is found from its element now, not from where it was when the
+ * pointer went over it: in a page that other people edit, what is above it may have changed since.
+ */
 function turnBlockInto(ctx: Ctx, active: ActiveBlock | null, kind: BlockKind): void {
   const view = ctx.get(editorViewCtx);
-  if (active === null) return;
-  view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(Math.min(active.$pos.pos + 1, view.state.doc.content.size)))));
+  if (active === null || !view.dom.contains(active.el)) return;
+  const pos = view.posAtDOM(active.el, 0);
+  view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)))));
   kind.run(ctx);
   view.focus();
 }

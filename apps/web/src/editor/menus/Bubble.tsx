@@ -50,6 +50,11 @@ function LinkEditor(props: BubbleProps) {
     <form
       className="bubble-link"
       aria-label="Link"
+      // A press anywhere in the editor but on the address field must not move the focus: some browsers do not focus a button that is clicked, and the editor would close
+      // (on the blur) before the click of Apply, Remove link or Cancel came.
+      onMouseDown={(event) => {
+        if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+      }}
       onSubmit={(event) => {
         event.preventDefault();
         props.onApply(value);

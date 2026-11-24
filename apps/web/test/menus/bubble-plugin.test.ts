@@ -39,6 +39,14 @@ describe('the bubble in the editor', () => {
     await vi.waitFor(() => expect(shown(t)).toBe(false));
   });
 
+  it('opens for a selection even when a transaction that changes nothing follows it at once (the library keeps only the last update of a burst)', async () => {
+    current = await plainEditor('some words here');
+    const t = current;
+    select(t, 1, 5);
+    t.view().dispatch(t.view().state.tr);
+    await vi.waitFor(() => expect(shown(t)).toBe(true));
+  });
+
   it('a button formats the selection, and shows the state of the selection afterwards', async () => {
     const t = await open();
     button(t, 'Bold').click();
@@ -54,7 +62,7 @@ describe('the bubble in the editor', () => {
     host(t)
       .querySelector('form')!
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(host(t).querySelector('[role=alert]')?.textContent).toBe('Only web, mail and relative links are allowed'));
+    await vi.waitFor(() => expect(host(t).querySelector('[role=alert]')?.textContent).toBe("This kind of link isn't allowed"));
     expect(field(t)!.value).toBe('javascript:alert(1)');
     expect(t.markdown()).not.toContain('javascript');
     setValue(field(t)!, 'https://example.com');

@@ -4,7 +4,7 @@ import { twoUsers } from '../support/two-users';
 import { makePage } from '../editor/pages';
 import { surface } from './support';
 
-const REFUSAL = 'Only web, mail and relative links are allowed';
+const REFUSAL = "This kind of link isn't allowed";
 
 /** Selects the word under a double click, which brings up the bubble. */
 async function selectWord(page: Page, text: string): Promise<void> {
