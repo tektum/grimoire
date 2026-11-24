@@ -29,6 +29,14 @@ describe('dev adapter valid tokens', () => {
     expect((await verifier.verify(`dev:${SECRET}:alice:admin`))).toMatchObject({ tenant: { kind: 'one', id: 'legacy' } });
     expect(roles.roleOf(`dev:${SECRET}:alice:viewer:acme`)).toBe('viewer');
   });
+  it('accepts the longest token the grammar allows: the longest secret, user id, role and tenant', async () => {
+    const long = createDevAuth(makeFakeConfig({ local: true, devTokenSecret: 's'.repeat(128) }), clock).verifier;
+    const token = `dev:${'s'.repeat(128)}:${'u'.repeat(64)}:member:${'t'.repeat(64)}`;
+    expect(token.length).toBe(269);
+    expect(await long.verify(token)).toMatchObject({ kind: 'ok', tenant: { kind: 'one', id: 't'.repeat(64) } });
+    expect(await long.verify(`${token}x`)).toMatchObject({ kind: 'invalid-token' });
+  });
+
   it.each(['', 'A', 'a b', 'a:b', 'x'.repeat(65)])('refuses the tenant part %j', async (part) => {
     expect((await verifier.verify(`dev:${SECRET}:alice:admin:${part}`)).kind).toBe('invalid-token');
   });

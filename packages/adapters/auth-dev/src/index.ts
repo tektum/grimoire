@@ -5,8 +5,8 @@ import type { AuthVerifier, ProfileResult, VerifyResult } from '@tektum/grimoire
 import type { DevRole, DevRoleSource } from '@tektum/grimoire-core/ports/dev-role';
 
 export const DEV_TOKEN_TTL_MS = 3_600_000;
-/** Whole-token length bound, checked before any parsing. */
-const MAX_TOKEN_LENGTH = 256;
+/** Whole-token length bound, checked before any parsing: the longest the grammar below allows, `dev:` + 128 + `:` + 64 + `:` + `member` + `:` + 64. */
+const MAX_TOKEN_LENGTH = 269;
 /** Grammar: dev:<secret>:<userId>:<role>[:<tenant>]; secret is 16-128 and userId 1-64 of [A-Za-z0-9_-]; role is exactly admin|member|viewer; the tenant is 1-64 of [a-z0-9_-] and is `legacy` when absent (docs/tenancy.md section 2.4). */
 // Dev user ids are lowercase only: the dev email is `<id>@dev.invalid` and the users table compares emails case-insensitively, so ids that differ only by case would collide there.
 const TOKEN = /^dev:([A-Za-z0-9_-]{16,128}):([a-z0-9_-]{1,64}):(admin|member|viewer)(?::([a-z0-9_-]{1,64}))?$/;
