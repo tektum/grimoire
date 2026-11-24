@@ -6,12 +6,12 @@ import { describe, expect, it } from 'vitest';
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 /** The `app` environment `docker compose config` resolves for a set of files (it renders only; no engine is needed). */
-function appEnvironment(files: string[]): Record<string, string> {
+function appEnvironment(files: string[], extra: Record<string, string> = {}): Record<string, string> {
   const args = ['compose', '--project-directory', root, '--env-file', path.join(root, '.env.example'), ...files.flatMap((f) => ['-f', path.join(root, f)]), 'config', '--format', 'json'];
   const result = spawnSync('docker', args, {
     encoding: 'utf8',
     maxBuffer: 1 << 26,
-    env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '', DOCKER_CONFIG: process.env['DOCKER_CONFIG'] ?? '', GRIMOIRE_DEV_DB_PASSWORD: 'x'.repeat(16) },
+    env: { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '', DOCKER_CONFIG: process.env['DOCKER_CONFIG'] ?? '', GRIMOIRE_DEV_DB_PASSWORD: 'x'.repeat(16), ...extra },
   });
   expect(result.status, result.stderr).toBe(0);
   return (JSON.parse(result.stdout) as { services: { app: { environment: Record<string, string> } } }).services.app.environment;
@@ -34,6 +34,11 @@ describe('compose.yaml with compose.m6.yaml', () => {
     const withOverlay = (appEnvironment(['compose.yaml', 'compose.m6.yaml'])['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',');
     for (const origin of plain.split(',')) expect(withOverlay).toContain(origin);
     expect(withOverlay).toEqual(expect.arrayContaining(['http://127.0.0.1:4173', 'http://localhost:4173']));
+  });
+
+  it('allows the port the specs run on when E2E_WEB_PORT names it, and no longer 4173', () => {
+    const origins = (appEnvironment(['compose.yaml', 'compose.m6.yaml'], { E2E_WEB_PORT: '4999' })['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',');
+    expect(origins).toEqual(['http://127.0.0.1:8080', 'http://localhost:8080', 'http://127.0.0.1:4999', 'http://localhost:4999']);
   });
 
   it('changes nothing else of the app environment', () => {
