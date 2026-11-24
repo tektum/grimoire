@@ -50,7 +50,13 @@ describe('the image node view', () => {
   const imageNode = (src: string, alt = 'a photo') => harness.view.state.schema.nodes['image']!.create({ src, alt });
   const viewOf = (src: string, alt?: string) => imageView(imageNode(src, alt), harness.view);
   const update = (view: ReturnType<typeof imageView>, node: ReturnType<typeof imageNode>): boolean | undefined => view.update?.(node, [], {} as never);
-  const settle = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  // Waits on what is observable, never on a count of turns: the answer, the request made, the state the node ends in. `turn` is a whole turn of the event loop, for
+  // checking that something did NOT happen after everything queued has run.
+  const turn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+  const srcOf = (view: ReturnType<typeof imageView>): string | null => (view.dom as HTMLElement).querySelector('img')?.getAttribute('src') ?? null;
+  const untilSrc = (view: ReturnType<typeof imageView>, expected?: string) => vi.waitFor(() => (expected === undefined ? expect(srcOf(view)).not.toBeNull() : expect(srcOf(view)).toBe(expected)));
+  const untilCalls = (n: number) => vi.waitFor(() => expect(fetchUrls).toHaveBeenCalledTimes(n));
+  const untilState = (view: ReturnType<typeof imageView>, state: string) => vi.waitFor(() => expect((view.dom as HTMLElement).dataset['state']).toBe(state));
 
   beforeEach(async () => {
     harness = await makeEditor('text\n', imagePlugin);
@@ -69,7 +75,7 @@ describe('the image node view', () => {
     const dom = view.dom as HTMLElement;
     expect(dom.dataset['state']).toBe('loading');
     expect(dom.querySelector('img')?.getAttribute('src')).toBeNull();
-    await settle();
+    await untilSrc(view);
     const img = dom.querySelector('img')!;
     expect(img.getAttribute('src')).toBe('https://files.test/1?sig=1');
     expect(img.getAttribute('alt')).toBe('a photo');
@@ -82,7 +88,8 @@ describe('the image node view', () => {
     const other = '11111111-2222-4333-8444-555555555555';
     viewOf(SRC);
     viewOf(`attachments/${other}/b.png`);
-    await settle();
+    await untilCalls(1);
+    await turn();
     expect(fetchUrls).toHaveBeenCalledTimes(1);
     expect(fetchUrls.mock.calls[0]![0]).toEqual([ID, other]);
   });
@@ -90,12 +97,11 @@ describe('the image node view', () => {
   it('refreshes the link once when the image fails to load, and shows the new one without a reload', async () => {
     const view = viewOf(SRC);
     const dom = view.dom as HTMLElement;
-    await settle();
+    await untilSrc(view);
     const img = dom.querySelector('img')!;
     img.dispatchEvent(new Event('error')); // the link expired, or the store refused it
-    await settle();
+    await untilSrc(view, 'https://files.test/2?sig=2');
     expect(fetchUrls).toHaveBeenCalledTimes(2);
-    expect(img.getAttribute('src')).toBe('https://files.test/2?sig=2');
     img.dispatchEvent(new Event('load'));
     expect(dom.dataset['state']).toBe('ready');
   });
@@ -103,12 +109,13 @@ describe('the image node view', () => {
   it('does not loop: a second failure right after a refresh says the image could not be loaded', async () => {
     const view = viewOf(SRC);
     const dom = view.dom as HTMLElement;
-    await settle();
+    await untilSrc(view);
     const img = dom.querySelector('img')!;
     img.dispatchEvent(new Event('error'));
-    await settle();
+    await untilSrc(view, 'https://files.test/2?sig=2');
     img.dispatchEvent(new Event('error'));
-    await settle();
+    await untilState(view, 'failed');
+    await turn();
     expect(fetchUrls).toHaveBeenCalledTimes(2);
     expect(dom.dataset['state']).toBe('failed');
     expect(dom.textContent).toContain("Image couldn't be loaded");
@@ -131,22 +138,20 @@ describe('the image node view', () => {
   it('allows another refresh after an image has loaded again', async () => {
     const view = viewOf(SRC);
     const dom = view.dom as HTMLElement;
-    await settle();
+    await untilSrc(view);
     const img = dom.querySelector('img')!;
     img.dispatchEvent(new Event('error'));
-    await settle();
+    await untilSrc(view, 'https://files.test/2?sig=2');
     img.dispatchEvent(new Event('load'));
     img.dispatchEvent(new Event('error'));
-    await settle();
-    expect(fetchUrls).toHaveBeenCalledTimes(3);
+    await untilCalls(3);
     expect(dom.dataset['state']).not.toBe('failed');
   });
 
   it('says so when no link comes (the server has none for the id)', async () => {
     fetchUrls.mockResolvedValueOnce(new Map());
     const view = viewOf(SRC);
-    await settle();
-    expect((view.dom as HTMLElement).dataset['state']).toBe('failed');
+    await untilState(view, 'failed');
   });
 
   it('refreshes the link by itself before it expires', async () => {
@@ -174,7 +179,7 @@ describe('the image node view', () => {
     expect(dom.textContent).toBe(text);
     expect(dom.dataset['state']).toBe('external');
     expect(dom.querySelector('img')).toBeNull();
-    await settle();
+    await turn();
     expect(fetchUrls).not.toHaveBeenCalled();
   });
 
@@ -189,7 +194,7 @@ describe('the image node view', () => {
   it('carries the title of the image onto the img, and follows a change of it', async () => {
     const titled = (title: string) => harness.view.state.schema.nodes['image']!.create({ src: SRC, alt: 'a', title });
     const view = imageView(titled('Caption'), harness.view);
-    await settle();
+    await untilSrc(view);
     const img = (view.dom as HTMLElement).querySelector('img')!;
     expect(img.getAttribute('title')).toBe('Caption');
     update(view, titled('Other'));
@@ -231,15 +236,19 @@ describe('the image node view', () => {
     let release: (m: Map<string, SignedUrl>) => void = () => undefined;
     const view = viewOf(SRC);
     const dom = view.dom as HTMLElement;
-    await settle();
+    await untilSrc(view, 'https://files.test/1?sig=1');
     fetchUrls.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
     const img = dom.querySelector('img')!;
     img.dispatchEvent(new Event('error')); // asks for a replacement, which is slow
+    await untilCalls(2); // the request is out: the answer can now be delivered
     img.dispatchEvent(new Event('error')); // fails again before it came
     expect(dom.dataset['state']).toBe('failed');
     release(new Map([[ID, link(9)]]));
-    await settle();
+    await turn(); // the answer has been delivered and handled
     expect(dom.dataset['state']).toBe('failed');
+    expect(img.getAttribute('src')).toBe('https://files.test/1?sig=1'); // the late link did not reach the image the node had
+    expect(srcOf(view)).toBeNull(); // and the node holds no image now
+    expect(dom.querySelector('img')).toBeNull();
     expect(dom.textContent).toContain("Image couldn't be loaded");
   });
 
@@ -258,7 +267,7 @@ describe('the image node view', () => {
 
   it('follows a change of the source, and keeps the same view for a change of the alt text', async () => {
     const view = viewOf(SRC, 'one');
-    await settle();
+    await untilSrc(view);
     expect(update(view, imageNode(SRC, 'two'))).toBe(true);
     expect((view.dom as HTMLElement).querySelector('img')?.getAttribute('alt')).toBe('two');
     expect(update(view, imageNode('https://evil.test/p.png'))).toBe(true);
@@ -272,15 +281,14 @@ describe('the image node view', () => {
     const view = viewOf(SRC);
     view.destroy?.();
     release(new Map([[ID, link(9)]]));
-    await settle();
+    await turn();
     expect((view.dom as HTMLElement).querySelector('img')).toBeNull();
   });
 
   it('a page with no attachments host (an editor with no page) says the image could not be loaded', async () => {
     dispose();
     const view = viewOf(SRC);
-    await settle();
-    expect((view.dom as HTMLElement).dataset['state']).toBe('failed');
+    expect((view.dom as HTMLElement).dataset['state']).toBe('failed'); // no host: failed at once
   });
 });
 
