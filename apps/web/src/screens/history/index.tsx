@@ -14,6 +14,6 @@ export default function Screen() {
   if (result.isPending) return <p role="status">Loading…</p>;
   if (result.isError && (result.data === undefined || result.data.kind === 'missing')) return <p role="alert">This page can&rsquo;t be opened right now. Reload to try again.</p>;
   if (result.data === undefined || result.data.kind === 'missing') return <NotFoundScreen />;
-  const page = { id: result.data.page.id, title: result.data.page.title === '' ? 'Untitled' : result.data.page.title };
+  const page = { id: result.data.page.id, title: result.data.page.title === '' ? 'Untitled' : result.data.page.title, myPermission: result.data.page.myPermission };
   return revisionId === undefined ? <RevisionList api={api} page={page} slug={slug} /> : <RevisionView api={api} page={page} slug={slug} revisionId={revisionId} />;
 }

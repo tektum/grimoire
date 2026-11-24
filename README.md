@@ -132,6 +132,18 @@ One version, drawn as the page would show it.
 
 The line diff between a version and the page as it is now.
 
+![Confirming a restore](docs/screenshots/m6-t07/restore-confirm-light.png)
+
+Restoring a version asks first.
+
+![The page is still being saved](docs/screenshots/m6-t07/restore-stale-light.png)
+
+A restore is refused while the page's last edits are still being saved.
+
+![A viewer's view of a version](docs/screenshots/m6-t07/viewer-light.png)
+
+A viewer can read a version and its changes, but has no Restore button.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

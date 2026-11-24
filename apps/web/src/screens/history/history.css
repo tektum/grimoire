@@ -72,3 +72,7 @@ del.history-line [data-text] {
 .history-text {
   margin-top: var(--space-4);
 }
+
+.history-actions {
+  margin-block: var(--space-3);
+}

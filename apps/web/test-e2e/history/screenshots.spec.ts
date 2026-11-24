@@ -62,3 +62,37 @@ test('the line diff with added and removed lines, light and dark', async ({ page
   await page.mouse.move(0, 0);
   await shots(page, TASK, 'diff');
 });
+
+test('the restore confirmation, light and dark', async ({ page, context }) => {
+  await signInAs(context, 'e2e-alice', 'member', { check: false });
+  await historyApi(page, STATE);
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByTestId('revision-text').locator('.ProseMirror')).toBeVisible();
+  await page.getByRole('button', { name: 'Restore this version' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Restore this version?' })).toBeVisible();
+  await shots(page, TASK, 'restore-confirm');
+});
+
+test('the message that the page is still being saved, light and dark', async ({ page, context }) => {
+  await signInAs(context, 'e2e-alice', 'member', { check: false });
+  await historyApi(page, { ...STATE, staleRestores: 1 });
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await page.getByRole('button', { name: 'Restore this version' }).click();
+  await page.getByRole('alertdialog', { name: 'Restore this version?' }).getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByRole('alert')).toHaveText('The page is still being saved. Try again in a moment.');
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'restore-stale');
+});
+
+test("a viewer's view of a version, with no Restore button, light and dark", async ({ page, context }) => {
+  await signInAs(context, 'e2e-vera', 'viewer', { check: false });
+  await historyApi(page, { ...STATE, role: 'viewer' });
+  await page.goto(`/p/${SLUG}/history/r3`);
+  await page.addStyleTag({ content: SANS });
+  await expect(page.getByTestId('revision-text').locator('.ProseMirror')).toContainText('The older wording');
+  await expect(page.getByRole('button', { name: /Restore/ })).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await shots(page, TASK, 'viewer');
+});

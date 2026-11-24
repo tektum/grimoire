@@ -1,17 +1,17 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { components } from '@tektum/grimoire-api-client';
-import { useState } from 'react';
-import { Link } from 'react-router';
+import { useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
 import { type ApiLike, NO_CACHE, queryKey } from '../../api/query';
 import { realEngine } from '../page/engine';
 import { HttpError } from '../../tree/useTree';
-import { Button } from '../../ui/primitives';
+import { Button, Confirm } from '../../ui/primitives';
 import NotFoundScreen from '../notfound';
 import { DiffView } from './DiffView';
 import './history.css';
 import type { HistoryPage } from './RevisionList';
 import { RevisionBody, type MountReadOnly } from './RevisionBody';
-import { RevisionMeta } from './RevisionMeta';
+import { formatTime, RevisionMeta } from './RevisionMeta';
 
 type WithMarkdown = Readonly<components['schemas']['RevisionWithMarkdown']>;
 type Tab = 'text' | 'changes';
@@ -28,6 +28,12 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
   readonly mount?: MountReadOnly;
 }) {
   const [tab, setTab] = useState<Tab>('text');
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [stale, setStale] = useState(false);
+  const sending = useRef(false);
   const revision = useQuery<WithMarkdown, HttpError>({
     ...NO_CACHE,
     queryKey: queryKey('GET', '/v1/pages/{id}/revisions/{rid}', { params: { path: { id: page.id, rid: revisionId } } }),
@@ -47,6 +53,31 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
       return { markdown: data ?? '', stale: response.headers.get('x-grimoire-markdown-stale') === 'true' };
     },
   });
+  /** One call. 409 `markdown_stale` (the page's last edits are not saved yet) keeps the person here with a message; the answer's Markdown goes to the page as ordinary edits (R9.6). */
+  const restore = async (): Promise<void> => {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    setStale(false);
+    try {
+      const { data, error, response } = (await api.POST('/v1/pages/{id}/revisions/{rid}/restore' as never, { params: { path: { id: page.id, rid: revisionId } } } as never)) as {
+        data?: { markdown: string };
+        error?: { error?: { code?: string } };
+        response: Response;
+      };
+      if (response.ok && data !== undefined) {
+        void client.invalidateQueries({ queryKey: queryKey('GET', '/v1/pages/{id}/revisions', { params: { path: { id: page.id } } }) });
+        void navigate(`/p/${slug}`, { state: { restoreMarkdown: data.markdown } });
+      } else if (response.status === 409 && error?.error?.code === 'markdown_stale') {
+        setStale(true);
+      }
+    } catch {
+      // The network failed: the wrapper has said so.
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  };
   if (revision.error?.status === 404 || revision.error?.status === 403) return <NotFoundScreen />;
   const back = (
     <p>
@@ -79,6 +110,12 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
       {back}
       <h1 id="screen-title">{data.title === '' ? 'Untitled' : data.title}</h1>
       <RevisionMeta revision={data} />
+      {page.myPermission === 'read-write' && (
+        <p className="history-actions">
+          <Button variant="primary" disabled={busy} onClick={() => { setAsking(true); }}>Restore this version</Button>
+        </p>
+      )}
+      {stale && <p role="alert">The page is still being saved. Try again in a moment.</p>}
       <div role="tablist" aria-label="View" className="history-tabs">
         <Button role="tab" id="tab-text" aria-selected={tab === 'text'} aria-controls="panel-text" onClick={() => { setTab('text'); }}>Text</Button>
         <Button role="tab" id="tab-changes" aria-selected={tab === 'changes'} aria-controls="panel-changes" onClick={() => { setTab('changes'); }}>Changes</Button>
@@ -106,6 +143,16 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
             </>
           )}
         </div>
+      )}
+      {asking && (
+        <Confirm
+          title="Restore this version?"
+          description={`The page will show the text of the version from ${formatTime(data.createdAt)}. The page as it is now is kept as a version first.`}
+          confirmLabel="Restore"
+          open
+          onOpenChange={(open) => { if (!open) setAsking(false); }}
+          onConfirm={() => { setAsking(false); void restore(); }}
+        />
       )}
     </section>
   );

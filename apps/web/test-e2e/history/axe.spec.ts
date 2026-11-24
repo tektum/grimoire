@@ -26,7 +26,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(page.getByRole('listitem')).toHaveCount(2);
     await expectNoAxeViolations(page, { minImpact: 'serious' });
     await page.getByRole('link', { name: /Open this version/ }).first().click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Quarterly plan' })).toBeVisible();
+    await expect(page.locator('#screen-title').filter({ hasText: 'Quarterly plan' })).toBeVisible();
     await expect(page.getByTestId('revision-text').locator('.ProseMirror')).toBeVisible();
     await expectNoAxeViolations(page, { minImpact: 'serious' });
     await page.getByRole('tab', { name: 'Changes' }).click();

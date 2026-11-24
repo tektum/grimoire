@@ -5,6 +5,9 @@ export type Revision = Readonly<components['schemas']['Revision']>;
 
 const FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
+/** A time as the screens show it. */
+export const formatTime = (epochMs: number): string => FORMAT.format(new Date(epochMs));
+
 /** Who edited, in one phrase: the last author, then the others who took part. */
 export function authorsText(revision: Revision): string {
   const last = revision.lastAuthor;
