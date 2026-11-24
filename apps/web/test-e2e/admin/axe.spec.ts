@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
-import { FIREFOX_ARIA_CRASH } from '../support/quirks';
 import { signInAs } from '../support/sign-in';
 import { adminApi } from './mock-api';
 
@@ -42,8 +41,7 @@ for (const scheme of ['light', 'dark'] as const) {
 }
 
 for (const scheme of ['light', 'dark'] as const) {
-  test(`the collection access screen has no serious or critical violation (${scheme})`, async ({ page, context, browserName }) => {
-    test.fixme(browserName === 'firefox', FIREFOX_ARIA_CRASH);
+  test(`the collection access screen has no serious or critical violation (${scheme})`, async ({ page, context }) => {
     await signInAs(context, 'e2e-alice', 'admin', { check: false });
     await adminApi(page, {
       role: 'admin',

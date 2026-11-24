@@ -29,12 +29,3 @@ export async function watchClipboard(context: BrowserContext, browserName: strin
   });
   return (page) => page.evaluate(() => ((window as unknown as { __copied?: string[] }).__copied ?? []).join('\n'));
 }
-
-/**
- * Firefox, as Playwright 1.65 ships it, crashes the page ("Page crashed") when the accessibility tree of a page that has an `aria-labelledby` region is read from two scripting worlds:
- * by axe and by a locator that goes by a label or a name, on every screen of the client (each is a section named by its title). Playwright issue 44135; fixed in Firefox 163
- * (Mozilla bug 2090055), which Playwright has not shipped. The specifications that meet it are marked with this reason for Firefox: they run in Chromium and WebKit, and the run
- * of Firefox lists them as fixme, not as passed. Take the mark off with the Playwright that ships the fix.
- */
-export const FIREFOX_ARIA_CRASH =
-  'Firefox crashes the page when its ARIA tree is read from two scripting worlds (Playwright issue 44135, Mozilla bug 2090055, fixed in Firefox 163): runs in Chromium and WebKit until Playwright ships that Firefox';

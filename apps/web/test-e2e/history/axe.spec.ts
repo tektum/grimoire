@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
-import { FIREFOX_ARIA_CRASH } from '../support/quirks';
 import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
@@ -26,8 +25,7 @@ const STATE = {
 };
 
 for (const scheme of ['light', 'dark'] as const) {
-  test(`the list, one version and its changes have no serious or critical violation (${scheme})`, async ({ page, context, browserName }) => {
-    test.fixme(browserName === 'firefox', FIREFOX_ARIA_CRASH);
+  test(`the list, one version and its changes have no serious or critical violation (${scheme})`, async ({ page, context }) => {
     await signInAs(context, 'e2e-alice', 'member', { check: false });
     await historyApi(page, STATE);
     await page.emulateMedia({ colorScheme: scheme });
