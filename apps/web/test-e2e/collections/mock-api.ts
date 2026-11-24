@@ -25,6 +25,14 @@ export interface MockTrashItem {
 export interface MockState {
   collections: MockCollection[];
   pages: FlatPage[];
+  /** The display name of the signed-in person (default: the sign-in id). */
+  userName?: string;
+  /** The collaboration address the client is told to use (default: one that nothing listens on). */
+  collabUrl?: string;
+  /** The id the first page made through the API gets (default `new1`): for a collaboration server that knows one page only. */
+  firstNewPageId?: string;
+  /** The address id of that page (default: the id padded to eight characters). */
+  firstNewPageUrlId?: string;
   /** Collections that exist but that this person may not read: reading their tree answers 404, exactly as for an id that does not exist. */
   hidden?: string[];
   /** The deleted batches, newest first, with the pages of each (the root first). Absent: an empty trash. */
@@ -59,8 +67,8 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     const { pathname } = new URL(request.url());
-    if (pathname === '/v1/config') return json(route, 200, { collabUrl: COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
-    if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: 'e2e-alice', email: 'e2e-alice@dev.invalid', role: 'member' }, cors);
+    if (pathname === '/v1/config') return json(route, 200, { collabUrl: state.collabUrl ?? COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
+    if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: state.userName ?? 'e2e-alice', email: 'e2e-alice@dev.invalid', role: 'member' }, cors);
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
     const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
     if (one_?.[1] !== undefined && request.method() === 'GET') {
@@ -102,9 +110,9 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (pathname === '/v1/pages' && request.method() === 'POST') {
       written.push('POST /v1/pages');
       created += 1;
-      const id = `new${String(created)}`;
+      const id = created === 1 && state.firstNewPageId !== undefined ? state.firstNewPageId : `new${String(created)}`;
       const parentId = (body['parentId'] as string | null | undefined) ?? null;
-      const page: FlatPage = { id, urlId: id.padEnd(8, '0'), parentId, position: 'p9999', title: (body['title'] as string | undefined) ?? '', icon: null };
+      const page: FlatPage = { id, urlId: created === 1 && state.firstNewPageUrlId !== undefined ? state.firstNewPageUrlId : id.padEnd(8, '0'), parentId, position: 'p9999', title: (body['title'] as string | undefined) ?? '', icon: null };
       state.pages = [...state.pages, page];
       renumber(siblings(parentId));
       return json(route, 201, meta(state.pages.find((p) => p.id === id) ?? page), cors);
