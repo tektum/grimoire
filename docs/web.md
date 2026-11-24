@@ -55,7 +55,9 @@ The client maps what the collab server says to what the page does in `src/editor
 | a token the server does not accept | `invalid-token` | 4401 | `invalid-token` |
 | a page that does not exist | `not-found` | 4404 | `not-found` |
 | a document name that is not a page id | `bad-document-name` | 4400 | `bad-document-name` |
+| a page that already has as many connections as the server allows (cap of one, `page-full.spec`) | `page-full` | 4413 | `page-full` |
+| a bare session token, with the handshake required (`require-handshake.spec`) | `client-too-old` | 4426 | `client-too-old` |
 
-In all three the refusal arrives first and the close follows, and the close reason repeats the refusal reason. Every reason has a row in the mapping, and the spec checks, for each of the three, that the socket is closed, that the close reason equals the refusal reason, and that the close is handled exactly as the refusal is (same behaviour and text).
+In each the close reason repeats the refusal reason. A server that requires the handshake answers a token that is not a handshake token with `client-too-old`, not `invalid-token`. Every reason has a row in the mapping, and each spec checks that the socket is closed, that the close reason equals the refusal reason, and that the close is handled exactly as the refusal is (same behaviour and text).
 
-The other signals (`forbidden`, `access-changed`, `session-expired`, `page-full`) are not in this table: the probe does not produce them, so nothing is recorded for them here.
+The other signals (`access-changed`, `session-expired`) are not in this table. `session-expired` cannot occur on the test stack (the development sign-in has no expiry), so the client's answer to it is driven by a scripted server (`signal-rows.spec.ts`) and the connection manager's unit tests.

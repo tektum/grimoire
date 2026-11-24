@@ -33,7 +33,7 @@ test.describe('a server that requires the handshake', () => {
           await bare.goto('/');
           const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
           const seen = await probe(bare, { collabUrl: config.collabUrl, documentName: made.id, handshake: buildDevToken(devSecret(), 'e2e-bare', 'member') });
-          expect(seen.denied, 'the bare token is refused').not.toBeNull();
+          expect(seen.denied, 'the bare token is refused as coming from a client that is too old (one that sends no handshake)').toBe('client-too-old');
           expect(seen.close, 'and the socket is closed').not.toBeNull();
           expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! }).behaviour).not.toBe('IGNORE');
           console.log(`require-handshake observed ${JSON.stringify(seen)}`);
