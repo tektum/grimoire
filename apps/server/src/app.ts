@@ -49,10 +49,11 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   // Only an error raised on purpose (`fail`) keeps its answer, and a refused request body answers 422; anything else is an unexpected failure and answers 503 with a fixed sentence.
   const handle = (err: unknown, c: Context): Response => {
     const response = err instanceof ApiError ? err.getResponse() : isBodyRefusal(err) ? errorResponse('invalid') : errorResponse('unavailable');
-    const origin = errorOrigin(err);
-    const fields = { errorName: errorName(err), method: c.req.method, route: routePath(c), status: response.status, ...(origin === undefined ? {} : { origin }) };
-    if (response.status >= 500) ctx.log.error('http.handler_error', fields);
-    else ctx.log.warn('http.handler_rejected', fields);
+    const fields = { errorName: errorName(err), method: c.req.method, route: routePath(c), status: response.status };
+    if (response.status >= 500) {
+      const origin = errorOrigin(err);
+      ctx.log.error('http.handler_error', origin === undefined ? fields : { ...fields, origin });
+    } else ctx.log.warn('http.handler_rejected', fields);
     return response;
   };
   app.onError(handle);
