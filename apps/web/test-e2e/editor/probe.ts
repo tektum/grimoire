@@ -65,6 +65,7 @@ export async function probe(page: Page, options: { collabUrl: string; documentNa
           }
         } catch {
           seen.malformed = true; // a frame the probe cannot read is reported, not waited on
+          resolve(seen);
         }
       };
       socket.onclose = (event) => {
