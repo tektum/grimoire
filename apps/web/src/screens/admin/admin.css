@@ -102,28 +102,6 @@
 .admin-table th:nth-child(4) {
   width: 5.5rem;
 }
-/* A narrow window: the columns that hold a control keep the room it needs, the name takes the rest and wraps, and the cells give up their side padding. */
-@media (max-width: 40rem) {
-  .admin-table th,
-  .admin-table td {
-    padding-inline: var(--space-1);
-  }
-  .admin-table th:nth-child(2) {
-    width: 3.5rem;
-  }
-  .admin-table th:nth-child(3) {
-    width: 6.25rem;
-  }
-  .admin-table th:nth-child(4) {
-    width: 5rem;
-  }
-  .admin-table select {
-    font-size: 0.85rem;
-  }
-  .admin-table td button {
-    padding-inline: var(--space-1);
-  }
-}
 .admin-table td button,
 .admin-table select {
   overflow-wrap: normal; /* the cells break a long name anywhere; a control keeps its words whole */
@@ -187,4 +165,26 @@
 }
 .admin-list a[aria-current='true'] {
   font-weight: 600;
+}
+/* Last in the file, so that it wins over the rules above (equal specificity, later wins). A narrow window: the columns that hold a control keep the room it needs, the name takes the rest and wraps, and the cells give up their side padding. */
+@media (max-width: 40rem) {
+  .admin-table th,
+  .admin-table td {
+    padding-inline: var(--space-1);
+  }
+  .admin-table th:nth-child(2) {
+    width: 3.5rem;
+  }
+  .admin-table th:nth-child(3) {
+    width: 6.25rem;
+  }
+  .admin-table th:nth-child(4) {
+    width: 5rem;
+  }
+  .admin-table select {
+    font-size: 0.85rem;
+  }
+  .admin-table td button {
+    padding-inline: var(--space-1);
+  }
 }

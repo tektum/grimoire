@@ -51,6 +51,8 @@ test('the access table, with its rows, fits at 320 pixels: every control is insi
         label: c.getAttribute('aria-label') ?? '',
         ...(c.getBoundingClientRect().toJSON() as { left: number; right: number; top: number; height: number }),
         cellRight: (c.closest('td') as HTMLElement).getBoundingClientRect().right,
+        tag: c.tagName,
+        fontSize: getComputedStyle(c).fontSize,
       })),
     );
     expect(boxes.length).toBe(4);
@@ -58,6 +60,7 @@ test('the access table, with its rows, fits at 320 pixels: every control is insi
       expect(box.right, `${box.label} ends inside the window`).toBeLessThanOrEqual(320);
       expect(box.right, `${box.label} ends inside its own cell`).toBeLessThanOrEqual(box.cellRight);
       expect(box.height, `${box.label} is one line (its text is not broken up)`).toBeLessThanOrEqual(44);
+      if (box.tag === 'SELECT') expect(box.fontSize, `${box.label} has the smaller text of the narrow window (its rule is not overridden)`).toBe('13.6px');
     }
     const rows = [boxes.slice(0, 2), boxes.slice(2)];
     for (const [choice, remove] of rows) expect(choice!.right, `${choice!.label} ends before ${remove!.label}`).toBeLessThanOrEqual(remove!.left);
