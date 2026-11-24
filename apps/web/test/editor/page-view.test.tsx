@@ -193,11 +193,11 @@ describe('the page screen', () => {
     expect(screen.queryByText(STALE_TEXT)).toBeNull();
   });
 
-  it('puts the status in the line under the title: Connecting, then Live, then the offline text', async () => {
+  it('puts the status in the line under the title: Connecting, then Saved', async () => {
     const t = mountPage();
     expect(screen.getByRole('status').textContent).toBe('Connecting…');
     await t.synced();
-    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Live'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Saved'));
     expect(screen.getByRole('status').getAttribute('data-state')).toBe('synced');
   });
 

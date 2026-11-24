@@ -164,6 +164,14 @@ In a table, the controls to add or delete a row or a column sit right under it, 
 
 In a code block, a select below it sets the language written after the fence.
 
+![The status line under a page title: Saving](docs/screenshots/m6-t06/saving-light.png)
+
+The line under the title says Saving while changes wait for the server, Saved once it has them, and (below) what it is when the connection is gone.
+
+![The status line when the connection is lost](docs/screenshots/m6-t06/offline-light.png)
+
+After ten seconds without a connection: the changes are kept in the tab.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

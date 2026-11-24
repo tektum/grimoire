@@ -5,6 +5,7 @@ import { ConnectionManager, type ConnectionState } from '../../editor/core/conne
 import type { MountedEditor } from '../../editor/core/mount';
 import { log } from '../../logging';
 import { Outline } from '../../outline';
+import { StatusLine } from '../../status';
 import { useSession } from '../../auth/session';
 import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
@@ -39,7 +40,7 @@ const queue = (element: HTMLElement, step: () => Promise<void>): Promise<void> =
 /** The default of `hiddenDisconnectMs` (10 minutes), when the session carries none. */
 const DEFAULT_HIDDEN_DISCONNECT_MS = 600_000;
 
-const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, copy: null, generation: 0, suspended: false };
+const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, unsynced: 0, copy: null, generation: 0, suspended: false };
 
 export function PageView({ page, engine = realEngine, onReplaced }: { page: PageMeta; engine?: Engine; onReplaced?: () => void }) {
   const session = useSession();
@@ -224,8 +225,6 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   }, [page.id, session, engine]);
 
   const collab: CollabState = state.stopped !== null ? 'stopped' : state.suspended ? 'disconnected' : state.offline ? 'offline' : liveReady && state.phase === 'synced' ? 'synced' : 'connecting';
-  // The 'Read only' text of the scope is the label beside the title, not a second line of status.
-  const status = (state.text === 'Read only' ? null : state.text) ?? (collab === 'synced' ? 'Live' : collab === 'connecting' ? 'Connecting…' : null);
 
   // The server says the page is not there any more (removed while it was open): the not-found screen, with the editor out of sight and nothing more sent.
   if (state.stopped === 'not-found') return <PageNotFound />;
@@ -245,9 +244,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
             </Button>
           ) : null}
         </header>
-        <p className="page-status" role="status" data-state={collab}>
-          {status}
-        </p>
+        <StatusLine state={{ ...state, readOnly }} collab={collab} />
         {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}

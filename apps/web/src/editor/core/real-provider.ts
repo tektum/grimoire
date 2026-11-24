@@ -24,6 +24,7 @@ export function createLiveSession(options: { url: string; pageId: string; token:
   });
   provider.on('authenticated', ({ scope }: { scope: string }) => emit({ type: 'authenticated', scope: scope === 'readonly' ? 'readonly' : 'read-write' }));
   provider.on('synced', () => emit({ type: 'synced' }));
+  provider.on('unsyncedChanges', ({ number }: { number: number }) => emit({ type: 'unsynced', count: number }));
   provider.on('authenticationFailed', ({ reason }: onAuthenticationFailedParameters) => emit({ type: 'authenticationFailed', reason }));
   provider.on('close', ({ event }: onCloseParameters) => emit({ type: 'close', code: event.code, ...(event.reason === '' ? {} : { reason: event.reason }) }));
   provider.on('stateless', ({ payload }: onStatelessParameters) => emit({ type: 'stateless', payload }));
