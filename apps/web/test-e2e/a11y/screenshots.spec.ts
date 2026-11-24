@@ -28,6 +28,15 @@ for (const reduced of [false, true]) {
   });
 }
 
+test('the contents tree in a window 320 pixels wide (a page at 400% zoom)', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await signInAs(context, 'e2e-alice', 'member', { check: false });
+  await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
+  await page.goto('/c/c1');
+  await expect(page.getByRole('treeitem')).toHaveCount(4);
+  await shots(page, TASK, 'narrow-320', { width: 320 });
+});
+
 test('the Move to dialog with the focus on a choice', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
   await signInAs(context, 'e2e-alice', 'member', { check: false });
