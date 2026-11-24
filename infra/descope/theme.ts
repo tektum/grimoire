@@ -33,12 +33,17 @@ export const mix = (hex: string, withHex: string, amount: number): string => {
   const b = channels(withHex);
   return toHex(a.map((v, i) => v + ((b[i] ?? 0) - v) * amount));
 };
-const luminance = (hex: string): number => {
+export const luminance = (hex: string): number => {
   const [r, g, b] = channels(hex).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }) as [number, number, number];
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
-/** Black or white, whichever reads better on `hex`. */
-export const contrastOn = (hex: string): string => (luminance(hex) > 0.4 ? '#000000' : '#ffffff');
+/** The WCAG contrast ratio of two colours (1 to 21). */
+export const contrastRatio = (a: string, b: string): number => {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (light + 0.05) / (dark + 0.05);
+};
+/** Black or white, whichever reads better on `hex`: the two give the same contrast at a luminance of about 0.179, so the one above it takes black. */
+export const contrastOn = (hex: string): string => (contrastRatio(hex, '#000000') >= contrastRatio(hex, '#ffffff') ? '#000000' : '#ffffff');
 
 const palette = (main: string) => ({ main, dark: mix(main, '#000000', 0.3), light: mix(main, '#ffffff', 0.25), highlight: mix(main, '#ffffff', 0.5), contrast: contrastOn(main) });
 const family = (stack: string): string[] => stack.split(',').map((f) => f.trim().replace(/^'(.*)'$/, '$1')).filter(Boolean);

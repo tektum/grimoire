@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { projectConfig, readFlows } from '../../../infra/descope/config.ts';
-import { buildStyles, contrastOn, mix, parseTokens, readTokens } from '../../../infra/descope/theme.ts';
+import { buildStyles, contrastOn, contrastRatio, mix, parseTokens, readTokens } from '../../../infra/descope/theme.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (path) => readFileSync(`${root}${path}`, 'utf8');
@@ -35,6 +37,35 @@ test('the shades are derived from the accent, and the contrast colour is the one
   const primary = buildStyles(tokens).styles.light.globals.colors.primary;
   assert.deepEqual(Object.keys(primary), ['main', 'dark', 'light', 'highlight', 'contrast']);
   assert.throws(() => mix('blue', '#fff', 0.5), /#rrggbb/);
+});
+
+test('the text colour on every palette reaches the WCAG minimum of 4.5 to 1, in both modes (the crossover is a luminance of about 0.179, not 0.4)', () => {
+  const { styles } = buildStyles(tokens);
+  for (const mode of ['light', 'dark']) {
+    for (const [name, palette] of Object.entries(styles[mode].globals.colors)) {
+      assert.ok(contrastRatio(palette.main, palette.contrast) >= 4.5, `${mode} ${name}: ${palette.contrast} on ${palette.main}`);
+    }
+  }
+  assert.equal(contrastOn('#a39d8f'), '#000000'); // the dark-mode muted colour: black reads at about 7.8 to 1, white at 2.7 to 1
+  assert.equal(contrastOn('#767676'), '#000000'); // a mid grey just above the crossover (luminance 0.181) takes black
+  assert.equal(contrastOn('#757575'), '#ffffff'); // and just below it (0.178) white
+  assert.ok(Math.abs(contrastRatio('#ffffff', '#000000') - 21) < 1e-9);
+});
+
+test('every flow file of the folder is a flow of the project, and an empty folder or a file that is not JSON stops the run', () => {
+  const dir = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), 'grimoire-flows-'));
+  try {
+    mkdirSync(join(dir, 'infra/descope/flows'), { recursive: true });
+    assert.throws(() => readFlows(dir), /has no flow/);
+    cpSync(`${root}infra/descope/flows/sign-up-or-in.json`, join(dir, 'infra/descope/flows/sign-up-or-in.json'));
+    cpSync(`${root}infra/descope/flows/sign-up-or-in.json`, join(dir, 'infra/descope/flows/step-up.json'));
+    writeFileSync(join(dir, 'infra/descope/flows/README.md'), 'not a flow');
+    assert.deepEqual(Object.keys(readFlows(dir)), ['sign-up-or-in', 'step-up']);
+    writeFileSync(join(dir, 'infra/descope/flows/broken.json'), '{ not json');
+    assert.throws(() => readFlows(dir), SyntaxError);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('the development project is made and named by code, for local runs', () => {

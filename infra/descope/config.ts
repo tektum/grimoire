@@ -1,6 +1,6 @@
 // What each stage's Descope project is made of, as plain data (no SST, no network), so it can be tested. `project.ts` turns it into resources.
 // Everything in a project is code here: nothing is edited in the console, and no role, permission or tenant is created, because the product authorizes with its own database.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildStyles, readTokens } from './theme.ts';
 import type { TokenSets } from './theme.ts';
@@ -27,10 +27,15 @@ const HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
 
 const stageNames: Record<DescopeStage, string> = { 'descope-dev': 'Grimoire development', staging: 'Grimoire staging' };
 
-/** The flows of a project: file name (without `.json`) is the flow id; the content is the console's export of the flow, as JSON text. */
+/**
+ * The flows of a project: every `.json` file of `infra/descope/flows`, the file name (without `.json`) being the flow id and the content the console's export of the flow, as JSON text.
+ * An empty folder is an error, and a file that is not JSON stops the run, so a flow added to the folder is deployed or the deploy fails.
+ */
 export function readFlows(repoRoot: string = process.cwd()): Record<string, string> {
   const dir = path.join(repoRoot, 'infra/descope/flows');
-  return Object.fromEntries(['sign-up-or-in'].map((id) => [id, JSON.stringify(JSON.parse(readFileSync(path.join(dir, `${id}.json`), 'utf8')))]));
+  const files = readdirSync(dir).filter((name) => name.endsWith('.json')).sort();
+  if (files.length === 0) throw new Error(`${dir} has no flow: a project needs its sign-in flow`);
+  return Object.fromEntries(files.map((name) => [name.slice(0, -'.json'.length), JSON.stringify(JSON.parse(readFileSync(path.join(dir, name), 'utf8')))]));
 }
 
 export function projectConfig(stage: DescopeStage, options: { readonly stagingDomain?: string | undefined; readonly tokens?: TokenSets; readonly flows?: Record<string, string> } = {}): ProjectConfig {
