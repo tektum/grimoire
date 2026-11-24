@@ -191,7 +191,7 @@ const webBrowserApiRules = [
 ];
 
 export default defineConfig([
-  globalIgnores(["reference/**", "**/node_modules/**", "**/dist/**", "**/coverage/**", "packages/core/test/boundaries/fixtures/**"]),
+  globalIgnores(["reference/**", "**/node_modules/**", "**/dist/**", "**/coverage/**", "**/.tsbuild/**", "packages/core/test/boundaries/fixtures/**"]),
   tseslint.configs.recommended,
   // Every workspace package: no relative reach into other packages, no computed dynamic imports.
   ...scope(["apps/**", "packages/**"], restrictedImports(), [], nonLiteralExempt),

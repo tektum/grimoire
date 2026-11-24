@@ -22,6 +22,7 @@ function fakeBuild(files: Record<string, string> = {}, { config = true }: { conf
   mkdirSync(path.join(dist, 'assets'));
   writeFileSync(path.join(dist, 'index.html'), '<!doctype html><script type="module" src="./assets/index.js"></script>');
   writeFileSync(path.join(dist, 'assets/index.js'), 'console.log("app")');
+  writeFileSync(path.join(dist, 'login.html'), '<!doctype html><script type="module" src="./assets/login.js"></script>');
   if (config) writeFileSync(path.join(dist, 'config.json'), '{}');
   for (const [name, text] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(dist, name)), { recursive: true });
@@ -53,6 +54,11 @@ describe('check-build', () => {
     expect(checkBuild(html).join('\n')).toContain('index.html has an absolute /assets/ path');
     const chunk = fakeBuild({ 'assets/index.js': 'import("/assets/other.js")' });
     expect(checkBuild(chunk).join('\n')).toContain('assets/index.js has an absolute');
+  });
+  it('fails when login.html is missing: the sign-in screen is its own document', () => {
+    const dist = fakeBuild();
+    rmSync(path.join(dist, 'login.html'));
+    expect(checkBuild(dist).join('\n')).toContain('login.html is missing');
   });
   it('fails when config.json or index.html is missing', () => {
     expect(checkBuild(fakeBuild({}, { config: false })).join('\n')).toContain('config.json is missing');

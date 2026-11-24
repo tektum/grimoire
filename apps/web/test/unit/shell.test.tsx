@@ -9,7 +9,6 @@ import { ROUTES } from '../../src/app/routes';
 
 describe('shell and screens', () => {
   it.each([
-    ['/login', 'Sign-in'],
     ['/c/c1', 'Collection'],
     ['/p/a-b1', 'Page'],
     ['/p/a-b1/history', 'History'],
@@ -28,6 +27,18 @@ describe('shell and screens', () => {
     expect(screen.getByLabelText('Contents')).toBeTruthy();
     expect(screen.getByRole('main')).toBeTruthy();
   });
+  it('sends /login to the sign-in document, keeping the query string', async () => {
+    const replace = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...original, search: '?return=%2Fp%2Fx', replace } });
+    try {
+      render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/login?return=%2Fp%2Fx'] })} />);
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('login.html?return=%2Fp%2Fx'));
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
+  });
+
   it('has a screen for every row of the route table', () => {
     expect(routeObjects()[0]?.children?.length).toBe(ROUTES.length + 1);
   });

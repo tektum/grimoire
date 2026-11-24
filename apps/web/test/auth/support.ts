@@ -17,7 +17,7 @@ export function fakeSdkStorage(initial: Record<string, string> = {}) {
 }
 
 export const config = (over: Partial<ServerConfig> = {}): ServerConfig =>
-  ({ collabUrl: 'ws://x', minClientVersion: '0.0.0', local: true, providerProjectId: null, fileStoreOrigin: null, ...over }) as ServerConfig;
+  ({ collabUrl: 'ws://x', minClientVersion: '0.0.0', local: true, providerProjectId: null, providerBaseUrl: null, fileStoreOrigin: null, ...over }) as ServerConfig;
 
 /** A JWT (unsigned: the client only reads `exp`) ending at `exp` seconds since the epoch. */
 export const jwt = (exp: number): string => `${btoa('{"alg":"none"}')}.${btoa(JSON.stringify({ exp })).replace(/=+$/, '')}.sig`;
@@ -50,16 +50,19 @@ export function fakeSdk(token: string, isExpired = false, storageKeys: () => str
   };
   return sdk;
 }
-export const moduleOf = (sdk: DescopeSdk): { module: DescopeModule; projectIds: string[] } => {
+export const moduleOf = (sdk: DescopeSdk): { module: DescopeModule; projectIds: string[]; baseUrls: (string | undefined)[] } => {
   const projectIds: string[] = [];
+  const baseUrls: (string | undefined)[] = [];
   return {
     module: {
-      create: ({ projectId }) => {
+      create: ({ projectId, baseUrl }) => {
         projectIds.push(projectId);
+        baseUrls.push(baseUrl);
         return sdk;
       },
     },
     projectIds,
+    baseUrls,
   };
 };
 /** Spies on every console method; `calls()` is every argument of every call as text. */

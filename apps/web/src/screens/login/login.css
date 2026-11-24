@@ -1,0 +1,53 @@
+.login {
+  max-width: 26rem;
+  margin: var(--space-6) auto;
+  padding: 0 var(--space-4);
+}
+.login h1 {
+  margin-bottom: var(--space-4);
+}
+.login-notice {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+}
+.login-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+}
+.login-form h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.login-form label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.login-form input,
+.login-form select {
+  font: inherit;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--paper);
+  color: var(--ink);
+}
+/* A notice that something failed: a bordered block, like the other notices, and the one inside the form has no margin of its own. */
+.login-error {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+  font-weight: 600;
+}
+.login-form .login-error {
+  margin: 0;
+}

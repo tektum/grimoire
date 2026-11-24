@@ -25,7 +25,8 @@ export interface DescopeSdk {
   logout(): Promise<unknown>;
 }
 export interface DescopeModule {
-  create(config: { projectId: string }): DescopeSdk;
+  /** `baseUrl` is the endpoint of a regional project (`providerBaseUrl` of the configuration), absent for the default region. */
+  create(config: { projectId: string; baseUrl?: string }): DescopeSdk;
 }
 
 /** The keys the identity provider's SDK keeps in local storage (session and refresh token). They are removed on sign-out. */
@@ -101,7 +102,8 @@ export function createAuth(o: CreateAuthOptions): Auth {
   const descope = (): Promise<DescopeSdk> => {
     const projectId = o.config.providerProjectId;
     if (projectId === null) return Promise.reject(new Error('No sign-in project is configured'));
-    sdk ??= o.loadDescope().then((m) => m.create({ projectId }));
+    const baseUrl = o.config.providerBaseUrl ?? null;
+    sdk ??= o.loadDescope().then((m) => m.create({ projectId, ...(baseUrl === null ? {} : { baseUrl }) }));
     return sdk;
   };
 

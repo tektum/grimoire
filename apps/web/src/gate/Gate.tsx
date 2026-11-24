@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { type GateOptions, type GateState, loadServerConfig, type ServerConfig } from './config';
 import { GATE_MESSAGES } from './messages';
+import './gate.css';
 import { useClientOutdated } from './outdated';
 
 /** Shows one plain message and nothing else: the gate's states before the app, and the reload text. */

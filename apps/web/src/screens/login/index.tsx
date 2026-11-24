@@ -1,9 +1,9 @@
-/** Placeholder until the screen's own task fills this folder. */
+import { useEffect } from 'react';
+
+/** The sign-in screen is its own document (`login.html`, so the third-party scripts of the provider never load in the app); the route sends the browser there. */
 export default function Screen() {
-  return (
-    <section aria-labelledby="screen-title">
-      <h1 id="screen-title">Sign-in</h1>
-      <p>This screen is not built yet.</p>
-    </section>
-  );
+  useEffect(() => {
+    window.location.replace(`login.html${window.location.search}`);
+  }, []);
+  return <p>Opening the sign-in page</p>;
 }
