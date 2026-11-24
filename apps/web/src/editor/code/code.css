@@ -1,0 +1,17 @@
+.code-language-bar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: calc(var(--space-2) * -1) 0 var(--space-4);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.code-language {
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+}
