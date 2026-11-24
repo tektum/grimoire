@@ -193,7 +193,10 @@ test-web-e2e: dev-secret
 	bun install --frozen-lockfile
 	bun run build
 	cd apps/web && bunx vite build --mode e2e
-	$(WEB_COMPOSE) $(MAKE) up
+	# The upload specs PUT from the page straight to the file store: the application signs links for the address the browser reaches the store at, and the store's
+	# CORS rule allows the origin the page is served from (the web port of this run besides the application's own).
+	GRIMOIRE_S3_PUBLIC_ENDPOINT=http://127.0.0.1:8333 $(WEB_COMPOSE) $(MAKE) up
+	GRIMOIRE_ALLOWED_ORIGINS="http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:$${E2E_WEB_PORT:-4173},http://localhost:$${E2E_WEB_PORT:-4173}" $(MAKE) files-setup
 	E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" bunx playwright test -c apps/web/playwright.config.ts --project=chromium
 
 # Later milestones that run after this one and are not ordered against each other keep their targets in mk/test-mN.mk.
