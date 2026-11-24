@@ -2,12 +2,24 @@ import { expect, test, type Page } from '@playwright/test';
 import { scriptedCollabServer, type ScriptedCollabServerOptions } from '../support/collab-server';
 import { signInAs } from '../support/sign-in';
 import { recordHandshakes } from './handshakes';
+import { probe } from './probe';
 import { scriptedApi, useScriptedApi } from './scripted';
 
 /**
  * The rows of the signal table that the real server cannot be made to produce from a browser spec (`forbidden`, `access-changed`, `session-expired`,
  * `page-full`) are driven here by a scripted collaboration server, with the app in a real browser: each says what the page shows and does.
  */
+/**
+ * A later sentinel event: after the page's own attempts (made on a clock the test moves, over a real socket that reaches the server a moment later), a socket
+ * of the test's own is refused by the same scripted server. Its token arriving means the server has taken everything the page sent before it; what
+ * counts for the checks is the tokens that are not the sentinel's.
+ */
+const SENTINEL = 'sentinel';
+async function settledTokens(page: Page, collab: { url: string; tokens: string[] }): Promise<string[]> {
+  await probe(page, { collabUrl: collab.url, documentName: SENTINEL, handshake: SENTINEL, stopAtRefusal: true });
+  return collab.tokens.filter((token) => token !== SENTINEL);
+}
+
 async function withPage(
   browser: import('@playwright/test').Browser,
   baseURL: string | undefined,
@@ -39,7 +51,7 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
       await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
       expect(collab.tokens).toHaveLength(1);
       await page.clock.runFor(10 * 60_000); // any retry would have fired
-      expect(collab.tokens).toHaveLength(1);
+      expect(await settledTokens(page, collab), 'no second attempt').toHaveLength(1);
     });
   });
 
@@ -48,9 +60,9 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
       await expect(page.getByText('This page already has 100 people editing. Try again in a moment.')).toBeVisible();
       expect(collab.tokens).toHaveLength(1);
       await page.clock.runFor(9_000);
-      expect(collab.tokens).toHaveLength(1);
+      expect(await settledTokens(page, collab), 'no attempt before the 10 s are up').toHaveLength(1);
       await page.clock.runFor(25_000); // the wait is at least 10 s, and grows with each refusal
-      await expect.poll(() => collab.tokens.length).toBeGreaterThanOrEqual(2);
+      await expect.poll(() => collab.tokens.filter((token) => token !== SENTINEL).length).toBeGreaterThanOrEqual(2); // the sentinel's own token is not an attempt of the page
     });
   });
 
@@ -71,7 +83,8 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
       collab.closeAll(4401, 'session-expired');
       await page.clock.runFor(5_000);
       await expect(page).toHaveURL(/\/login\?return=%2Fp%2Fscripted-abc123&reason=expired/);
-      expect(collab.tokens).toHaveLength(1); // no attempt with a token that is known to be expired
+      await expect.poll(() => collab.sockets(), { message: 'the page is gone and its socket with it' }).toBe(0);
+      expect(collab.tokens, 'no attempt with a token that is known to be expired').toHaveLength(1);
     });
   });
 });
