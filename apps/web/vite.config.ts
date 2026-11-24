@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
+import { staticNoticeCss } from './vite/static-notice-css';
 
 // Static files only: `base: './'` keeps every asset path relative, so any static host can serve the output (R11.23).
 // Build modes: `production` (the default), `e2e` and `development`. The development sign-in exists in the last two only (contracts section 4).
@@ -19,7 +20,7 @@ const loginDocument = (): Plugin => {
 
 export default defineConfig(({ mode }) => ({
   base: './',
-  plugins: [react(), tailwindcss(), loginDocument()],
+  plugins: [staticNoticeCss(), react(), tailwindcss(), loginDocument()],
   define: {
     __GRIMOIRE_DEV_SIGNIN__: JSON.stringify(mode === 'e2e' || mode === 'development'),
   },
