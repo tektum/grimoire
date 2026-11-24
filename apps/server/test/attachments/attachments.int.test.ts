@@ -115,12 +115,12 @@ describe('POST /v1/attachments on the real database', () => {
 
   it('removes the stored objects when the page is deleted and purged, before the rows', async () => {
     const created = (await (await call('member', 'POST', '/v1/attachments', meta())).json()) as { id: string };
-    await files.put(`attachments/${created.id}`, PNG, { size: PNG.length, contentType: 'image/png' });
+    await files.put(`tenants/legacy/attachments/${created.id}`, PNG, { size: PNG.length, contentType: 'image/png' });
     expect((await call('member', 'POST', `/v1/attachments/${created.id}/complete`)).status).toBe(200);
-    await expect(files.head(`attachments/${created.id}`)).resolves.toMatchObject({ size: PNG.length });
+    await expect(files.head(`tenants/legacy/attachments/${created.id}`)).resolves.toMatchObject({ size: PNG.length });
     expect((await call('member', 'DELETE', `/v1/pages/${pageId}`)).status).toBeLessThan(300);
     expect((await call('admin', 'DELETE', `/v1/trash/${pageId}`)).status).toBeLessThan(300);
-    await expect(files.head(`attachments/${created.id}`)).rejects.toMatchObject({ kind: 'not-found' });
+    await expect(files.head(`tenants/legacy/attachments/${created.id}`)).rejects.toMatchObject({ kind: 'not-found' });
     expect(Number(((await run(`select count(*) as n from attachments where page_id = '${pageId}'`)) as { n: string }[])[0]?.n)).toBe(0);
   });
 });
@@ -133,7 +133,7 @@ describe('a purge on the real store', () => {
     const collection = await insertCollection(run, { default_permission: 'read_write' });
     const page = await insertPage(run, { collection_id: collection });
     const created = (await (await realCall('member', 'POST', '/v1/attachments', { pageId: page, fileName: 'a.png', contentType: 'image/png', size: PNG.length })).json()) as { id: string; upload: { url: string; headers: Record<string, string> } };
-    const key = `attachments/${created.id}`;
+    const key = `tenants/legacy/attachments/${created.id}`;
     const sent = await fetch(created.upload.url, { method: 'PUT', headers: created.upload.headers, body: PNG });
     expect(sent.status).toBeLessThan(300);
     expect((await realCall('member', 'POST', `/v1/attachments/${created.id}/complete`)).status).toBe(200);
@@ -153,7 +153,7 @@ describe('a purge that the store fails half-way', () => {
     const ids: string[] = [];
     for (let i = 0; i < 2; i += 1) {
       const made = (await (await call('member', 'POST', '/v1/attachments', { pageId: page, fileName: `f${String(i)}.png`, contentType: 'image/png', size: PNG.length })).json()) as { id: string };
-      await files.put(`attachments/${made.id}`, PNG, { size: PNG.length, contentType: 'image/png' });
+      await files.put(`tenants/legacy/attachments/${made.id}`, PNG, { size: PNG.length, contentType: 'image/png' });
       expect((await call('member', 'POST', `/v1/attachments/${made.id}/complete`)).status).toBe(200);
       ids.push(made.id);
     }
