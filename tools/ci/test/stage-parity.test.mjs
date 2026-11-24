@@ -67,9 +67,14 @@ test('the staging stack declares exactly what it declared before the stages were
   assert.equal(golden.length, 26);
 });
 
+test('no two stages share a project name: Descope refuses a second project of a name that exists', () => {
+  const names = Object.values(stages).map((s) => s.name);
+  assert.equal(new Set(names).size, names.length);
+});
+
 test('the dev stack declares the same resources as the staging one: they differ in the address, the project\'s name and tag, and the size of the task, and in nothing else', () => {
   const normal = (calls, domain, cpu, name, tag) => JSON.stringify(calls).replaceAll(domain, 'DOMAIN').replaceAll(cpu, 'CPU').replaceAll(name, 'NAME').replaceAll(`"${tag}"`, '"TAG"').replaceAll('"127.0.0.1","localhost"', '').replace(/,\]/g, ']').replace(/\[,/g, '[').replace(/,,/g, ',');
-  const dev = normal(record('dev', 'dev.example.test'), 'dev.example.test', '0.25 vCPU', 'Grimoire development', 'development');
+  const dev = normal(record('dev', 'dev.example.test'), 'dev.example.test', '0.25 vCPU', 'Grimoire dev stage', 'development');
   const staging = normal(record('staging', 'dev.example.test'), 'dev.example.test', '0.5 vCPU', 'Grimoire staging', 'staging');
   assert.equal(dev, staging);
 });
