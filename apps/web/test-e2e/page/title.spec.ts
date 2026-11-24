@@ -116,17 +116,16 @@ test('a title saved by leaving the field for another page in the tree does not t
   await page.getByRole('link', { name: 'Notes', exact: true }).click(); // leaving the field saves it; the click opens the other page
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/);
   await expect(heading(page)).toHaveText('Notes');
-  // What the page has seen, in order: the answer to the rename, then the answer of the tree read that ends the rename (`rename` waits for it before the page decides about the address).
-  const seen: string[] = [];
-  page.on('response', (response) => {
-    const method = response.request().method();
-    if (method === 'PATCH' && response.url().endsWith('/v1/pages/a')) seen.push('rename answered');
-    else if (method === 'GET' && response.url().endsWith('/v1/collections/c1/tree') && seen.includes('rename answered')) seen.push('tree read after the rename');
+  // The page logs what it decided when the rename ends (`web.title_rename_settled`): the test waits for that, not for a time, and the decision itself is asserted (the address was not moved).
+  const settled: { page?: string; verdict?: string; moved?: boolean }[] = [];
+  page.on('console', (message) => {
+    const text = message.text();
+    if (text.includes('web.title_rename_settled')) settled.push(JSON.parse(text) as { page?: string; verdict?: string; moved?: boolean });
   });
   release();
-  await expect.poll(() => seen.includes('tree read after the rename')).toBe(true);
+  await expect.poll(() => settled.length).toBe(1);
+  expect(settled[0]).toMatchObject({ page: 'a', verdict: 'applied', moved: false });
   await expect.poll(() => names(page)).toEqual(['Renamed', 'Notes']);
-  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))); // what the answer set going has been handled
   expect(api.writes()).toEqual(['PATCH /v1/pages/a']);
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/); // the renamed page's address did not replace this one
   await expect(heading(page)).toHaveText('Notes');

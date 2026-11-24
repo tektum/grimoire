@@ -18,7 +18,7 @@ import { recheckMinClientVersion } from '../../gate/recheck';
 import { notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
-import { latestOnly } from './latest';
+import { latestOnly, verdictOf } from './latest';
 import { PageMenu } from './PageMenu';
 import { PageTitle } from './PageTitle';
 import { type PageResult, titled } from './usePage';
@@ -103,13 +103,17 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     const pressedAt = hereKey.current;
     const isLatest = beginRename();
     const outcome = await treeActions.rename(page.id, title);
-    if (!outcome.ok) return false;
-    if (!isLatest()) return true; // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
-    // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
-    client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
-    // The address is changed only if the person is still on this page, where they pressed Enter (the key of the location; none once the page is gone): they may have gone elsewhere meanwhile.
-    if (hereKey.current === pressedAt) navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
-    return true;
+    const verdict = verdictOf(isLatest, outcome.ok); // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
+    let moved = false;
+    if (verdict === 'applied') {
+      // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
+      client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
+      // The address is changed only if the person is still on this page, where they pressed Enter (the key of the location; none once the page is gone): they may have gone elsewhere meanwhile.
+      moved = hereKey.current === pressedAt;
+      if (moved) navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
+    }
+    log('info', 'web.title_rename_settled', { page: page.id, verdict, moved }); // what was decided, for the log and for a test to wait on
+    return verdict !== 'refused';
   };
 
   useEffect(() => editableRef.current(!readOnly && state.stopped === null), [readOnly, state.stopped]);
