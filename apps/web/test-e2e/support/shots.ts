@@ -28,7 +28,7 @@ export async function shots(page: Page, task: string, name: string, options: { w
       const file = shotPath(task, name, theme);
       mkdirSync(path.dirname(file), { recursive: true });
       await page.emulateMedia({ colorScheme: theme });
-      await page.screenshot({ path: file, mask: [page.locator('input[type="password"]')], maskColor: '#808080' });
+      await page.screenshot({ path: file, animations: 'disabled', mask: [page.locator('input[type="password"]')], maskColor: '#808080' });
       written.push(file);
     }
   } finally {

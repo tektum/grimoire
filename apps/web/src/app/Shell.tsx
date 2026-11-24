@@ -1,4 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router';
+import { UserBadge } from '../auth/UserBadge';
 import { inPageHref } from '../ui/inpage';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -15,6 +16,7 @@ export function Shell() {
         <nav aria-label="Main">
           <Link to="/search">Search</Link> <Link to="/trash">Trash</Link>
         </nav>
+        <UserBadge />
       </header>
       <div className="shell-body">
         <aside className="shell-contents" aria-label="Contents">

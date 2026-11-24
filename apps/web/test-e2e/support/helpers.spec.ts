@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { DEV_TOKEN_PATTERN } from '../../test/support/dev-token';
-import { DEV_TOKEN_STORAGE_KEY, signInAs } from './sign-in';
+import { DEV_TOKEN_EXPIRES_STORAGE_KEY, DEV_TOKEN_STORAGE_KEY, signInAs } from './sign-in';
 import { shotPath, shots } from './shots';
 import { twoUsers } from './two-users';
 import { waitForSynced } from './sync';
@@ -56,6 +56,10 @@ test.describe('signInAs', () => {
     const token = await page.evaluate((key) => window.localStorage.getItem(key), DEV_TOKEN_STORAGE_KEY);
     expect(token).toMatch(DEV_TOKEN_PATTERN);
     expect(token).toBe(`dev:${SECRET}:e2e-carol:admin`);
+    // The client reads a token together with when it ends: one hour from now, as the sign-in form stores it.
+    const expires = Number(await page.evaluate((key) => window.localStorage.getItem(key), DEV_TOKEN_EXPIRES_STORAGE_KEY));
+    expect(expires).toBeGreaterThan(Date.now() + 3_500_000);
+    expect(expires).toBeLessThanOrEqual(Date.now() + 3_600_000);
   });
 
   test('refuses an uppercase user id before any request, with a plain line', async ({ context }) => {

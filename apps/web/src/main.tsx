@@ -1,21 +1,28 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RouterProvider } from 'react-router';
-import { ErrorBoundary } from './app/ErrorBoundary';
+import { App } from './app/App';
 import { createAppRouter } from './app/router';
+import { loadWebConfig } from './config';
+import { createClientStorage } from './storage';
+import './gate/gate.css';
 import './ui/global.css';
-import { Toaster } from './ui/primitives';
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
+// The entry of the app. The development sign-in and the identity provider's SDK are separate chunks: the first exists in development and test builds only,
+// the second is requested only when a session exists and a token must be read or refreshed.
+const storage = createClientStorage();
+const devBuild = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__;
+const loadDevSignIn = devBuild ? async (apiUrl: string, s: typeof storage) => (await import('./auth/dev-signin')).createDevSignIn({ apiUrl, storage: s }) : null;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={createAppRouter()} />
-        <Toaster />
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <App
+      loadConfig={() => loadWebConfig()}
+      storage={storage}
+      loadDescope={async () => (await import('./auth/descope-sdk')).default}
+      loadDevSignIn={loadDevSignIn}
+      router={createAppRouter}
+      here={() => `${window.location.pathname}${window.location.search}`}
+      redirect={(url) => window.location.replace(url)}
+    />
   </StrictMode>,
 );
