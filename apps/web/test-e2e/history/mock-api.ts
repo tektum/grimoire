@@ -48,6 +48,9 @@ export async function historyApi(page: Page, state: HistoryState): Promise<Histo
     const { pathname, searchParams } = new URL(request.url());
     const cors = { 'access-control-allow-origin': request.headers()['origin'] ?? '*', 'access-control-allow-headers': 'authorization, content-type, x-grimoire-client-version, idempotency-key', 'access-control-allow-methods': 'GET, POST, OPTIONS' };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    // The page's live connection goes to an address nothing listens on, even when a real stack runs on the same host (the Web browser tests job): the page would otherwise
+    // reach it, the stack would refuse this stand-in's token, and the page would stop showing the saved text the specs look at.
+    if (pathname === '/v1/config') return json(route, 200, { collabUrl: 'ws://127.0.0.1:1/collab', fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
     if (pathname === '/v1/me') return json(route, 200, { id: 'me', name: 'Alice Example', email: 'alice@dev.invalid', role: state.role }, cors);
     if (pathname === '/v1/pages/by-url-id/abc123') {
       return json(route, 200, { id: PAGE_ID, title: 'Quarterly plan', urlId: 'abc123', collectionId: 'c1', myPermission: state.role === 'viewer' ? 'read-only' : 'read-write', breadcrumb: [], markdownStale: false, markdownStaleSince: null, parentId: null, position: 'p', slug: SLUG, updatedAt: 0, createdAt: 0 }, cors);
