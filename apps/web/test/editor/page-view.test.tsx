@@ -83,6 +83,7 @@ function mountPage(
     staleHeader?: boolean;
     markdownStatus?: number;
     markdownGate?: Promise<void>;
+    meRole?: string;
     onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
     authOver?: Partial<Auth>;
@@ -92,7 +93,7 @@ function mountPage(
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
     GET: vi.fn(async (path: string) => {
-      if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222' }, response: new Response('', { status: 200 }) };
+      if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222', ...(options.meRole === undefined ? {} : { role: options.meRole }) }, response: new Response('', { status: 200 }) };
       if (options.markdownGate) await options.markdownGate;
       return {
         data: options.markdown ?? 'Saved text',
@@ -461,5 +462,83 @@ describe('the page screen', () => {
     await waitFor(() => expect(seen).not.toBeNull());
     await waitFor(() => expect(seen!.userId()).toBe('22222222-2222-4222-8222-222222222222'));
     expect(seen!.directory).toBe(sessionDirectory(t.api as never));
+  });
+
+  it('after a reset that left unsent changes, says so with the copy of them, and Dismiss drops it', async () => {
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect(screen.queryByText(/This page was reset/)).toBeNull();
+    await act(async () => void t.sessions[0]!.provider.close(4409, 'stale-epoch'));
+    expect((await screen.findByRole('alert')).textContent).toContain('This page was reset. Your unsent changes were not applied.');
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(expect.arrayContaining(['Download my copy', 'Copy to clipboard', 'Dismiss']));
+    await act(async () => void screen.getByRole('button', { name: 'Dismiss' }).click());
+    expect(screen.queryByText(/This page was reset/)).toBeNull();
+  });
+
+  it('offers the copy that the editor held (its Markdown) under the page title', async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    const names: string[] = [];
+    const spy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download);
+    });
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4409, 'stale-epoch'));
+    await act(async () => void (await screen.findByRole('button', { name: 'Download my copy' })).click());
+    expect(names).toEqual(['Plan-your-copy.md']);
+    spy.mockRestore();
+  });
+
+  it('offers an administrator the reset of the saved state, which opens its dialog naming the page; a member is not offered it', async () => {
+    const admin = mountPage({ meRole: 'admin' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Reset saved state/ })).toBeTruthy());
+    await act(async () => void screen.getByRole('button', { name: /Reset saved state/ }).click());
+    expect(await screen.findByText('Reset the saved state of Plan?')).toBeTruthy();
+    admin.view.unmount();
+    cleanup();
+    const member = mountPage({ meRole: 'member' });
+    await member.synced();
+    await waitFor(() => expect(member.lives).toHaveLength(1));
+    expect(screen.queryByRole('button', { name: /Reset saved state/ })).toBeNull();
+  });
+
+  it('links to the history of the page, for everyone, at /p/<slug>/history with the same slug the tree links with', async () => {
+    mountPage({ page: page({ title: 'Release plan', urlId: 'ab12cd' }) });
+    const link = await screen.findByRole('link', { name: 'History' });
+    expect(link.getAttribute('href')).toBe('/p/release-plan-ab12cd/history');
+    cleanup();
+    mountPage({ page: page({ title: '', urlId: 'zz99' }), meRole: 'member' });
+    expect((await screen.findByRole('link', { name: 'History' })).getAttribute('href')).toBe('/p/page-zz99/history');
+  });
+
+  it('a second reset replaces the offered copy and starts its notice afresh: "Copied." never refers to the old copy', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    let built = 0;
+    const t = mountPage({
+      engine: (base) => ({
+        mountLive: async (o) => {
+          const mounted = await base.mountLive(o);
+          if (mounted === null) return null;
+          const n = (built += 1);
+          return { ...mounted, markdown: () => `copy number ${n}` };
+        },
+      }),
+    });
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4409, 'stale-epoch'));
+    await act(async () => void (await screen.findByRole('button', { name: 'Copy to clipboard' })).click());
+    expect(await screen.findByText('Copied.')).toBeTruthy();
+    expect(writeText).toHaveBeenLastCalledWith('copy number 1');
+    await t.synced(1);
+    await waitFor(() => expect(t.lives).toHaveLength(2));
+    await act(async () => void t.sessions[1]!.provider.close(4409, 'stale-epoch')); // reset again, before the first notice was dismissed
+    await waitFor(() => expect(t.sessions).toHaveLength(3));
+    await waitFor(() => expect(screen.queryByText('Copied.')).toBeNull());
+    await act(async () => void screen.getByRole('button', { name: 'Copy to clipboard' }).click());
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
   });
 });
