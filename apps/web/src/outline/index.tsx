@@ -1,4 +1,135 @@
-// The outline of the page, in the right margin. A later task fills it in; until then it renders nothing.
-export function Outline(): null {
-  return null;
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import './outline.css';
+
+const WIDE = '(min-width: 1200px)';
+const HEADINGS = 'h1, h2, h3, h4, h5, h6';
+const MAX_INDENT = 3;
+const DEBOUNCE_MS = 200;
+
+interface Entry {
+  readonly text: string;
+  readonly level: number;
+}
+
+/** The editor's element in the page screen's layout (page.css), or null when there is no page. */
+const editorElement = (): HTMLElement | null => document.querySelector<HTMLElement>('.page-layout .page-editor');
+
+/** The headings the editor draws (a paragraph with a level of 1 to 6 is drawn as h1 to h6), in order, without the ones that hold only whitespace. */
+function headingsOf(root: HTMLElement): { element: HTMLElement; entry: Entry }[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(HEADINGS))
+    .map((element) => ({ element, entry: { text: (element.textContent ?? '').replace(/\s+/gu, ' ').trim(), level: Number(element.tagName.slice(1)) } }))
+    .filter(({ entry }) => entry.text !== '');
+}
+
+/** The last heading at or before the cursor when the cursor is in the editor, else the last one whose top has passed the top of the window. */
+function currentIndex(root: HTMLElement, found: readonly { element: HTMLElement }[]): number {
+  const anchor = window.getSelection()?.anchorNode ?? null;
+  let current = -1;
+  if (anchor !== null && root.contains(anchor)) {
+    found.forEach(({ element }, i) => {
+      if (element === anchor || element.contains(anchor) || (element.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) current = i;
+    });
+    return current;
+  }
+  found.forEach(({ element }, i) => {
+    if (element.getBoundingClientRect().top <= 100) current = i;
+  });
+  return current;
+}
+
+/**
+ * The outline of the open page in the right margin (R11.6, R11.17): the headings of the editor's document as links that put the cursor in the heading and scroll to it.
+ * It reads what the editor draws, follows changes a moment after they happen, shows on windows 1,200 pixels wide and more, and is one stop of the Tab key with the
+ * arrow keys moving between its links.
+ */
+export function Outline() {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE).matches);
+  const [entries, setEntries] = useState<readonly Entry[]>([]);
+  const [current, setCurrent] = useState(-1);
+  const [stop, setStop] = useState(0);
+  const list = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    const query = window.matchMedia(WIDE);
+    const onChange = (): void => { setWide(query.matches); };
+    query.addEventListener('change', onChange);
+    return () => { query.removeEventListener('change', onChange); };
+  }, []);
+
+  useEffect(() => {
+    const root = wide ? editorElement() : null;
+    if (root === null) {
+      setEntries([]);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const read = (): void => {
+      const found = headingsOf(root);
+      setEntries((before) => (before.length === found.length && before.every((e, i) => e.text === found[i]?.entry.text && e.level === found[i].entry.level) ? before : found.map((f) => f.entry)));
+      setCurrent(currentIndex(root, found));
+    };
+    const later = (): void => {
+      clearTimeout(timer);
+      timer = setTimeout(read, DEBOUNCE_MS);
+    };
+    read();
+    const observer = new MutationObserver(later);
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    document.addEventListener('selectionchange', later);
+    window.addEventListener('scroll', later, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+      document.removeEventListener('selectionchange', later);
+      window.removeEventListener('scroll', later);
+    };
+  }, [wide]);
+
+  /** Puts the cursor at the start of the heading and brings it into view. The document is read again at the click: the list may be a moment behind. */
+  const go = useCallback((index: number): void => {
+    const root = editorElement();
+    const target = root === null ? undefined : headingsOf(root)[index]?.element;
+    if (root === null || target === undefined) return;
+    const surface = root.querySelector<HTMLElement>('.ProseMirror') ?? root;
+    surface.focus({ preventScroll: true });
+    window.getSelection()?.collapse(target, 0);
+    target.scrollIntoView({ block: 'center' });
+  }, []);
+
+  const move = (event: KeyboardEvent<HTMLUListElement>): void => {
+    const links = Array.from(list.current?.querySelectorAll<HTMLAnchorElement>('a') ?? []);
+    const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+    const next = event.key === 'ArrowDown' ? at + 1 : event.key === 'ArrowUp' ? at - 1 : event.key === 'Home' ? 0 : event.key === 'End' ? links.length - 1 : null;
+    if (next === null || at < 0) return;
+    event.preventDefault();
+    const target = Math.max(0, Math.min(links.length - 1, next));
+    setStop(target);
+    links[target]?.focus();
+  };
+
+  if (!wide || entries.length === 0) return null;
+  return (
+    <nav aria-label="Page outline" className="outline">
+      <ul ref={list} onKeyDown={move}>
+        {entries.map((entry, i) => (
+          <li key={`${String(i)}-${entry.text}`}>
+            <a
+              href="#"
+              data-indent={Math.min(entry.level, MAX_INDENT + 1) - 1}
+              style={{ '--indent': Math.min(entry.level, MAX_INDENT + 1) - 1 } as React.CSSProperties}
+              tabIndex={i === Math.min(stop, entries.length - 1) ? 0 : -1}
+              {...(i === current ? { 'aria-current': 'location' as const } : {})}
+              onFocus={() => { setStop(i); }}
+              onClick={(event) => {
+                event.preventDefault();
+                go(i);
+              }}
+            >
+              {entry.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 }

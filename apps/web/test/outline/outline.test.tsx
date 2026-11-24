@@ -1,0 +1,88 @@
+import { act, cleanup, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import '../support/dom';
+import { renderPage, settle, width } from './support';
+
+beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); width(1400); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+describe('the outline of a page', () => {
+  it('renders no list and no empty nav for a page with no heading', async () => {
+    const { container } = renderPage([]);
+    await settle();
+    expect(screen.queryByRole('navigation', { name: 'Page outline' })).toBeNull();
+    expect(container.querySelector('nav, ul, ol')).toBeNull();
+    expect(container.querySelector('.page-margin')?.childElementCount).toBe(0); // the empty margin hides itself (page.css)
+  });
+
+  it('omits a heading that holds only whitespace, and lists the others', async () => {
+    renderPage([[1, 'Alpha'], [2, '   '], [2, '\u00a0\n'], [2, 'Beta']]);
+    await settle();
+    const nav = screen.getByRole('navigation', { name: 'Page outline' });
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Alpha', 'Beta']);
+  });
+
+  it('lists the headings in the order of the page, A, B, C, with B one step in', async () => {
+    renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
+    await settle();
+    const links = within(screen.getByRole('navigation', { name: 'Page outline' })).getAllByRole('link');
+    expect(links.map((a) => [a.textContent, a.getAttribute('data-indent')])).toEqual([['A', '0'], ['B', '1'], ['C', '0']]);
+  });
+
+  it('follows the document, a moment after it changes (200 ms), and not on every keystroke', async () => {
+    const { set } = renderPage([[1, 'A']]);
+    await settle();
+    set([[1, 'A'], [2, 'New heading']]);
+    await settle(100);
+    expect(screen.queryByRole('link', { name: 'New heading' })).toBeNull();
+    await settle(150);
+    expect(screen.getByRole('link', { name: 'New heading' })).toBeTruthy();
+  });
+
+  it('goes away when the last heading is deleted, and comes back with the next', async () => {
+    const { set } = renderPage([[1, 'A']]);
+    await settle();
+    set([]);
+    await settle();
+    expect(screen.queryByRole('navigation', { name: 'Page outline' })).toBeNull();
+    set([[3, 'Again']]);
+    await settle();
+    expect(screen.getByRole('link', { name: 'Again' })).toBeTruthy();
+  });
+
+  it('is not rendered below 1,200 pixels', async () => {
+    width(1000);
+    renderPage([[1, 'A'], [2, 'B']]);
+    await settle();
+    expect(screen.queryByRole('navigation', { name: 'Page outline' })).toBeNull();
+  });
+
+  it('a click puts the cursor in the heading and scrolls it into view', async () => {
+    const { editor } = renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
+    await settle();
+    const target = editor.querySelectorAll('h1')[1] as HTMLElement;
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    await userEvent.click(screen.getByRole('link', { name: 'C' }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    const selection = window.getSelection();
+    expect(target.contains(selection?.anchorNode ?? null)).toBe(true);
+    expect(selection?.isCollapsed).toBe(true);
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it('marks the heading the cursor is in as the current one', async () => {
+    const { editor } = renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
+    await settle();
+    const second = editor.querySelectorAll('h2')[0] as HTMLElement;
+    editor.focus();
+    await act(async () => {
+      window.getSelection()?.collapse(second, 0);
+      document.dispatchEvent(new Event('selectionchange'));
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    const links = screen.getAllByRole('link');
+    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'location', null]);
+  });
+});

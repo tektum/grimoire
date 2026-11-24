@@ -148,6 +148,14 @@ A restore is refused while the page's last edits are still being saved.
 
 A viewer can read a version and its changes, but has no Restore button.
 
+![The outline of headings beside a page](docs/screenshots/m6-t05b/outline-light.png)
+
+On a wide window, the headings of the page are listed in the right margin, with the one you are in marked.
+
+![The same page on a narrower window, with no outline](docs/screenshots/m6-t05b/no-outline-light.png)
+
+On a window narrower than 1,200 pixels the outline is left out.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
