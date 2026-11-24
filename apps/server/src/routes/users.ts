@@ -52,21 +52,21 @@ router.openapi(listUsers, async (c) => {
   const keys = decodeCursor('users', cursor, 3);
   // A cursor belongs to the search it came from: another `q` would skip rows, and a hand-made key must not reach the database cast.
   if (keys !== undefined && (typeof keys[0] !== 'string' || !z.string().uuid().safeParse(keys[1]).success || keys[2] !== (q ?? ''))) return fail('invalid');
-  const rows = await c.get('deps').admin.listUsers({ limit: limit + 1, ...(q === undefined ? {} : { q }), ...(keys === undefined ? {} : { after: [keys[0] as string, keys[1] as string] as const }) });
+  const rows = await c.get('deps').admin.listUsers(caller(c).tenantId, { limit: limit + 1, ...(q === undefined ? {} : { q }), ...(keys === undefined ? {} : { after: [keys[0] as string, keys[1] as string] as const }) });
   return c.json(toPage('users', rows, limit, (u) => [u.email, u.id, q ?? '']), 200);
 });
 
 router.openapi(patchUser, async (c) => {
   requireAdmin(c);
   const { id } = c.req.valid('param');
-  const result = await c.get('deps').admin.patchUser(id, c.req.valid('json'), caller(c).id);
+  const result = await c.get('deps').admin.patchUser(caller(c).tenantId, id, c.req.valid('json'), caller(c).id);
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'last-admin') return fail('last_admin');
   return c.json(result.user, 200);
 });
 
 router.openapi(userNames, async (c) => {
-  const items = await c.get('deps').admin.userNames(c.req.valid('json').ids);
+  const items = await c.get('deps').admin.userNames(caller(c).tenantId, c.req.valid('json').ids);
   return c.json({ items: [...items] }, 200);
 });
 

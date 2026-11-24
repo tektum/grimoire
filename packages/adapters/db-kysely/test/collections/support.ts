@@ -44,16 +44,21 @@ export async function createTestDatabase(label: string): Promise<TestDatabase> {
 }
 
 /** A user row; returns its id. */
-export async function addUser(db: KyselyDatabase, name: string, role: 'admin' | 'member' | 'viewer' = 'member'): Promise<string> {
+export async function addUser(db: KyselyDatabase, name: string, role: 'admin' | 'member' | 'viewer' = 'member', tenantId = 'legacy'): Promise<string> {
   const rows = await db.query<{ id: string }>(
-    `insert into users (descope_user_id, email, name, role) values ($1, $2, $1, $3) returning id`,
-    [name, `${name}@example.com`, role],
+    `insert into users (descope_user_id, email, name, role, tenant_id) values ($1, $2, $1, $3, $4) returning id`,
+    [name, `${name}@example.com`, role, tenantId],
   );
   return (rows[0] as { id: string }).id;
 }
 
 /** A group row; returns its id. */
-export async function addGroup(db: KyselyDatabase, name: string): Promise<string> {
-  const rows = await db.query<{ id: string }>(`insert into groups (name) values ($1) returning id`, [name]);
+export async function addGroup(db: KyselyDatabase, name: string, tenantId = 'legacy'): Promise<string> {
+  const rows = await db.query<{ id: string }>(`insert into groups (name, tenant_id) values ($1, $2) returning id`, [name, tenantId]);
   return (rows[0] as { id: string }).id;
+}
+
+/** A tenant row (the runtime role may add them, as a first sign-in does). */
+export async function addTenant(db: KyselyDatabase, id: string): Promise<void> {
+  await db.query(`insert into tenants (id, name, domain) values ($1, $1, $1) on conflict do nothing`, [id]);
 }

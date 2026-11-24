@@ -143,7 +143,7 @@ describe('a create of a group with an Idempotency-Key', () => {
     const second = await post();
     expect([first.status, second.status, second.headers.get('idempotent-replay')]).toEqual([201, 201, 'true']);
     expect(await second.json()).toEqual(await first.json());
-    expect((await admin.listGroups()).filter((g) => g.name === 'Once')).toHaveLength(1);
+    expect((await admin.listGroups('legacy')).filter((g) => g.name === 'Once')).toHaveLength(1);
     expect(admin.audit.filter((e) => e.action === 'group.created')).toHaveLength(1);
   });
 
