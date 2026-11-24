@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAuth, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY, type AuthState } from '../../src/auth';
+import { createAuth, DESCOPE_DEVICE_KEY, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY, type AuthState } from '../../src/auth';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
 import { config, fakeSdk, fakeSdkStorage, fakeStorage, jwt, moduleOf, spyConsole } from './support';
 
@@ -12,7 +12,7 @@ afterEach(() => consoleSpy?.restore());
 function setup(over: { sdkKeys?: Record<string, string>; projectId?: string | null; dev?: boolean; sdkToken?: string; expired?: boolean; now?: () => number } = {}) {
   const { storage, map } = fakeStorage();
   const sdkStorage = fakeSdkStorage(over.sdkKeys);
-  const sdk = fakeSdk(over.sdkToken ?? '', over.expired ?? false);
+  const sdk = fakeSdk(over.sdkToken ?? '', over.expired ?? false, () => [...sdkStorage.map.keys()]);
   const loader = moduleOf(sdk);
   let loads = 0;
   const now = over.now ?? (() => NOW);
@@ -176,6 +176,85 @@ describe('signOut', () => {
     await ended.auth.getToken();
     await ended.auth.signOut('expired');
     expect(ended.sdk.logouts).toBe(0);
+  });
+});
+
+describe('signOut at the provider', () => {
+  it('revokes the session while the refresh token is still in storage, then clears every SDK key (DS, DSR, DSI)', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r', [DESCOPE_SESSION_KEY]: 's', [DESCOPE_DEVICE_KEY]: 'd' }, sdkToken: jwt(secs(NOW) + 600) });
+    await t.auth.getToken();
+    await t.auth.signOut();
+    expect(t.sdk.logouts).toBe(1);
+    expect(t.sdk.atLogout.sort()).toEqual([DESCOPE_DEVICE_KEY, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY].sort());
+    expect(t.sdkStorage.map.size).toBe(0);
+  });
+
+  it('loads the SDK for a sign-out right after a page load, with a session and nothing loaded yet, and still revokes first', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' } });
+    expect(t.loads()).toBe(0);
+    await t.auth.signOut();
+    expect(t.loads()).toBe(1);
+    expect(t.sdk.logouts).toBe(1);
+    expect(t.sdk.atLogout).toEqual([DESCOPE_REFRESH_KEY]);
+    expect(t.sdkStorage.map.size).toBe(0);
+  });
+
+  it('still ends the session, and clears the keys, when the provider cannot be reached or the SDK cannot be loaded', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r', [DESCOPE_DEVICE_KEY]: 'd' } });
+    t.sdk.logout = async () => {
+      throw new Error('offline');
+    };
+    await t.auth.signOut();
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+    expect(t.sdkStorage.map.size).toBe(0);
+    const { storage } = fakeStorage();
+    const sdkStorage = fakeSdkStorage({ [DESCOPE_REFRESH_KEY]: 'r' });
+    const auth = createAuth({ config: config({ providerProjectId: 'P' }), storage, devSignIn: null, sdkStorage, loadDescope: async () => Promise.reject(new Error('chunk failed')) });
+    await auth.signOut();
+    expect(auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+    expect(sdkStorage.map.size).toBe(0);
+  });
+
+  it('does not touch the provider for a session that has already ended (expired, suspended, not allowed), and clears the keys', async () => {
+    for (const reason of ['expired', 'suspended', 'not-allowed'] as const) {
+      const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r', [DESCOPE_DEVICE_KEY]: 'd' } });
+      await t.auth.signOut(reason);
+      expect([reason, t.loads(), t.sdk.logouts, t.sdkStorage.map.size]).toEqual([reason, 0, 0, 0]);
+    }
+  });
+});
+
+describe('concurrent token requests', () => {
+  it('share one refresh: five calls at the expiry edge send one, and all get the new token', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 30) });
+    const fresh = jwt(secs(NOW) + 3600);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    t.sdk.refresh = async () => {
+      t.sdk.refreshes += 1;
+      await gate;
+      t.sdk.token = fresh;
+      return { ok: true };
+    };
+    const calls = Array.from({ length: 5 }, () => t.auth.getToken());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    expect(await Promise.all(calls)).toEqual([fresh, fresh, fresh, fresh, fresh]);
+    expect(t.sdk.refreshes).toBe(1);
+    // After it finished, a later ending token gets its own refresh.
+    t.sdk.token = jwt(secs(NOW) + 10);
+    await t.auth.getToken();
+    expect(t.sdk.refreshes).toBe(2);
+  });
+
+  it('share a failed refresh too: all get null, and the client signs out once', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 30) });
+    t.sdk.refreshResult = false;
+    const seen: AuthState[] = [];
+    t.auth.subscribe((s) => seen.push(s));
+    expect(await Promise.all([t.auth.getToken(), t.auth.getToken(), t.auth.refresh()])).toEqual([null, null, false]);
+    expect(t.sdk.refreshes).toBe(1);
+    expect(seen).toEqual([{ status: 'signed-out', reason: 'expired' }]);
   });
 });
 

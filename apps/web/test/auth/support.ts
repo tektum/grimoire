@@ -27,13 +27,16 @@ export interface FakeSdk extends DescopeSdk {
   refreshResult: boolean;
   refreshes: number;
   logouts: number;
+  /** What the storage held at the moment logout was called (the SDK reads the refresh token from it). */
+  atLogout: string[];
 }
-export function fakeSdk(token: string, isExpired = false): FakeSdk {
+export function fakeSdk(token: string, isExpired = false, storageKeys: () => string[] = () => []): FakeSdk {
   const sdk: FakeSdk = {
     token,
     refreshResult: true,
     refreshes: 0,
     logouts: 0,
+    atLogout: [],
     getSessionToken: () => sdk.token,
     isJwtExpired: () => isExpired,
     refresh: async () => {
@@ -42,6 +45,7 @@ export function fakeSdk(token: string, isExpired = false): FakeSdk {
     },
     logout: async () => {
       sdk.logouts += 1;
+      sdk.atLogout = storageKeys();
     },
   };
   return sdk;

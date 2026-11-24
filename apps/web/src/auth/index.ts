@@ -31,6 +31,8 @@ export interface DescopeModule {
 /** The keys the identity provider's SDK keeps in local storage (session and refresh token). They are removed on sign-out. */
 export const DESCOPE_SESSION_KEY = 'DS';
 export const DESCOPE_REFRESH_KEY = 'DSR';
+/** Also kept by the SDK; removed with the other two on every sign-out. */
+export const DESCOPE_DEVICE_KEY = 'DSI';
 /** A Descope token that ends within this long is refreshed before it is handed out. */
 export const REFRESH_WITHIN_MS = 60_000;
 
@@ -50,6 +52,8 @@ export function createAuth(o: CreateAuthOptions): Auth {
   const sdkStorage = o.sdkStorage ?? (typeof localStorage === 'undefined' ? null : localStorage);
   const listeners = new Set<(state: AuthState) => void>();
   let sdk: Promise<DescopeSdk> | null = null;
+  // One refresh at a time: a burst of requests that all see an ending token shares it (the refresh token may rotate, and a second use would fail).
+  let refreshing: Promise<boolean> | null = null;
 
   const hasDescopeSession = (): boolean => {
     try {
@@ -109,31 +113,36 @@ export function createAuth(o: CreateAuthOptions): Auth {
         return null;
       }
     },
-    async refresh() {
+    refresh() {
       if (current.status !== 'signed-in' || current.method === 'dev') {
-        if (current.status === 'signed-in') await auth.signOut('expired');
+        return current.status === 'signed-in' ? auth.signOut('expired').then(() => false) : Promise.resolve(false);
+      }
+      refreshing ??= (async () => {
+        try {
+          if ((await (await descope()).refresh()).ok) return true;
+        } catch {
+          log('warn', 'web.auth_error', { stage: 'refresh' });
+        }
+        await auth.signOut('expired');
         return false;
-      }
-      try {
-        const result = await (await descope()).refresh();
-        if (result.ok) return true;
-      } catch {
-        log('warn', 'web.auth_error', { stage: 'refresh' });
-      }
-      await auth.signOut('expired');
-      return false;
+      })().finally(() => {
+        refreshing = null;
+      });
+      return refreshing;
     },
     async signOut(reason = 'manual') {
       o.devSignIn?.clear();
-      // Local storage is cleared first and whatever the SDK does: the session must end even when the provider cannot be reached.
-      const hadDescope = hasDescopeSession() || sdk !== null;
+      // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
+      // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
+      if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession()))
+        await descope()
+          .then((client) => client.logout())
+          .catch(() => undefined);
       try {
-        sdkStorage?.removeItem(DESCOPE_SESSION_KEY);
-        sdkStorage?.removeItem(DESCOPE_REFRESH_KEY);
+        for (const key of [DESCOPE_SESSION_KEY, DESCOPE_REFRESH_KEY, DESCOPE_DEVICE_KEY]) sdkStorage?.removeItem(key);
       } catch {
         // storage blocked: nothing to remove
       }
-      if (reason === 'manual' && hadDescope && sdk !== null) await sdk.then((client) => client.logout()).catch(() => undefined);
       log('info', 'web.sign_out', { reason });
       set({ status: 'signed-out', reason });
     },
