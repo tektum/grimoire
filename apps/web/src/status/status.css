@@ -1,0 +1,4 @@
+/* The action beside the message of a page that cannot be opened ("Try again"): a gap, from the tokens. */
+.page-status-action {
+  margin-inline-start: var(--space-2);
+}

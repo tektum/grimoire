@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConnectionState } from '../editor/core/connection';
 import { TEXTS } from '../editor/core/map-signal';
+import './status.css';
 
 type StatusState = Pick<ConnectionState, 'text' | 'unsynced' | 'changes' | 'readOnly' | 'stopped'>;
 
