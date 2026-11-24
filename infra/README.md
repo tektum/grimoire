@@ -41,6 +41,8 @@ Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_
 
 Stated plainly: one task only (`scaling` is 1 to 1); the migration lock would make a second task wait, but staging needs no more. When Amazon publishes a new CA bundle, the image build fails at its checksum until the checksum in the `Dockerfile` is updated. The images are built three times from one Dockerfile (one for each container: SST names its build and its cache by container and has no way to share one, and the layers are the same, so the second and third builds are cache hits and push nothing new). Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the browser uploads against the bucket's rule.
 
+The management key is never a plain environment value or a stack output: it is stored as a Parameter Store `SecureString` and reaches the `app` container as an ECS secret (the execution role reads it when a task starts). It has no expiry. To rotate it, change the logical name of the `RuntimeKey` resource in `staging.ts` (and its `DescopeKey` parameter) and deploy: the old key is deleted, the new one stored, and the service rolls to a task that reads it. A later change can remove the key altogether by putting the profile into the user token with a Descope JWT template (the server already reads `email`, `name` and `emailVerified` claims); that needs the template syntax confirmed against a real project first.
+
 ## What it does not make
 
 - Roles, permissions and tenants: the product authorizes with its own database, and the provider has no tenant resource (only a tenant attribute).
