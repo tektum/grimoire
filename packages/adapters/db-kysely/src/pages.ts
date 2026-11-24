@@ -21,9 +21,21 @@ export const meta = (r: Row): PageMeta => ({
 const MOVE_ATTEMPTS = 3;
 const isSerializationFailure = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && (e.code === '40001' || e.code === '40P01');
 
-/** Positions of the live siblings around the new place: after `afterId`, or last. Undefined when `afterId` is not a sibling. */
-async function neighbours(tx: Queryable, collectionId: string, parentId: string | null, afterId: string | null, selfId: string): Promise<{ before: string | null; after: string | null } | undefined> {
+/** A page id that no page has: the neighbours of a page that is not made yet leave nothing out. */
+const NO_PAGE = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Positions of the live siblings around the new place: after `afterId`, before `beforeId`, or last. Undefined when the sibling asked for is not one
+ * (another parent, another collection, deleted, or the page itself).
+ */
+async function neighbours(tx: Queryable, collectionId: string, parentId: string | null, afterId: string | null, beforeId: string | null, selfId: string): Promise<{ before: string | null; after: string | null } | undefined> {
   const siblings = `collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null and id <> $3`;
+  if (beforeId !== null) {
+    const anchor = (await tx.query<{ position: string }>(`select position from pages where ${siblings} and id = $4`, [collectionId, parentId, selfId, beforeId]))[0];
+    if (anchor === undefined) return undefined;
+    const previous = await tx.query<{ position: string }>(`select position from pages where ${siblings} and position < $4 order by position desc limit 1`, [collectionId, parentId, selfId, anchor.position]);
+    return { before: previous[0]?.position ?? null, after: anchor.position };
+  }
   if (afterId === null) {
     const last = await tx.query<{ position: string }>(`select position from pages where ${siblings} order by position desc limit 1`, [collectionId, parentId, selfId]);
     return { before: last[0]?.position ?? null, after: null };
@@ -56,26 +68,9 @@ export function createPages(db: KyselyDatabase): PageRepo {
         const count = await tx.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1 and deleted_at is null`, [input.collectionId]);
         if (Number(count[0]?.n) >= limits.maxPages) return { kind: 'collection-full' };
 
-        let before: string | null;
-        let after: string | null;
-        if (input.afterId === null) {
-          before = (await tx.query<{ position: string }>(
-            `select position from pages where collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null order by position desc limit 1`,
-            [input.collectionId, input.parentId],
-          ))[0]?.position ?? null;
-          after = null;
-        } else {
-          const anchor = (await tx.query<{ position: string }>(
-            `select position from pages where id = $1 and collection_id = $2 and parent_id is not distinct from $3::uuid and deleted_at is null`,
-            [input.afterId, input.collectionId, input.parentId],
-          ))[0];
-          if (anchor === undefined) return { kind: 'no-after' };
-          before = anchor.position;
-          after = (await tx.query<{ position: string }>(
-            `select position from pages where collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null and position > $3 order by position limit 1`,
-            [input.collectionId, input.parentId, anchor.position],
-          ))[0]?.position ?? null;
-        }
+        const around = await neighbours(tx, input.collectionId, input.parentId, input.afterId, input.beforeId ?? null, NO_PAGE);
+        if (around === undefined) return { kind: 'no-after' };
+        const { before, after } = around;
 
         const c = input.content;
         // Markdown is stored only with a non-empty editor state, checked in the statement that writes both (R7.13).
@@ -189,7 +184,7 @@ export function createPages(db: KyselyDatabase): PageRepo {
               const count = await tx.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1 and deleted_at is null`, [target]);
               if (Number(count[0]?.n) + Number(live[0]?.size) > limits.maxPages) return { kind: 'collection-full' };
             }
-            const around = await neighbours(tx, target, to.parentId, to.afterId, id);
+            const around = await neighbours(tx, target, to.parentId, to.afterId, to.beforeId ?? null, id);
             if (around === undefined) return { kind: 'no-after' };
 
             // One statement for the page and every descendant, deleted ones too: the composite foreign key (parent, collection) is checked when it commits.

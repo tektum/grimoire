@@ -16,8 +16,8 @@ const between = (before: string | null, after: string | null): string => orderin
 const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const collectionsRepo = () => createCollections(t.app);
 const newCollection = async (name: string): Promise<string> => (await collectionsRepo().append({ name, createdBy: user }, (last) => ordering.between(last, null))).id;
-const create = (collectionId: string, extra: { parentId?: string; afterId?: string; title?: string } = {}, l: PageLimits = limits) =>
-  createPages(t.app).create({ collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
+const create = (collectionId: string, extra: { parentId?: string; afterId?: string; beforeId?: string; title?: string } = {}, l: PageLimits = limits) =>
+  createPages(t.app).create({ collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, beforeId: extra.beforeId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
 const created = async (r: ReturnType<typeof create>) => {
   const result = await r;
   if (result.kind !== 'created') throw new Error(result.kind);
@@ -42,6 +42,23 @@ describe('the PostgreSQL PageRepo create', () => {
     expect(a.urlId).toMatch(/\S+/);
     const sibling = await create(c, { parentId: a.id, afterId: z.id });
     expect(sibling).toEqual({ kind: 'no-after' });
+  });
+
+  it('puts a page before a sibling, first or between two, and refuses a sibling of another parent or collection, deleted or unknown', async () => {
+    const c = await newCollection('before');
+    const a = await created(create(c));
+    const z = await created(create(c));
+    const first = await created(create(c, { beforeId: a.id }));
+    const mid = await created(create(c, { beforeId: z.id }));
+    expect(first.position < a.position && a.position < mid.position && mid.position < z.position).toBe(true);
+    const child = await created(create(c, { parentId: a.id }));
+    expect(await create(c, { beforeId: child.id })).toEqual({ kind: 'no-after' }); // a sibling of another parent
+    expect(await create(c, { parentId: a.id, beforeId: z.id })).toEqual({ kind: 'no-after' });
+    const other = await newCollection('before-other');
+    expect(await create(other, { beforeId: a.id })).toEqual({ kind: 'no-after' }); // a page of another collection
+    await t.admin.query(`update pages set deleted_at = now() where id = $1`, [z.id]);
+    expect(await create(c, { beforeId: z.id })).toEqual({ kind: 'no-after' });
+    expect(await create(c, { beforeId: '00000000-0000-4000-8000-000000000999' })).toEqual({ kind: 'no-after' });
   });
 
   it('stores the Markdown, the search text, the state and the hash in one insert, and nothing for a page without Markdown', async () => {

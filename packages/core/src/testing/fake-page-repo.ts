@@ -15,6 +15,17 @@ interface Row extends PageMeta {
   readonly deletedBy?: string | null;
 }
 
+/** The positions a page goes between: after the sibling `afterId`, before the sibling `beforeId`, or last. Undefined when the sibling asked for is not among `siblings`. */
+function around_(siblings: readonly { id: string; position: string }[], afterId: string | null, beforeId: string | null): { before: string | null; next: string | null } | undefined {
+  if (beforeId !== null) {
+    const at = siblings.findIndex((r) => r.id === beforeId);
+    return at === -1 ? undefined : { before: siblings[at - 1]?.position ?? null, next: siblings[at]?.position ?? null };
+  }
+  if (afterId === null) return { before: siblings.at(-1)?.position ?? null, next: null };
+  const at = siblings.findIndex((r) => r.id === afterId);
+  return at === -1 ? undefined : { before: siblings[at]?.position ?? null, next: siblings[at + 1]?.position ?? null };
+}
+
 /** In-memory PageRepo for tests. Collections are the `World`'s (so a delete there is seen here); pages are mirrored into it. */
 export class FakePageRepo implements PageRepo {
   private readonly rows: Row[] = [];
@@ -66,14 +77,13 @@ export class FakePageRepo implements PageRepo {
     const parent = input.parentId === null ? undefined : live.find((r) => r.id === input.parentId);
     if (input.parentId !== null && parent === undefined) return Promise.resolve({ kind: 'no-parent' });
     const siblings = live.filter((r) => r.parentId === input.parentId).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
-    const after = input.afterId === null ? undefined : siblings.find((r) => r.id === input.afterId);
-    if (input.afterId !== null && after === undefined) return Promise.resolve({ kind: 'no-after' });
+    const around = around_(siblings, input.afterId, input.beforeId ?? null);
+    if (around === undefined) return Promise.resolve({ kind: 'no-after' });
     let depth = 1;
     for (let up = parent; up !== undefined; up = live.find((r) => r.id === up?.parentId)) depth += 1;
     if (depth > limits.maxDepth) return Promise.resolve({ kind: 'too-deep' });
     if (live.length >= limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
-    const before = after === undefined ? (siblings.at(-1)?.position ?? null) : after.position;
-    const next = after === undefined ? null : (siblings[siblings.indexOf(after) + 1]?.position ?? null);
+    const { before, next } = around;
     const page = this.seed({ collectionId: input.collectionId, parentId: input.parentId, title: input.title, createdBy: input.createdBy, position: position(before, next) });
     const row = this.rows.find((r) => r.id === page.id) as Row;
     this.rows[this.rows.indexOf(row)] = { ...row, markdown: input.content?.markdown ?? null, state: input.content?.state ?? null, hash: input.content?.hash ?? null };
@@ -99,10 +109,9 @@ export class FakePageRepo implements PageRepo {
     const liveSubtree = subtree.filter((r) => !r.deleted);
     if (target !== row.collectionId && inTarget.length + liveSubtree.length > limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
     const siblings = inTarget.filter((r) => r.parentId === to.parentId && r.id !== id).sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
-    const after = to.afterId === null ? undefined : siblings.find((r) => r.id === to.afterId);
-    if (to.afterId !== null && after === undefined) return Promise.resolve({ kind: 'no-after' });
-    const before = after === undefined ? (siblings.at(-1)?.position ?? null) : after.position;
-    const next = after === undefined ? null : (siblings[siblings.indexOf(after) + 1]?.position ?? null);
+    const around = around_(siblings, to.afterId, to.beforeId ?? null);
+    if (around === undefined) return Promise.resolve({ kind: 'no-after' });
+    const { before, next } = around;
     const moved: Row = { ...row, collectionId: target, parentId: to.parentId, position: position(before, next) };
     for (const r of subtree) {
       const at = this.rows.indexOf(r);

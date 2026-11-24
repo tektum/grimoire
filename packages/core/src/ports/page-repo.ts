@@ -51,8 +51,10 @@ export interface PageLimits {
 export interface NewPage {
   readonly collectionId: string;
   readonly parentId: string | null;
-  /** Place the page after this sibling (same parent); null for last. */
+  /** Place the page after this sibling (same parent); null for last (unless `beforeId` is set). */
   readonly afterId: string | null;
+  /** Place the page before this sibling (same parent). Never together with an `afterId`; absent or null: not used. */
+  readonly beforeId?: string | null;
   readonly title: string;
   readonly createdBy: string;
   /** The Markdown with its editor state; only `seedUserMarkdown` makes one. Absent: a page with no Markdown and no state. */
@@ -68,13 +70,15 @@ export type CreatePageResult =
   | { readonly kind: 'too-deep' }
   | { readonly kind: 'collection-full' };
 
-/** Where a page goes (R6.25). `collectionId` null: it stays in its collection. `afterId` null: last among the new siblings. */
+/** Where a page goes (R6.25). `collectionId` null: it stays in its collection. `afterId` null (and no `beforeId`): last among the new siblings. */
 export interface PageMove {
   /** The collection the caller's access check was made against. If the page is elsewhere by the time the move runs, nothing moves (`conflict`). */
   readonly expectedCollectionId: string;
   readonly collectionId: string | null;
   readonly parentId: string | null;
   readonly afterId: string | null;
+  /** Place the page before this sibling (same new parent and collection). Never together with an `afterId`; absent or null: not used. */
+  readonly beforeId?: string | null;
 }
 
 export type MovePageResult =
