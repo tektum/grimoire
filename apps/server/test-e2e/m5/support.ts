@@ -14,6 +14,9 @@ import { filesConfig, publicEndpoint } from './browser/support.ts';
 // Helpers of the milestone 5 end-to-end test (`make test-m5`). Every request to the application goes through the generated client (as in M4); the only hand-written
 // requests are the transfers to and from the file store with the signed addresses the application gave, and they are written here and nowhere else.
 export { PEOPLE, apiAs, errorCode, eventually, expectStatus, publicEndpoint, scenario, signInAll, unique };
+
+/** The origin the application signs addresses for: the value `make test-m5` starts it with (the store as the host reaches it). */
+export const signedEndpoint = setting('GRIMOIRE_S3_PUBLIC_ENDPOINT', 'http://127.0.0.1:8333');
 export type { Person, T };
 
 /** A client for any development identity, not only the three people (a fresh name is a fresh user, with its own pending uploads). */

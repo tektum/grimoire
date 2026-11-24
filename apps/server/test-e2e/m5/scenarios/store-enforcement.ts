@@ -37,5 +37,5 @@ await scenario('store-enforcement', 180_000, async (t) => { // timeout: about 20
   await store.delete(`${keyBase}/${longName}`);
   const withLongName = (await startUpload(bob, open.page, bytes, { fileName: `${'n'.repeat(300)}.png` })).body;
   if (withLongName === undefined) throw new Error('a long file name was refused');
-  t.equal(withLongName.markdownPath.length < 300, true, 'the file name in the Markdown path is cut');
+  t.equal(withLongName.markdownPath.split('/').at(-1)?.length, 255, 'the file name in the Markdown path is cut to 255 bytes');
 });

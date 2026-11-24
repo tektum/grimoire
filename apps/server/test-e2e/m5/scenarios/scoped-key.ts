@@ -8,7 +8,8 @@ import { pngBytes, publicEndpoint, runtimeStore, scenario, setting } from '../su
 const endpoint = setting('GRIMOIRE_S3_ENDPOINT', 'http://127.0.0.1:8333');
 const admin = { endpoint, region: 'us-east-1', addressing: 'path' as const, accessKey: setting('GRIMOIRE_DEV_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_DEV_S3_SECRET_KEY'), allowedOrigins: [publicEndpoint] };
 const runtime = { ...admin, accessKey: setting('GRIMOIRE_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_S3_SECRET_KEY') };
-const refused = (run: () => Promise<unknown>): Promise<boolean> => run().then(() => false, () => true);
+// Only an authorisation refusal counts: the store answered 403 (or 404 for a bucket the key cannot see). A network error or a store outage is not a refusal.
+const refused = (run: () => Promise<unknown>, statuses: RegExp = /\b403\b/): Promise<boolean> => run().then(() => false, (error: unknown) => statuses.test(error instanceof Error ? error.message : ''));
 
 await scenario('scoped-key', 120_000, async (t) => { // timeout: about ten requests to the store
   const other = `e2e-${randomUUID().slice(0, 8)}`;
@@ -25,7 +26,7 @@ await scenario('scoped-key', 120_000, async (t) => { // timeout: about ten reque
   t.equal(await refused(() => createBucket({ ...runtime, bucket: `e2e-${randomUUID().slice(0, 8)}` })), true, 'the runtime key cannot create a bucket');
   t.equal(await refused(() => putBucketCors({ ...runtime, bucket: setting('GRIMOIRE_S3_BUCKET', 'grimoire') })), true, 'the runtime key cannot set the CORS rule of its own bucket');
   const foreign = runtimeStore(other);
-  t.equal(await refused(() => foreign.put(key, bytes, { size: bytes.length, contentType: 'image/png' })), true, 'the runtime key cannot write into another bucket');
+  t.equal(await refused(() => foreign.put(key, bytes, { size: bytes.length, contentType: 'image/png' }), /\b(403|404)\b/), true, 'the runtime key cannot write into another bucket');
 
   // The application's own settings, as Compose resolves them for the running service: no administrator key, under any name, and not the administrator's value.
   const resolved = JSON.parse(await compose('config', '--format', 'json')) as { services: { app: { environment: Record<string, string | null> } } };

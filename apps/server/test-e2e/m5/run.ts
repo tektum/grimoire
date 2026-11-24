@@ -13,7 +13,7 @@ if (problems.length > 0 || process.argv.includes('--list')) process.exit(problem
 
 function runScenario(name: string): Promise<{ code: number; lines: string[] }> {
   return new Promise((resolve) => {
-    const child = spawnWatched([path.join(dir, `${name}.ts`)], { ...process.env, E2E_RESULTS_DIR: process.env['E2E_RESULTS_DIR'] ?? 'test-results/m5' });
+    const child = spawnWatched([path.join(dir, `${name}.ts`)], { ...process.env, E2E_RESULTS_DIR: process.env['E2E_RESULTS_DIR'] ?? 'test-results/m5' }, ['ignore', 'pipe', 'inherit']);
     let out = '';
     child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
     child.on('close', (code) => { resolve({ code: code ?? 1, lines: out.split('\n').filter((l) => l !== '') }); });

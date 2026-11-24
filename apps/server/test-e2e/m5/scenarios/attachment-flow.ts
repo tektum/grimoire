@@ -1,4 +1,4 @@
-import { apiAs, errorCode, expectStatus, getFromStore, objectExists, pageIn, publicEndpoint, readyAttachment, scenario, sendToStore, signInAll, startUpload, succeeded } from '../support.ts';
+import { apiAs, errorCode, expectStatus, getFromStore, objectExists, pageIn, readyAttachment, scenario, sendToStore, signedEndpoint, signInAll, startUpload, succeeded } from '../support.ts';
 import { pngBytes } from '../support.ts';
 
 // The whole life of an attachment through the generated client (R9.15, R12.11): created, sent to the store with the signed address, completed, downloaded with bytes equal;
@@ -15,7 +15,7 @@ await scenario('attachment-flow', 180_000, async (t) => { // timeout: about 40 r
   const started = (await startUpload(bob, open.page, bytes, { fileName: 'photo one.png' })).body;
   if (started === undefined) throw new Error('bob could not start an upload');
   t.equal(started.upload.method, 'PUT', 'the answer is a signed PUT');
-  t.equal(new URL(started.upload.url).origin, new URL(publicEndpoint).origin, 'the address is the one a browser reaches');
+  t.equal(new URL(started.upload.url).origin, new URL(signedEndpoint).origin, 'the address is the one a browser reaches');
   t.check(started.markdownPath.startsWith(`attachments/${started.id}/`), 'the Markdown path names the attachment');
   t.equal(await objectExists(started.id), false, 'nothing is stored before the bytes are sent');
   const early = await bob.GET('/v1/attachments/{id}', { params: { path: { id: started.id } } });
