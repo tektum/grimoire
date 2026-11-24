@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { ApiLike } from '../api/query';
 import type { FlatPage } from './model';
@@ -19,10 +19,26 @@ async function run<T>(call: () => Result): Promise<Outcome<T>> {
 /** The request body of a move: exactly one of `afterId` and `beforeId` at most (the API refuses both); neither means last. */
 const moveBody = (to: Placement) => ({ parentId: to.parentId, ...(to.beforeId !== null ? { beforeId: to.beforeId } : { afterId: to.afterId }) });
 
+/** What a rename answers: the outcome, and whether it was the latest to begin of the renames of that page made through this client (from the page head or from the tree). */
+export type RenameOutcome = Outcome & { readonly latest: boolean };
+
+/**
+ * The renames of a page can overlap, from the page head and from the tree, and answers can come in any order: the count is kept here, per client and per page, in one place both surfaces use, so that the one
+ * that began last is the one whose title and address are shown whichever answer comes last. (Another tab keeps its own count: the server has the last word, and the next read of the tree shows it.)
+ */
+const renameCounts = new WeakMap<QueryClient, Map<string, number>>();
+const beginRename = (client: QueryClient, id: string): (() => boolean) => {
+  const counts = renameCounts.get(client) ?? new Map<string, number>();
+  renameCounts.set(client, counts);
+  const mine = (counts.get(id) ?? 0) + 1;
+  counts.set(id, mine);
+  return () => counts.get(id) === mine;
+};
+
 export interface TreeActions {
   /** A new, untitled page under `parentId` (null for the top level), last among its siblings. */
   create(parentId: string | null): Promise<Outcome>;
-  rename(id: string, title: string): Promise<Outcome>;
+  rename(id: string, title: string): Promise<RenameOutcome>;
   /** Moves a page: under `to.parentId`, after the sibling `to.afterId`, before `to.beforeId`, or last when neither is set. */
   move(id: string, to: Placement): Promise<Outcome>;
   remove(id: string): Promise<Outcome>;
@@ -53,8 +69,11 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
           () => api.POST('/v1/pages' as never, { body: { collectionId, parentId } } as never),
           (page) => { local((pages) => applyCreate(pages, page)); },
         ),
-      rename: (id, title) =>
-        settle(() => api.PATCH('/v1/pages/{id}' as never, { params: { path: { id } }, body: { title } } as never), undefined, () => { local((pages) => applyRename(pages, id, title)); }),
+      rename: async (id, title) => {
+        const isLatest = beginRename(client, id);
+        const outcome = await settle(() => api.PATCH('/v1/pages/{id}' as never, { params: { path: { id } }, body: { title } } as never), undefined, () => { local((pages) => applyRename(pages, id, title)); });
+        return { ...outcome, latest: isLatest() };
+      },
       move: (id, to) =>
         settle(
           () => api.POST('/v1/pages/{id}/move' as never, { params: { path: { id } }, body: moveBody(to) } as never),

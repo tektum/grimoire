@@ -106,4 +106,63 @@ describe('useTreeActions', () => {
     await waitFor(() => { expect((view.result.current.tree.data ?? []).map((x) => x.id)).toEqual(['a', 'b', 'a1']); }); // the page that was shown as gone is back
     expect(calls.filter((c) => c.startsWith('GET /v1/collections/{id}/tree'))).toHaveLength(2);
   });
+
+  describe('two renames of one page', () => {
+    const racing = (routes: Record<string, ReturnType<typeof ok>> = {}) => {
+      const { api } = fakeApi({ 'GET /v1/collections/{id}/tree': ok(SERVER), 'PATCH /v1/pages/{id}': ok({}), ...routes });
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let calls = 0;
+      const slowFirst = { ...api, PATCH: (...args: unknown[]) => (calls++ === 0 ? gate.then(() => (api.PATCH as (...a: unknown[]) => unknown)(...args)) : (api.PATCH as (...a: unknown[]) => unknown)(...args)) } as unknown as ApiLike;
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+      // Two surfaces of one screen, as the page head and the tree are: each has its own actions, over the same client.
+      const header = renderHook(() => useTreeActions(slowFirst, 'c1'), { wrapper });
+      const tree = renderHook(() => useTreeActions(slowFirst, 'c1'), { wrapper });
+      return { header, tree, release: () => release() };
+    };
+
+    it('says that only the one that began last is the latest, whichever surface made it and whatever the order of the answers (a header rename and a tree rename racing)', async () => {
+      const { header, tree, release } = racing();
+      let first: unknown;
+      let second: unknown;
+      await act(async () => {
+        const slow = header.result.current.rename('a', 'From the header');
+        second = await tree.result.current.rename('a', 'From the tree'); // began later, answered at once
+        release();
+        first = await slow; // began first, answered last
+      });
+      expect(second).toMatchObject({ ok: true, latest: true });
+      expect(first).toMatchObject({ ok: true, latest: false });
+    });
+
+    it('counts each page on its own: a rename of another page does not make this one stale', async () => {
+      const { header, tree, release } = racing();
+      let first: unknown;
+      let other: unknown;
+      await act(async () => {
+        const slow = header.result.current.rename('a', 'A renamed');
+        other = await tree.result.current.rename('b', 'B renamed');
+        release();
+        first = await slow;
+      });
+      expect(other).toMatchObject({ latest: true });
+      expect(first).toMatchObject({ ok: true, latest: true });
+    });
+
+    it('does not count the renames of another client of the same page (another tab keeps its own count; the server has the last word)', async () => {
+      const a = racing();
+      const b = racing();
+      let first: unknown;
+      await act(async () => {
+        const slow = a.header.result.current.rename('a', 'In tab A');
+        const inB = b.tree.result.current.rename('a', 'In tab B');
+        b.release();
+        await inB;
+        a.release();
+        first = await slow;
+      });
+      expect(first).toMatchObject({ latest: true });
+    });
+  });
 });

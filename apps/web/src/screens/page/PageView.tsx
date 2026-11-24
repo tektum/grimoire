@@ -18,7 +18,7 @@ import { recheckMinClientVersion } from '../../gate/recheck';
 import { notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
-import { latestOnly, verdictOf } from './latest';
+import { verdictOf } from './latest';
 import { PageMenu } from './PageMenu';
 import { PageTitle } from './PageTitle';
 import { type PageResult, titled } from './usePage';
@@ -84,7 +84,6 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     if ((location.state as { newPage?: boolean } | null)?.newPage === true) navigate('.', { replace: true, state: null });
   }, []);
   const client = useQueryClient();
-  const beginRename = useRef(latestOnly()).current;
   // The key of the location now, or null once this page has gone from the screen.
   const hereKey = useRef<string | null>(location.key);
   hereKey.current = location.key;
@@ -101,9 +100,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
    */
   const saveTitle = async (title: string): Promise<boolean> => {
     const pressedAt = hereKey.current;
-    const isLatest = beginRename();
-    const outcome = await treeActions.rename(page.id, title);
-    const verdict = verdictOf(isLatest, outcome.ok); // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
+    const outcome = await treeActions.rename(page.id, title); // `latest`: of the renames of this page from the head and the tree, this one began last
+    const verdict = verdictOf(() => outcome.latest, outcome.ok); // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
     let moved = false;
     if (verdict === 'applied') {
       // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
