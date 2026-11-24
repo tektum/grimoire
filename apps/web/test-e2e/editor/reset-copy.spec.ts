@@ -39,6 +39,28 @@ test.describe('a page that is reset under a tab with unsent changes', () => {
       await expect(page.locator('.ProseMirror')).toContainText('The page as saved.');
       await expect(page.locator('.ProseMirror')).not.toContainText('My unsent words.');
 
+      // And the old words do not come back: not within 5 s of the reset page showing, and not after a reconnect either.
+      const comesBack = async (forMs: number): Promise<boolean> => {
+        const start = Date.now();
+        let returned = false;
+        await expect
+          .poll(
+            async () => {
+              returned ||= (await page.locator('.ProseMirror').innerText()).includes('My unsent words.');
+              return Date.now() - start >= forMs;
+            },
+            { timeout: forMs + 10_000, intervals: [250] },
+          )
+          .toBe(true);
+        return returned;
+      };
+      expect(await comesBack(5000)).toBe(false);
+      await context.setOffline(true);
+      await context.setOffline(false);
+      await waitForSynced(page);
+      expect(await comesBack(2000)).toBe(false);
+      await expect(page.locator('.ProseMirror')).toContainText('The page as saved.');
+
       await notice.getByRole('button', { name: 'Dismiss' }).click();
       await expect(notice).toHaveCount(0);
     } finally {
