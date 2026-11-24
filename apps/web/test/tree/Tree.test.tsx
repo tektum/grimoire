@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router';
+import { createMemoryRouter, MemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { buildTree } from '../../src/tree/model';
 import { Tree } from '../../src/tree/Tree';
@@ -106,5 +106,15 @@ describe('Tree', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Plain page' }));
     expect(screen.getByLabelText('location').textContent).toBe('/p/plain-page-plain');
     expect(screen.getAllByRole('treeitem').map((r) => r.getAttribute('aria-selected'))).not.toContain('true');
+  });
+
+  it('asks the router for exactly one navigation when Enter opens a page', async () => {
+    const router = createMemoryRouter([{ path: '*', element: <Tree items={items} /> }], { initialEntries: ['/'] });
+    const seen: string[] = [];
+    router.subscribe((state) => { if (state.navigation.state === 'idle') seen.push(`${state.historyAction} ${state.location.pathname}`); });
+    render(<RouterProvider router={router} />);
+    await userEvent.tab();
+    await userEvent.keyboard('{ArrowDown}{Enter}');
+    expect(seen.filter((entry) => entry.includes('/p/'))).toEqual(['PUSH /p/nested-nested']);
   });
 });
