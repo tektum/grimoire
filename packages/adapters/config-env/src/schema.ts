@@ -198,11 +198,23 @@ LOOPBACK.addSubnet('127.0.0.0', 8, 'ipv4');
 LOOPBACK.addAddress('::1', 'ipv6');
 /** Loopback by `net.BlockList` (which also matches IPv4-mapped IPv6); an unparsable host is not loopback. */
 const isLoopback = (host: string): boolean => (isIP(host) === 4 ? LOOPBACK.check(host, 'ipv4') : isIP(host) === 6 && LOOPBACK.check(host, 'ipv6'));
+/** A bucket the AWS SDK puts in the host (virtual addressing): one DNS label of 3 to 63 characters (a dot or an upper case letter sends it path style), and never on an IP address. */
+const virtualHostable = (bucket: string, endpoint: URL): boolean =>
+  isIP(endpoint.hostname.replace(/^\[|\]$/g, '')) === 0 && /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket);
+
+/** The origin browsers send file requests to: with virtual addressing the bucket is part of the host (where the SDK can put it there), so it is part of the origin. */
+const publicOriginOf = (publicEndpoint: string, bucket: string, addressing: 'path' | 'virtual'): string => {
+  const url = new URL(publicEndpoint);
+  if (addressing === 'virtual' && virtualHostable(bucket, url)) url.hostname = `${bucket}.${url.hostname}`;
+  return url.origin;
+};
+
 /** Whether the public store endpoint shares an origin with an allowed app origin (a stored file would then run as the app). */
 const publicEndpointIsAnAppOrigin = (raw: Raw): boolean => {
   const endpoint = raw['GRIMOIRE_S3_PUBLIC_ENDPOINT'] ?? raw['GRIMOIRE_S3_ENDPOINT']; // the one Config.files will use
   if (endpoint === undefined || !URL.canParse(endpoint)) return false; // the URL rule reports a bad value
-  const storeOrigin = new URL(endpoint).origin.toLowerCase();
+  const bucket = raw['GRIMOIRE_S3_BUCKET'];
+  const storeOrigin = (bucket === undefined ? new URL(endpoint).origin : publicOriginOf(endpoint, bucket, raw['GRIMOIRE_S3_ADDRESSING_STYLE'] === 'virtual' ? 'virtual' : 'path')).toLowerCase();
   return (raw['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',').some((o) => o.trim().toLowerCase() === storeOrigin);
 };
 
@@ -340,7 +352,7 @@ const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpo
   const publicEndpoint = v.GRIMOIRE_S3_PUBLIC_ENDPOINT ?? endpoint;
   const { GRIMOIRE_S3_ACCESS_KEY: accessKey, GRIMOIRE_S3_SECRET_KEY: secretKey } = v;
   return { files: {
-    endpoint, publicEndpoint, publicOrigin: new URL(publicEndpoint).origin,
+    endpoint, publicEndpoint, publicOrigin: publicOriginOf(publicEndpoint, v.GRIMOIRE_S3_BUCKET, v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path'),
     bucket: v.GRIMOIRE_S3_BUCKET,
     ...(accessKey !== undefined && secretKey !== undefined ? { accessKey, secretKey } : {}),
     region: v.GRIMOIRE_S3_REGION ?? 'us-east-1', addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path',
