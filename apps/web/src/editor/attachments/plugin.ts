@@ -39,7 +39,7 @@ export async function uploadFiles(files: readonly File[], ctx: Ctx): Promise<Fra
     host?.notify?.('Files can’t be added to this page');
     return Fragment.empty;
   }
-  const deps = { api: host.uploadApi, put: host.put ?? storeFetch, pageId: host.pageId };
+  const deps = { api: host.uploadApi, put: host.put ?? storeFetch, pageId: host.pageId, ...(host.limits === undefined ? {} : { limits: host.limits }) };
   const results = await Promise.all(files.map((file) => uploadAttachment(deps, file)));
   const refusals = new Set<string>();
   const stored: Attachment[] = [];

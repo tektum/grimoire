@@ -43,6 +43,8 @@ const PAGE = '99999999-8888-4777-8666-555555555555';
       pageId: PAGE,
       api: api as never,
       uploadApi: api as never,
+      // What the server announces (GET /v1/config), so the refusals say the limit.
+      limits: async () => ({ maxBytes: 26_214_400, pendingMax: 10 }),
       notify,
       open: (url) => ((window as unknown as { opened: string[] }).opened ??= []).push(url),
     });

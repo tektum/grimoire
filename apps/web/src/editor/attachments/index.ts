@@ -5,3 +5,4 @@ export { attachmentId } from './path';
 export { clientOf, signedUrlsFrom } from './api';
 export { quietApiOf } from './quiet-api';
 export { chooseFiles } from './pick';
+export { lazyLimits, uploadLimitsOf, type UploadLimits } from './limits';

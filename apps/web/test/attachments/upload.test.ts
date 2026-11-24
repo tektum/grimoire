@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { TOO_MANY_UPLOADS, uploadAttachment } from '../../src/editor/attachments/upload';
+import { uploadAttachment } from '../../src/editor/attachments/upload';
 
 const ID = '3f2a9c1e-8b7d-4e6f-9a1b-2c3d4e5f6a7b';
 const PAGE = '99999999-8888-4777-8666-555555555555';
@@ -8,13 +8,13 @@ const completed = { id: ID, fileName: 'photo.png', contentType: 'image/png', siz
 const respond = (status: number, data?: unknown, error?: unknown) => ({ ...(data === undefined ? {} : { data }), ...(error === undefined ? {} : { error }), response: new Response('{}', { status }) });
 const file = (name = 'photo.png', type = 'image/png') => new File([new Uint8Array([1, 2, 3])], name, { type });
 
-function setup(over: { create?: unknown; complete?: unknown; put?: Response | Error } = {}) {
+function setup(over: { create?: unknown; complete?: unknown; put?: Response | Error; limits?: () => Promise<{ maxBytes?: number; pendingMax?: number } | undefined> } = {}) {
   const POST = vi.fn<(path: string, init?: unknown) => Promise<never>>(async (path: string) => (path === '/v1/attachments' ? (over.create ?? respond(201, created)) : (over.complete ?? respond(200, completed))) as never);
   const put = vi.fn(async () => {
     if (over.put instanceof Error) throw over.put;
     return over.put ?? new Response(null, { status: 200 });
   });
-  return { POST, put, upload: (f = file()) => uploadAttachment({ api: { POST } as never, put: put as never, pageId: PAGE }, f) };
+  return { POST, put, upload: (f = file()) => uploadAttachment({ api: { POST } as never, put: put as never, pageId: PAGE, ...(over.limits === undefined ? {} : { limits: over.limits }) }, f) };
 }
 
 describe('the upload sequence', () => {
@@ -40,7 +40,7 @@ describe('the upload sequence', () => {
   it.each([
     ['413 too_large', respond(413, undefined, { error: { code: 'too_large' } }), 'That file is too large'],
     ['422 type_not_allowed', respond(422, undefined, { error: { code: 'type_not_allowed' } }), "That file type isn't allowed"],
-    ['429 rate_limited', respond(429, undefined, { error: { code: 'rate_limited' } }), TOO_MANY_UPLOADS],
+    ['429 rate_limited', respond(429, undefined, { error: { code: 'rate_limited' } }), 'Too many uploads at once. Wait a moment.'],
     ['an unknown error', respond(500, undefined, { error: { code: 'weird' } }), 'Something went wrong'],
     ['no body', respond(500), 'Something went wrong'],
   ])('says it plainly when creating is refused: %s', async (_name, create, message) => {
@@ -49,6 +49,16 @@ describe('the upload sequence', () => {
     expect(result).toEqual({ ok: false, message });
     expect(s.put).not.toHaveBeenCalled();
     expect(s.POST).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the limit in the refusals that have one, when the server announced it', async () => {
+    const limits = async () => ({ maxBytes: 26_214_400, pendingMax: 10 });
+    const large = setup({ create: respond(413, undefined, { error: { code: 'too_large' } }), limits });
+    expect(await large.upload()).toEqual({ ok: false, message: 'That file is over 25 MB' });
+    const many = setup({ create: respond(429, undefined, { error: { code: 'rate_limited' } }), limits });
+    expect(await many.upload()).toEqual({ ok: false, message: 'Too many uploads at once (10 is the most). Wait a moment.' });
+    const unknown = setup({ create: respond(413, undefined, { error: { code: 'too_large' } }), limits: async () => undefined });
+    expect(await unknown.upload()).toEqual({ ok: false, message: 'That file is too large' });
   });
 
   it('says the upload did not finish when the store refuses or cannot be reached, and does not complete', async () => {
