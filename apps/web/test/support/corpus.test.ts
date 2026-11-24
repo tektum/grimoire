@@ -35,8 +35,10 @@ describe('the XSS corpus', () => {
     const pasted = xssCorpus.flatMap((e) => (e.html === undefined ? [] : [e.html.toLowerCase()]));
     const any = (needle: string) => pasted.some((h) => h.includes(needle));
     for (const needle of ['<script', 'onerror=', 'onload=', 'onclick=', '<iframe', '<form', '<style', 'style="']) expect([needle, any(needle)]).toEqual([needle, true]);
-    expect(xssCorpus.some((e) => e.expect === 'image-blocked' && e.markdown?.includes('data:image'))).toBe(true);
-    expect(xssCorpus.some((e) => e.expect === 'image-blocked' && e.markdown?.includes('https://evil.example'))).toBe(true);
+    // The address of each blocked Markdown image, read as an address: a `data:` one, and one on a remote host.
+    const blocked = xssCorpus.flatMap((e) => (e.expect === 'image-blocked' && e.markdown !== undefined ? [...e.markdown.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]!) : []));
+    expect(blocked.some((address) => address.startsWith('data:image/'))).toBe(true);
+    expect(blocked.some((address) => URL.canParse(address) && new URL(address).protocol === 'https:' && new URL(address).hostname === 'evil.example')).toBe(true);
     expect(xssCorpus.some((e) => e.expect === 'image-kept')).toBe(true);
   });
 
