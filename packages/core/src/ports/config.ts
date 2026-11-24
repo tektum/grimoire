@@ -126,6 +126,10 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   /** Only for the files-setup purpose. */
   readonly filesSetup?: FilesSetupConfig;
   readonly http: HttpConfig;
+  /** The address browsers use for the API (GRIMOIRE_PUBLIC_API_URL); absent when unset. */
+  readonly publicApiUrl?: string;
+  /** A folder with the built web client (GRIMOIRE_WEB_ROOT): when set the server serves it, with its own response headers. Absent: API and live editing only. */
+  readonly webRoot?: string;
   /** The address browsers use for live editing (GRIMOIRE_PUBLIC_COLLAB_URL); absent when unset. */
   readonly publicCollabUrl?: string;
   /** When true, a bare session token on the WebSocket is refused as too old a client. */
