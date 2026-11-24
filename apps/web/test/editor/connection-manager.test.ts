@@ -566,3 +566,80 @@ describe('a hidden tab', () => {
     expect(manager.state().suspended).toBe(false);
   });
 });
+
+describe('the network, as the browser tells it', () => {
+  it('networkLost starts the offline text on its clock even though the socket stays open: after 10 s, not before', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.networkLost();
+    await h.clock.advance(9999);
+    expect(manager.state()).toMatchObject({ offline: false, text: null });
+    await h.clock.advance(1);
+    expect(manager.state()).toMatchObject({ offline: true, text: TEXTS.offline, phase: 'synced' });
+    expect(h.last().provider.disconnects).toBe(0); // the connection is not touched: it may come back by itself
+  });
+
+  it('networkBack takes the text away, and the timer, when the socket never dropped', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.networkLost();
+    await h.clock.advance(11_000);
+    manager.networkBack();
+    expect(manager.state()).toMatchObject({ offline: false, text: null });
+    manager.networkLost();
+    manager.networkBack(); // back before the text: it never shows
+    await h.clock.advance(20_000);
+    expect(manager.state().offline).toBe(false);
+    expect(h.clock.pendingCount()).toBe(0);
+  });
+
+  it('networkBack connects at once a connection that was lost meanwhile, instead of waiting out the backoff', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      p.close(1001);
+      await h.clock.advance(h.clock.nextIn()!);
+    }
+    p.close(1001); // every attempt fails: the wait is longer now
+    expect(h.clock.nextIn()).toBeGreaterThan(1500);
+    const connects = p.connects;
+    manager.networkBack();
+    expect(p.connects).toBe(connects + 1);
+    await flush(); // the token of the new attempt is read
+    expect(h.clock.pendingCount()).toBe(0); // and no wait is left running
+  });
+
+  it('a wait the server asked for (it is busy) is not cut short', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.close(4429, 'rate-limited');
+    expect(h.clock.nextIn()).toBe(30_000);
+    manager.networkBack();
+    expect(h.last().provider.connects).toBe(1);
+    expect(h.clock.nextIn()).toBe(30_000);
+  });
+
+  it('does nothing for a manager that is stopped, not started or hidden', async () => {
+    const idle = new ConnectionManager(harness().options);
+    idle.networkLost();
+    idle.networkBack();
+    expect(idle.state().offline).toBe(false);
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.refuse('forbidden');
+    manager.networkLost();
+    expect(h.clock.pendingCount()).toBe(0);
+    const hidden = start();
+    await flush();
+    hidden.h.last().provider.succeed(1);
+    hidden.manager.suspend();
+    hidden.manager.networkLost();
+    hidden.manager.networkBack();
+    expect(hidden.h.clock.pendingCount()).toBe(0);
+    expect(hidden.h.last().provider.connects).toBe(1);
+  });
+});

@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 import { apiUrl, devSecret } from '../support/env';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
+import { controlNetwork } from './network';
 import { makePage, resetPageState } from './pages';
 
 test.describe('the epoch handshake', () => {
@@ -12,7 +13,8 @@ test.describe('the epoch handshake', () => {
     const made = await makePage('# Epoch\n\nold\n', { title: 'Epoch page' });
     const users = await twoUsers(browser, baseURL);
     try {
-      const { page, context } = users.a;
+      const { page } = users.a;
+      const network = await controlNetwork(page);
       await page.goto(made.path);
       await waitForSynced(page);
       await page.locator('.ProseMirror p', { hasText: 'old' }).click();
@@ -20,10 +22,10 @@ test.describe('the epoch handshake', () => {
       await page.keyboard.type(' old-edit');
       await expect(page.locator('.ProseMirror')).toContainText('old-edit');
 
-      await context.setOffline(true);
+      await network.cut();
       await page.keyboard.type(' more');
       await resetPageState(made.id, { confirmStale: true, markdown: '# Epoch\n\nnew\n' });
-      await context.setOffline(false);
+      await network.restore();
 
       // The tab shows the reset page, once, and says what happened.
       const notice = page.getByRole('alert').filter({ hasText: 'This page was reset. Your unsent changes were not applied.' });

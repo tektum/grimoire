@@ -192,11 +192,19 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       if (document.visibilityState === 'hidden') hiddenTimer = setTimeout(() => manager.suspend(), session.hiddenDisconnectMs ?? DEFAULT_HIDDEN_DISCONNECT_MS);
       else manager.resume();
     };
+    // The browser's word on the network: a socket can stay open long after the connection is gone, so the editor does not wait for it to close.
+    const onOffline = (): void => manager.networkLost();
+    const onOnline = (): void => manager.networkBack();
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    if (!navigator.onLine) onOffline();
     document.addEventListener('visibilitychange', onVisibility);
     if (document.visibilityState === 'hidden') onVisibility(); // a page opened in a background tab starts its clock at once
     showSaved();
 
     return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisibility);
       if (hiddenTimer !== null) clearTimeout(hiddenTimer);
       managerRef.current = null;

@@ -618,4 +618,40 @@ describe('the page screen', () => {
       Reflect.deleteProperty(document, 'visibilityState');
     }
   });
+
+  it('says "Offline: changes kept in this tab" when the browser says the network is gone for more than 10 s, though the socket stays open, and takes it away when the network is back', async () => {
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    vi.useFakeTimers();
+    try {
+      await act(async () => void window.dispatchEvent(new Event('offline')));
+      await act(async () => void (await vi.advanceTimersByTimeAsync(9000)));
+      expect(screen.queryByText('Offline: changes kept in this tab')).toBeNull();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(2000)));
+      expect(screen.getByText('Offline: changes kept in this tab')).toBeTruthy();
+      expect(t.root().getAttribute('data-collab-state')).toBe('offline');
+      expect(t.sessions[0]!.provider.disconnects).toBe(0);
+      await act(async () => void window.dispatchEvent(new Event('online')));
+      expect(screen.queryByText('Offline: changes kept in this tab')).toBeNull();
+      expect(t.root().getAttribute('data-collab-state')).toBe('synced');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts as offline when the page opens while the browser already says it is', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    vi.useFakeTimers();
+    try {
+      const t = mountPage();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+      expect(t.sessions).toHaveLength(1);
+      await act(async () => void (await vi.advanceTimersByTimeAsync(11_000)));
+      expect(screen.getByText('Offline: changes kept in this tab')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(navigator, 'onLine');
+    }
+  });
 });

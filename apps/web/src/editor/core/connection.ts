@@ -105,6 +105,8 @@ export class ConnectionManager {
   private refusedAt = Number.NEGATIVE_INFINITY;
   /** When the connection was lost, until it is made again. */
   private lostAt: number | null = null;
+  /** The wait now running was asked for by the server (it is busy): the network coming back does not cut it short. */
+  private busyWait = false;
   private refreshingFor: Session | null = null;
   /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
   private large = false;
@@ -166,12 +168,41 @@ export class ConnectionManager {
     this.set({ copy: null, notice: this.current.notice === TEXTS.reset ? null : this.current.notice });
   }
 
+  /**
+   * The browser says the network is gone. A socket can stay open for minutes after that (the browser does not close it until a send or a ping fails), so
+   * waiting for it to close would say nothing: the "offline" text is put on its clock here, and what is typed meanwhile is kept in the document.
+   */
+  networkLost(): void {
+    if (this.session === null || this.current.suspended || this.current.phase === 'stopped' || this.current.phase === 'idle') return;
+    this.lostAt ??= this.timers.now();
+    if (this.offlineTimer === null) this.offlineTimer = this.timers.setTimeout(() => this.set({ offline: true, text: TEXTS.offline }), OFFLINE_AFTER_MS);
+  }
+
+  /**
+   * The browser says the network is back. The "offline" text goes. A connection that was lost in the meantime is made again at once, without waiting
+   * out the backoff (a server that asked for time, as when it is busy, is still given it).
+   */
+  networkBack(): void {
+    if (this.session === null || this.current.suspended || this.current.phase === 'stopped' || this.current.phase === 'idle') return;
+    this.clearOffline();
+    if (this.current.phase === 'synced') {
+      this.lostAt = null; // the connection never dropped: nothing to count
+      return;
+    }
+    if (this.current.phase === 'retrying' && !this.busyWait) {
+      this.clearRetry();
+      this.attempts = 0;
+      this.connectSession();
+    }
+  }
+
   /** The tab has been hidden long enough: disconnect and stay quiet (no retries) until `resume`. Nothing happens to a manager that has stopped or not started. */
   suspend(): void {
     if (this.session === null || this.current.phase === 'stopped' || this.current.phase === 'idle' || this.current.suspended) return;
     this.clearTimers();
     this.clearOffline();
     this.quiet = true;
+    this.lostAt ??= this.timers.now(); // a long hide counts as time without a connection
     this.session.provider.disconnect();
     // Only the transient text goes: the reason a page is read-only or too large stays.
     this.set({ suspended: true, phase: 'retrying', offline: false, text: this.current.text === TEXTS.offline ? null : this.current.text });
@@ -229,6 +260,7 @@ export class ConnectionManager {
     }
     this.attempts += 1;
     this.quiet = false;
+    this.busyWait = false;
     session.provider.connect();
   }
 
@@ -377,6 +409,7 @@ export class ConnectionManager {
   private scheduleRetry(mapping: Mapping): void {
     this.lostAt ??= this.timers.now();
     this.clearRetry();
+    this.busyWait = mapping.behaviour === 'BUSY';
     const base = Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.max(0, this.attempts - 1));
     const jittered = base * (1 + (this.random() * 2 - 1) * JITTER);
     const delay = Math.max(mapping.minDelayMs ?? 0, Math.min(RETRY_MAX_MS, Math.max(RETRY_MIN_MS, jittered)));
