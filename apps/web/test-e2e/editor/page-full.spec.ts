@@ -31,6 +31,7 @@ test.describe('a page that already has as many connections as the server allows'
           expect(seen.denied, 'the reason of the refusal').toBe('page-full');
           expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'BUSY' });
           expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
+          expect(seen.close!.reason, 'the close repeats the refusal reason').toBe('page-full');
           expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason }), 'the close is handled as the refusal is').toEqual(
             mapSignal({ type: 'authenticationFailed', reason: 'page-full' }),
           );

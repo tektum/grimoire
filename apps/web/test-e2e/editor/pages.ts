@@ -22,7 +22,7 @@ function provisionAdministrator(): Promise<void> {
   return administrator;
 }
 
-async function call<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
+async function call<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
   await provisionAdministrator();
   const response = await fetch(`${apiUrl()}${path}`, {
     method,
@@ -41,6 +41,16 @@ export async function makePage(markdown: string, options: { title?: string; perm
   const collection = await call<{ id: string }>('POST', '/v1/collections', { name: `e2e ${randomUUID().slice(0, 8)}`, defaultPermission: options.permission ?? 'read_write' });
   const page = await call<{ id: string; urlId: string }>('POST', '/v1/pages', { collectionId: collection.id, markdown, title: options.title ?? 'Editor page' });
   return { id: page.id, urlId: page.urlId, collectionId: collection.id, path: `/p/page-${page.urlId}` };
+}
+
+/** Changes what everyone without an entry of their own may do in a collection (`null`: nothing), as an administrator. The open editors of its pages learn of it at the server's next access check. */
+export async function setDefaultPermission(collectionId: string, permission: 'read' | 'read_write' | null): Promise<void> {
+  await call('PATCH', `/v1/collections/${collectionId}`, { defaultPermission: permission });
+}
+
+/** Suspends or unsuspends a person, as an administrator: a suspended person has no access to anything, and the server refuses their sockets with `forbidden`. */
+export async function setSuspended(userId: string, suspended: boolean): Promise<void> {
+  await call('PATCH', `/v1/users/${userId}`, { suspended });
 }
 
 /** Resets the saved state of a page as an administrator (`POST /v1/pages/{id}/reset-state`); every open editor of the page is closed with a stale epoch. */
