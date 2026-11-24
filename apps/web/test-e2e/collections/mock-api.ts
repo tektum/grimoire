@@ -57,6 +57,18 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (pathname === '/v1/config') return json(route, 200, { collabUrl: 'ws://127.0.0.1:8080/collab', fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
     if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: 'e2e-alice', email: 'e2e-alice@dev.invalid', role: 'member' }, cors);
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
+    const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
+    if (one_?.[1] !== undefined && request.method() === 'GET') {
+      const found = state.collections.find((c) => c.id === one_[1]);
+      if (found === undefined || (state.hidden ?? []).includes(found.id)) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+      return json(route, 200, found, cors);
+    }
+    const byUrlId = /^\/v1\/pages\/by-url-id\/([^/]+)$/.exec(pathname);
+    if (byUrlId?.[1] !== undefined) {
+      const found = state.pages.find((p) => p.urlId === byUrlId[1]);
+      if (found === undefined) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+      return json(route, 200, { ...found, collectionId: state.collections[0]?.id ?? '', createdBy: 'u1', myPermission: 'read-write' }, cors);
+    }
     const tree = /^\/v1\/collections\/([^/]+)\/tree$/.exec(pathname);
     if (tree?.[1] !== undefined) {
       const id = tree[1];

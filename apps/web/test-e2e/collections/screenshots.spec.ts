@@ -33,6 +33,7 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
     await tab.addScriptTag({ content: bundle.js });
     await tab.evaluate(([data, id]) => { (window as unknown as { show: (d: unknown, p: string) => void }).show(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, '/c/c1']);
+    await expect(tab.getByRole('heading', { level: 1, name: 'Dev' })).toBeVisible(); // the collection's own name, from the collection read
     await expect(tab.getByRole('treeitem')).toHaveCount(5); // Welcome is open: Welcome, Nested, Getting started guide, Plan for May, Meeting notes
     await shots(tab, TASK, 'collection-list');
     // Three levels, one row expanded and one focused, from the keyboard.
@@ -102,6 +103,30 @@ test('the not-found screen, light and dark', async ({ page: tab, browserName }) 
     await expect(tab.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
     await tab.mouse.move(0, 0);
     await shots(tab, TASK, 'not-found');
+  } finally {
+    await stop();
+  }
+});
+
+test('a page open with the tree beside it, light and dark', async ({ page: tab, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const stop = await open(tab, '/p/install-the-tools-install0', { collections: COLLECTIONS, pages: PAGES });
+  try {
+    await expect(tab.getByRole('heading', { level: 1, name: 'Install the tools' })).toBeVisible();
+    await expect(tab.getByRole('link', { name: 'Install the tools', exact: true }).and(tab.locator('[aria-current="page"]'))).toBeVisible(); // the branches above the page are open and the page is marked
+    await expect(tab.getByTestId('user-name')).toHaveText('Alice Example'); // the real header: who is signed in and what they may do
+    // The compact New page button: its text is in the middle of it, and it is not taller than a row of the tree.
+    const box = await tab.getByRole('button', { name: 'New page' }).evaluate((button) => {
+      const range = document.createRange();
+      range.selectNodeContents(button);
+      const text = range.getBoundingClientRect();
+      const outer = button.getBoundingClientRect();
+      return { offCentre: Math.abs(text.top + text.height / 2 - (outer.top + outer.height / 2)), height: outer.height };
+    });
+    expect(box.offCentre).toBeLessThan(1.5);
+    expect(box.height).toBeLessThanOrEqual(32);
+    await tab.mouse.move(0, 0);
+    await shots(tab, TASK, 'page-with-contents');
   } finally {
     await stop();
   }

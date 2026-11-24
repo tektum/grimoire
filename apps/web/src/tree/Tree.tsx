@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { createContext, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { type MoveHandler, type NodeApi, type NodeRendererProps, type TreeApi, Tree as Arborist } from 'react-arborist';
 import { Button, Confirm, Modal, notify } from '../ui/primitives';
@@ -109,6 +109,28 @@ export function Tree({ items, editing, currentUrlId }: TreeProps) {
   const [moving, setMoving] = useState<TreeItem | null>(null);
   const [deleting, setDeleting] = useState<TreeItem | null>(null);
   const actions = editing?.actions;
+  // The page that is open is shown: the branches above it are opened, once for each page that is opened (not again on every read of the tree, which would undo
+  // a branch the person has closed).
+  const revealed = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (currentUrlId === undefined) {
+      revealed.current = undefined; // no page is open: the next one opened is shown again
+      return;
+    }
+    if (revealed.current === currentUrlId) return;
+    const find = (list: readonly TreeItem[]): TreeItem | undefined => {
+      for (const item of list) {
+        if (item.urlId === currentUrlId) return item;
+        const inside = item.children === undefined ? undefined : find(item.children);
+        if (inside !== undefined) return inside;
+      }
+      return undefined;
+    };
+    const item = find(items);
+    if (item === undefined) return; // not in the list (yet): try again when the list changes
+    tree.current?.openParents(item.id);
+    revealed.current = currentUrlId;
+  }, [currentUrlId, items]);
   const context = useMemo<RowContext>(() => ({ currentUrlId, actions, askMove: setMoving, askDelete: setDeleting, open: (id) => { tree.current?.open(id); } }), [currentUrlId, actions]);
   if (items.length === 0) return <p className="tree-empty">No pages yet</p>;
 

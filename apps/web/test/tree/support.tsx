@@ -17,11 +17,12 @@ type Answer = { status: number; body?: unknown };
 export function fakeApi(routes: Record<string, Answer | (() => Answer)>) {
   const calls: string[] = [];
   const bodies: { method: string; path: string; body: unknown }[] = [];
-  const call = vi.fn((method: string) => (path: string, init?: { params?: { path?: { id?: string } }; body?: unknown }) => {
+  const call = vi.fn((method: string) => (path: string, init?: { params?: { path?: { id?: string; urlId?: string } }; body?: unknown }) => {
     const key = `${method} ${path}`;
     if (init?.body !== undefined) bodies.push({ method, path, body: init.body });
-    calls.push(init?.params?.path?.id === undefined ? key : `${key} ${init.params.path.id}`);
-    const entry = routes[`${key} ${init?.params?.path?.id ?? ''}`.trim()] ?? routes[key];
+    const param = init?.params?.path?.id ?? init?.params?.path?.urlId;
+    calls.push(param === undefined ? key : `${key} ${param}`);
+    const entry = routes[`${key} ${param ?? ''}`.trim()] ?? routes[key];
     const answer = typeof entry === 'function' ? entry() : entry ?? { status: 404 };
     return Promise.resolve({ data: answer.status < 300 ? answer.body : undefined, error: answer.status < 300 ? undefined : answer.body, response: new Response(null, { status: answer.status }) });
   });

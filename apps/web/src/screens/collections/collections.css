@@ -28,9 +28,3 @@
   flex: 1;
   min-width: 0;
 }
-.collections-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
