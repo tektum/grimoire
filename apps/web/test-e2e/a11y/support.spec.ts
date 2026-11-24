@@ -68,16 +68,24 @@ test('a route that has no stop is found', () => {
   expect([...ROUTES.map((r) => r.path), '/'].filter((route) => !stops.includes(route))).toEqual(['/trash']);
 });
 
-test('Enter on a link counts for no pointer, in every engine (Firefox gives that click detail 1), and a click that a script makes does', async ({ page }) => {
+test('Enter on a link counts for no pointer, in every engine (Firefox gives that click detail 1), nor does a click that a library makes by calling click()', async ({ page }) => {
   await page.addInitScript(COUNT_POINTER_EVENTS);
   await page.goto(server.url('/links'));
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter'); // the link
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter'); // the button
-  expect(await pointerEvents(page), 'keys made those clicks').toBe(0);
-  await page.evaluate(() => document.getElementById('s')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-  expect(await pointerEvents(page), 'a click made by a script is not a key').toBe(1);
+  await page.evaluate(() => document.getElementById('s')!.click()); // what the menu of the interface library does for Enter on an item
+  expect(await pointerEvents(page), 'keys, and a call of click(), made those clicks').toBe(0);
+  await page.locator('#s').click();
+  expect(await pointerEvents(page), 'a mouse made this one').toBeGreaterThan(0);
+});
+
+test("a press that a script makes is not the browser's, and so is not a pointer", async ({ page }) => {
+  await page.addInitScript(COUNT_POINTER_EVENTS);
+  await page.goto(server.url('/links'));
+  await page.evaluate(() => document.getElementById('s')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  expect(await pointerEvents(page)).toBe(0);
 });
 
 test('the pointer count is zero for keys, even Enter on a button (a click made by a key), and grows with a mouse click', async ({ page }) => {

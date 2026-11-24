@@ -42,15 +42,15 @@ export function blockingText(reports: readonly StopReport[]): string {
 }
 
 /**
- * Every page of the context counts the pointer events it gets: a mouse or pointer press or release, and a click that a script made. A click that a key made is not counted, whatever
- * its `detail` (Firefox gives the click of Enter on a link `detail` 1, and the other engines 0): a pointer's click is always preceded by its press, which is counted.
- * The count is kept in `sessionStorage`, so a walk that loads a page again keeps it.
+ * Every page of the context counts the pointer events it gets: a press or a release of a mouse or a pointer that the browser made (`isTrusted`: what a real device, or Playwright's mouse,
+ * makes). A click is never counted: a key makes one too (Firefox gives the click of Enter on a link `detail` 1), and a menu of the interface library makes one itself, by calling
+ * `click()`, when Enter chooses an item (a script's click, `isTrusted` false); a pointer's click is always preceded by its press, which is counted. The count is kept in `sessionStorage`,
+ * so a walk that loads a page again keeps it.
  */
 export const POINTER_COUNTER = '__pointerEvents';
 export const COUNT_POINTER_EVENTS = `(() => {
   const bump = () => { try { sessionStorage.setItem('${POINTER_COUNTER}', String(Number(sessionStorage.getItem('${POINTER_COUNTER}') ?? 0) + 1)); } catch { /* a document with no storage */ } };
-  for (const type of ['pointerdown', 'mousedown', 'mouseup']) window.addEventListener(type, bump, true);
-  window.addEventListener('click', (event) => { if (!event.isTrusted) bump(); }, true);
+  for (const type of ['pointerdown', 'mousedown', 'mouseup']) window.addEventListener(type, (event) => { if (event.isTrusted) bump(); }, true);
 })();`;
 
 /** The number of pointer events the page has had in this session: a keyboard-only walk expects 0. */
