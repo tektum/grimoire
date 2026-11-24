@@ -26,8 +26,8 @@ Descope skills (vendored from upstream, see
 - `descope-fga-schema`: writing or changing a Descope FGA (fine-grained access) schema.
 - `descope-byos-builder`: building custom React screens on top of a Descope flow.
 
-Descope work follows these skills and prefers the Descope SDKs and widgets over
-custom code.
+Descope work follows these skills and uses the Descope SDKs, and widgets only
+where the spec calls for them.
 
 ## Set-up
 
