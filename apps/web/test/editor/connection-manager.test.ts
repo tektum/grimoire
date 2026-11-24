@@ -364,4 +364,48 @@ describe('what the first review found', () => {
     expect(p.connects).toBe(1);
     expect(manager.state()).toMatchObject({ phase: 'stopped', stopped: 'no-access' });
   });
+
+  it("a close that follows a stop or an error wait is the manager's own doing: a stopped page stays stopped, and the error wait is not replaced by a retry", async () => {
+    const stopped = start();
+    await flush();
+    stopped.h.last().provider.refuse('forbidden');
+    stopped.h.last().provider.close(1006); // what disconnect() looks like from the provider
+    stopped.h.last().provider.close(1000);
+    await stopped.h.clock.advance(10 * 60_000);
+    expect(stopped.manager.state()).toMatchObject({ phase: 'stopped', stopped: 'no-access' });
+    expect(stopped.h.last().provider.connects).toBe(1);
+
+    const waiting = start();
+    await flush();
+    waiting.h.last().provider.refuse('internal-error');
+    waiting.h.last().provider.close(1006);
+    expect(waiting.h.clock.pendingCount()).toBe(1);
+    expect(waiting.h.clock.nextIn()).toBe(30_000); // still the 30 s of the error, not a 2 s retry
+  });
+
+  it('keeps the read-only label and the too-large text through the sync that follows, and drops other texts', async () => {
+    const reader = start();
+    await flush();
+    reader.h.last().provider.emit({ type: 'authenticated', scope: 'readonly' });
+    reader.h.last().provider.emit({ type: 'synced' });
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    const large = start();
+    await flush();
+    large.h.last().provider.stateless({ kind: 'refusal', code: 'state-cap' });
+    large.h.last().provider.emit({ type: 'synced' });
+    expect(large.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.tooLarge });
+  });
+
+  it('a new document starts without the banner and the offline state of the old one', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(2);
+    h.last().provider.stateless({ kind: 'warning', code: 'state-warning' });
+    h.last().provider.disconnected();
+    await h.clock.advance(10_000);
+    expect(manager.state()).toMatchObject({ banner: TEXTS.stateWarning, offline: true });
+    h.last().provider.close(4205, 'access-changed');
+    await flush();
+    expect(manager.state()).toMatchObject({ banner: null, offline: false });
+  });
 });

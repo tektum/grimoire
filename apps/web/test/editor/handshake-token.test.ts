@@ -16,6 +16,14 @@ const make = (over: { token?: string | null; epoch?: () => number | null; getTok
 };
 
 describe('the handshake token', () => {
+  it("encodes like the platform's own base64url, for text with characters outside ASCII and for every padding length", async () => {
+    for (const token of ['x', 'xy', 'xyz', 'ünï-cødé-τοκεν-日本語-🙂', '???>>>~~~']) {
+      const made = await make({ token }).fn();
+      const json = JSON.stringify({ t: token, v: '1.2.3' });
+      expect(made.slice(3)).toBe(Buffer.from(json, 'utf8').toString('base64url'));
+    }
+  });
+
   it('is g1. and the base64url of {t, v} on a first connect, with no padding and no e', async () => {
     const token = await make().fn();
     expect(token.startsWith('g1.')).toBe(true);

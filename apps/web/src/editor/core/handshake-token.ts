@@ -15,6 +15,8 @@ export interface Timers {
 }
 const realTimers: Timers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>) };
 
+// Hand-written on purpose: it is three lines over the platform's `btoa` and `TextEncoder`, and a dependency (not allowed in this task) would add a package to the
+// bundle for a swap of two characters and the removal of the padding. The test round-trips it, with non-ASCII text, against Node's own base64url decoder.
 function base64url(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = '';

@@ -99,6 +99,8 @@ export class ConnectionManager {
   private lastRefreshAt = Number.NEGATIVE_INFINITY;
   private refusedAt = Number.NEGATIVE_INFINITY;
   private refreshing = false;
+  /** True after the manager disconnected the provider itself (a stop, or a wait before an error retry): the close that follows is its own doing and says nothing new. */
+  private quiet = false;
   /** The copy taken before a close that may turn out to be a reset: offered when the next connect is refused `stale-epoch`, dropped when it is accepted. */
   private held: string | null = null;
   private current: ConnectionState = {
@@ -176,7 +178,10 @@ export class ConnectionManager {
     const session = this.options.createSession(this.tokenFunction());
     this.session = session;
     this.unsubscribe = session.provider.subscribe((event) => this.onEvent(session, event));
-    this.set({ generation: this.current.generation + 1, phase: 'connecting' });
+    // A new document starts clean: what the old one said about access, size, offline and the banner does not carry over. A FRESH that has its own text sets it after.
+    this.clearOffline();
+    const carried = this.current.text;
+    this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
     this.connectSession();
   }
 
@@ -189,6 +194,7 @@ export class ConnectionManager {
       return;
     }
     this.attempts += 1;
+    this.quiet = false;
     session.provider.connect();
   }
 
@@ -207,9 +213,6 @@ export class ConnectionManager {
     if (session !== null && options.capture === true && this.held === null) this.held = this.options.captureCopy?.(session) ?? null;
     this.clearTimers();
     this.teardown();
-    // What the old session said about this person's access and the size of the page does not carry over to the new one.
-    const carried = this.current.text;
-    this.set({ readOnly: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge ? { text: null } : {}) });
     this.pendingEpoch = null;
     this.attempts = 0;
     this.open();
@@ -219,6 +222,7 @@ export class ConnectionManager {
 
   private onEvent(from: Session, event: ProviderEvent): void {
     if (from !== this.session) return; // an old session says nothing: its provider is destroyed
+    if (this.quiet && (event.type === 'close' || event.type === 'authenticationFailed')) return;
     switch (event.type) {
       case 'status':
         this.onStatus(event.status);
@@ -269,7 +273,8 @@ export class ConnectionManager {
     this.held = null; // accepted: the copy is not needed and no reference to it remains
     this.clearOffline();
     // The reset notice stays while the copy it speaks of is offered: it is the reason the copy is there.
-    this.set({ phase: 'synced', text: null, notice: this.current.copy !== null ? this.current.notice : null });
+    const keep = this.current.readOnly && (this.current.text === TEXTS.readOnly || this.current.text === TEXTS.tooLarge); // the label of a read-only page outlives the sync
+    this.set({ phase: 'synced', text: keep ? this.current.text : null, notice: this.current.copy !== null ? this.current.notice : null });
   }
 
   // ---- behaviours ----
@@ -349,6 +354,7 @@ export class ConnectionManager {
   }
 
   private onError(mapping: Mapping): void {
+    this.quiet = true;
     this.session?.provider.disconnect();
     if (mapping.noRetry === true || this.errorTries >= ERROR_TRIES) {
       this.stopWith('cannot-open', mapping.text ?? null);
@@ -389,6 +395,7 @@ export class ConnectionManager {
 
   private stopWith(reason: StopReason, text: string | null): void {
     this.clearTimers();
+    this.quiet = true;
     this.session?.provider.disconnect();
     this.set({ phase: 'stopped', stopped: reason, text });
   }
