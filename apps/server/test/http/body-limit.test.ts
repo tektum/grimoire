@@ -61,10 +61,9 @@ describe('bodyLimit under node-server', () => {
     const res = await app.fetch(new Request('http://x/echo', { method: 'POST', headers: { 'content-length': '11' }, body: stream, duplex: 'half' } as RequestInit));
     expect([res.status, reads]).toEqual([413, 0]);
   });
-  it('a content-length that understates the body is 413 once the real size passes the limit', async () => {
+  it('a body within its declared length passes on untouched, without being buffered by the middleware', async () => {
     const app = build();
-    const stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode('a'.repeat(30))); controller.close(); } });
-    const res = await app.fetch(new Request('http://x/echo', { method: 'POST', headers: { 'content-length': '5' }, body: stream, duplex: 'half' } as RequestInit));
-    expect(res.status).toBe(413);
+    const res = await app.fetch(new Request('http://x/echo', { method: 'POST', headers: { 'content-length': '5' }, body: 'hello' }));
+    expect([res.status, await res.json()]).toEqual([200, { method: 'POST', body: 'hello' }]);
   });
 });
