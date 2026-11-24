@@ -7,7 +7,7 @@ import { ErrorBoundary } from '../../src/app/ErrorBoundary';
 import { routeObjects } from '../../src/app/router';
 import { ROUTES } from '../../src/app/routes';
 
-// `/c/:collectionId`, `/p/:slug`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx and test/trash and test/admin.
+// `/c/:collectionId`, `/p/:slug`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx, test/trash and test/admin.
 describe('shell and screens', () => {
   it.each([
     ['/p/a-b1/history', 'History'],
