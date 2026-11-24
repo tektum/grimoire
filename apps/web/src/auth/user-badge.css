@@ -1,5 +1,7 @@
-.user-badge { display: inline-flex; align-items: center; gap: var(--space-3); font-size: 0.9rem; flex-shrink: 0; white-space: nowrap; }
-/* A long name is cut with an ellipsis (the full text is the title) so that it can never push the role and the Sign out button out of the header. */
-.user-badge-name { max-inline-size: 24ch; overflow: hidden; text-overflow: ellipsis; }
+/* The badge may not be wider than the header: it wraps (name and role on one line, Sign out on the next) when the window is narrow, and a long name is cut with an ellipsis (the full text is the title),
+   so that nothing can push the role or the Sign out button out of the window. */
+.user-badge { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--space-2) var(--space-3); font-size: 0.9rem; max-inline-size: 100%; min-inline-size: 0; }
+.user-badge-name { max-inline-size: min(24ch, 100%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-badge [data-testid='user-role'], .user-badge button { white-space: nowrap; }
 .user-badge [data-role='viewer'] { color: var(--muted); }
 .user-badge button { padding: var(--space-1) var(--space-3); font-size: 0.85rem; }

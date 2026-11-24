@@ -52,16 +52,27 @@ async function expectSeen(page: Page, target: Locator, label: string) {
   expect(await contrastOf(target), `${label} is readable (contrast)`).toBeGreaterThanOrEqual(MIN_CONTRAST);
 }
 
-for (const scheme of ['light', 'dark'] as const) {
-  for (const width of [1280, 360]) {
-    test(`the name, the role and Sign out are in the header, with a box and a contrast, in the ${scheme} scheme at ${width} px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 800 });
-      await page.emulateMedia({ colorScheme: scheme });
-      await signIn(page, 'e2e-alice', 'admin');
-      const badge = page.locator('.shell-header .user-badge');
-      await expectSeen(page, badge.getByTestId('user-name'), 'the name');
-      await expectSeen(page, badge.getByTestId('user-role'), 'the role');
-      await expectSeen(page, badge.getByRole('button', { name: 'Sign out' }), 'Sign out');
-    });
+const PEOPLE = [
+  { label: 'an administrator', userId: 'e2e-alice', role: 'admin' },
+  // The longest id (64 characters at most) and the longest role text ("viewer (read-only)"): what a narrow header has the most trouble with.
+  { label: 'a viewer with a very long name', userId: `e2e-${'v'.repeat(55)}`, role: 'viewer' },
+] as const;
+
+for (const person of PEOPLE) {
+  for (const scheme of ['light', 'dark'] as const) {
+    for (const width of [1280, 360]) {
+      test(`${person.label}: the name, the role and Sign out are in the header, with a box and a contrast, in the ${scheme} scheme at ${width} px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 800 });
+        await page.emulateMedia({ colorScheme: scheme });
+        await signIn(page, person.userId, person.role);
+        const badge = page.locator('.shell-header .user-badge');
+        await expectSeen(page, badge.getByTestId('user-name'), 'the name');
+        await expectSeen(page, badge.getByTestId('user-role'), 'the role');
+        await expectSeen(page, badge.getByRole('button', { name: 'Sign out' }), 'Sign out');
+        const sides = await badge.evaluate((el) => ({ badge: el.getBoundingClientRect().right, window: window.innerWidth, scrolls: document.documentElement.scrollWidth > window.innerWidth }));
+        expect(sides.badge, 'the badge ends inside the window').toBeLessThanOrEqual(sides.window + 0.5);
+        expect(sides.scrolls, 'the page does not scroll sideways').toBe(false);
+      });
+    }
   }
 }
