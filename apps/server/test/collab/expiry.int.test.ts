@@ -9,7 +9,7 @@ import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import type { DescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import { createCollabHost, RECHECK_DATABASE_TIMEOUT_MS } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import type { HocuspocusCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
-import { createAccessStore, createDatabase, createPageStore, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createDatabase, createPageStore, createRevisions, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { AccessStore } from '@tektum/grimoire-core/ports/access-store';
@@ -58,7 +58,7 @@ async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}):
   await host.start({
     config: makeFakeConfig({ collab: { recheckSeconds: RECHECK_INTERVAL_SECONDS, connectAttemptsPerWindow: 10_000, ...o.collab } }), logger, clock, verifier,
     resolveUser: (_t, identity) => users.findByDescopeId(identity.userId),
-    access: createPageAccess(store), pages: createPageStore(db, clock),
+    access: createPageAccess(store), pages: createPageStore(db, clock), revisions: createRevisions(db),
     converter: new FakeMarkdownConverter({ convert: () => ({ ok: true, markdown: '', text: '' }) }),
   });
   const server: Server = createServer();
@@ -99,7 +99,7 @@ async function page(collection = DEV_COLLECTION): Promise<string> {
   await insertPage((sql) => sqlAdmin(DB, sql), { id, collection_id: collection });
   return id;
 }
-const grant = (collection: string, userId: string, permission: 'read' | 'read_write'): Promise<unknown[]> =>
+const grant = (collection: string, userId: string, permission: 'read' | 'read_write'): Promise<readonly unknown[]> =>
   sqlAdmin(DB, `insert into collection_access (collection_id, user_id, permission) values ('${collection}', '${userId}', '${permission}')`);
 const nowSec = (): number => Math.floor(Date.now() / 1000);
 const serverText = (r: Rig, id: string): string => r.host.hocuspocus?.documents.get(id)?.getText('prosemirror').toString() ?? '';

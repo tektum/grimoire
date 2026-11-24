@@ -1,4 +1,5 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import type { HocuspocusProviderConfiguration } from '@hocuspocus/provider';
 import * as Y from 'yjs';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -32,10 +33,11 @@ async function live(): Promise<Live> {
 interface Peer { readonly provider: HocuspocusProvider; readonly stateless: string[]; readonly id: number }
 async function join(l: Live, user: string): Promise<Peer> {
   const stateless: string[] = [];
+  // `WebSocketPolyfill` reaches the socket the provider makes; the provider's own configuration type does not list it (it is the socket's option).
   const provider = new HocuspocusProvider({
     url: l.url, name: PAGE, token: user, document: new Y.Doc(), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN),
-    onStateless: ({ payload }) => { stateless.push(payload); },
-  });
+    onStateless: ({ payload }: { payload: string }) => { stateless.push(payload); },
+  } as HocuspocusProviderConfiguration);
   clients.push(provider);
   await eventually(() => provider.synced, 5000, `${user} synced`);
   return { provider, stateless, id: provider.document.clientID };

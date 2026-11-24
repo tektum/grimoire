@@ -4,6 +4,7 @@ import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/pro
 import * as Y from 'yjs';
 import { appUrl, createTestDatabase, dropTestDatabase, freePort, requireBuild, startServer } from '../server/support/harness.js';
 import { RawClient, syncUpdateFrame } from './limits-support.js';
+import { originProviderConfig } from '@tektum/grimoire-test-support';
 import { eventually, newPage, originSocket, seedPage, wsUrl, ALLOWED_ORIGIN } from './support.js';
 
 // Review claims about the collaboration host's limits, each shown against the real server (not a fake connection).
@@ -36,8 +37,9 @@ describe('a document refused for a per-user cap does not take the admitted docum
       await eventually(() => (server.events.some((e) => e['event'] === 'collab.limit_hit' && e['limit'] === 'user-documents') ? true : undefined), 10_000, 'the third document is refused');
       // The admitted documents are still connected, and an edit on one still reaches the server (a second client sees it).
       const watcher = new Y.Doc();
-      const w = new HocuspocusProvider({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: pages[0] as string, token: token('bob') });
-      await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
+      const w = new HocuspocusProvider(originProviderConfig({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: pages[0] as string, token: token('bob') }));
+      const watching: HocuspocusProvider = w as HocuspocusProvider;
+      await eventually(() => (watching.synced ? true : undefined), 5000, 'watcher synced');
       admitted[0]?.document.getText('prosemirror').insert(0, 'still here');
       await eventually(() => (watcher.getText('prosemirror').toString().includes('still here') ? true : undefined), 5000, 'the admitted document still edits');
       // On a failure the evidence is in the message: which admitted document lost its authentication, and what the server logged about connections and limits.
@@ -76,8 +78,9 @@ describe('the per-user document cap when the documents of one socket open at the
       await eventually(() => (providers.filter((p) => p.isAuthenticated && p.synced).length === 2 ? true : undefined), 10_000, 'the two other documents are authenticated and synced');
       const kept = providers.filter((p) => p.isAuthenticated && p.synced);
       const watcher = new Y.Doc();
-      w = new HocuspocusProvider({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: kept[0]!.configuration.name, token: token('bob') });
-      await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
+      w = new HocuspocusProvider(originProviderConfig({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: kept[0]!.configuration.name, token: token('bob') }));
+      const watching = w;
+      await eventually(() => (watching.synced ? true : undefined), 5000, 'watcher synced');
       const mark = `still here ${randomUUID()}`; // unique per round: the pages are shared by every round and by the earlier test, so a fixed text could already be there
       kept[0]!.document.getText('prosemirror').insert(0, mark);
       await eventually(() => (watcher.getText('prosemirror').toString().includes(mark) ? true : undefined), 5000, 'an admitted document still edits');
@@ -138,7 +141,7 @@ describe('per-user admission follows arrival order with the real server and a pa
       expect(third.everAuthenticated()).toBe(false);
       expect(first.p.isAuthenticated && second.p.isAuthenticated).toBe(true);
       const watcher = new Y.Doc();
-      const w = new HocuspocusProvider({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: pages[1] as string, token: token('bob') });
+      const w = new HocuspocusProvider(originProviderConfig({ url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: watcher, name: pages[1] as string, token: token('bob') }));
       await eventually(() => (w.synced ? true : undefined), 5000, 'watcher synced');
       const mark = `slow page edit ${randomUUID()}`;
       second.p.document.getText('prosemirror').insert(0, mark);
@@ -154,7 +157,7 @@ describe('a refused per-user byte budget tells the client why before the socket 
     const server = await startServer({ env: { GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_COLLAB_BYTES_PER_SECOND_PER_USER: '2000' } });
     try {
       const flood = await RawClient.open(wsUrl(server.port), pages[3] as string, token('mallory'));
-      const update = (() => { const d = new Y.Doc(); let u = new Uint8Array(); d.on('update', (x: Uint8Array) => { u = x; }); d.getText('prosemirror').insert(0, 'a'.repeat(500)); return u; })();
+      const update = (() => { const d = new Y.Doc(); let u: Uint8Array = new Uint8Array(); d.on('update', (x: Uint8Array) => { u = x; }); d.getText('prosemirror').insert(0, 'a'.repeat(500)); return u; })();
       for (let i = 0; i < 40 && flood.closed === undefined; i++) flood.send(syncUpdateFrame(pages[3] as string, update));
       await eventually(() => flood.closed, 8000, 'flooder closed');
       expect(flood.closed?.code).toBe(4429);
@@ -168,10 +171,10 @@ describe('connection caps hold when many sockets arrive at the same moment', () 
     const server = await startServer({ env: { GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_COLLAB_MAX_CONNECTIONS_PER_PAGE: '2' } });
     try {
       const closed: boolean[] = Array.from({ length: 5 }, () => false);
-      const providers = closed.map((_, i) => new HocuspocusProvider({
+      const providers = closed.map((_, i) => new HocuspocusProvider(originProviderConfig({
         url: wsUrl(server.port), WebSocketPolyfill: originSocket(ALLOWED_ORIGIN), document: new Y.Doc(), name: pages[4] as string, token: token(`racer${String(i)}`),
         onClose: () => { closed[i] = true; },
-      }));
+      })));
       // Every connection ends up admitted (authenticated and kept) or refused (closed): whatever the arrival order, the cap of two holds.
       await eventually(() => (providers.every((p, i) => (p.isAuthenticated && !closed[i]) || closed[i]) && closed.filter(Boolean).length >= 3 ? true : undefined), 10_000, 'the connections settle');
       expect(providers.filter((p, i) => p.isAuthenticated && !closed[i])).toHaveLength(2);

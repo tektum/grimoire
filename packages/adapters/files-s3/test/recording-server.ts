@@ -22,7 +22,7 @@ export interface Reply {
  * A local HTTP server standing in for the store: it records every request and answers with `recorder.reply`.
  * Call `useRecordingServer()` once in a test file; the state is reset before each test.
  */
-export const recorder: { seen: Seen[]; reply: Reply; origin: string } = {
+export const recorder: { seen: Seen[]; reply: Reply; origin: string; respond?: (seen: Seen) => Reply; hang?: boolean } = {
   seen: [],
   reply: { status: 200 },
   origin: '',
@@ -63,13 +63,15 @@ export function useRecordingServer(): void {
 
 /** Names and keys are made up at run time. */
 export const bucket = `b-${randomUUID()}`;
+export const ACCESS_KEY = randomUUID();
+export const SECRET_KEY = randomUUID();
 export const config = (over: Partial<FilesConfig> = {}): FilesConfig => ({
   endpoint: recorder.origin,
   publicEndpoint: 'http://public.invalid:8333',
   publicOrigin: 'http://public.invalid:8333',
   bucket,
-  accessKey: randomUUID(),
-  secretKey: randomUUID(),
+  accessKey: ACCESS_KEY,
+  secretKey: SECRET_KEY,
   region: 'us-east-1',
   addressing: 'path',
   createOnlyHeader: 'if-none-match',

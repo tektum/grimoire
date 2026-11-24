@@ -49,7 +49,7 @@ describe('connect-time handshake over real sockets', () => {
 
   it('a version below the minimum is refused client-too-old before the verifier is called', async () => {
     const l = await live();
-    l.t.deps.config = { ...l.t.deps.config, minClientVersion: '1.2.0' };
+    l.t.deps = { ...l.t.deps, config: { ...l.t.deps.config, minClientVersion: '1.2.0' } };
     const calls = l.t.verifier.calls;
     const old = open(l, wrap({ v: '1.1.9' }));
     await eventually(() => old.failures.length > 0, 3000, 'refusal');

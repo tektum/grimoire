@@ -24,7 +24,8 @@ export interface DescopeVerifierOptions {
   maxTokenLifetimeMs?: number | undefined;
 }
 
-export type DescopeVerifier = AuthVerifier & { close(): void };
+/** The management profile lookup is optional on the port; this adapter always has it (it answers `not-configured` without a key). */
+export type DescopeVerifier = AuthVerifier & Required<Pick<AuthVerifier, 'profile'>> & { close(): void };
 
 /** Whole-token length bound, checked before any parsing or network call (security review N2). */
 const MAX_TOKEN_LENGTH = 8192;

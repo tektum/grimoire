@@ -3,7 +3,7 @@ import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createFileStorage, mapError } from '../src/index.js';
 import { MIN_CREDENTIAL_LIFETIME_MS, signingCredentials } from '../src/client.js';
-import { bucket, config, recorder, useRecordingServer, type Seen } from './recording-server.js';
+import { ACCESS_KEY, SECRET_KEY, bucket, config, recorder, useRecordingServer, type Seen } from './recording-server.js';
 
 useRecordingServer();
 const seen: Seen[] = recorder.seen;
@@ -25,7 +25,9 @@ const text = async (body: AsyncIterable<Uint8Array>) => {
 };
 
 describe('the credentials of the clients', () => {
-  const { accessKey, secretKey, ...withoutKeys } = config();
+  const withoutKeys = Object.fromEntries(Object.entries(config()).filter(([name]) => name !== 'accessKey' && name !== 'secretKey')) as unknown as FilesConfig;
+  const accessKey = ACCESS_KEY;
+  const secretKey = SECRET_KEY;
 
   it('are the key pair of the settings when there is one (a store with its own identity)', async () => {
     const s = createFileStorage(config({ accessKey, secretKey }), { maxAttempts: 1 });

@@ -15,7 +15,7 @@ const PARENT = 'b0000000-3c1d-4a53-9a62-5d1c2a7e8f10';
 
 const migrate = (db: string, dir?: string) => runToEnd([path.join(serverDir, 'dist/cli.js'), 'migrate', ...(dir ? ['--dir', dir] : [])], { GRIMOIRE_DATABASE_MIGRATION_URL: migratorUrl(db) });
 const admin = (db: string) => (statement: string) => sqlAdmin(db, statement);
-const asApp = async <T>(db: string, statement: string): Promise<T[]> => {
+const asApp = async <T>(db: string, statement: string): Promise<readonly T[]> => {
   const handle = createDatabase(appUrl(db), { maxConnections: 1 });
   try { return await handle.query<T>(statement); } finally { await handle.close(); }
 };

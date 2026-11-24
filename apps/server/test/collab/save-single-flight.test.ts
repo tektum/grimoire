@@ -75,14 +75,14 @@ describe('one conversion in flight per page (real pool)', () => {
     const gate = createConversionGate(inner, { concurrency: 2, waitMs: 5_000 });
     const saver = createSaver({ converter: gate, log: createCollabLog(new FakeLogger()), breaker: { disabled } });
     const doc = hostileDoc();
-    const edit = (i: number): Uint8Array => { doc.getXmlFragment('prosemirror').toArray()[0]!.toArray()[0]!.insert(i, 'x'); return Y.encodeStateAsUpdate(doc); }; // a different state at each save
+    const edit = (i: number): Uint8Array => { ((doc.getXmlFragment('prosemirror').toArray()[0] as Y.XmlElement).toArray()[0] as Y.XmlText).insert(i, 'x'); return Y.encodeStateAsUpdate(doc); }; // a different state at each save
     // Every state is made before the first save is sent: encoding a 2 MB document 30 times inside the window would block this process for longer than the limit.
     const states = Array.from({ length: 30 }, (_, i) => edit(i));
     const hostileSaves = [saver.convert('hostile', states[0]!)];
     await vi.waitFor(() => { expect(seen.calls).toBe(1); }, { timeout: 5_000, interval: 5 });
     let firstSettled = false;
     void hostileSaves[0]!.then(() => { firstSettled = true; });
-    let lastState = new Uint8Array();
+    let lastState: Uint8Array = new Uint8Array();
     for (let i = 1; i < 30; i++) { lastState = states[i]!; hostileSaves.push(saver.convert('hostile', lastState)); }
     const honest = await saver.convert('honest', Y.encodeStateAsUpdate(paragraph('hello *world*')));
     const servedWhileHostileRan = !firstSettled;

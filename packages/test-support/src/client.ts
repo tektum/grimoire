@@ -5,6 +5,8 @@ import { originSocket } from './e2e.ts';
 
 export const ALLOWED_ORIGIN = 'http://127.0.0.1:8080';
 export { originSocket };
+/** The configuration of a provider that connects with `WebSocketPolyfill`: the option reaches the socket the provider makes, but the provider's configuration type does not list it (it is the socket's option). */
+export const originProviderConfig = (config: HocuspocusProviderConfiguration & { WebSocketPolyfill?: unknown }): HocuspocusProviderConfiguration => config;
 export interface Client {
   readonly provider: HocuspocusProvider;
   readonly document: Y.Doc;

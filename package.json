@@ -13,8 +13,8 @@
     "packages/adapters/*"
   ],
   "scripts": {
-    "lint": "eslint . && node tools/ci/check-test-sleeps.mjs && node tools/ci/check-test-db-urls.mjs",
-    "typecheck": "bun run build",
+    "lint": "eslint . && node tools/ci/check-test-sleeps.mjs && node tools/ci/check-test-db-urls.mjs && node tools/ci/check-ts-projects.mjs",
+    "typecheck": "bun run build && node tools/ci/typecheck-tests.mjs",
     "seed": "node apps/server/dist/cli.js seed",
     "test": "vitest run --project unit --project web",
     "test:coverage": "vitest run --project unit --project web --coverage",

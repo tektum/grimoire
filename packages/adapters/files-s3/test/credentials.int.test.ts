@@ -3,7 +3,7 @@ import { CreateBucketCommand, DeleteBucketCommand, GetBucketCorsCommand, S3Clien
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createBucket, createFileStorage, ensureBucket, putBucketCors } from '../src/index.js';
-import { adminOptions, allowedOrigins, endpoint, filesConfig, publicEndpoint } from './store-support.js';
+import { adminOptions, allowedOrigins, endpoint, filesConfig, publicEndpoint, runtime } from './store-support.js';
 
 // The runtime key may read, write and list its own bucket and nothing else; only the admin key sets the store up.
 // Buckets are named at run time and removed afterwards.
@@ -19,8 +19,8 @@ const adminClient = new S3Client({
 const runtimeAs = (bucket: string) => ({
   ...admin,
   bucket,
-  accessKey: filesConfig().accessKey,
-  secretKey: filesConfig().secretKey,
+  accessKey: runtime.accessKey,
+  secretKey: runtime.secretKey,
 });
 
 async function refusal(action: Promise<unknown>): Promise<FileStorageError> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkCors, corsProbeUrl, type EnsureBucketOptions } from '../src/index.js';
-import { bucket, config, recorder, useRecordingServer, type Reply, type Seen } from './recording-server.js';
+import { ACCESS_KEY, SECRET_KEY, bucket, recorder, useRecordingServer, type Reply, type Seen } from './recording-server.js';
 
 useRecordingServer();
 
@@ -11,8 +11,8 @@ const options = (over: Partial<EnsureBucketOptions> = {}): EnsureBucketOptions =
   bucket,
   region: 'us-east-1',
   addressing: 'path',
-  accessKey: config().accessKey,
-  secretKey: config().secretKey,
+  accessKey: ACCESS_KEY,
+  secretKey: SECRET_KEY,
   allowedOrigins: [ONE, TWO],
   ...over,
 });

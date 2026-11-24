@@ -34,7 +34,7 @@ describe.each(subjects)('MarkdownConverter behaviour: %s', (_name, make) => {
 
 describe('MarkdownConverter on the adapter: seed failure', () => {
   it('returns too-large as a typed failure', async () => {
-    const converter = new InProcessConverter({ maxSeedMarkdownBytes: 4 });
+    const converter: MarkdownConverter = new InProcessConverter({ maxSeedMarkdownBytes: 4 });
     expect(await converter.seed('too long for the limit', 'test-key')).toMatchObject({ ok: false, reason: 'too-large' });
   });
 });

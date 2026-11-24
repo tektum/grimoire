@@ -43,7 +43,7 @@ afterAll(async () => { await dropTestDatabase(DB); });
 describe('grimoire migrate installs pg-boss', () => {
   it('creates the pgboss schema after the Kysely migrations and grants the runtime role table by table', async () => {
     const run = await migrate();
-    expect(run.code, run.out).toBe(0);
+    expect(run.code, run.output).toBe(0);
     const tables = await privileges();
     expect(tables.map((t) => t.name)).toEqual(expect.arrayContaining(['job', 'job_common', 'queue', 'version']));
     for (const t of tables) {
@@ -68,7 +68,7 @@ describe('grimoire migrate installs pg-boss', () => {
   it('is repeatable: a second run succeeds and changes no grant', async () => {
     const before = await privileges();
     const run = await migrate();
-    expect(run.code, run.out).toBe(0);
+    expect(run.code, run.output).toBe(0);
     expect(await privileges()).toEqual(before);
   }, 120_000);
 

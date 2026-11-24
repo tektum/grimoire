@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { createDescopeVerifier } from '../src/index.js';
 import { captureLogger, goodClaims, KeyServer, makeKey, PID, sign, type KeyPair, SyncedClock, syncDate } from './helpers.js';
 

@@ -14,7 +14,7 @@ afterAll(async () => { for (const c of running) c.close(); for (const s of serve
 const open = async (server: Awaited<ReturnType<typeof startServer>>, page: string, user: string) => { const c = await RawClient.open(wsUrl(server.port), page, token(user)); running.push(c); return c; };
 
 /** Sync step 1 (a state vector), which the server answers with step 2: a message round trip that changes nothing. */
-const stateVectorFrame = (page: string): Uint8Array => { const sv = Y.encodeStateVector(new Y.Doc()); return Uint8Array.from([...Buffer.from([page.length]), ...Buffer.from(page), 0, 0, sv.length, ...sv]); };
+const stateVectorFrame = (page: string): Uint8Array<ArrayBuffer> => { const sv = Y.encodeStateVector(new Y.Doc()); return Uint8Array.from([...Buffer.from([page.length]), ...Buffer.from(page), 0, 0, sv.length, ...sv]); };
 
 describe('authenticated per-user byte budget', () => {
   it('300 x 100 KB on 5 pages in 10 s is refused past the budget (4429) after about 2 MiB, and a second user round trip stays under 200 ms', async () => {

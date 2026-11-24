@@ -29,8 +29,8 @@ function runEntrypoint(args: readonly string[], env: Readonly<Record<string, str
   children.add(child);
   let output = '';
   const data = (d: Buffer): void => { output += d.toString(); };
-  child.stdout.on('data', data);
-  child.stderr.on('data', data);
+  child.stdout!.on('data', data);
+  child.stderr!.on('data', data);
   child.on('close', (code) => { children.delete(child); resolve({ code, output: withoutListenerReport(output), listeners: listenerReport(output) }); });
   return promise;
 }

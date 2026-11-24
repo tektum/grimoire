@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createMarkdownConverter } from '../../src/index.js';
-import type { SeedResult } from '../../src/index.js';
+import type { SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { ensureBuilt } from './support.js';
 
 /** Parses for far longer than any limit used here (about 6 s of CPU on the reference machine; cost grows faster than its length). */

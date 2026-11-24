@@ -36,7 +36,7 @@ async function call(key: { id: string; secret: string } | null, method: string, 
     headers['x-amz-content-sha256'] = payload;
     headers.authorization = `AWS4-HMAC-SHA256 Credential=${key.id}/${scope}, SignedHeaders=${signed}, Signature=${signature}`;
   }
-  const res = await fetch(`http://${HOST}${p}${query ? `?${query}` : ''}`, { method, headers, body: body || undefined });
+  const res = await fetch(`http://${HOST}${p}${query ? `?${query}` : ''}`, { method, headers, ...(body ? { body } : {}) });
   return { status: res.status, text: await res.text() };
 }
 

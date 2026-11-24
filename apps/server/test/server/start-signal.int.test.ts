@@ -21,7 +21,7 @@ function signalledStart(delayMs: number): Promise<{ code: number | null; output:
       output += d.toString();
       if (!sent && output.includes('server.starting')) { sent = true; setTimeout(() => { child.kill('SIGTERM'); }, delayMs); }
     };
-    child.stdout.on('data', onData); child.stderr.on('data', onData);
+    child.stdout!.on('data', onData); child.stderr!.on('data', onData);
     child.on('close', (code) => { resolve({ code, output }); });
   }));
 }

@@ -41,7 +41,7 @@ describe('log throttle', () => {
     const { log, lines } = setup();
     for (let i = 0; i < 50; i++) {
       log.emit('collab.store_alarm', { pageId: 'p', consecutive: 5 });
-      log.emit('collab.store_failed', { pageId: 'p', attempt: i, consecutive: i, retryInMs: 1 });
+      log.emit('collab.store_failed', { pageId: 'p', attempt: i, consecutive: i, retryInMs: 1, errorName: 'Error' });
       log.emit('collab.connected', { pageId: 'p', accessLevel: 'read-write' });
       log.emit('collab.store_abandoned', { pageId: 'p' });
     }

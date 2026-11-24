@@ -33,15 +33,15 @@ export const U1 = '0a000000-0000-4000-8000-000000000001';
 export class FakeVerifier implements AuthVerifier {
   calls = 0;
   result: VerifyResult = { kind: 'ok', userId: SUBJECT, expiresAt: 10_000_000 };
-  verify(): Promise<VerifyResult> { this.calls++; return Promise.resolve(this.result); }
+  verify: AuthVerifier['verify'] = () => { this.calls++; return Promise.resolve(this.result); };
   profile(userId: string): Promise<ProfileResult> {
     return Promise.resolve({ kind: 'ok', profile: { email: `${userId}@dev.invalid`, name: userId, emailVerified: true } });
   }
 }
 
 /** An access store over the fake user store's rows and a page world, counting round trips. */
-export function linkedAccessStore(users: FakeUserStore, world: World): AccessStore & { calls: number; fail?: Error } {
-  const s: { calls: number; fail?: Error } = { calls: 0 };
+export function linkedAccessStore(users: FakeUserStore, world: World): AccessStore & { calls: number; fail?: Error | undefined } {
+  const s: { calls: number; fail?: Error | undefined } = { calls: 0 };
   const current = (): AccessStore => createFakeAccessStore({ ...world, users: users.all().map((u) => ({ id: u.id, role: u.role, suspended: u.suspended })) });
   return Object.assign(s, {
     facts: (rs: readonly AccessRequest[]) => { s.calls++; return s.fail ? Promise.reject(s.fail) : current().facts(rs); },

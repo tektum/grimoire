@@ -132,6 +132,7 @@ describe('createUserStore', () => {
     const users = createUserStore(db);
     const first = input('stable', 'member');
     const created = await users.createIfAbsent(first);
+    if (created.kind === 'email-taken') throw new Error('the first user is created, not refused');
     expect(await users.createIfAbsent({ ...first, email: 'changed@example.test', name: 'Changed', role: 'admin' })).toEqual({ kind: 'existing', user: created.user });
   });
 
