@@ -33,3 +33,13 @@ test('the other rules of the block of the web tests still apply there (a compute
   assert.equal(result.status, 1);
   assert.match(result.text, /plain string literal/);
 });
+
+test('the dynamic-import bans of apps/web still apply to the web tests (a server-only library, an adapter, apps/server)', () => {
+  for (const source of ["export const a = () => import('hono');\n", "export const b = () => import('@tektum/grimoire-adapter-pg');\n", "export const c = () => require('kysely');\n", "export const d = () => import(`pino`);\n"]) {
+    const result = lint('apps/web/test-e2e/safety/new.spec.ts', source);
+    assert.equal(result.status, 1, source);
+    assert.ok(result.rules.includes('no-restricted-syntax'), source);
+  }
+  // the same, as a file the block does not cover, for the rule to be the one that fires:
+  assert.equal(lint('apps/web/test-e2e/safety/new.spec.ts', "export const e = () => import('./local');\n").status, 0);
+});
