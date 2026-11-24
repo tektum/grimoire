@@ -27,11 +27,11 @@ test('each role trusts exactly its own environment of this repository, for AWS a
   }
 });
 
-test('the Descope role can bootstrap SST state and nothing else: no wildcard deploy statement', () => {
+test('the Descope role has no wildcard statement and no deploy statement', () => {
   const permissions = Object.fromEntries(documents().filter(([name]) => name.endsWith('permissions')));
   const dev = permissions['role grimoire-deploy-descope-dev: permissions'].Statement;
   assert.ok(dev.every((s) => !s.Action.includes('*') && !s.Resource.includes('*')), 'no statement of the Descope role is a wildcard');
-  assert.deepEqual(dev.map((s) => s.Sid).sort(), ['ManageBootstrapAssetBucket', 'ManageBootstrapECRRepo', 'ManageBootstrapSSMParameter', 'ManageBootstrapStateBucket', 'ManageSecrets', 'StateOfThisStageOnly']);
+  assert.deepEqual(dev.map((s) => s.Sid).sort(), ['ListStateBucket', 'ManageSecrets', 'PassphraseOfThisStage', 'ReadBootstrap', 'StateOfThisStageOnly']);
   assert.ok(permissions['role grimoire-deploy-staging: permissions'].Statement.some((s) => s.Sid === 'Deployments'), 'the staging role has the deploy statement');
 });
 
@@ -52,8 +52,12 @@ test('the Descope role reaches only the state objects of its own stage: no objec
     'app/grimoire/descope-dev.json', 'eventlog/grimoire/descope-dev/*', 'lock/grimoire/descope-dev.json', 'secret/grimoire/descope-dev.json', 'snapshot/grimoire/descope-dev/*', 'summary/grimoire/descope-dev/*', 'update/grimoire/descope-dev/*',
   ]);
   // The bucket-level statement has no object action, so the `*` of the bucket name cannot reach into the objects of another stage.
-  const bucket = dev.find((s) => s.Sid === 'ManageBootstrapStateBucket');
-  assert.ok(bucket.Action.every((a) => !objectActions.test(a)), bucket.Action.join());
+  const bucket = dev.find((s) => s.Sid === 'ListStateBucket');
+  assert.deepEqual(bucket.Action, ['s3:ListBucket', 's3:ListBucketVersions']);
+  // It cannot create or change a bucket, and a bucket policy that names this role would grant it the objects of staging without any identity policy.
+  const actions = dev.flatMap((s) => s.Action);
+  assert.deepEqual(actions.filter((a) => /^s3:(Create|Delete|Put)Bucket|^s3:PutBucket|^s3:PutEncryption|^s3:PutLifecycle|^s3:PutAccessPoint|^ecr:/.test(a)), []);
+  assert.ok(!dev.some((s) => s.Resource.some((r) => r.includes('sst-asset') || r.includes(':repository/'))), 'the Descope stage creates no asset and needs neither the asset bucket nor the repository');
   // The staging role is the broad one and does keep its own, whole-bucket access.
   const staging = documents().find(([name]) => name === 'role grimoire-deploy-staging: permissions')[1].Statement;
   assert.ok(staging.some((s) => s.Action.includes('s3:GetObject') && s.Resource.includes('arn:aws:s3:::sst-state-*')));

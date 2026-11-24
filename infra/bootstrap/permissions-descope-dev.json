@@ -2,13 +2,32 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ManageBootstrapStateBucket",
+      "Sid": "ReadBootstrap",
       "Effect": "Allow",
       "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutBucketNotification",
-        "s3:PutBucketPolicy",
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": [
+        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/bootstrap"
+      ]
+    },
+    {
+      "Sid": "PassphraseOfThisStage",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:PutParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/passphrase/grimoire/descope-dev"
+      ]
+    },
+    {
+      "Sid": "ListStateBucket",
+      "Effect": "Allow",
+      "Action": [
         "s3:ListBucket",
         "s3:ListBucketVersions"
       ],
@@ -33,46 +52,6 @@
         "arn:aws:s3:::sst-state-*/summary/grimoire/descope-dev/*",
         "arn:aws:s3:::sst-state-*/eventlog/grimoire/descope-dev/*",
         "arn:aws:s3:::sst-state-*/snapshot/grimoire/descope-dev/*"
-      ]
-    },
-    {
-      "Sid": "ManageBootstrapAssetBucket",
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutBucketNotification",
-        "s3:PutBucketPolicy",
-        "s3:DeleteObject",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:PutObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::sst-asset-*"
-      ]
-    },
-    {
-      "Sid": "ManageBootstrapECRRepo",
-      "Effect": "Allow",
-      "Action": [
-        "ecr:CreateRepository",
-        "ecr:DescribeRepositories"
-      ],
-      "Resource": [
-        "arn:aws:ecr:__REGION__:__ACCOUNT__:repository/sst-asset"
-      ]
-    },
-    {
-      "Sid": "ManageBootstrapSSMParameter",
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameters",
-        "ssm:PutParameter"
-      ],
-      "Resource": [
-        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/passphrase/grimoire/descope-dev",
-        "arn:aws:ssm:__REGION__:__ACCOUNT__:parameter/sst/bootstrap"
       ]
     },
     {

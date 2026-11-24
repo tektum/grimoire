@@ -37,7 +37,7 @@ It checks that the credentials belong to that account, creates the provider for 
 
 | Role | Trusts only | Permissions |
 |---|---|---|
-| `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | SST's bootstrap and secrets statements, with the SSM parameters limited to the `descope-dev` stage, nothing else (below) |
+| `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | only the `descope-dev` stage's own state keys, passphrase and secrets, read access to SST's bootstrap parameter, and listing of the state bucket (below); it cannot create or change a bucket, its policy, or anything of another stage |
 | `grimoire-deploy-staging` | `repo:tektum/grimoire:environment:staging` | SST's documented deploy policy, `infra/bootstrap/permissions-staging.json`, including its `Deployments` wildcard statement: narrow it once the staging stack exists |
 
 Trust policy of each role (`ACCOUNT` is the 12-digit account id and `<environment>` is `descope-dev` or `staging`; the script fills both in; the file is `infra/bootstrap/trust.json`):
@@ -70,13 +70,32 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ManageBootstrapStateBucket",
+      "Sid": "ReadBootstrap",
       "Effect": "Allow",
       "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutBucketNotification",
-        "s3:PutBucketPolicy",
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": [
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/bootstrap"
+      ]
+    },
+    {
+      "Sid": "PassphraseOfThisStage",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:PutParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/passphrase/grimoire/descope-dev"
+      ]
+    },
+    {
+      "Sid": "ListStateBucket",
+      "Effect": "Allow",
+      "Action": [
         "s3:ListBucket",
         "s3:ListBucketVersions"
       ],
@@ -104,46 +123,6 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
       ]
     },
     {
-      "Sid": "ManageBootstrapAssetBucket",
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:PutBucketVersioning",
-        "s3:PutBucketNotification",
-        "s3:PutBucketPolicy",
-        "s3:DeleteObject",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:PutObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::sst-asset-*"
-      ]
-    },
-    {
-      "Sid": "ManageBootstrapECRRepo",
-      "Effect": "Allow",
-      "Action": [
-        "ecr:CreateRepository",
-        "ecr:DescribeRepositories"
-      ],
-      "Resource": [
-        "arn:aws:ecr:REGION:ACCOUNT:repository/sst-asset"
-      ]
-    },
-    {
-      "Sid": "ManageBootstrapSSMParameter",
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetParameters",
-        "ssm:PutParameter"
-      ],
-      "Resource": [
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/passphrase/grimoire/descope-dev",
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/bootstrap"
-      ]
-    },
-    {
       "Sid": "ManageSecrets",
       "Effect": "Allow",
       "Action": [
@@ -163,6 +142,8 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
 }
 ```
 
+Then, once per account and region, an administrator bootstraps SST with their own credentials, from a checkout of this repository: `bunx sst install`, then `AWS_REGION=<region> bunx sst diff --stage descope-dev`. SST bootstraps the account on its first command that uses the home. With no Descope key set the command then stops at the Descope provider with an authentication error: that is expected, nothing in Descope is touched (this step has not been run on a real account, so check that `/sst/bootstrap` exists afterwards: `aws ssm get-parameter --name /sst/bootstrap --region <region>`).
+
 A run of the script is tested with `--print` only (`tools/ci/test/aws-bootstrap.test.mjs`): it checks the documents are valid JSON, each role trusts exactly its own environment, and the Descope role has no wildcard statement. Applying them needs a real account and has not been run.
 
 ## The provider plugin
@@ -175,4 +156,4 @@ The Descope plugin is a binary that runs with the Descope token in its environme
 - By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`. Read the `diff` first.
 - Locally with your own credentials: `bunx sst diff --stage descope-dev` with AWS credentials in the environment and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).
 
-SST creates its home in the AWS account and region on the first run (a state bucket and `/sst/*` parameters), so the role needs the permissions of [SST's IAM guide](https://sst.dev/docs/iam-credentials) for that, and nothing broader: this stage creates no AWS resource.
+SST needs a home (a state bucket, an asset bucket, a container repository and the `/sst/bootstrap` parameter) in the account and region before any run. The Descope role cannot create it, and cannot change a bucket policy (which could grant it access to the state of another stage), so an administrator bootstraps once, below.
