@@ -80,13 +80,15 @@ describe('process handlers', () => {
     const { faults, exits, logger, shutdown } = setup();
     const ran = vi.fn(() => Promise.resolve());
     shutdown.register({ name: 'db', phase: 'close-database', deadlineMs: 10, run: ran });
-    faults.get(kind)?.(new TypeError(placeholderDatabaseUrl('h', 'db')));
+    const leaked = placeholderDatabaseUrl('h', 'db');
+    faults.get(kind)?.(new TypeError(leaked));
     await flush();
     expect(ran).toHaveBeenCalledOnce();
     expect(exits).toEqual([EXIT.failure]);
     const fault = logger.entries.filter((e) => e.event === 'process.fault');
     expect(fault.map((e) => e.fields)).toEqual([{ kind, errorName: 'TypeError' }]);
-    expect(JSON.stringify(logger.entries)).not.toContain('postgres://');
+    expect(JSON.stringify(logger.entries)).not.toContain(leaked);
+    expect(JSON.stringify(logger.entries)).not.toContain('postgresql://');
   });
 });
 

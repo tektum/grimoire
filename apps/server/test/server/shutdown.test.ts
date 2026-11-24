@@ -69,7 +69,8 @@ describe('Shutdown', () => {
   it('logs shutdown.hook_failed for a throwing hook (name only, no message) and does not stop later phases', async () => {
     const { shutdown, log, logger } = setup();
     const later = vi.fn(() => Promise.resolve());
-    shutdown.register({ name: 'throws', phase: 'stop-timers', deadlineMs: 500, run: () => { throw new TypeError(placeholderDatabaseUrl('h', 'db')); } });
+    const leaked = placeholderDatabaseUrl('h', 'db');
+    shutdown.register({ name: 'throws', phase: 'stop-timers', deadlineMs: 500, run: () => { throw new TypeError(leaked); } });
     shutdown.register({ name: 'rejects', phase: 'stop-timers', deadlineMs: 500, run: () => Promise.reject(new RangeError('x')) });
     shutdown.register({ name: 'db', phase: 'close-database', deadlineMs: 500, run: later });
     expect(await shutdown.run(log, 'SIGTERM')).toBe(1);
@@ -79,7 +80,8 @@ describe('Shutdown', () => {
       { hook: 'throws', phase: 'stop-timers', errorName: 'TypeError' },
       { hook: 'rejects', phase: 'stop-timers', errorName: 'RangeError' },
     ]);
-    expect(JSON.stringify(logger.entries)).not.toContain('postgres://');
+    expect(JSON.stringify(logger.entries)).not.toContain(leaked);
+    expect(JSON.stringify(logger.entries)).not.toContain('postgresql://');
   });
 
   it('does not raise an unhandled rejection when an abandoned hook rejects later', async () => {

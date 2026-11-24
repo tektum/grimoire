@@ -7,7 +7,6 @@ import {
 } from './support/harness.js';
 import { overallShutdownDeadlineMs } from '../../src/lifecycle/budget.js';
 import { listenerReport, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
-import { appUrl } from '@tektum/grimoire-test-support/database';
 
 const MIGRATED = 'grimoire_t07_migrated';
 const EMPTY = 'grimoire_t07_empty';
