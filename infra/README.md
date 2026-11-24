@@ -40,7 +40,7 @@ It checks that the credentials belong to that account, creates the provider for 
 | `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | SST's bootstrap and secrets statements, with the SSM parameters limited to the `descope-dev` stage, nothing else (below) |
 | `grimoire-deploy-staging` | `repo:tektum/grimoire:environment:staging` | SST's documented deploy policy, `infra/bootstrap/permissions-staging.json`, including its `Deployments` wildcard statement: narrow it once the staging stack exists |
 
-Trust policy of each role (`<environment>` is `descope-dev` or `staging`; the file is `infra/bootstrap/trust.json`):
+Trust policy of each role (`ACCOUNT` is the 12-digit account id and `<environment>` is `descope-dev` or `staging`; the script fills both in; the file is `infra/bootstrap/trust.json`):
 
 ```json
 {
@@ -49,13 +49,13 @@ Trust policy of each role (`<environment>` is `descope-dev` or `staging`; the fi
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::__ACCOUNT__:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::ACCOUNT:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:tektum/grimoire:environment:__ENVIRONMENT__"
+          "token.actions.githubusercontent.com:sub": "repo:tektum/grimoire:environment:<environment>"
         }
       }
     }
@@ -124,7 +124,7 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
         "ssm:PutParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/passphrase/*",
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/passphrase/grimoire/descope-dev",
         "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/bootstrap"
       ]
     },
@@ -141,7 +141,7 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
         "ssm:ListTagsForResource"
       ],
       "Resource": [
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/*"
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/grimoire/descope-dev/*"
       ]
     }
   ]
@@ -152,7 +152,7 @@ A run of the script is tested with `--print` only (`tools/ci/test/aws-bootstrap.
 
 ## The provider plugin
 
-The Descope plugin is a binary that runs with the Descope token in its environment. Pulumi would download it on first use with no checksum, so the workflow installs it first, before the job holds the AWS role or the Descope token: `infra/install-provider.sh` downloads the release asset named in `infra/provider-checksums.txt`, checks its sha256 (a mismatch installs nothing), and gives it to Pulumi with `plugin install --file`. To update the provider: change the version in `sst.config.ts`, download the new `linux-amd64` asset, and put its sha256 and file name in the checksums file (`tools/ci/test/provider-checksums.test.mjs` fails if the two disagree). The official Pulumi AWS plugin is still downloaded by SST on demand and is not pinned; it runs in the same job and inherits the Descope token in its environment. Pinning it the same way is not done.
+The Descope plugin is a binary that runs with the Descope token in its environment. Pulumi would download it on first use with no checksum, so the workflow installs it first, before the job holds the AWS role or the Descope token: `infra/install-provider.sh` downloads the release asset named in `infra/provider-checksums.txt`, checks its sha256 (a mismatch installs nothing), and gives it to Pulumi with `plugin install --reinstall --file`, into SST's own Pulumi home (`~/.config/sst`, where SST looks for plugins; a copy fetched without a check is replaced). To update the provider: change the version in `sst.config.ts`, download the new `linux-amd64` asset, and put its sha256 and file name in the checksums file (`tools/ci/test/provider-checksums.test.mjs` fails if the two disagree). The official Pulumi AWS plugin is still downloaded by SST on demand and is not pinned; it runs in the same job and inherits the Descope token in its environment. Pinning it the same way is not done.
 
 ## Running it
 

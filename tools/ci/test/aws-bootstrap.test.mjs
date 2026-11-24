@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -39,6 +40,15 @@ test('the Descope role reaches only its own stage in SSM: not the passphrase or 
   const resources = dev.flatMap((s) => s.Resource).filter((r) => r.includes(':parameter/'));
   assert.ok(resources.length >= 3);
   for (const r of resources) assert.match(r, /parameter\/sst\/(bootstrap$|passphrase\/grimoire\/descope-dev$|grimoire\/descope-dev\/\*$)/, r);
+});
+
+test('the JSON the README shows for an administrator is the JSON of the files the script uses', () => {
+  const root = (path) => readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), 'utf8');
+  const shown = [...root('infra/README.md').matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1]));
+  const readmeTrust = shown.find((doc) => doc.Statement[0].Action === 'sts:AssumeRoleWithWebIdentity');
+  assert.deepEqual(readmeTrust, JSON.parse(root('infra/bootstrap/trust.json').replaceAll('__ACCOUNT__', 'ACCOUNT').replaceAll('__ENVIRONMENT__', '<environment>')), 'the trust policy of the README differs from trust.json');
+  const dev = JSON.parse(root('infra/bootstrap/permissions-descope-dev.json').replaceAll('__ACCOUNT__', 'ACCOUNT').replaceAll('__REGION__', 'REGION'));
+  assert.ok(shown.some((doc) => JSON.stringify(doc) === JSON.stringify(dev)), 'the Descope role permissions of the README differ from permissions-descope-dev.json');
 });
 
 test('refuses a wrong account id or region before calling anything', () => {

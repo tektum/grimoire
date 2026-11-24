@@ -22,6 +22,12 @@ test('the install script checks the checksum before it gives the file to Pulumi'
   assert.match(script, /set -eu/);
 });
 
+test('the plugin goes into SST\'s own Pulumi home and replaces a copy that is already there', () => {
+  const script = read('infra/install-provider.sh');
+  assert.match(script, /PULUMI_HOME="\$\{PULUMI_HOME:-\$HOME\/\.config\/sst\}"/, 'SST keeps its plugins in ~/.config/sst/plugins');
+  assert.match(script, /plugin install resource descope "\$version" --reinstall /, 'without --reinstall an unchecked copy that is already installed would be kept');
+});
+
 test('the workflow installs the plugin before the job holds the AWS role or asks for the Descope token', () => {
   const workflow = read('.github/workflows/descope-infra.yml');
   const install = workflow.indexOf('infra/install-provider.sh');
