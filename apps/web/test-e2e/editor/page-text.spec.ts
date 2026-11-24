@@ -49,8 +49,11 @@ test.describe('the page text: first view and live editor', () => {
       const first = await look();
       await shots(page, 'm6-t04', 'page-text-first-view');
 
-      refuse = false; // the next attempt of the page's own retry connects
-      await waitForSynced(page);
+      refuse = false;
+      // The page waits out a backoff of up to 30 s before its next attempt; the browser's own offline and online events make it connect at once.
+      await page.context().setOffline(true);
+      await page.context().setOffline(false);
+      await waitForSynced(page, { timeout: 60_000 }); // and room for the backoff on a slow machine, should the events find it between waits
       await expect(surface).toHaveAttribute('aria-label', 'Page text');
       await expectNoAxeViolations(page);
       const live = await look();
