@@ -38,7 +38,7 @@ export default function staging() {
     $resolve({ user, secret: password, host: db.host, port: db.port, name: db.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
   const trust = { NODE_EXTRA_CA_CERTS: RDS_CA_BUNDLE };
 
-  // The CORS rule is the one `grimoire files-setup` writes for a store the application sets up itself (external mode: the infrastructure owns it).
+  // The CORS rule is the one `grimoire files-setup` writes for a store the application sets up itself (external mode: the infrastructure owns it, nothing in the task writes or checks it).
   const files = new sst.aws.Bucket('Files', {
     cors: { allowOrigins: [url], allowMethods: ['GET', 'PUT', 'HEAD'], allowHeaders: ['content-type', 'content-disposition', 'if-none-match', 'x-amz-*'], exposeHeaders: ['ETag'], maxAge: '10 minutes' },
   });
