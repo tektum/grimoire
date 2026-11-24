@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { bundleHarness } from '../collections/bundle';
 import { fixtureServer } from '../support/fixtures';
+import { pasteIntoEditor } from '../support/paste';
 
 /** A 1 by 1 PNG (a green pixel), enough for `naturalWidth` to be above 0. */
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/ZtqZ4wAAAABJRU5ErkJggg==', 'base64');
@@ -121,12 +122,5 @@ export async function openPage(page: Page, markdown: string, options: { sans?: b
 /** Pastes a file into the editor, as the clipboard of a browser carries it. */
 export async function pasteFiles(page: Page, files: { name: string; type: string; bytes?: number }[]): Promise<void> {
   await page.locator('.ProseMirror').click();
-  await page.evaluate((list) => {
-    const data = new DataTransfer();
-    for (const file of list) data.items.add(new File([new Uint8Array(file.bytes ?? 3)], file.name, { type: file.type }));
-    // The data goes on the event as a property: Firefox gives an event made by a script an empty clipboard whatever it is made with, and every engine reads the property the same way.
-    const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'clipboardData', { value: data });
-    document.querySelector('.ProseMirror')!.dispatchEvent(event);
-  }, files);
+  await pasteIntoEditor(page, { files });
 }

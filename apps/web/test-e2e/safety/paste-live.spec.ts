@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { makePage } from '../editor/pages';
+import { pasteIntoEditor } from '../support/paste';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
 import { expectSaved, savedMarkdown } from '../tables/saved';
@@ -12,21 +13,19 @@ test('HTML pasted into a live page is saved as text and safe links only', async 
     await signInAs(context, 'e2e-alice', 'member');
     const page = await context.newPage();
     const dialogs: string[] = [];
-    page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+    page.on('dialog', (d) => {
+      dialogs.push(d.message());
+      void d.dismiss();
+    });
     await page.goto(made.path);
     await waitForSynced(page);
     await page.locator('.ProseMirror p', { hasText: 'Start.' }).click();
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
-    await page.evaluate(() => {
-      const html =
-        '<p>Pasted <strong>words</strong>.</p><script>window.__pwned = 1</script><iframe src="https://evil.example/"></iframe>' +
-        '<p onclick="window.__pwned = 2" style="background:url(https://evil.example/t.gif)">Click <a href="javascript:window.__pwned=3">here</a> or <a href="https://a.test/ok">there</a>.</p><style>p{display:none}</style>';
-      const data = new DataTransfer();
-      data.setData('text/html', html);
-      data.setData('text/plain', 'Pasted words. Click here or there.');
-      document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-    });
+    const html =
+      '<p>Pasted <strong>words</strong>.</p><script>window.__pwned = 1</script><iframe src="https://evil.example/"></iframe>' +
+      '<p onclick="window.__pwned = 2" style="background:url(https://evil.example/t.gif)">Click <a href="javascript:window.__pwned=3">here</a> or <a href="https://a.test/ok">there</a>.</p><style>p{display:none}</style>';
+    await pasteIntoEditor(page, { html, text: 'Pasted words. Click here or there.' });
     await expectSaved(made.id, 'Pasted **words**.');
     const saved = await savedMarkdown(made.id);
     expect(saved).toContain('Click here or [there](https://a.test/ok).');
