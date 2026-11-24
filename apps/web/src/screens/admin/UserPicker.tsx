@@ -38,7 +38,7 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
   return (
     <div className="admin-picker">
       <form role="search" onSubmit={search} className="admin-search">
-        <input type="search" aria-label={label} placeholder="Name or email" value={draft} onChange={(e) => { setDraft(e.target.value); }} />
+        <input type="search" aria-label={label} placeholder="Name or email" maxLength={200} value={draft} onChange={(e) => { setDraft(e.target.value); }} />
         <Button type="submit">Find</Button>
       </form>
       {found.isError ? (
