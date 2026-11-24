@@ -78,7 +78,19 @@ describe('the two documents of the build', () => {
   it("takes out only the app's own uses of the word, never the provider's code", () => {
     const own = 'loadDescope:async()=>(await p(()=>import("./descope-sdk-DKyABvbD.js")))' + ',{status:`signed-in`,method:`descope`},"./descope-signin-Abc_12.js"';
     expect(withoutOwnDescopeUses(own).toLowerCase()).not.toContain('descope');
-    for (const theirs of ['"x-descope-sdk-name"', '"x-descope-sdk-version"', 'DescopeSDK', 'descopeProjectId', '"descope-wc"'])
+    // A quoted word on its own, outside the one property the app writes it in, is not the app's: provider code could hide behind it.
+    for (const theirs of [
+      '"descope"',
+      '`descope`',
+      "'descope'",
+      '{label:"descope"}',
+      '{kind:`descope`}',
+      '"x-descope-sdk-name"',
+      '"x-descope-sdk-version"',
+      'DescopeSDK',
+      'descopeProjectId',
+      '"descope-wc"',
+    ])
       expect([theirs, withoutOwnDescopeUses(theirs).toLowerCase().includes('descope')]).toEqual([theirs, true]);
   });
 

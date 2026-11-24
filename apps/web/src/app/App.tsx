@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { RouterProvider } from 'react-router';
 import { createWebApi } from '../api/client';
 import type { ApiLike } from '../api/query';
-import { type Auth, createAuth, type DescopeModule, type SignOutReason } from '../auth';
+import { type Auth, createAuth, type DescopeModule } from '../auth';
 import type { DevSignIn } from '../auth/dev-signin';
 import { RequireSignIn } from '../auth/RequireSignIn';
 import { SessionContext } from '../auth/session';
@@ -80,12 +80,12 @@ function Running({ props, apiUrl, config, devSignIn }: { props: AppProps; apiUrl
       baseUrl: apiUrl,
       getToken: () => auth.getToken(),
       refresh: () => auth.refresh(),
-      signOut: (reason) => auth.signOut(reason as SignOutReason),
+      signOut: (reason) => auth.signOut(reason),
       notify,
       reload: markClientOutdated,
       fetch: props.fetch === undefined ? guardedFetch : blockWhenOutdated(props.fetch),
-    }) as unknown as ApiLike;
-    return { auth, api };
+    });
+    return { auth, api: api satisfies ApiLike };
   }, [apiUrl, config, devSignIn, props]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }), []);
   const router = useMemo(() => props.router(), [props]);

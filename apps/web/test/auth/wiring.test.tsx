@@ -1,6 +1,9 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
 import { createMemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useApi } from '../../src/api/context';
+import type { ApiLike } from '../../src/api/query';
 import { App, type AppProps } from '../../src/app/App';
 import { routeObjects } from '../../src/app/router';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
@@ -20,7 +23,7 @@ const SECRET = 'ab12'.repeat(8);
 const json = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 /** The app with a configuration answer, an API that answers by path, and a spy where the browser would leave for the sign-in document. */
-function run(options: { token?: string; local?: boolean; devBuild?: boolean; api?: (request: Request) => Response; configStatus?: number } = {}) {
+function run(options: { token?: string; local?: boolean; devBuild?: boolean; api?: (request: Request) => Response; configStatus?: number; router?: AppProps['router'] } = {}) {
   const { storage } = fakeStorage();
   if (options.token !== undefined) {
     storage.set(DEV_TOKEN_KEY, options.token);
@@ -38,7 +41,7 @@ function run(options: { token?: string; local?: boolean; devBuild?: boolean; api
     storage,
     loadDescope: async () => Promise.reject(new Error('unused')),
     loadDevSignIn: options.devBuild === false ? null : async (apiUrl, s) => createDevSignIn({ apiUrl, storage: s }),
-    router: () => createMemoryRouter(routeObjects(), { initialEntries: [HERE] }),
+    router: options.router ?? (() => createMemoryRouter(routeObjects(), { initialEntries: [HERE] })),
     here: () => HERE,
     redirect,
     fetch: async (request) => {
@@ -112,12 +115,26 @@ describe('the app wired to the gate and the session', () => {
     await waitFor(() => expect(t.redirect).toHaveBeenCalledWith('/login?return=%2Fp%2Fsome-page-ab12cd%3Fx%3D1'));
   });
 
-  it('a 426 client_too_old answer replaces the app with the reload text, and no further call is sent', async () => {
-    const t = run({ token: `dev:${SECRET}:alice:member`, api: () => json(426, { error: { code: 'client_too_old' } }) });
+  it('a 426 client_too_old answer replaces the app with the reload text, and a call made afterwards through the same client never reaches the network', async () => {
+    let captured: ApiLike | null = null;
+    function Probe() {
+      const api = useApi();
+      captured = api;
+      useEffect(() => void api.GET('/v1/me' as never), [api]); // the first call: the server answers 426
+      return <p>probe</p>;
+    }
+    const t = run({
+      token: `dev:${SECRET}:alice:member`,
+      api: () => json(426, { error: { code: 'client_too_old' } }),
+      router: () => createMemoryRouter([{ path: '*', element: <Probe /> }], { initialEntries: [HERE] }),
+    });
     expect(await screen.findByText(GATE_MESSAGES.outdated)).toBeTruthy();
     expect(document.body.textContent).toBe(GATE_MESSAGES.outdated);
     const sent = t.requests.length;
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(sent).toBeGreaterThan(0);
+    // No waiting for something not to happen: the client is held, so a call is refused before it is sent, and the count does not move.
+    await expect(captured!.GET('/v1/me' as never)).rejects.toThrow('too old');
+    await expect(captured!.POST('/v1/pages' as never, { body: {} } as never)).rejects.toThrow('too old');
     expect(t.requests).toHaveLength(sent);
   });
 

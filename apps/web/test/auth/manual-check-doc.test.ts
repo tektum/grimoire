@@ -59,6 +59,15 @@ describe('docs/proof/m6-signin-manual.md', () => {
     expect(rows('CSP options').find((r) => r[0] === 'C3')?.[1]).toContain('not built yet');
   });
 
+  it('does not claim a job that does not exist: the web job is planned, and the workflow that is there is named for what it is', () => {
+    expect(doc).toContain('It does not exist yet');
+    expect(doc).toContain('descope-live-m3.yml');
+    const workflows = readdirSync(path.join(root, '.github/workflows'));
+    expect(workflows).toContain('descope-live-m3.yml');
+    // If the web job is ever added, this sentence has to go with it.
+    expect(workflows.includes('descope-live-web.yml')).toBe(false);
+  });
+
   it('holds no secret, no project id and no machine path', () => {
     expect(doc).not.toMatch(/\bP2[A-Za-z0-9]{20,}\b/); // a project id
     expect(doc).not.toMatch(/\/home\/|\/Users\/|C:\\\\/);

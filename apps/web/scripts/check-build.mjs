@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * The ways the app's own code says "descope" without carrying the provider's code: the name of its loader (`loadDescope`), the file names of the two chunks it
  * imports on demand (`descope-sdk-<hash>.js`, `descope-signin-<hash>.js`, written in the entry's preload list), and the label of a session's method
- * (`method: "descope"`). Anything else with the word in a chunk the entry document loads is the provider's code, which belongs on the sign-in page only.
+ * (`method: "descope"`, only that exact property). Anything else with the word in a chunk the entry document loads is the provider's code, which belongs on the sign-in page only.
  */
-export const OWN_DESCOPE_USES = [/loadDescope/gi, /descope-(?:sdk|signin)-[\w-]+\.js/g, /["'`]descope["'`]/g];
+export const OWN_DESCOPE_USES = [/loadDescope/gi, /descope-(?:sdk|signin)-[\w-]+\.js/g, /method:\s*["'`]descope["'`]/g];
 /** `text` with the app's own uses of the word taken out. */
 export const withoutOwnDescopeUses = (text) => OWN_DESCOPE_USES.reduce((rest, pattern) => rest.replace(pattern, ''), text);
 
