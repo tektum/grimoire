@@ -70,6 +70,8 @@ Run from the repository root. Each line works on `main` today.
 | Secret scan, history | `gitleaks git --config .gitleaks.toml --redact .` |
 | Secret scan, files | `gitleaks dir --config .gitleaks.toml --redact .` |
 
+Packages import each other through their built `dist/`, so after pulling run `bun run build` before `bun run test`: a test that crosses packages fails against an older build (CI always builds first).
+
 Which command enforces what: the unit run enforces the unit floors on its own coverage;
 the integration run enforces the integration floors on its own coverage; the merged run
 enforces both sets on the unit and integration coverage together. In CI the `Unit tests`

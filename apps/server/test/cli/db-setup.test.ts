@@ -10,7 +10,8 @@ const env = {
 describe('the db-setup composition', () => {
   it('builds the administrator connection and carries the two passwords', async () => {
     const result = composeDbSetup({ env });
-    expect(result.ok).toBe(true);
+    // Packages reach each other through their built `dist/`: a `config-env` built before the `db-setup` purpose existed refuses these settings. The fix is `bun run build`.
+    expect(result.ok, 'composeDbSetup refused valid settings: is packages/adapters/config-env/dist older than its source? Run `bun run build`').toBe(true);
     if (result.ok) {
       expect(result.ctx.passwords).toEqual({ app: env.GRIMOIRE_DB_APP_PASSWORD, migrator: env.GRIMOIRE_DB_MIGRATOR_PASSWORD });
       await result.ctx.db.close();
