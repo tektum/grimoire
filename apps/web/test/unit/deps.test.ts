@@ -26,7 +26,7 @@ const PINS: Readonly<Record<string, string>> = {
   'react-arborist': '4.0.1',
   'lucide-react': '1.77.0',
   diff: '9.0.0',
-  dompurify: '3.4.18',
+  dompurify: '3.5.0',
   '@milkdown/core': '7.23.0',
   '@milkdown/ctx': '7.23.0',
   '@milkdown/prose': '7.23.0',
