@@ -85,4 +85,59 @@ describe('the outline of a page', () => {
     const links = screen.getAllByRole('link');
     expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'location', null]);
   });
+
+  it('is one stop of the Tab key: only one link is tabbable, and the arrow keys, Home and End move between the links', async () => {
+    renderPage([[1, 'A'], [2, 'B'], [1, 'C']]);
+    await settle();
+    const links = screen.getAllByRole('link');
+    expect(links.map((a) => a.tabIndex)).toEqual([0, -1, -1]);
+    links[0]?.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(links[1]);
+    expect(links.map((a) => a.tabIndex)).toEqual([-1, 0, -1]);
+    await userEvent.keyboard('{End}');
+    expect(document.activeElement).toBe(links[2]);
+    await userEvent.keyboard('{ArrowDown}'); // already at the end
+    expect(document.activeElement).toBe(links[2]);
+    await userEvent.keyboard('{ArrowUp}');
+    expect(document.activeElement).toBe(links[1]);
+    await userEvent.keyboard('{Home}');
+    expect(document.activeElement).toBe(links[0]);
+    await userEvent.keyboard('{ArrowUp}'); // already at the start
+    expect(document.activeElement).toBe(links[0]);
+    await userEvent.keyboard('x'); // any other key is left alone
+    expect(document.activeElement).toBe(links[0]);
+  });
+
+  it('Enter on a link goes to its heading', async () => {
+    const { editor } = renderPage([[1, 'A'], [1, 'B']]);
+    await settle();
+    const target = editor.querySelectorAll('h1')[1] as HTMLElement;
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    screen.getByRole('link', { name: 'B' }).focus();
+    await userEvent.keyboard('{Enter}');
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(target.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+  });
+
+  it('follows the window: shown when it grows to 1,200 pixels, gone when it narrows', async () => {
+    let listener: () => void = () => undefined;
+    let wide = false;
+    vi.stubGlobal('matchMedia', () => ({
+      get matches() { return wide; },
+      media: '(min-width: 1200px)',
+      addEventListener: (_: string, fn: () => void) => { listener = fn; },
+      removeEventListener: () => undefined,
+    }));
+    renderPage([[1, 'A']]);
+    await settle();
+    expect(screen.queryByRole('navigation', { name: 'Page outline' })).toBeNull();
+    wide = true;
+    await act(async () => { listener(); await vi.advanceTimersByTimeAsync(250); });
+    expect(screen.getByRole('link', { name: 'A' })).toBeTruthy();
+    wide = false;
+    await act(async () => { listener(); await vi.advanceTimersByTimeAsync(250); });
+    expect(screen.queryByRole('navigation', { name: 'Page outline' })).toBeNull();
+  });
 });
