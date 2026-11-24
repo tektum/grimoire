@@ -128,7 +128,8 @@ export function PageView({ page, engine = realEngine }: { page: PageMeta; engine
   }, [page.id, session, engine]);
 
   const collab: CollabState = state.stopped !== null ? 'stopped' : state.offline ? 'offline' : liveReady && state.phase === 'synced' ? 'synced' : 'connecting';
-  const status = state.text ?? (collab === 'synced' ? 'Live' : collab === 'connecting' ? 'Connecting…' : null);
+  // The 'Read only' text of the scope is the label beside the title, not a second line of status.
+  const status = (state.text === 'Read only' ? null : state.text) ?? (collab === 'synced' ? 'Live' : collab === 'connecting' ? 'Connecting…' : null);
 
   return (
     <div className="page-layout">

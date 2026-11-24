@@ -253,4 +253,12 @@ describe('the page screen', () => {
     await act(async () => void t.sessions[0]!.provider.stateless({ kind: 'refusal', code: 'presence-violation' }));
     await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('connecting'));
   });
+
+  it('says Read only once: as the label, not also as the status line', async () => {
+    const t = mountPage({ page: page({ myPermission: 'read-only' }) });
+    await t.synced();
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Live'));
+    act(() => void t.sessions[0]!.provider.emit({ type: 'authenticated', scope: 'readonly' }));
+    expect(screen.getAllByText('Read only')).toHaveLength(1);
+  });
 });
