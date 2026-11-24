@@ -9,6 +9,9 @@ import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
 import { sessionDirectory } from '../../editor/core/directory';
 import { useApiQuery } from '../../api/query';
+import { Button } from '../../ui/primitives';
+import { ResetPageDialog } from '../admin/ResetPageDialog';
+import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
 import '../../editor/core/lists.css';
@@ -44,7 +47,9 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const permissionReadOnly = page.myPermission === 'read-only';
   // The effect below outlives a page response: it reads what the person may do now, not what the first response said.
   // Who is signed in (the same read as the badge's): the id published with the cursor. It may arrive after the editor, and is read when it is needed.
-  const me = useApiQuery<{ id: string }>(session?.api ?? (null as never), '/v1/me', undefined, { enabled: session !== null });
+  const me = useApiQuery<{ id: string; role?: string }>(session?.api ?? (null as never), '/v1/me', undefined, { enabled: session !== null });
+  const managerRef = useRef<ConnectionManager | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
   const meRef = useRef<string | null>(null);
   meRef.current = me.data?.id ?? null;
   const permissionRef = useRef(permissionReadOnly);
@@ -170,10 +175,12 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       }
       if (next.phase === 'synced' && live === null && !starting) goLive(next.generation);
     });
+    managerRef.current = manager;
     manager.start();
     showSaved();
 
     return () => {
+      managerRef.current = null;
       cancelled = true;
       unsubscribe();
       manager.stop(); // provider, then document
@@ -198,13 +205,20 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         <header className="page-head">
           <h1 id="screen-title">{page.title === '' ? 'Untitled' : page.title}</h1>
           {readOnly ? <span className="page-readonly">Read only</span> : null}
+          {me.data?.role === 'admin' && session !== null ? (
+            <Button className="page-admin-action" onClick={() => setResetOpen(true)}>
+              Reset saved state…
+            </Button>
+          ) : null}
         </header>
         <p className="page-status" role="status" data-state={collab}>
           {status}
         </p>
+        {state.copy !== null ? <ResetNotice copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}
         <div ref={rootRef} className="page-editor page-text" data-collab-state={collab} data-testid="editor-root" />
+        {me.data?.role === 'admin' && session !== null ? <ResetPageDialog api={session.api} page={{ id: page.id, title: page.title }} open={resetOpen} onOpenChange={setResetOpen} /> : null}
       </article>
       <div className="page-margin">
         <Outline />

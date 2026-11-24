@@ -29,3 +29,11 @@ export async function makePage(markdown: string, options: { title?: string; perm
   const page = await call<{ id: string; urlId: string }>('POST', '/v1/pages', { collectionId: collection.id, markdown, title: options.title ?? 'Editor page' });
   return { id: page.id, urlId: page.urlId, collectionId: collection.id, path: `/p/page-${page.urlId}` };
 }
+
+/** Resets the saved state of a page as an administrator (`POST /v1/pages/{id}/reset-state`); every open editor of the page is closed with a stale epoch. */
+export async function resetPageState(pageId: string, options: { confirmStale?: boolean; markdown?: string } = {}): Promise<void> {
+  await call('POST', `/v1/pages/${pageId}/reset-state`, {
+    ...(options.confirmStale === true ? { confirmStale: true } : {}),
+    ...(options.markdown === undefined ? {} : { markdown: options.markdown }),
+  });
+}

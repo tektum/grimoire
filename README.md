@@ -68,6 +68,10 @@ Two people in one page: each sees the other's cursor and selection, with the nam
 
 A page opened read-only.
 
+![A page that was reset while you had unsent changes](docs/screenshots/m6-t04/reset-notice-light.png)
+
+A page that was reset under a tab with unsent changes: the notice, and the copy to download or copy.
+
 ![The Move to dialog](docs/screenshots/m6-t03/move-to-dialog-light.png)
 
 Moving a page with Move to.

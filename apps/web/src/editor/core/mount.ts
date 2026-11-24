@@ -78,5 +78,13 @@ export async function mountLive(options: {
     const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
     ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
-  return wrap(editor, flag, () => cursors.dispose());
+  return wrap(editor, flag, () => {
+    cursors.dispose();
+    // Unbinds the document and the awareness while the editor can still answer, so that taking the editor down does not apply a last change to a view that is going.
+    try {
+      editor.action((ctx) => void ctx.get(collabServiceCtx).disconnect());
+    } catch {
+      // the editor was already taken down: nothing is bound any more
+    }
+  });
 }
