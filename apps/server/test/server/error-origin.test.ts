@@ -32,4 +32,8 @@ describe('errorOrigin', () => {
     expect(errorOrigin(withMessage('only a message /apps/user-value:1:1', ''))).toBeUndefined();
     expect(errorOrigin(Object.assign(new Error('m'), { stack: 'not the engine shape\n    at /repo/apps/a.ts:1:1' }))).toBeUndefined();
   });
+  it('reads the frames of an error with an empty message (the header is just the name)', () => {
+    const e = Object.assign(new Error(''), { stack: 'Error\n    at /repo/apps/server/src/routes/pages.ts:142:14' });
+    expect(errorOrigin(e)).toBe('apps/server/src/routes/pages.ts:142');
+  });
 });

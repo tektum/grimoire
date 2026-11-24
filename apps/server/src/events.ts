@@ -120,7 +120,7 @@ const BUILDS_ERRORS = /^apps\/server\/(?:src|dist)\/http\/error\.(?:ts|js):/;
  */
 export function errorOrigin(e: unknown): string | undefined {
   if (!(e instanceof Error) || typeof e.stack !== 'string') return undefined;
-  const header = `${e.name}: ${e.message}`;
+  const header = e.message === '' ? e.name : `${e.name}: ${e.message}`; // the engine writes just the name for an empty message
   if (!e.stack.startsWith(header)) return undefined; // not the engine's shape: read nothing rather than a message
   for (const line of e.stack.slice(header.length).split('\n')) {
     if (line.includes('node_modules')) continue;
