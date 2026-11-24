@@ -118,7 +118,7 @@ export function createAuthExtension(o: AuthOptions): Extension {
       // A client that recorded another epoch (a reset, a restore, or a restored backup) must reload, never merge; checked before admission so a refused reconnect holds no place.
       if (hs.epoch !== undefined && hs.epoch !== r.access.epoch) throw new Refusal('stale-epoch');
       o.admit?.(data, r.user.id); // decided now, in arrival order, before the client is told it is authenticated and before the page loads
-      return { userId: r.user.id, descopeUserId: v.userId, accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch, ...(hs.wrapped ? { wrapped: true } : {}), ...(hs.wrapped && hs.epoch === undefined ? { epochUnknown: true } : {}) };
+      return { userId: r.user.id, descopeUserId: v.userId, ...(v.tenant?.kind === 'one' ? { tenantId: v.tenant.id } : {}), accessLevel: r.access.access, expiresAt: v.expiresAt, epoch: r.access.epoch, ...(hs.wrapped ? { wrapped: true } : {}), ...(hs.wrapped && hs.epoch === undefined ? { epochUnknown: true } : {}) };
     },
 
     /**

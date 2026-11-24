@@ -58,3 +58,30 @@ describe('the re-check and the tenant', () => {
     expect(theirs.closes).toEqual([]);
   });
 });
+
+describe('a renewed token and the tenant (the same checks as the handshake)', () => {
+  const renew = async (claim: { kind: 'one'; id: string } | { kind: 'none' } | { kind: 'many'; ids: string[] }, requireTenant: boolean) => {
+    const r = started(rig({ requireTenant }));
+    const c = await r.open({ expiresInMs: 5000, tenantId: 'tenant-a' });
+    const fresh = r.t.clock.now() + 3_600_000;
+    r.t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: fresh, tenant: claim as never };
+    await r.tokenSync(c, 'renewed');
+    return { c, fresh, r };
+  };
+
+  it('extends the session when the renewed token names the same tenant', async () => {
+    const { c, fresh } = await renew({ kind: 'one', id: 'tenant-a' }, true);
+    expect([c.closes, c.context['expiresAt']]).toEqual([[], fresh]);
+  });
+
+  it('closes the connection when the renewed token names another tenant, and does not extend it', async () => {
+    const { c, fresh } = await renew({ kind: 'one', id: 'tenant-b' }, false);
+    expect(c.closes).toHaveLength(1);
+    expect(c.context['expiresAt']).not.toBe(fresh);
+  });
+
+  it.each([{ kind: 'none' }, { kind: 'many', ids: ['a', 'b'] }] as const)('closes it on a renewed token with %j when tenants are required, and lets it through when they are not', async (claim) => {
+    expect((await renew(claim as never, true)).c.closes).toHaveLength(1);
+    expect((await renew(claim as never, false)).c.closes).toEqual([]);
+  });
+});

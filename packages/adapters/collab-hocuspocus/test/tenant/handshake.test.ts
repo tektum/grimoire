@@ -13,8 +13,8 @@ const MISSING = '0b6f4f0e-3c1d-4a53-9a62-5d1c2a7e9999';
 const A: TenantClaim = { kind: 'one', id: 'tenant-a' };
 
 /** A member whose token, user row and (when `page` is given) page are of the tenants named. */
-function setup(o: { claim?: TenantClaim | undefined; user?: string | undefined; page?: string | undefined } = { claim: A, user: 'tenant-a', page: 'tenant-a' }) {
-  const t = makeDeps('member');
+function setup(o: { claim?: TenantClaim | undefined; user?: string | undefined; page?: string | undefined; role?: 'admin' | 'member' } = { claim: A, user: 'tenant-a', page: 'tenant-a' }) {
+  const t = makeDeps(o.role ?? 'member');
   t.deps = { ...t.deps, requireTenant: true };
   t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: 10_000_000, ...(o.claim === undefined ? {} : { tenant: o.claim }) };
   if (o.user !== undefined) t.users.setTenant(SUBJECT, o.user);
@@ -50,7 +50,7 @@ describe('the handshake and the tenant of the page', () => {
   });
 
   it('refuses even an administrator, and a page the collection would give to everybody', async () => {
-    const s = setup({ claim: A, user: 'tenant-a', page: 'tenant-b' });
+    const s = setup({ claim: A, user: 'tenant-a', page: 'tenant-b', role: 'admin' });
     s.world.collections.forEach((c) => { c.defaultPermission = 'read_write'; });
     await expect(s.authenticate()).rejects.toMatchObject({ reason: 'not-found' });
   });

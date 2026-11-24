@@ -53,6 +53,7 @@ interface Tracked {
   readonly documentName: string;
   readonly userId: string;
   readonly descopeUserId: string;
+  readonly tenantId: string | undefined;
   level: 'read-write' | 'read-only';
   expiresAt: number;
   readonly epoch: number;
@@ -201,7 +202,7 @@ export function createRecheck(o: RecheckOptions): Recheck {
       if (c.userId === undefined || c.descopeUserId === undefined || c.accessLevel === undefined || c.expiresAt === undefined || c.epoch === undefined) return;
       const connection = data.connection;
       tracked.set(connection, {
-        documentName: data.documentName, userId: c.userId, descopeUserId: c.descopeUserId, level: c.accessLevel,
+        documentName: data.documentName, userId: c.userId, descopeUserId: c.descopeUserId, tenantId: c.tenantId, level: c.accessLevel,
         expiresAt: c.expiresAt, epoch: c.epoch, windowStart: deps.clock.now(), presentations: 0,
       });
       connection.onClose(() => { untrack(connection); });
@@ -244,6 +245,12 @@ export function createRecheck(o: RecheckOptions): Recheck {
       }
       if (v.userId !== t.descopeUserId) {
         log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'user-mismatch' });
+        closeOne(data.connection, t, 'invalid-token');
+        return;
+      }
+      // The same tenant checks as the handshake: a renewal is not a way round them (a person moved to another tenant, or a claim that has become none or several, ends the connection).
+      if ((deps.requireTenant === true && (v.tenant?.kind === 'none' || v.tenant?.kind === 'many')) || (v.tenant?.kind === 'one' && t.tenantId !== undefined && v.tenant.id !== t.tenantId)) {
+        log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'tenant-mismatch' });
         closeOne(data.connection, t, 'invalid-token');
         return;
       }

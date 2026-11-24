@@ -48,7 +48,7 @@ export interface CollabEvents {
   /** A round could not ask the database: nobody is closed for it until the outage bound is reached (extensions/recheck.ts). */
   'collab.recheck_skipped': { level: 'warn'; fields: { reason: 'database' } };
   'collab.access_closed': { level: 'info'; fields: { pageId: string; reason: AccessClosedReason } };
-  'collab.token_sync_failed': { level: 'warn'; fields: { pageId: string; reason: 'invalid' | 'user-mismatch' | 'rate-limited' } };
+  'collab.token_sync_failed': { level: 'warn'; fields: { pageId: string; reason: 'invalid' | 'user-mismatch' | 'rate-limited' | 'tenant-mismatch' } };
   'collab.log_suppressed': { level: 'warn'; fields: { suppressedEvent: string; variant: string; count: number; windowSeconds: number } };
 }
 
