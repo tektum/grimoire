@@ -2,10 +2,14 @@ import type { AuditEvent, AuditLog } from '@tektum/grimoire-core/ports/audit-log
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { KyselyDatabase } from './index.js';
 
-/** One audit row on `q`: pass a transaction handle so the row commits or rolls back with the change it describes. */
+/**
+ * One audit row on `q`: pass a transaction handle so the row commits or rolls back with the change it describes.
+ * The row is in the tenant the event names, else in the tenant of its actor, else (the system) in legacy.
+ */
 export async function insertAuditEvent(q: Queryable, event: AuditEvent): Promise<void> {
   await q.query(
-    `insert into audit_events (actor_id, action, target_type, target_id, detail, tenant_id) values ($1, $2, $3, $4, $5::jsonb, coalesce($6::text, 'legacy'))`,
+    `insert into audit_events (actor_id, action, target_type, target_id, detail, tenant_id)
+     values ($1, $2, $3, $4, $5::jsonb, coalesce($6::text, (select tenant_id from users where id = $1), 'legacy'))`,
     [event.actorId, event.action, event.targetType, event.targetId, event.detail === undefined ? null : JSON.stringify(event.detail), event.tenantId ?? null],
   );
 }

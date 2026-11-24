@@ -103,4 +103,16 @@ describe('the PostgreSQL IdempotencyStore', () => {
     expect((await store.claim(user, 'old', HASH_B)).kind).toBe('claimed');
     expect((await store.claim(user, 'young', HASH_A)).kind).toBe('conflict');
   });
+
+  it('stores a key in the tenant of its user, and in legacy for a user it does not know', async () => {
+    const store = createIdempotency(db);
+    await db.query(`insert into tenants (id, name) values ('T-idem', 'T-idem')`);
+    const rows = await db.query<{ id: string }>(`insert into users (descope_user_id, email, name, role, tenant_id) values ('idem', 'idem@example.com', 'idem', 'member', 'T-idem') returning id`);
+    const user = rows[0]!.id;
+    const unknown = randomUUID();
+    await store.claim(user, 'k', HASH_A);
+    await store.claim(unknown, 'k', HASH_A);
+    const tenants = await db.query<{ tenant_id: string }>(`select tenant_id from idempotency_keys where user_id in ($1, $2) order by user_id = $1 desc`, [user, unknown]);
+    expect(tenants.map((row) => row.tenant_id)).toEqual(['T-idem', 'legacy']);
+  });
 });
