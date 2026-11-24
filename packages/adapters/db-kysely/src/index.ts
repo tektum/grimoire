@@ -90,6 +90,37 @@ export async function runMigrations(db: KyselyDatabase, dir: string): Promise<{ 
   return { applied: (results ?? []).filter((r) => r.status === 'Success').map((r) => r.migrationName) };
 }
 
+/** What the migration lock needs of a connection: a query, and an end that lets go of every lock the session holds. */
+export interface LockClient {
+  query(text: string): Promise<unknown>;
+  end(): Promise<void>;
+}
+
+async function connectForLock(connectionString: string): Promise<LockClient> {
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  return client;
+}
+
+/**
+ * Runs `run` while holding a Postgres session lock that only one migration holds at a time: a second `migrate` (a second task starting during a deploy) waits for the first
+ * and then finds nothing left to do, instead of racing it. It covers the whole command (Kysely's migrations, the job queue's schema and the grants, which have their own,
+ * narrower locks or none) and uses its own connection, so the one the migrations use is free for them. The lock goes with the connection, so a crashed worker never leaves it held.
+ */
+export async function withMigrationLock<T>(connectionString: string, run: () => Promise<T>, connect: (url: string) => Promise<LockClient> = connectForLock): Promise<T> {
+  const client = await connect(connectionString);
+  try {
+    await client.query(`select pg_advisory_lock(hashtext('grimoire.migrate'))`);
+    try {
+      return await run();
+    } finally {
+      await client.query(`select pg_advisory_unlock(hashtext('grimoire.migrate'))`);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 // Wraps the provider's dynamic import: a syntax error from Node otherwise does not say which file it came from.
 async function loadMigrationFile(file: string): Promise<unknown> {
   try {
