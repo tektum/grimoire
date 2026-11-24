@@ -61,6 +61,27 @@ const code = async (res: Response) => ((await res.json()) as { error: { code: st
 const make = (b: ReturnType<typeof build>, body: Record<string, unknown>, who = 'member') => b.call(who, 'POST', '/v1/pages', body);
 const meta = async (res: Response) => (await res.json()) as { id: string; position: string; parentId: string | null; collectionId: string; createdBy: string; title: string };
 
+describe('POST /v1/pages with beforeId', () => {
+  it('creates a page before a sibling, first among them or between two', async () => {
+    const b = build();
+    const one = await meta(await make(b, { collectionId: b.shared.id, title: 'One' }));
+    const two = await meta(await make(b, { collectionId: b.shared.id, title: 'Two' }));
+    const first = await meta(await make(b, { collectionId: b.shared.id, title: 'First', beforeId: one.id }));
+    const between = await meta(await make(b, { collectionId: b.shared.id, title: 'Between', beforeId: two.id }));
+    expect(first.position < one.position && one.position < between.position && between.position < two.position).toBe(true);
+  });
+  it('refuses afterId together with beforeId, and a beforeId that is not a live sibling under the same parent, with 422 invalid', async () => {
+    const b = build();
+    const one = await meta(await make(b, { collectionId: b.shared.id, title: 'One' }));
+    const nested = b.pages.seed({ collectionId: b.shared.id, parentId: one.id });
+    const other = b.pages.seed({ collectionId: b.shared2.id });
+    for (const extra of [{ afterId: one.id, beforeId: one.id }, { beforeId: nested.id }, { beforeId: other.id }, { beforeId: '00000000-0000-4000-8000-000000000999' }]) {
+      const res = await make(b, { collectionId: b.shared.id, ...extra });
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+  });
+});
+
 describe('POST /v1/pages', () => {
   it('creates a page last, or after a sibling, in position order', async () => {
     const b = build();
@@ -398,6 +419,32 @@ describe('PATCH /v1/pages/{id}', () => {
 
 describe('POST /v1/pages/{id}/move', () => {
   const move = (b: ReturnType<typeof build>, id: string, body: unknown, who = 'member') => b.call(who, 'POST', `/v1/pages/${id}/move`, body);
+
+  it('puts a page before a sibling, first among them, under the same parent or another', async () => {
+    const b = build();
+    const p = b.pages.seed({ collectionId: b.shared.id, position: 'a' });
+    const q = b.pages.seed({ collectionId: b.shared.id, position: 'b' });
+    const r = b.pages.seed({ collectionId: b.shared.id, position: 'c' });
+    const first = await meta(await move(b, r.id, { parentId: null, beforeId: p.id }));
+    expect(first.position < 'a').toBe(true);
+    const between = await meta(await move(b, p.id, { parentId: null, beforeId: q.id }));
+    expect(between.position > first.position && between.position < 'b').toBe(true);
+    const child = b.pages.seed({ collectionId: b.shared.id, parentId: q.id, position: 'x' });
+    const top = await meta(await move(b, p.id, { parentId: q.id, beforeId: child.id }));
+    expect([top.parentId, top.position < 'x']).toEqual([q.id, true]);
+  });
+
+  it('refuses afterId together with beforeId, and a beforeId that is the page itself, another parent, another collection or unknown, with 422 invalid', async () => {
+    const b = build();
+    const page = b.pages.seed({ collectionId: b.shared.id });
+    const sibling = b.pages.seed({ collectionId: b.shared.id });
+    const nested = b.pages.seed({ collectionId: b.shared.id, parentId: sibling.id });
+    const elsewhere = b.pages.seed({ collectionId: b.shared2.id });
+    for (const extra of [{ afterId: sibling.id, beforeId: sibling.id }, { beforeId: page.id }, { beforeId: nested.id }, { beforeId: elsewhere.id }, { beforeId: '00000000-0000-4000-8000-000000000999' }]) {
+      const res = await move(b, page.id, { parentId: null, ...extra });
+      expect([res.status, await code(res)]).toEqual([422, 'invalid']);
+    }
+  });
 
   it('puts a page under a parent, after a sibling, or at the top level, in position order', async () => {
     const b = build();

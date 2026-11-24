@@ -19,8 +19,8 @@ const make = async (collectionId: string, parentId: string | null = null): Promi
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 };
-const move = async (id: string, to: { collectionId?: string; parentId?: string | null; afterId?: string | null; expected?: string }, l: PageLimits = limits, repo = pages()): Promise<MovePageResult> =>
-  repo.move(id, { expectedCollectionId: to.expected ?? (await row(id))?.collection_id ?? '00000000-0000-4000-8000-000000000000', collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null }, l, between);
+const move = async (id: string, to: { collectionId?: string; parentId?: string | null; afterId?: string | null; beforeId?: string | null; expected?: string }, l: PageLimits = limits, repo = pages()): Promise<MovePageResult> =>
+  repo.move(id, { expectedCollectionId: to.expected ?? (await row(id))?.collection_id ?? '00000000-0000-4000-8000-000000000000', collectionId: to.collectionId ?? null, parentId: to.parentId ?? null, afterId: to.afterId ?? null, beforeId: to.beforeId ?? null }, l, between);
 const row = async (id: string) => (await t.admin.query<{ collection_id: string; parent_id: string | null; position: string; deleted_at: Date | null }>(
   `select collection_id, parent_id, position, deleted_at from pages where id = $1`, [id]))[0];
 /** A database whose transactions are aborted the first `failures` times, as serialization failures are. */
@@ -52,6 +52,13 @@ describe('the PostgreSQL PageRepo move', () => {
     expect(ra && rd && rb && ra.position < rd.position && rd.position < rb.position).toBe(true);
     expect(rd?.parent_id).toBeNull();
     expect(await move(a, { afterId: a })).toEqual({ kind: 'no-after' });
+    // Before a sibling: first among them, between two, and never the page itself or a page of another parent.
+    const first = await move(d, { beforeId: a });
+    expect(first.kind).toBe('moved');
+    const [fa, fd] = await Promise.all([row(a), row(d)]);
+    expect(fa && fd && fd.position < fa.position).toBe(true);
+    expect(await move(a, { beforeId: a })).toEqual({ kind: 'no-after' });
+    expect(await move(b, { parentId: a, beforeId: d })).toEqual({ kind: 'no-after' }); // d is not under a
     expect(await move(a, { parentId: '00000000-0000-4000-8000-000000000000' })).toEqual({ kind: 'no-parent' });
     expect(await move('00000000-0000-4000-8000-000000000000', {})).toEqual({ kind: 'not-found' });
   });

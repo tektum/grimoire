@@ -51,13 +51,17 @@ const PatchBody = z
   .refine((body) => Object.keys(body).length > 0)
   .openapi('PatchPage');
 
+const isSet = (id: string | null | undefined): boolean => id !== undefined && id !== null;
+
 const MoveBody = z
   .object({
     collectionId: z.string().uuid().optional(),
     parentId: z.string().uuid().nullable(),
-    afterId: z.string().uuid().nullable().optional(),
+    afterId: z.string().uuid().nullable().optional().describe('Place the page after this sibling; null or absent with no beforeId: last'),
+    beforeId: z.string().uuid().nullable().optional().describe('Place the page before this sibling (first among them when it is the first); never together with afterId'),
   })
   .strict()
+  .refine((body) => !(isSet(body.afterId) && isSet(body.beforeId)), { message: 'Give afterId or beforeId, not both' })
   .openapi('MovePage');
 
 const CreateBody = z
@@ -65,10 +69,12 @@ const CreateBody = z
     collectionId: z.string().uuid(),
     parentId: z.string().uuid().nullable().optional(),
     title: z.string().min(1).max(TITLE_MAX).refine((title) => !title.includes('\0'), 'The title cannot contain a NUL character').optional(),
-    afterId: z.string().uuid().optional(),
+    afterId: z.string().uuid().optional().describe('Place the page after this sibling; absent with no beforeId: last'),
+    beforeId: z.string().uuid().optional().describe('Place the page before this sibling; never together with afterId'),
     markdown: z.string().optional().describe('Seed Markdown; limited by the server (size, lines, markers per line)'),
   })
   .strict()
+  .refine((body) => !(isSet(body.afterId) && isSet(body.beforeId)), { message: 'Give afterId or beforeId, not both' })
   .openapi('CreatePage');
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { 'application/json': { schema } } });
@@ -144,7 +150,7 @@ router.openapi(createPage, async (c) => {
     content = seeded;
   }
   const result = await pages.create(
-    { collectionId: body.collectionId, parentId: body.parentId ?? null, afterId: body.afterId ?? null, title, createdBy: user.id, content },
+    { collectionId: body.collectionId, parentId: body.parentId ?? null, afterId: body.afterId ?? null, beforeId: body.beforeId ?? null, title, createdBy: user.id, content },
     PAGE_LIMITS,
     (before, after) => ordering.between(before, after),
   );
@@ -193,7 +199,7 @@ router.openapi(movePage, async (c) => {
   if (body.collectionId !== undefined && body.collectionId !== current.collectionId) await guardCollection(c, body.collectionId, 'write');
   const result = await pages.move(
     id,
-    { expectedCollectionId: current.collectionId, collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null },
+    { expectedCollectionId: current.collectionId, collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null, beforeId: body.beforeId ?? null },
     PAGE_LIMITS,
     (before, after) => ordering.between(before, after),
   );
