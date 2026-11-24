@@ -154,8 +154,8 @@ describe('GET /v1/pages/{id}/revisions/{rid}', () => {
 
 describe('POST /v1/pages/{id}/revisions/{rid}/restore', () => {
   const restore = (b: ReturnType<typeof build>, who: string, rid: string | undefined, pageId = b.page.id) => b.post(who, `/v1/pages/${pageId}/revisions/${rid ?? 'none'}/restore`);
-  const saved = (b: ReturnType<typeof build>, over: { markdown?: string | null; stale?: boolean } = {}) =>
-    b.revisions.setPage(b.page.id, { title: 'Current', markdown: over.markdown === undefined ? 'current text' : over.markdown, ...(over.stale === undefined ? {} : { stale: over.stale }), lastEditedAt: 99_000, lastEditedBy: ANA.id });
+  const saved = (b: ReturnType<typeof build>, over: { markdown?: string | null; stale?: boolean; hasState?: boolean } = {}) =>
+    b.revisions.setPage(b.page.id, { title: 'Current', markdown: over.markdown === undefined ? 'current text' : over.markdown, ...(over.stale === undefined ? {} : { stale: over.stale }), ...(over.hasState === undefined ? {} : { hasState: over.hasState }), lastEditedAt: 99_000, lastEditedBy: ANA.id });
 
   it('returns the old title and Markdown, and leaves exactly one extra revision: before_restore, holding the last saved state', async () => {
     const b = build();
@@ -192,6 +192,15 @@ describe('POST /v1/pages/{id}/revisions/{rid}/restore', () => {
     const res = await restore(b, 'member', b.four[0]?.id);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect([res.status, body.error.code, body.error.message]).toEqual([409, 'markdown_stale', 'The page is still being saved. Try again in a moment.']);
+    expect(b.revisions.made(b.page.id)).toHaveLength(4);
+  });
+
+  it('answers 409 markdown_stale and writes nothing for a page that has an editing state and no saved Markdown at all', async () => {
+    const b = build();
+    saved(b, { markdown: null, hasState: true });
+    const res = await restore(b, 'member', b.four[0]?.id);
+    const body = (await res.json()) as { error: { code: string } };
+    expect([res.status, body.error.code]).toEqual([409, 'markdown_stale']);
     expect(b.revisions.made(b.page.id)).toHaveLength(4);
   });
 

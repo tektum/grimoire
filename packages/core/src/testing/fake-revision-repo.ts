@@ -22,6 +22,8 @@ export interface FakePageState {
   readonly title: string;
   readonly markdown: string | null;
   readonly stale?: boolean;
+  /** The page has editing state (`ydoc`). With no Markdown it counts as stale for a restore: its live content is saved nowhere else. */
+  readonly hasState?: boolean;
   readonly lastEditedAt?: number | null;
   readonly lastEditedBy?: string | null;
 }
@@ -83,7 +85,7 @@ export class FakeRevisionRepo implements RevisionRepo {
     if (this.failNext !== undefined) { const e = this.failNext; this.failNext = undefined; return Promise.reject(e); }
     const page = this.pageStates.get(pageId);
     if (page === undefined) return Promise.resolve({ kind: 'no-page' });
-    if (page.stale === true) return Promise.resolve({ kind: 'stale' });
+    if (page.stale === true || (page.markdown === null && page.hasState === true)) return Promise.resolve({ kind: 'stale' });
     if (page.markdown === null) return Promise.resolve({ kind: 'nothing-saved' });
     const latest = this.rows.filter((r) => r.pageId === pageId).sort((a, b) => b.micros - a.micros)[0];
     if (latest !== undefined && latest.hash.equals(markdownHash(page.title, page.markdown))) return Promise.resolve({ kind: 'existing', id: latest.id });

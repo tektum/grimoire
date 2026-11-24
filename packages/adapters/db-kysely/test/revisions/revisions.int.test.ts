@@ -313,7 +313,7 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     expect((await revisionsOf(id)).map((r) => r.markdown)).toEqual(['one', 'two']);
   });
 
-  it('refuses stale Markdown, says nothing is saved for a page without Markdown, and finds no deleted or unknown page, writing nothing', async () => {
+  it('refuses stale Markdown and a state without Markdown, says nothing is saved for a page with neither, and finds no deleted or unknown page, writing nothing', async () => {
     const repo = createRevisions(t.app);
     const stale = await savedPage({ stale: true });
     const bare = await savedPage({ markdown: null });
@@ -321,6 +321,11 @@ describe('RevisionRepo.snapshotBeforeRestore', () => {
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
     expect(await repo.snapshotBeforeRestore(stale)).toEqual({ kind: 'stale' });
     expect(await repo.snapshotBeforeRestore(bare)).toEqual({ kind: 'nothing-saved' });
+    // A page with an editing state and no saved Markdown at all: its live content exists nowhere else, so no safety copy can be made and restore must refuse.
+    const stateOnly = await savedPage({ markdown: null });
+    await t.admin.query(`update pages set ydoc = '\\x0102' where id = $1`, [stateOnly]);
+    expect(await repo.snapshotBeforeRestore(stateOnly)).toEqual({ kind: 'stale' });
+    expect(await revisionsOf(stateOnly)).toEqual([]);
     expect(await repo.snapshotBeforeRestore(gone)).toEqual({ kind: 'no-page' });
     expect(await repo.snapshotBeforeRestore('00000000-0000-4000-8000-000000000000')).toEqual({ kind: 'no-page' });
     expect([await revisionsOf(stale), await revisionsOf(bare), await revisionsOf(gone)]).toEqual([[], [], []]);
