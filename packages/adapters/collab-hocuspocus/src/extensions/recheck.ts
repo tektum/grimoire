@@ -254,6 +254,21 @@ export function createRecheck(o: RecheckOptions): Recheck {
         closeOne(data.connection, t, 'invalid-token');
         return;
       }
+      // And the row: the claim may lag a move made on our side, so a renewed claim is compared with the user row's tenant too (the row is the truth the handshake checked).
+      if (v.tenant?.kind === 'one') {
+        let row: Awaited<ReturnType<CollabDeps['resolveUser']>> | 'unavailable';
+        try {
+          row = await bounded(deps.resolveUser(token ?? '', { userId: v.userId, ...(v.profile !== undefined ? { profile: v.profile } : {}) }), TOKEN_VERIFY_TIMEOUT_MS);
+        } catch {
+          row = 'unavailable'; // the periodic re-check decides again by the row, so a failed lookup here does not close
+        }
+        if (!tracked.has(data.connection)) return;
+        if (row !== 'unavailable' && row !== undefined && row.tenantId !== undefined && row.tenantId !== v.tenant.id) {
+          log.emit('collab.token_sync_failed', { pageId: t.documentName, reason: 'tenant-mismatch' });
+          closeOne(data.connection, t, 'invalid-token');
+          return;
+        }
+      }
       t.expiresAt = v.expiresAt;
       updateContext(data.connection.context, { expiresAt: v.expiresAt });
     },

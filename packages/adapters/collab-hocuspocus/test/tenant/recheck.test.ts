@@ -84,4 +84,26 @@ describe('a renewed token and the tenant (the same checks as the handshake)', ()
     expect((await renew(claim as never, true)).c.closes).toHaveLength(1);
     expect((await renew(claim as never, false)).c.closes).toEqual([]);
   });
+
+  it('closes the connection when the user row has moved to another tenant while the renewed token still names the old one (the claim lags the row)', async () => {
+    const r = started(rig({ requireTenant: true }));
+    r.t.users.setTenant(SUBJECT, 'tenant-a');
+    const c = await r.open({ expiresInMs: 5000, tenantId: 'tenant-a' });
+    r.t.users.setTenant(SUBJECT, 'tenant-b');
+    const fresh = r.t.clock.now() + 3_600_000;
+    r.t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: fresh, tenant: { kind: 'one', id: 'tenant-a' } };
+    await r.tokenSync(c, 'renewed');
+    expect(c.closes).toHaveLength(1);
+    expect(c.context['expiresAt']).not.toBe(fresh);
+  });
+
+  it('keeps it when the row and the renewed token agree', async () => {
+    const r = started(rig({ requireTenant: true }));
+    r.t.users.setTenant(SUBJECT, 'tenant-a');
+    const c = await r.open({ expiresInMs: 5000, tenantId: 'tenant-a' });
+    const fresh = r.t.clock.now() + 3_600_000;
+    r.t.verifier.result = { kind: 'ok', userId: SUBJECT, expiresAt: fresh, tenant: { kind: 'one', id: 'tenant-a' } };
+    await r.tokenSync(c, 'renewed');
+    expect([c.closes, c.context['expiresAt']]).toEqual([[], fresh]);
+  });
 });
