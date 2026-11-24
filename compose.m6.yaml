@@ -1,12 +1,12 @@
 # Web client test overlay: `docker compose -f compose.yaml -f compose.m6.yaml`. It does NOT change compose.yaml. The client under test is served from
-# 127.0.0.1:4173 (apps/web/scripts/serve.mjs; M6_WEB_PORT is the port when the specs run with E2E_WEB_PORT, the two are set to the same number), so the API must allow those origins, in addition to the plain stack's own (8080): the other suites run against the same stack. Both spellings of the host, because a browser may be pointed at either.
+# 127.0.0.1:4173 (apps/web/scripts/serve.mjs; E2E_WEB_PORT, the same variable the Playwright configuration reads, is its port), so the API must allow those origins, in addition to the plain stack's own (8080): the other suites run against the same stack. Both spellings of the host, because a browser may be pointed at either.
 # The M6_* names are dedicated on purpose: `make up` copies .env.example to .env, and a value there wins over a default written in an overlay, so the
 # plain GRIMOIRE_* names would be overridden. Every default below equals what the plain stack runs with (the settings' own defaults), so adding this
 # file changes nothing until a test sets an M6_* variable (a minimum client version, a required handshake, a short access re-check, a connection cap).
 services:
   app:
     environment:
-      GRIMOIRE_ALLOWED_ORIGINS: "http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:${M6_WEB_PORT:-4173},http://localhost:${M6_WEB_PORT:-4173}"
+      GRIMOIRE_ALLOWED_ORIGINS: "http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:${E2E_WEB_PORT:-4173},http://localhost:${E2E_WEB_PORT:-4173}"
       GRIMOIRE_MIN_CLIENT_VERSION: "${M6_MIN_CLIENT_VERSION:-0.0.0}"
       GRIMOIRE_REQUIRE_HANDSHAKE: "${M6_REQUIRE_HANDSHAKE:-0}"
       GRIMOIRE_COLLAB_RECHECK_SECONDS: "${M6_RECHECK_SECONDS:-60}"

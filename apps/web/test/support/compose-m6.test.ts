@@ -13,8 +13,8 @@ const environment = Object.fromEntries(lines.flatMap((l) => (l.match(/^\s{6}(\w+
 
 describe('compose.m6.yaml', () => {
   it("allows the two origins of the static server on port 4173 as well as the plain stack's own, and only the app service is touched", () => {
-    // 4173 is the default of M6_WEB_PORT, the port of the static server (E2E_WEB_PORT in the Playwright configuration moves both).
-    expect(environment['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:${M6_WEB_PORT:-4173},http://localhost:${M6_WEB_PORT:-4173}');
+    // 4173 is the default of E2E_WEB_PORT, the port of the static server (E2E_WEB_PORT in the Playwright configuration moves both).
+    expect(environment['GRIMOIRE_ALLOWED_ORIGINS']).toBe('http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:${E2E_WEB_PORT:-4173},http://localhost:${E2E_WEB_PORT:-4173}');
     expect(lines.filter((l) => /^ {2}\w/.test(l)).map((l) => l.trim())).toEqual(['app:']);
     expect(lines.some((l) => /^services:/.test(l))).toBe(true);
   });

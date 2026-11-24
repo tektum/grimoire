@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
 // `bunx playwright install --with-deps chromium firefox webkit` (test-e2e/support/run-check.ts says whether they are there).
 /**
  * The port of the client's server: 4173, or `E2E_WEB_PORT` (two checkouts can run their specs side by side). The API must allow the page's origin:
- * start the stack with `M6_WEB_PORT` set to the same number (compose.m6.yaml), or the specs that call the API from the page are refused by its origin check.
+ * start the stack with the same `E2E_WEB_PORT` in its environment (compose.m6.yaml reads it), or the specs that call the API from the page are refused by its origin check.
  */
 function webPort(): number {
   const asked = process.env['E2E_WEB_PORT'];

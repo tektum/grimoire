@@ -36,8 +36,8 @@ describe('compose.yaml with compose.m6.yaml', () => {
     expect(withOverlay).toEqual(expect.arrayContaining(['http://127.0.0.1:4173', 'http://localhost:4173']));
   });
 
-  it('allows the port the specs run on when M6_WEB_PORT names it, and no longer 4173', () => {
-    const origins = (appEnvironment(['compose.yaml', 'compose.m6.yaml'], { M6_WEB_PORT: '4999' })['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',');
+  it('allows the port the specs run on when E2E_WEB_PORT names it, and no longer 4173', () => {
+    const origins = (appEnvironment(['compose.yaml', 'compose.m6.yaml'], { E2E_WEB_PORT: '4999' })['GRIMOIRE_ALLOWED_ORIGINS'] ?? '').split(',');
     expect(origins).toEqual(['http://127.0.0.1:8080', 'http://localhost:8080', 'http://127.0.0.1:4999', 'http://localhost:4999']);
   });
 

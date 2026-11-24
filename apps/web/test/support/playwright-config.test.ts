@@ -54,4 +54,14 @@ describe('the port and the server of the run', () => {
   it('refuses a port that is not a port', async () => {
     for (const bad of ['abc', '0', '70000', '41.5', '']) await expect(load(bad)).rejects.toThrow(/E2E_WEB_PORT/);
   });
+
+  it('has one name for the port: the stack overlay reads the same E2E_WEB_PORT, with the same default, and no second variable exists', async () => {
+    const overlay = readFileSync(path.join(web, '../../compose.m6.yaml'), 'utf8');
+    const fromOverlay = [...overlay.matchAll(/\$\{E2E_WEB_PORT:-(\d+)\}/g)].map((m) => m[1]);
+    expect(fromOverlay).toHaveLength(2); // the 127.0.0.1 and the localhost origin
+    const server = (await load()).webServer as { env: Record<string, string> };
+    expect(new Set(fromOverlay)).toEqual(new Set([server.env['PORT']])); // the overlay's default is the configuration's
+    expect(config).toContain("process.env['E2E_WEB_PORT']");
+    expect(overlay + config).not.toContain('M6_WEB_PORT');
+  });
 });
