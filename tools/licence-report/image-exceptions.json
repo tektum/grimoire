@@ -1,0 +1,177 @@
+[
+  {
+    "package": "binutils-common",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "dpkg-dev",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "e2fsprogs",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "gcc-12-base",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "gnupg-utils",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "gpg-wks-client",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "gpg-wks-server",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "gpgv",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libapt-pkg6.0",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libassuan0",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libcrypt-dev",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libdb5.3",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libext2fs2",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libgdbm-compat4",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libgdbm6",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libgnutls30",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libhogweed6",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libicu72",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libldap-2.5-0",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libnettle8",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libnpth0",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libperl5.36",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libpython3.11-minimal",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libreadline8",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libss2",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libssl3",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libtirpc-common",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libunistring2",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "logsave",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "media-types",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "perl-modules-5.36",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "python3",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "python3.11-minimal",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "usr-is-merged",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "util-linux-extra",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  }
+]

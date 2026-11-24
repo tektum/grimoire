@@ -3,9 +3,10 @@
     "licence": "PostgreSQL",
     "source": "https://github.com/pgvector/pgvector/blob/master/LICENSE",
     "tags": [
-      "0.8.5-pg17-bookworm"
+      "0.8.5-pg17-bookworm",
+      "pg17"
     ],
-    "note": "pgvector 0.8.5, PostgreSQL licence; on PostgreSQL 17, Debian 12"
+    "note": "pgvector 0.8.5 (the database), 0.8.7 (pg17: the second image of the semantic tests); PostgreSQL licence; PostgreSQL 17 on Debian"
   },
   "chrislusf/seaweedfs": {
     "licence": "Apache-2.0",

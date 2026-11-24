@@ -5,15 +5,22 @@
 // 1 when one has no copyright file, no licence name, or a licence that is not on the permitted list (copyleft is listed for the owner, never accepted silently); 2 on a usage error.
 // `--old-list` and `--new-list` read a list from a file instead of an image (the format `COLLECT` prints), which is how the tests run it without a container runtime.
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { SHIPPED_LICENCES } from "./allowed-licences.mjs";
 
-/** Run inside an image: one line per package, `name<TAB>version<TAB>License names joined by |` (`-` when the package has no copyright file). */
+/**
+ * Run inside an image: one line per package, `name<TAB>version<TAB>License lines of its copyright file joined by |` (`-` when it has none). The copyright file is looked for
+ * under the package, then under its source package (Debian ships it there for split packages), then wherever `dpkg -L` says one is. `dpkg-query` runs on its own, before the
+ * pipeline, so that its failure ends the script: a pipeline would hide it behind the status of the last command and an empty list would pass for an image with nothing in it.
+ */
 export const COLLECT = [
-  "dpkg-query -W -f='$" + "{Package}\\t$" + "{Version}\\n' | while IFS=\"$(printf '\\t')\" read -r p v; do",
-  ' f=/usr/share/doc/$p/copyright;',
-  ' if [ -r "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]].*//\' | sort -u | paste -sd\'|\' -); else l=-; fi;',
+  "out=$(dpkg-query -W -f='$" + "{Package}\\t$" + "{Version}\\t$" + "{source:Package}\\n') || exit 1;",
+  ' printf \'%s\\n\' "$out" | while IFS="$(printf \'\\t\')" read -r p v src; do',
+  ' f=;',
+  ' for c in "/usr/share/doc/$p/copyright" "/usr/share/doc/$src/copyright" "$(dpkg -L "$p" 2>/dev/null | grep \'/copyright$\' | head -n 1)"; do',
+  ' if [ -n "$c" ] && [ -r "$c" ]; then f=$c; break; fi; done;',
+  ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -); else l=-; fi;',
   " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
 ].join('');
 
@@ -31,9 +38,17 @@ export function addedPackages(oldList, newList) {
   return newList.filter((p) => !had.has(p.name));
 }
 
-const ALIASES = new Map([["Expat", "MIT"], ["BSD-3-clause", "BSD-3-Clause"], ["BSD-2-clause", "BSD-2-Clause"], ["Apache-2", "Apache-2.0"], ["ISC", "ISC"], ["Zlib", "Zlib"]]);
+const ALIASES = new Map([["public-domain", "Public-Domain"], ["Expat", "MIT"], ["BSD-3-clause", "BSD-3-Clause"], ["BSD-2-clause", "BSD-2-Clause"], ["Apache-2", "Apache-2.0"], ["ISC", "ISC"], ["Zlib", "Zlib"]]);
 export const normaliseLicence = (name) => ALIASES.get(name) ?? name;
 const ALLOWED = new Set([...SHIPPED_LICENCES.map((l) => l.id), "Zlib", "Public-Domain"]);
+
+/** The names in one `License:` value that stop it being permitted: `a and b` needs both, `a or b` needs one of them, and nothing is judged by its first word. */
+function refusedIn(expression) {
+  return expression.split(/\s+and\s+/).flatMap((group) => {
+    const alternatives = group.split(/\s+or\s+/).map((name) => normaliseLicence(name.trim())).filter((name) => name !== "");
+    return alternatives.some((name) => ALLOWED.has(name)) ? [] : alternatives;
+  });
+}
 
 export function evaluate(added, exceptions = []) {
   const valid = exceptions.filter((e) => e && typeof e.package === "string" && e.owner && e.reason);
@@ -43,17 +58,18 @@ export function evaluate(added, exceptions = []) {
     if (ex) return { ...row, status: "exception", detail: `${ex.reason} (owner ${ex.owner})` };
     if (p.licences === null) return { ...row, status: "no-licence-file", detail: `/usr/share/doc/${p.name}/copyright is missing` };
     if (p.licences.length === 0) return { ...row, status: "unparsable", detail: "the copyright file names no licence" };
-    const refused = p.licences.map(normaliseLicence).filter((l) => !ALLOWED.has(l));
+    const refused = p.licences.flatMap(refusedIn);
     return refused.length === 0 ? { ...row, status: "allowed", detail: "" } : { ...row, status: "not-allowed", detail: `not on the permitted list: ${refused.join(", ")}` };
   });
 }
 
-export function report({ oldImage, newImage, rows }) {
+export function report({ oldImage, newImage, rows, common }) {
   const bad = rows.filter((r) => r.status !== "allowed" && r.status !== "exception");
   const lines = [
     "# Packages added by the database image", "",
     `Old image: \`${oldImage}\``, `New image: \`${newImage}\``, "",
-    `${String(rows.length)} package(s) in the new image and not in the old one; ${String(bad.length)} for the owner to decide.`, "",
+    ...(common === undefined ? [] : [`${String(common)} package(s) are in both images (the image base) and are not listed.`, ""]),
+    `${String(rows.length)} package(s) in the new image and not in the old one; ${String(bad.length)} not permitted and without an exception.`, "",
     "| Package | Version | Licences | Result |", "|---|---|---|---|",
     ...rows.map((r) => `| ${r.name} | ${r.version} | ${r.licences.map(normaliseLicence).join(", ") || "-"} | ${r.status}${r.detail ? `: ${r.detail}` : ""} |`),
   ];
@@ -74,9 +90,12 @@ function main(argv) {
   try {
     const oldList = parseList(opt("--old-list") ? readFileSync(opt("--old-list"), "utf8") : collect(oldImage));
     const newList = parseList(opt("--new-list") ? readFileSync(opt("--new-list"), "utf8") : collect(newImage));
-    const exceptions = opt("--exceptions") ? JSON.parse(readFileSync(opt("--exceptions"), "utf8")) : [];
-    const rows = evaluate(addedPackages(oldList, newList), exceptions);
-    const text = report({ oldImage, newImage, rows });
+    const exceptionsPath = opt("--exceptions") ?? fileURLToPath(new URL("image-exceptions.json", import.meta.url));
+    const exceptions = existsSync(exceptionsPath) ? JSON.parse(readFileSync(exceptionsPath, "utf8")) : [];
+    if (oldList.length === 0 || newList.length === 0) throw new Error(`an image listed no packages (${String(oldList.length)} in the old, ${String(newList.length)} in the new): nothing was checked`);
+    const added = addedPackages(oldList, newList);
+    const rows = evaluate(added, exceptions);
+    const text = report({ oldImage, newImage, rows, common: newList.length - added.length });
     if (opt("--out")) writeFileSync(opt("--out"), text);
     process.stdout.write(text);
     return rows.every((r) => r.status === "allowed" || r.status === "exception") ? 0 : 1;

@@ -13,8 +13,19 @@ const script = join(dirname(fileURLToPath(import.meta.url)), "..", "image-packag
 const OLD = ["libc6\t2.36-9\tGPL-2|LGPL-2.1", "tzdata\t2024a\tPublic-Domain", "zlib1g\t1.2.13\tZlib"].join("\n");
 const NEW = ["libc6\t2.36-9\tGPL-2|LGPL-2.1", "tzdata\t2024a\tPublic-Domain", "zlib1g\t1.2.13\tZlib", "postgresql-17-pgvector\t0.8.5-1\tPostgreSQL", "libfoo\t1.0\tExpat|BSD-3-clause"].join("\n");
 
+test("the collecting script fails when dpkg-query does, instead of printing an empty list (a pipeline hides the status of its first command)", () => {
+  assert.match(COLLECT, /^out=\$\(dpkg-query [^)]*\) \|\| exit 1;/);
+  assert.ok(!/^dpkg-query[^;]*\|/.test(COLLECT));
+});
+
+test("a copyright file is looked for under the package, then under its source package, then wherever dpkg put one", () => {
+  assert.ok(COLLECT.includes("$p"));
+  assert.ok(COLLECT.includes("source:Package"));
+  assert.ok(COLLECT.includes("dpkg -L"));
+});
+
 test("the collecting script asks dpkg for plain fields (an escaped dollar printed the field name with a dollar in front of it in CI)", () => {
-  assert.ok(COLLECT.includes("-f='${Package}\\t${Version}\\n'"));
+  assert.ok(COLLECT.includes("-f='${Package}\\t${Version}\\t${source:Package}\\n'"));
   assert.ok(!COLLECT.includes("\\$"));
 });
 
@@ -31,6 +42,17 @@ test("the difference is the packages of the new image that the old one does not 
   assert.deepEqual(addedPackages(parseList(OLD), parseList(NEW)).map((p) => p.name), ["postgresql-17-pgvector", "libfoo"]);
   assert.deepEqual(addedPackages(parseList(NEW), parseList(OLD)), []);
   assert.deepEqual(addedPackages(parseList(OLD), parseList(OLD.replace("2.36-9", "2.36-10"))), []);
+});
+
+test("a compound License value is judged by every name in it: `or` needs one permitted alternative, `and` all of them, and the first word alone never decides", () => {
+  const rows = evaluate(parseList(["or\t1\tGPL-2+ or MIT", "and\t1\tMIT and GPL-3", "plain\t1\tMIT", "lgpl\t1\tLGPL-2.1+ or GPL-2+"].join("\n")));
+  assert.deepEqual(rows.map((r) => [r.name, r.status]), [["or", "allowed"], ["and", "not-allowed"], ["plain", "allowed"], ["lgpl", "not-allowed"]]);
+  assert.match(rows[1].detail, /GPL-3/);
+});
+
+test("Debian's lower-case public-domain is the public-domain of the permitted list", () => {
+  assert.equal(normaliseLicence("public-domain"), "Public-Domain");
+  assert.equal(evaluate(parseList("p\t1\tpublic-domain"))[0].status, "allowed");
 });
 
 test("Debian's names of licences are read as the ones of the permitted list", () => {
@@ -88,6 +110,28 @@ test("the command exits 1 on an added package with no licence file, one with no 
     assert.equal(r.status, 1, line);
     assert.match(r.stdout + r.out, /\bx\b/);
   }
+});
+
+test("the command exits 2 when an image yields no packages (it must not pass having checked nothing)", () => {
+  assert.equal(cli("", NEW).status, 2);
+  assert.equal(cli(OLD, "").status, 2);
+});
+
+test("an exception from the file passes the package, and a package that is new and not in the file still fails", () => {
+  const dir = mkdtempSync(join(dirname(fileURLToPath(import.meta.url)), "work-"));
+  try {
+    const file = join(dir, "ex.json");
+    writeFileSync(file, JSON.stringify([{ package: "gplpkg", owner: "o", reason: "aggregation" }]));
+    assert.equal(cli(OLD, `${NEW}\ngplpkg\t1\tGPL-3+`, ["--exceptions", file]).status, 0);
+    assert.equal(cli(OLD, `${NEW}\ngplpkg\t1\tGPL-3+\nother\t1\tGPL-3+`, ["--exceptions", file]).status, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the report separates what both images have from what the new one adds", () => {
+  const text = report({ oldImage: "old", newImage: "new", rows: [], common: 3 });
+  assert.match(text, /3 package\(s\) are in both images/);
 });
 
 test("the command exits 2 on a missing argument", () => {

@@ -10,6 +10,9 @@ on:
       - db/init/**
       - mk/test-m7.mk
       - tools/licence-report/image-packages.mjs
+      - tools/licence-report/image-exceptions.json
+      - tools/licence-report/allowed-licences.mjs
+      - tools/licence-report/images.json
       - apps/server/test/migrations/semantic/**
       - .github/workflows/pgvector-image.yml
 
@@ -18,8 +21,7 @@ permissions:
 
 env:
   MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
-  OLD_IMAGE: postgres:17@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
-  NEW_IMAGE: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+  BASELINE_IMAGE: postgres:17@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -40,19 +42,28 @@ jobs:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: node
-      - name: List the packages of both images and compare them (exit 1 on a package the owner has to decide)
+      - name: List the packages of the database image of compose.yaml and of the baseline, and compare them (exit 1 on a new package that is not permitted and has no exception)
         run: |
           mkdir -p proof
+          # The image under audit is the one compose.yaml names (the baseline is the image it replaced, kept here as the point of comparison).
+          NEW_IMAGE="$(docker compose -f compose.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
           status=0
-          node tools/licence-report/image-packages.mjs --compare "$OLD_IMAGE" "$NEW_IMAGE" --out proof/m7-pgvector-image.md || status=$?
+          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$NEW_IMAGE" --out proof/m7-pgvector-image.md || status=$?
           cat proof/m7-pgvector-image.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: The same audit for the second image of the semantic tests (compose.pgvector087.yaml)
+        run: |
+          IMAGE="$(docker compose -f compose.yaml -f compose.pgvector087.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
+          status=0
+          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$IMAGE" --out proof/m7-pgvector-image-087.md || status=$?
+          cat proof/m7-pgvector-image-087.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: Upload the audit
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: m7-pgvector-image
-          path: proof/m7-pgvector-image.md
+          path: proof/
           retention-days: 30
           if-no-files-found: ignore
 
