@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { adminUrl } from '@tektum/grimoire-test-support/database';
 import { createDatabase, withMigrationLock } from '../src/index.js';
 
 // The real lock of Postgres, on the development server's maintenance database (it creates nothing): a second worker waits for the first.
-const url = 'postgresql://grimoire_admin:grimoire-dev@127.0.0.1:55432/postgres';
+const url = adminUrl('postgres'); // from the integration suite's shared fixture, like every other database test
 
 describe('the migration lock on Postgres', () => {
   it('makes a second worker wait for the first, and is free again after a failure', async () => {
