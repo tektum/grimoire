@@ -191,16 +191,16 @@ describe('opening an attachment link', () => {
     it('does nothing more when the browser refused the new tab', async () => {
       vi.spyOn(window, 'open').mockReturnValue(null);
       click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(GET).not.toHaveBeenCalled();
     });
   });
 
   it('opens nothing and raises nothing when the request for the link fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     GET.mockRejectedValueOnce(new Error('offline'));
     click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
-    await vi.waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('web.attachment_open_failed'))); // the failure has been handled
     expect(open).not.toHaveBeenCalled();
   });
 
@@ -214,7 +214,7 @@ describe('opening an attachment link', () => {
     GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status: 404 }) } as never);
     click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
     await vi.waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // a whole turn: the answer has been handled
     expect(open).not.toHaveBeenCalled();
   });
 });
