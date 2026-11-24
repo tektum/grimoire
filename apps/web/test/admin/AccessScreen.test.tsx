@@ -79,12 +79,27 @@ describe('the collection access screen', () => {
     expect(of('DELETE', '/v1/collections/{id}/access/{entryId}')).toHaveLength(0);
   });
 
-  it('offers no group when the groups cannot be read', async () => {
-    const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/access': access(null, []), 'GET /v1/groups': { status: 503 } });
+  it('says the groups could not be loaded, with Try again, instead of an empty list that looks like "no group left"', async () => {
+    let attempt = 0;
+    const { api } = fakeApi({
+      ...base,
+      'GET /v1/collections/{id}/access': access(null, []),
+      'GET /v1/groups': () => (attempt++ === 0 ? { status: 503 } : ok({ items: [{ id: 'g1', name: 'Team', memberCount: 2 }] })),
+    });
     show(api);
     await userEvent.selectOptions(await screen.findByLabelText('Give access to'), 'group');
-    const options = Array.from((await screen.findByLabelText('Group') as HTMLSelectElement).options).map((o) => o.textContent);
-    expect(options).toEqual(['choose a group']);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain("Couldn't load the groups");
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('option', { name: 'Team' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says so when there is no group to give access to', async () => {
+    const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/access': access(null, []), 'GET /v1/groups': ok({ items: [] }) });
+    show(api);
+    await userEvent.selectOptions(await screen.findByLabelText('Give access to'), 'group');
+    expect(await screen.findByText('No group to give access to')).toBeTruthy();
   });
 
   it('gives access to a group chosen from the groups, with the permission chosen', async () => {

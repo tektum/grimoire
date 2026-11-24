@@ -143,6 +143,12 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
           </div>
           {kind === 'user' ? (
             <UserPicker api={api} label="Find a person" exclude={takenUsers} actionLabel={(n) => `Give ${n} access`} onPick={(u) => void grant('user', u.id, permission)} />
+          ) : groups.isError && groups.data === undefined ? (
+            <p role="alert">
+              Couldn&apos;t load the groups. <Button onClick={() => void groups.refetch()}>Try again</Button>
+            </p>
+          ) : groups.data !== undefined && groups.data.every((g) => taken.has(g.id)) ? (
+            <p>No group to give access to</p>
           ) : (
             <div className="admin-form">
               <label className="admin-field">
