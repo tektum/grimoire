@@ -11,7 +11,7 @@ describe('the /admin routes', () => {
   it('show the users to an administrator, read through the API of the session', async () => {
     const { api, of } = fakeApi({ 'GET /v1/me': ok({ id: 'u1', name: 'Alice', email: 'a@dev.invalid', role: 'admin' }), 'GET /v1/users': ok({ items: [user('u1', 'Alice', 'admin')], nextCursor: null }) });
     render(
-      <SessionContext.Provider value={{ auth: null as never, api }}>
+      <SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.invalid' }}>
         <QueryClientProvider client={new QueryClient()}>
           <MemoryRouter initialEntries={['/admin/users']}>
             <Routes>
