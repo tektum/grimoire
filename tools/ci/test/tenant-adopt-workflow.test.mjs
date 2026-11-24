@@ -36,6 +36,13 @@ test('the command is the one of the migration step\'s container, from legacy, an
   assert.match(runs, /exitCode/);
 });
 
+test('a snapshot of the database is taken and waited for before the command runs, and a stage without a database stops it', () => {
+  assert.match(runs, /create-db-snapshot/);
+  assert.match(runs, /wait db-snapshot-available/);
+  assert.ok(workflow.indexOf('create-db-snapshot') < workflow.indexOf('ecs run-task'), 'the snapshot comes first');
+  assert.match(runs, /no database of the stage/);
+});
+
 test('it shares the concurrency group of the deploys, so one stage is never deployed and adopted together', () => {
   assert.match(workflow, /concurrency:\n\s+group: descope-infra[^\n]*\n\s+cancel-in-progress: false/);
 });

@@ -1,7 +1,7 @@
 name: Adopt a tenant
 # A one-off, by hand, on `main`, in the environment of the chosen stage: runs `grimoire tenant-adopt --from legacy --to <tenant id>` (docs/operations/database-setup.md) as a task of the stage's own
 # service, with the same image, network and credentials as the migration step, so the command runs where the database is and nothing new can reach it. It moves the whole `legacy` workspace of
-# the stage into the tenant given, in one transaction, and refuses (changing nothing) when the target holds data or `legacy` holds none. It is not part of a deploy: an operator starts it once,
+# the stage into the tenant given, in one transaction (after a snapshot of the database, waited for), and refuses (changing nothing) when the target holds data or `legacy` holds none. It is not part of a deploy: an operator starts it once,
 # after the deploy that carries the command, and the stage's owner is told first. No stored secret: AWS trusts the job's OIDC token (the role in the variable AWS_ROLE_ARN).
 on:
   workflow_dispatch:
@@ -66,6 +66,17 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - name: Take a snapshot of the database first, and wait until it can be restored from
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          instance=$(aws rds describe-db-instances --query "DBInstances[?starts_with(DBInstanceIdentifier, 'grimoire-${STAGE}-')] | [0].DBInstanceIdentifier" --output text)
+          [ -n "${instance}" ] && [ "${instance}" != "None" ] || { echo "::error::no database of the stage ${STAGE}"; exit 1; }
+          snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
+          aws rds create-db-snapshot --db-instance-identifier "${instance}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
+          aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
+          echo "snapshot ${snapshot} is available: it is what a restore of this stage's data starts from"
       - name: Run the command as a task of the stage's service
         env:
           STAGE: ${{ inputs.stage }}
