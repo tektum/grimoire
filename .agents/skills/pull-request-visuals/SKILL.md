@@ -7,6 +7,7 @@ description: Use when you open or update a Grimoire pull request that needs visu
 
 - Feature: attach screenshots or a short recording of the new behaviour.
 - Bug fix: attach a BEFORE and an AFTER shot.
+- A change that adds or changes a screen's screenshots under `docs/screenshots/` also updates the "What it looks like" section of README.md (relative image paths, alt text, one-line caption).
 - Tooling-only or server-only change with nothing to see: write "not applicable" and the reason, or attach a terminal capture.
 
 ## Capture
