@@ -1,4 +1,4 @@
-import { tenantOfKey } from './key.js';
+import { LEGACY, tenantOfKey } from './key.js';
 import type { AttachmentRow } from '../ports/attachment-repo.js';
 import type { FileStorage } from '../ports/file-storage.js';
 import { isInlineType } from './validate.js';
@@ -18,10 +18,11 @@ export function downloadOverrides(row: Pick<AttachmentRow, 'contentType'>, downl
 
 /** A signed download link for a ready row. */
 export async function signedDownload(files: FileStorage, row: AttachmentRow, download: boolean, readerTenantId?: string): Promise<{ readonly url: string; readonly expiresAt: number }> {
-  // The last line of defence (routes answer not-found first): a link is signed for the reader's tenant's rows only, and never for a key under another tenant's prefix. A key from before
-  // tenants has no prefix and is read through the row's tenant.
+  // The last line of defence (routes answer not-found first): a link is signed for the reader's tenant's rows only. A key under another tenant's prefix is refused too, except
+  // `legacy`'s: adopting a workspace moves the rows' tenant but not the objects, so an adopted tenant's files stay under the old prefix (docs/tenancy.md).
+  const tenant = row.tenantId ?? LEGACY;
   const keyTenant = tenantOfKey(row.key);
-  if (row.tenantId !== readerTenantId || (keyTenant !== undefined && keyTenant !== row.tenantId)) throw new Error('attachment: the row is of another tenant than the reader');
+  if (tenant !== (readerTenantId ?? LEGACY) || (keyTenant !== undefined && keyTenant !== tenant && keyTenant !== LEGACY)) throw new Error('attachment: the row is of another tenant than the reader');
   const { disposition, contentType } = downloadOverrides(row, download);
   return files.signDownload(row.key, { ttlSeconds: DOWNLOAD_TTL_SECONDS, disposition, fileName: row.fileName, contentType });
 }

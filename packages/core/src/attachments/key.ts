@@ -1,5 +1,8 @@
 import { cleanFileName } from './file-name.js';
 
+/** The tenant of every row from before tenants (docs/tenancy.md); a row or a caller with none is this one. */
+export const LEGACY = 'legacy';
+
 const TENANT_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**

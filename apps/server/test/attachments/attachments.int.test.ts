@@ -182,7 +182,7 @@ describe('a purge that the store fails half-way', () => {
     const a = await deletedPageWithTwoFiles();
     const store = failOnSecond({ failing: true });
     expect((await call('admin', 'DELETE', `/v1/trash/${a.page}`)).status).toBe(503);
-    const removed = store.done[0]?.replace('attachments/', '') as string;
+    const removed = store.done[0]?.split('/').pop() as string;
     const kept = removed === a.first ? a.second : a.first;
     expect(store.done).toHaveLength(1);
     // The object the store removed is marked; the one it did not reach is not.

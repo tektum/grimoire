@@ -2,7 +2,7 @@ import type { AttachmentRepo, AttachmentRow } from '../ports/attachment-repo.js'
 import { FileStorageError } from '../ports/file-storage.js';
 import type { FileStorage } from '../ports/file-storage.js';
 import { cleanFileName } from './file-name.js';
-import { attachmentKey, markdownPathFor } from './key.js';
+import { attachmentKey, LEGACY, markdownPathFor } from './key.js';
 import { isCheckedType, isInlineType, validateAttachmentMeta } from './validate.js';
 import type { AttachmentLimits } from './validate.js';
 
@@ -74,7 +74,7 @@ export const markdownPathOf = (row: Pick<AttachmentRow, 'id' | 'fileName'>): str
  */
 export async function resignUpload(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<{ readonly kind: 'resigned'; readonly upload: SignedUpload; readonly markdownPath: string } | { readonly kind: 'gone' }> {
   const row = await d.repo.get(id);
-  if (row === undefined || row.tenantId !== tenantId || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
+  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
   const left = Math.floor((row.expiresAt - d.now()) / 1000);
   if (left < 1) return { kind: 'gone' };
   return { kind: 'resigned', upload: await sign(d, row, Math.min(UPLOAD_TTL_SECONDS, left)), markdownPath: markdownPathOf(row) };
@@ -83,7 +83,7 @@ export async function resignUpload(d: AttachmentDeps, id: string, userId: string
 /** The row an upload may be completed through: the caller's own, and either ready already or pending and not expired. Anything else is not found. */
 export async function findUploadOf(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<AttachmentRow | undefined> {
   const row = await d.repo.get(id);
-  if (row === undefined || row.tenantId !== tenantId || row.uploaderId !== userId) return undefined;
+  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId) return undefined;
   if (row.status === 'pending' && (row.expiresAt === null || row.expiresAt <= d.now())) return undefined;
   return row;
 }

@@ -59,6 +59,13 @@ describe('an upload of tenant A', () => {
     const bad = row({ tenantId: A, key: `tenants/${B}/attachments/x`, status: 'ready', expiresAt: null });
     await expect(signedDownload(files, bad, false, A)).rejects.toThrow(/tenant/i);
   });
+
+  it('keeps the files of an adopted tenant downloadable: the rows moved to it, the objects stayed under the legacy prefix', async () => {
+    const { files } = setup();
+    const adopted = row({ tenantId: A, key: 'tenants/legacy/attachments/x', status: 'ready', expiresAt: null });
+    await expect(signedDownload(files, adopted, false, A)).resolves.toBeDefined();
+    await expect(signedDownload(files, adopted, false, B)).rejects.toThrow(/tenant/i);
+  });
 });
 
 describe('a row from before tenants', () => {

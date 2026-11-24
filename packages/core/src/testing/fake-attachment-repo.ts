@@ -22,7 +22,7 @@ export class FakeAttachmentRepo implements AttachmentRepo {
     if (live >= cap) return Promise.resolve({ kind: 'cap' });
     if (this.exists.pages?.(input.pageId) === false) return Promise.resolve({ kind: 'no-page' });
     const row: AttachmentRow = {
-      id: input.id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: input.fileName, contentType: input.contentType, size: input.size, key: input.key, ...(input.tenantId === undefined ? {} : { tenantId: input.tenantId }),
+      id: input.id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: input.fileName, contentType: input.contentType, size: input.size, key: input.key, tenantId: input.tenantId ?? 'legacy',
       status: 'pending', expiresAt: input.expiresAt, createdAt: now, readyAt: null,
     };
     this.rows.push(row);
@@ -64,7 +64,7 @@ export class FakeAttachmentRepo implements AttachmentRepo {
 
   insertReady(row: NewReady): Promise<AttachmentRow> {
     const stored: AttachmentRow = {
-      id: row.id, pageId: row.pageId, uploaderId: row.uploaderId, fileName: row.fileName, contentType: row.contentType, size: row.size, key: row.key,
+      id: row.id, pageId: row.pageId, uploaderId: row.uploaderId, fileName: row.fileName, contentType: row.contentType, size: row.size, key: row.key, tenantId: 'legacy',
       status: 'ready', expiresAt: null, createdAt: row.readyAt, readyAt: row.readyAt,
     };
     this.rows.push(stored);
