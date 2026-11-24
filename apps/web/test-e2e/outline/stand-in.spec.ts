@@ -76,3 +76,14 @@ test('the outline stays in view while a long page is read', async ({ page }) => 
   // Far down, the heading that has passed the top of the window is the current one (C: the next heading, Deep, is still below the top).
   await expect(nav.getByRole('link', { name: 'C' })).toHaveAttribute('aria-current', 'location');
 });
+
+test('the stand-in tells the page a collaboration address nothing listens on, so a stack on the same host cannot refuse it and sign the page out', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await historyApi(page, STATE);
+  const config = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/config');
+  await page.goto(`/p/${SLUG}`);
+  const { collabUrl } = (await (await config).json()) as { collabUrl: string };
+  expect(new URL(collabUrl).port).toBe('1');
+  await expect(page.getByTestId('editor-root').locator('h1', { hasText: 'A' })).toBeVisible();
+  expect(page.url()).toContain(`/p/${SLUG}`); // still on the page, not on the sign-in screen
+});
