@@ -77,6 +77,8 @@ export interface Tab {
   readonly provider: HocuspocusProvider;
   /** Each close of the document with its code and reason. */
   readonly closes: { readonly code: number; readonly reason: string }[];
+  /** The close code of every socket the tab opened, as seen on the wire (the provider's own events do not report a refused connect). */
+  readonly wireCloses: number[];
   /** Each refusal the provider was told (`stale-epoch`, ...). */
   readonly failures: string[];
   /** The state epoch the server last told this tab. */
@@ -94,7 +96,15 @@ export function tab(pageId: string, person: Person): Tab {
   const closes: { code: number; reason: string }[] = [];
   const failures: string[] = [];
   let recorded: number | undefined;
-  const socket = new HocuspocusProviderWebsocket({ url: WS_URL, WebSocketPolyfill: originSocket(ORIGIN) });
+  const wireCloses: number[] = [];
+  const Base = originSocket(ORIGIN);
+  class Recording extends Base {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      this.addEventListener('close', (event) => { wireCloses.push(event.code); });
+    }
+  }
+  const socket = new HocuspocusProviderWebsocket({ url: WS_URL, WebSocketPolyfill: Recording });
   const provider = new HocuspocusProvider({
     name: pageId, document: doc, websocketProvider: socket, token: () => wrapped(devToken(person, PEOPLE[person]), recorded),
     onStateless: ({ payload }) => { const m = JSON.parse(payload) as { kind?: string; epoch?: number }; if (m.kind === 'epoch') recorded = m.epoch; },
@@ -103,7 +113,7 @@ export function tab(pageId: string, person: Person): Tab {
   });
   provider.attach();
   return {
-    doc, provider, closes, failures, recorded: () => recorded,
+    doc, provider, closes, wireCloses, failures, recorded: () => recorded,
     dropSocket: () => { provider.configuration.websocketProvider.webSocket?.close(); },
     destroy: () => { provider.destroy(); socket.destroy(); },
   };
