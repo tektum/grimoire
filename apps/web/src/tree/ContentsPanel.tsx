@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { Link, useMatch, useNavigate } from 'react-router';
+import { type RefObject, useMemo, useRef } from 'react';
+import { Link, useLocation, useMatch, useNavigate } from 'react-router';
 import { urlIdOf } from '../app/routes';
 import { type ApiLike, queryKey } from '../api/query';
 import { LAST_COLLECTION_KEY, useCollections } from '../screens/collections/useCollections';
@@ -28,7 +28,7 @@ function usePageCollection(api: ApiLike, urlId: string | undefined): string | un
   return page.data?.collectionId;
 }
 
-function CollectionContents({ api, collectionId, currentUrlId }: { readonly api: ApiLike; readonly collectionId: string; readonly currentUrlId: string | undefined }) {
+function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { readonly hereKey: RefObject<string>; readonly api: ApiLike; readonly collectionId: string; readonly currentUrlId: string | undefined }) {
   const collections = useCollections(api);
   const tree = useCollectionTree(api, collectionId);
   const navigate = useNavigate();
@@ -38,15 +38,17 @@ function CollectionContents({ api, collectionId, currentUrlId }: { readonly api:
     () => ({
       ...plain,
       create: async (parentId) => {
+        // The page that was made is opened only if the person is still where they pressed the button (the key of the location): they may have gone elsewhere meanwhile.
+        const pressedAt = hereKey.current;
         const outcome = await plain.create(parentId);
-        if (outcome.ok) {
+        if (outcome.ok && hereKey.current === pressedAt) {
           const page = outcome.data as FlatPage;
           navigate(pagePath(page.title, page.urlId), { state: { newPage: true } });
         }
         return outcome;
       },
     }),
-    [plain, navigate],
+    [plain, navigate, hereKey],
   );
   const items = useMemo(() => buildTree(tree.data ?? []), [tree.data]);
   const current = collections.data?.find((c) => c.id === collectionId);
@@ -82,13 +84,17 @@ export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonl
   const inCollection = useMatch('/c/:collectionId');
   const inPage = useMatch('/p/:slug/*');
   const urlId = inPage?.params.slug === undefined ? undefined : urlIdOf(inPage.params.slug);
+  // Kept here, in the part that stays when the screen changes: the key of the location now, for `CollectionContents` to compare with the one where a page was asked for.
+  const { key } = useLocation();
+  const hereKey = useRef(key);
+  hereKey.current = key;
   const remembered = useMemo(() => storage ?? createClientStorage(), [storage]);
   const ofPage = usePageCollection(api, urlId);
   const collectionId = inCollection?.params.collectionId ?? (urlId === undefined ? (remembered.get(LAST_COLLECTION_KEY) ?? undefined) : ofPage);
   return (
     <div className="contents">
       <p className="contents-title">Contents</p>
-      {collectionId !== undefined && <CollectionContents api={api} collectionId={collectionId} currentUrlId={urlId} />}
+      {collectionId !== undefined && <CollectionContents api={api} collectionId={collectionId} currentUrlId={urlId} hereKey={hereKey} />}
     </div>
   );
 }

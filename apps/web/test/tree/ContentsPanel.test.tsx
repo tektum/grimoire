@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
 import { createClientStorage } from '../../src/storage';
@@ -28,7 +28,12 @@ const show = (api: ApiLike, path: string, storage = memoryStorage()) =>
   );
 const Where = () => {
   const { pathname, state } = useLocation();
-  return <output data-testid="where">{JSON.stringify({ pathname, state })}</output>;
+  return (
+    <>
+      <output data-testid="where">{JSON.stringify({ pathname, state })}</output>
+      <Link to="/trash">Go away</Link>
+    </>
+  );
 };
 const titles = () => screen.getAllByRole('treeitem').map((r) => within(r).getByRole('link').textContent);
 
@@ -124,6 +129,20 @@ describe('the contents panel', () => {
     show(api, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
     await waitFor(() => { expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/p/page-n1', state: { newPage: true } }); });
+  });
+
+  it('does not take a person to the new page when they went somewhere else while it was being made', async () => {
+    const { api } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n1', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const slow = { ...api, POST: (...args: unknown[]) => gate.then(() => (api.POST as (...a: unknown[]) => unknown)(...args)) } as unknown as ApiLike;
+    show(slow, '/c/c1');
+    await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
+    await userEvent.click(screen.getByRole('link', { name: 'Go away' }));
+    await waitFor(() => { expect(JSON.parse(screen.getByTestId('where').textContent!).pathname).toBe('/trash'); });
+    await act(async () => { release(); await gate; });
+    await waitFor(() => { expect(screen.queryByText('Loading')).toBeNull(); });
+    expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/trash', state: null });
   });
 
   it('says there is no page yet in an empty collection, and still offers New page', async () => {
