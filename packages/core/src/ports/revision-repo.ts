@@ -59,9 +59,9 @@ export type BeforeRestoreResult =
   | { readonly kind: 'created'; readonly id: string }
   /** The last saved state equals the latest revision: that one is the safety copy. */
   | { readonly kind: 'existing'; readonly id: string }
-  /** The saved Markdown is older than the editor state: a copy now would miss the newest edits. */
+  /** The saved Markdown is older than the editor state, or there is state and no Markdown at all: a copy now would miss the newest edits. */
   | { readonly kind: 'stale' }
-  /** The page has no saved Markdown yet: there is nothing to copy. */
+  /** The page has no saved Markdown and no editing state: there is nothing to copy. */
   | { readonly kind: 'nothing-saved' }
   | { readonly kind: 'no-page' };
 
@@ -91,7 +91,7 @@ export interface RevisionRepo {
   /**
    * The safety copy before a restore (R9.2, R9.6): a revision with reason `before_restore` of the page's last saved state, dated at its
    * last edit and naming its last editor, in one transaction with the read. Identical to the latest revision: that one is returned and
-   * nothing is written. Refused while the saved Markdown is stale.
+   * nothing is written. Refused (`stale`) while the saved Markdown is stale, and when the page has editing state and no saved Markdown at all (its live content is saved nowhere else).
    */
   snapshotBeforeRestore(pageId: string): Promise<BeforeRestoreResult>;
 }
