@@ -9,9 +9,21 @@ export interface MockCollection {
   readonly name: string;
   readonly myPermission: 'read-write' | 'read-only';
 }
+export interface MockTrashItem {
+  readonly id: string;
+  readonly title: string;
+  readonly collectionId: string;
+  readonly deletedAt: number;
+  readonly deletedBy: string | null;
+  readonly daysLeft: number;
+}
 export interface MockState {
   collections: MockCollection[];
   pages: FlatPage[];
+  /** Collections that exist but that this person may not read: reading their tree answers 404, exactly as for an id that does not exist. */
+  hidden?: string[];
+  /** The deleted batches, newest first, with the pages of each (the root first). Absent: an empty trash. */
+  trash?: { item: MockTrashItem; pages: FlatPage[] }[];
 }
 export interface MockApi {
   readonly state: MockState;
@@ -49,7 +61,7 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (tree?.[1] !== undefined) {
       const id = tree[1];
       reads.set(id, (reads.get(id) ?? 0) + 1);
-      if (!state.collections.some((c) => c.id === id)) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+      if (!state.collections.some((c) => c.id === id) || (state.hidden ?? []).includes(id)) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
       return json(route, 200, { pages: state.pages }, cors);
     }
     const body = (request.postData() ?? '') === '' ? {} : (JSON.parse(request.postData() ?? '{}') as Record<string, unknown>);
@@ -57,6 +69,19 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     const siblings = (parentId: string | null) => state.pages.filter((p) => p.parentId === parentId).sort((x, y) => (x.position < y.position ? -1 : 1));
     /** Gives the siblings of one parent keys in the order given, as the server's own ordering would leave them. */
     const renumber = (order: FlatPage[]) => order.forEach((p, i) => { state.pages = state.pages.map((q) => (q.id === p.id ? { ...q, position: `p${String(i).padStart(4, '0')}` } : q)); });
+    if (pathname === '/v1/trash' && request.method() === 'GET') return json(route, 200, { items: (state.trash ?? []).map((t) => t.item), nextCursor: null }, cors);
+    const restoring = /^\/v1\/trash\/([^/]+)\/restore$/.exec(pathname);
+    if (restoring?.[1] !== undefined && request.method() === 'POST') {
+      written.push(`POST ${pathname}`);
+      const batch = (state.trash ?? []).find((t) => t.item.id === restoring[1]);
+      if (batch === undefined) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+      state.trash = (state.trash ?? []).filter((t) => t !== batch);
+      // Back at its old parent; at the top level when that parent is no longer there.
+      const root = batch.pages[0];
+      const parentAlive = root?.parentId !== null && state.pages.some((p) => p.id === root?.parentId);
+      state.pages = [...state.pages, ...batch.pages.map((p) => (p === root ? { ...p, parentId: parentAlive ? p.parentId : null, position: 'p9998' } : p))];
+      return json(route, 200, meta(root ?? batch.pages[0]!), cors);
+    }
     if (pathname === '/v1/pages' && request.method() === 'POST') {
       written.push('POST /v1/pages');
       created += 1;
@@ -79,7 +104,9 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
       written.push(`DELETE ${pathname}`);
       const gone = new Set([found.id]);
       for (let grew = true; grew;) { grew = false; for (const p of state.pages) if (p.parentId !== null && gone.has(p.parentId) && !gone.has(p.id)) { gone.add(p.id); grew = true; } }
+      const batch = state.pages.filter((p) => gone.has(p.id));
       state.pages = state.pages.filter((p) => !gone.has(p.id));
+      state.trash = [{ item: { id: found.id, title: found.title, collectionId: state.collections[0]?.id ?? '', deletedAt: Date.now(), deletedBy: null, daysLeft: 30 }, pages: batch }, ...(state.trash ?? [])];
       return route.fulfill({ status: 204, headers: cors });
     }
     if (found !== undefined && one?.[2] === '/move' && request.method() === 'POST') {

@@ -7,14 +7,13 @@ import { ErrorBoundary } from '../../src/app/ErrorBoundary';
 import { routeObjects } from '../../src/app/router';
 import { ROUTES } from '../../src/app/routes';
 
-// `/c/:collectionId` is no longer a placeholder: it needs the session of the app, and is tested in test/tree/route.test.tsx.
+// `/c/:collectionId` and `/trash` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx and test/trash.
 describe('shell and screens', () => {
   it.each([
     ['/p/a-b1', 'Page'],
     ['/p/a-b1/history', 'History'],
     ['/p/a-b1/history/r1', 'History'],
     ['/search', 'Search'],
-    ['/trash', 'Trash'],
     ['/import', 'Import'],
     ['/admin/users', 'Admin'],
     ['/admin/groups', 'Admin'],
@@ -81,9 +80,9 @@ describe('Shell error boundary', () => {
     const router = createMemoryRouter([withBoom], { initialEntries: ['/boom'] });
     render(<RouterProvider router={router} />);
     expect(screen.getByRole('alert')).toBeTruthy();
-    screen.getByRole('link', { name: 'Trash' }).click();
+    screen.getByRole('link', { name: 'Search' }).click(); // a screen that needs no session (the trash does now)
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-    expect((await screen.findAllByRole('heading', { level: 1 }))[0]?.textContent).toBe('Trash');
+    expect((await screen.findAllByRole('heading', { level: 1 }))[0]?.textContent).toBe('Search');
     spy.mockRestore();
   });
 });
