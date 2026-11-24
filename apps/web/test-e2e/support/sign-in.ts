@@ -38,8 +38,13 @@ export async function signInAs(context: BrowserContext, userId: string, role: De
   }
   await context.addInitScript(
     ([tokenKey, expiresKey, value]) => {
-      window.localStorage.setItem(tokenKey as string, value as string);
-      window.localStorage.setItem(expiresKey as string, String(Date.now() + 3_600_000));
+      // The script runs in every document of the context, blank frames included, and a blank document has no storage to write to: that is not a failure of the spec.
+      try {
+        window.localStorage.setItem(tokenKey as string, value as string);
+        window.localStorage.setItem(expiresKey as string, String(Date.now() + 3_600_000));
+      } catch {
+        // no storage in this document
+      }
     },
     [DEV_TOKEN_STORAGE_KEY, DEV_TOKEN_EXPIRES_STORAGE_KEY, token],
   );

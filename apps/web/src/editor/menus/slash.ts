@@ -71,13 +71,15 @@ function createView(ctx: Ctx, view: EditorView) {
   };
 
   const spec = {
-    update(next: EditorView, prev?: Parameters<typeof provider.update>[1]) {
+    update(next: EditorView) {
       const query = slashQuery(next);
       if (query === null || (state.dismissed !== null && (state.dismissed.query !== query || state.dismissed.start !== next.state.selection.$from.start()))) state.dismissed = null;
       const kinds = query === null ? BLOCK_KINDS : matchingKinds(query);
       if (kinds.length !== state.kinds.length || kinds.some((kind, i) => kind !== state.kinds[i])) state.active = 0;
       state.kinds = kinds;
-      provider.update(next, prev);
+      // The library acts only on the last update of a burst, and skips an update whose document and selection are those of the state before it: a transaction that changes
+      // nothing (one the editor or a plugin dispatches a moment after the typing) would make it skip the one that matters. So it is never told the earlier state.
+      provider.update(next);
     },
     destroy() {
       provider.destroy();

@@ -84,7 +84,7 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
       collab.closeAll(4205, 'access-changed');
       await page.clock.runFor(5_000);
       await expect.poll(() => collab.tokens.length, { message: 'the reconnect' }).toBeGreaterThanOrEqual(2);
-      expect(handshakes.length).toBeGreaterThanOrEqual(2);
+      await expect.poll(() => handshakes.length, { message: 'the handshake of the reconnect (recorded a moment after the token reaches the server)' }).toBeGreaterThanOrEqual(2);
       await expect(page.getByText('This page was reset. Your unsent changes were not applied.')).toHaveCount(0);
     });
   });
