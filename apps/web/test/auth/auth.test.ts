@@ -344,6 +344,37 @@ describe('a second sign-out', () => {
     expect(t.sdk.logouts).toBeLessThanOrEqual(1);
   });
 
+  it('hands out no token and starts no refresh while a manual sign-out waits for the provider, though the state still says signed-in', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    expect(await t.auth.getToken()).toBe(t.sdk.token);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    t.sdk.logout = async () => {
+      await gate;
+    };
+    const out = t.auth.signOut('manual');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(t.auth.state().status).toBe('signed-in');
+    expect(await t.auth.getToken()).toBeNull();
+    expect(await t.auth.refresh()).toBe(false);
+    expect(t.sdk.refreshes).toBe(0);
+    release();
+    await out;
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+    expect(t.sdkStorage.map.size).toBe(0);
+  });
+
+  it('does the same for a development session: no token while the sign-out is under way', async () => {
+    const t = setup();
+    storeDevToken(t);
+    const auth = createAuth({ config: config(), storage: t.storage, devSignIn: t.devSignIn, sdkStorage: t.sdkStorage, now: () => NOW, loadDescope: async () => t.loader.module });
+    expect(await auth.getToken()).toBe(TOKEN);
+    const out = auth.signOut('manual');
+    expect(await auth.getToken()).toBeNull();
+    await out;
+    expect(auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+  });
+
   it('removes the SDK keys again, without telling subscribers, when a refresh that finished late made the SDK write tokens back', async () => {
     const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
     await t.auth.signOut('manual');

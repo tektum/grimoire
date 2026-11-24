@@ -133,7 +133,8 @@ export function createAuth(o: CreateAuthOptions): Auth {
       return () => void listeners.delete(fn);
     },
     async getToken() {
-      if (current.status !== 'signed-in') return null;
+      // Once a sign-out has started (a manual one may wait for the provider) no token is handed out, though the state still says signed-in.
+      if (current.status !== 'signed-in' || ending !== null) return null;
       if (current.method === 'dev') {
         const stored = devToken();
         if (stored === null) {
@@ -158,6 +159,7 @@ export function createAuth(o: CreateAuthOptions): Auth {
       }
     },
     refresh() {
+      if (ending !== null) return Promise.resolve(false); // and none is refreshed: the SDK would write a new token after the sign-out cleared the keys
       if (current.status !== 'signed-in' || current.method === 'dev') {
         return current.status === 'signed-in' ? auth.signOut('expired').then(() => false) : Promise.resolve(false);
       }
