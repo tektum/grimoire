@@ -1,6 +1,8 @@
 import type { Profile } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { PageAccessChecker } from '@tektum/grimoire-core/authorize';
 import type { Authorizer } from '@tektum/grimoire-core/authorize/authorizer';
+import type { AttachmentRepo } from '@tektum/grimoire-core/ports/attachment-repo';
+import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -41,6 +43,9 @@ export interface HttpDeps {
   readonly revisions: RevisionRepo;
   readonly admin: AdminRepo;
   readonly pageState: PageStateRepo;
+  readonly attachments: AttachmentRepo;
+  /** The file store; absent when the files settings are not given (the file routes then answer 503). */
+  readonly files?: FileStorage;
   /** Removes the objects of attachments from the file store (the purge calls it before it deletes any row). */
   readonly deleteFiles: (keys: readonly string[]) => Promise<void>;
 }

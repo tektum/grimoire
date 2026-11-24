@@ -68,6 +68,8 @@ function table(op: Operation): { who: Who; hidden?: boolean; outcome: Outcome; c
     case 'collection':
     case 'collection-body':
     case 'page':
+    case 'page-body':
+    case 'attachment':
     case 'trash': {
       const hidden = readers.map((r) => ({ ...r, hidden: true, outcome: 404 as const, code: 'not_found' }));
       if (p.need === 'read') return [...hidden, { who: 'member', outcome: 'pass' }, { who: 'viewer', outcome: 'pass' }, { who: 'admin', outcome: 'pass' }];
@@ -77,6 +79,8 @@ function table(op: Operation): { who: Who; hidden?: boolean; outcome: Outcome; c
       const viewer = p.kind === 'trash' ? { who: 'viewer' as const, outcome: 404 as const, code: 'not_found' } : { who: 'viewer' as const, outcome: 403 as const, code: 'forbidden' };
       return [...hidden, member, viewer, { who: 'admin', outcome: 'pass' }];
     }
+    // The uploader's own pending upload, by the member who made it: nobody else (an administrator included) finds it, and the member does not on a page they cannot write.
+    case 'uploader': return [{ who: 'member', hidden: true, outcome: 404, code: 'not_found' }, { who: 'viewer', outcome: 404, code: 'not_found' }, { who: 'admin', outcome: 404, code: 'not_found' }, { who: 'member', outcome: 'pass' }];
     default: throw new Error(`${op.key}: the walk does not know the policy ${p.kind}`);
   }
 }

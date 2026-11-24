@@ -56,6 +56,11 @@ export interface TrashRepo {
    */
   attachmentKeys(batch: string): Promise<readonly string[]>;
   /**
+   * Marks the attachment rows with these object keys as deleted, for objects the store removed before it failed in a purge that therefore did not complete: a
+   * restore of the batch then shows no attachment for an object that is gone. Keys that match no row, and rows already marked, are left as they are.
+   */
+  markFilesRemoved(keys: readonly string[]): Promise<void>;
+  /**
    * Deletes every page row of the batch, and the pages below it deleted earlier, in one statement (revisions and attachment rows go with
    * them) and writes the audit row `page.purged`, ids only, in the same transaction. A batch already gone deletes nothing and writes no
    * row (`pages: 0`). `removedKeys` are the objects the caller has already removed: an attachment row of a page that a restore brought

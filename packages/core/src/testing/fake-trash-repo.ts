@@ -178,6 +178,11 @@ export class FakeTrashRepo implements TrashRepo {
     return Promise.resolve(this.purgeSet(batch).flatMap((r) => r.attachments));
   }
 
+  markFilesRemoved(keys: readonly string[]): Promise<void> {
+    for (const row of this.rows) for (const key of row.attachments) if (keys.includes(key)) this.deletedKeys.add(key);
+    return Promise.resolve();
+  }
+
   purge(batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ pages: number }> {
     const gone = this.purgeSet(batch);
     for (const row of gone) {

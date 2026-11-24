@@ -19,7 +19,7 @@ const callerOf = (op: Operation): Who => (op.policy.kind === 'admin' ? 'admin' :
 
 describe('the idempotent operations', () => {
   it('are the ones this walk plays', () => {
-    expect(idempotent.map((o) => o.key)).toEqual(['POST /v1/collections', 'POST /v1/groups', 'POST /v1/pages', 'POST /v1/pages/{id}/reset-state']);
+    expect(idempotent.map((o) => o.key)).toEqual(['POST /v1/attachments', 'POST /v1/collections', 'POST /v1/groups', 'POST /v1/pages', 'POST /v1/pages/{id}/reset-state']);
   });
 
   it('have a replay hook each, or an exemption with a reason, and no hook is left for a route that is not idempotent', () => {
@@ -34,7 +34,7 @@ describe('the idempotent operations', () => {
       const who = callerOf(op);
       // A collection the walk makes is readable by everyone: a demoted caller can still see it, so only a check of the admin right itself can refuse the retry.
       const readable = bodyFields(op).includes('defaultPermission') ? { defaultPermission: 'read' } : {};
-      const body = { ...(exampleBody(op.bodySchema as never, { uuid: w.ids.page, collectionId: w.ids.openCollection }) as object), ...readable };
+      const body = { ...(exampleBody(op.bodySchema as never, { uuid: w.ids.page, collectionId: w.ids.openCollection, pageId: w.ids.page, fileName: 'a.png', contentType: 'image/png', size: 16 }) as object), ...readable };
       const send = () => w.call(who, op.method, pathFor(op, w), body, { 'idempotency-key': `walk-${revoke}` });
       const first = await send();
       expect(first.status, await first.clone().text()).toBeLessThan(300);

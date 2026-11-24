@@ -9,7 +9,7 @@ import { makeContext } from '../server/support/context.js';
 
 const HTTP_KEYS = [
   'config', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter',
-  'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState', 'deleteFiles',
+  'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState', 'attachments', 'deleteFiles',
 ] as const satisfies readonly (keyof HttpDeps)[];
 
 const base = {

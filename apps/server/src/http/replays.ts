@@ -1,6 +1,7 @@
 import { replayCreateCollection } from '../routes/collections.js';
 import { replayCreateGroup } from '../routes/groups.js';
 import { replayResetState } from '../routes/reset-state.js';
+import { replayCreateAttachment, storedCreateAttachment } from '../routes/attachments.js';
 import { replayCreatePage } from '../routes/pages.js';
 import type { ReplayRebuild } from './idempotency.js';
 
@@ -10,7 +11,10 @@ export const routeReplays: Readonly<Record<string, ReplayRebuild>> = {
   'POST /v1/groups': replayCreateGroup,
   'POST /v1/pages/:id/reset-state': replayResetState,
   'POST /v1/pages': replayCreatePage,
+  'POST /v1/attachments': replayCreateAttachment,
 };
 
 /** What an idempotent route keeps of its answer, when that is not the whole body (a route whose answer holds a signed URL keeps it without). */
-export const routeStored: Readonly<Record<string, (body: unknown) => unknown>> = {};
+export const routeStored: Readonly<Record<string, (body: unknown) => unknown>> = {
+  'POST /v1/attachments': storedCreateAttachment,
+};
