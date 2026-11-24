@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import { statusLine, withScriptedPage } from './support';
 
@@ -33,7 +33,7 @@ test.describe('axe, with each message shown', () => {
 
   test('"This page is too large to edit further. You can still read it."', async ({ browser, baseURL }) => {
     await withScriptedPage(browser, baseURL, {}, async ({ page, collab }) => {
-      await page.locator('p.page-status').waitFor();
+      await expect.poll(() => collab.tokens.length).toBe(1); // the socket is open and has authenticated
       collab.sendStateless(stateless({ kind: 'refusal', code: 'state-cap' }));
       await statusLine(page).filter({ hasText: 'too large' }).waitFor();
       await expectNoAxeViolations(page, { minImpact: 'serious' });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ConnectionState } from '../editor/core/connection';
 import { TEXTS } from '../editor/core/map-signal';
 
@@ -33,6 +33,7 @@ export function statusText(state: Pick<ConnectionState, 'text' | 'unsynced' | 'r
 export function StatusLine({ state, collab, onRetry }: { readonly state: StatusState; readonly collab: StatusScope; readonly onRetry?: () => void }) {
   // `settled` is the last change the line has shown as saved. A change that was acknowledged before the screen drew still counts as one (`changes` went up), so Saving shows
   // for the moment however fast the server is; the line itself is one element that stays, and only its text changes.
+  const line = useRef<HTMLParagraphElement>(null);
   const [settled, setSettled] = useState(state.changes);
   const waiting = state.unsynced > 0;
   useEffect(() => {
@@ -43,12 +44,15 @@ export function StatusLine({ state, collab, onRetry }: { readonly state: StatusS
   const saving = waiting || settled !== state.changes;
   const text = statusText({ ...state, unsynced: saving ? Math.max(1, state.unsynced) : 0 }, collab);
   return (
-    <p className="page-status" role="status" aria-live="polite" aria-atomic="true" data-state={collab}>
+    <p ref={line} tabIndex={-1} className="page-status" role="status" aria-live="polite" aria-atomic="true" data-state={collab}>
       {text}
       {collab === 'stopped' && state.stopped === 'cannot-open' && state.text === TEXTS.cannotOpen && onRetry !== undefined ? (
         <>
           {' '}
-          <button type="button" className="page-status-action" onClick={onRetry}>
+          <button type="button" className="page-status-action" onClick={() => {
+              line.current?.focus(); // the button goes away with the attempt: keep the person's place
+              onRetry();
+            }}>
             Try again
           </button>
         </>

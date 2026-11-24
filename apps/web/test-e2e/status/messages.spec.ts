@@ -132,20 +132,9 @@ test.describe('the messages of the signal table', () => {
   });
 
   test('provider scope read-only after authentication: "Read only"', async ({ browser, baseURL }) => {
-    await withScriptedPage(
-      browser,
-      baseURL,
-      {},
-      async ({ page }) => {
-        await expect(page.getByText('Read only', { exact: true })).toBeVisible();
-      },
-      async (page) => {
-        await page.route('**/v1/pages/by-url-id/**', async (route) => {
-          const response = await route.fetch();
-          const body = (await response.json()) as Record<string, unknown>;
-          await route.fulfill({ response, json: { ...body, myPermission: 'read-only' } });
-        });
-      },
-    );
+    // The API says the person may write; only the scope of the provider's authenticated message says otherwise.
+    await withScriptedPage(browser, baseURL, { scope: 'readonly' }, async ({ page }) => {
+      await expect(page.getByText('Read only', { exact: true })).toBeVisible();
+    });
   });
 });

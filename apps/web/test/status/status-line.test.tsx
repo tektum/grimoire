@@ -141,6 +141,7 @@ describe('the actions of a stopped page', () => {
     expect(screen.getByRole('status').textContent).toBe("This page can't be opened right now. Try again");
     act(() => { screen.getByRole('button', { name: 'Try again' }).click(); });
     expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByRole('status')); // the button goes away with the attempt: the person's place is the line, not the page body
   });
 
   it('offers no button while the page is only retrying, or when stopped for another reason', () => {
