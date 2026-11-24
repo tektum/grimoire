@@ -153,7 +153,7 @@ The build step `bun run --filter apps/web check:build` is part of the run, befor
 | Rendering safety (M6-T11) | Every corpus entry rendered through import-style Markdown, through paste and through the editor produces no dialog, no request to a host outside the page's origin, the. | `apps/web/test-e2e/safety/corpus.spec.ts` | pending M6-T11 |
 | Rendering safety (M6-T11) | The three Milkdown-blanked schemes still render href="" (so a Milkdown upgrade cannot regress silently), and a click on an ftp: link does not navigate. | `apps/web/test-e2e/safety/milkdown-guard.spec.ts` | pending M6-T11 |
 | Rendering safety (M6-T11) | Raw HTML renders as escaped text inside a non-editable block with a button named "Edit source". | `apps/web/test-e2e/safety/raw-html.spec.ts` | proved |
-| Rendering safety (M6-T11) | Pasted HTML containing script, iframe, onclick, style and a javascript: link yields a document with only text and safe links (Markdown compared). | `apps/web/test-e2e/safety/paste.spec.ts` | pending M6-T11 |
+| Rendering safety (M6-T11) | Pasted HTML containing script, iframe, onclick, style and a javascript: link yields a document with only text and safe links (Markdown compared). | `apps/web/test-e2e/safety/paste.spec.ts` | proved |
 | Rendering safety (M6-T11) | Headers.test.ts renders headers in both modes with three origins. | `apps/web/test/safety/headers.test.ts` | proved |
 | Rendering safety (M6-T11) | Docs/web-security.md exists and contains the strings fpnpmcdn.net, DSR and Apache-2.0 (script check). | `docs/web-security.md` | proved |
 | Rendering safety (M6-T11) | Presence names are untrusted :: presence-name.test.tsx: a collaborator name of <img src=x onerror=alert(1)>, a name of. | `apps/web/test/editor/cursor.test.ts` | proved |
@@ -196,5 +196,5 @@ Each of these is checked by a job of the merge gate, on every pull request:
 | secrets scan | job `gitleaks` |
 | workflows | job `workflow-policy` (actionlint, zizmor) |
 | the browser specifications against the stack, in Chromium | job `e2e-web` |
-| the same, in Firefox and WebKit | job `e2e-web-browsers` |
+| the same, in Firefox and WebKit | job `e2e-web-browsers`: pending #307 (not on the main branch yet; this row is not a claim until it is merged) |
 
