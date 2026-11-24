@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { inStartOrder } from '../../../infra/staging/init-order.ts';
+import { readFileSync } from 'node:fs';
+import { requiredGracePeriodMs } from '../../../apps/server/src/lifecycle/budget.ts';
+import { APP_STOP_TIMEOUT_SECONDS, inStartOrder } from '../../../infra/staging/init-order.ts';
 
 const task = (...names) => names.map((name) => ({ name, image: `${name}:1`, essential: true, environment: [{ name: 'X', value: name }] }));
 const by = (definitions) => Object.fromEntries(definitions.map((d) => [d.name, d]));
@@ -29,4 +31,16 @@ test('the order does not depend on the order of the definitions, and the rest of
 
 test('a task without one of the three containers is refused, naming what it has', () => {
   assert.throws(() => inStartOrder(task('migrate', 'app')), /no container "db-setup" \(it has migrate, app\)/);
+});
+
+test('the app alone gets a stop timeout, and it covers what the server needs to drain and save the open pages (and ECS allows)', () => {
+  const d = by(inStartOrder(task('db-setup', 'migrate', 'app')));
+  assert.equal(d.app.stopTimeout, APP_STOP_TIMEOUT_SECONDS);
+  assert.equal(d['db-setup'].stopTimeout, undefined);
+  assert.equal(d.migrate.stopTimeout, undefined);
+  const schema = readFileSync(new URL('../../../packages/adapters/config-env/src/schema.ts', import.meta.url), 'utf8');
+  const defaultSaveMs = Number(/GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field\(int\(1, MAX_INT\)\)\.default\((\d+)\)/.exec(schema)?.[1]);
+  assert.ok(defaultSaveMs > 0);
+  assert.ok(APP_STOP_TIMEOUT_SECONDS * 1000 >= requiredGracePeriodMs(defaultSaveMs), 'SIGKILL would come before the server has finished saving');
+  assert.ok(APP_STOP_TIMEOUT_SECONDS <= 120, 'Fargate allows at most 120 seconds');
 });

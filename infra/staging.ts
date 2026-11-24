@@ -31,8 +31,11 @@ export default function staging() {
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
   // The managed database requires TLS: the connections verify it against Amazon's bundle, which the image holds (NODE_EXTRA_CA_CERTS names it).
-  const urlOf = (user: $util.Input<string>, secret: $util.Input<string>) =>
-    $resolve({ user, secret, host: db.host, port: db.port, name: db.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
+  // Passwords and the connection strings that hold them go to the container as ECS secrets (Parameter Store SecureString, read by the execution role at start), never as
+  // plain environment values: the task definition then holds only their ARNs.
+  const secret = (id: string, value: $util.Input<string>) => new aws.ssm.Parameter(id, { type: 'SecureString', value }).arn;
+  const urlOf = (user: $util.Input<string>, password: $util.Input<string>) =>
+    $resolve({ user, secret: password, host: db.host, port: db.port, name: db.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
   const trust = { NODE_EXTRA_CA_CERTS: RDS_CA_BUNDLE };
 
   // The CORS rule is the one `grimoire files-setup` writes for a store the application sets up itself (external mode: the infrastructure owns it).
@@ -44,21 +47,21 @@ export default function staging() {
   const service = new sst.aws.Service('App', {
     cluster,
     cpu: '0.5 vCPU',
-    memory: '1 GB',
+    memory: '2 GB', // above the collaboration memory guard (1 GiB by default, with Node, socket buffers and the Markdown worker on top of it), so the guard refuses work before the task is killed
     scaling: { min: 1, max: 1 },
     containers: [
       {
         name: 'db-setup',
         image: IMAGE,
         command: ['apps/server/dist/cli.js', 'db-setup'],
-        environment: {
-          ...trust,
-          GRIMOIRE_DATABASE_ADMIN_URL: urlOf(db.username, db.password),
-          GRIMOIRE_DB_APP_PASSWORD: appPassword,
-          GRIMOIRE_DB_MIGRATOR_PASSWORD: migratorPassword,
+        environment: trust,
+        ssm: {
+          GRIMOIRE_DATABASE_ADMIN_URL: secret('AdminUrl', urlOf(db.username, db.password)),
+          GRIMOIRE_DB_APP_PASSWORD: secret('AppPassword', appPassword),
+          GRIMOIRE_DB_MIGRATOR_PASSWORD: secret('MigratorPassword', migratorPassword),
         },
       },
-      { name: 'migrate', image: IMAGE, command: ['apps/server/dist/cli.js', 'migrate'], environment: { ...trust, GRIMOIRE_DATABASE_MIGRATION_URL: urlOf('grimoire_migrator', migratorPassword) } },
+      { name: 'migrate', image: IMAGE, command: ['apps/server/dist/cli.js', 'migrate'], environment: trust, ssm: { GRIMOIRE_DATABASE_MIGRATION_URL: secret('MigratorUrl', urlOf('grimoire_migrator', migratorPassword)) } },
       {
         name: 'app',
         image: IMAGE,
@@ -66,8 +69,6 @@ export default function staging() {
           ...trust,
           GRIMOIRE_HOST: '0.0.0.0',
           GRIMOIRE_PORT: String(PORT),
-          GRIMOIRE_DATABASE_URL: urlOf('grimoire_app', appPassword),
-          GRIMOIRE_DATABASE_MIGRATION_URL: urlOf('grimoire_migrator', migratorPassword),
           GRIMOIRE_ALLOWED_ORIGINS: url,
           GRIMOIRE_TRUSTED_PROXY: VPC_CIDR,
           GRIMOIRE_DESCOPE_PROJECT_ID: descope.projectId,
@@ -82,6 +83,8 @@ export default function staging() {
           GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual',
           GRIMOIRE_S3_CORS_MODE: 'external',
         },
+        // Only the runtime role: the schema owner's credentials stay with the `migrate` step.
+        ssm: { GRIMOIRE_DATABASE_URL: secret('AppUrl', urlOf('grimoire_app', appPassword)) },
       },
     ],
     // No access keys: the task role is the identity of the file store client, with the least a bucket client needs (`ListBucket` so that a missing object is a 404 and not a 403).

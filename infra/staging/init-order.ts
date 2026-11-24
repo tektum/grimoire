@@ -11,6 +11,13 @@ interface ContainerDefinition {
  */
 export const START_ORDER = ['db-setup', 'migrate', 'app'] as const;
 
+/**
+ * Seconds ECS waits between SIGTERM and SIGKILL for the app: the server's own shutdown (it drains, then saves the open pages inside its save deadline) needs
+ * `requiredGracePeriodMs(45 s default save deadline)` = 64 s, and ECS's default of 30 s would kill a page that is still being saved at every deploy. Fargate allows up to 120.
+ * A test keeps this at or above what the server requires.
+ */
+export const APP_STOP_TIMEOUT_SECONDS = 64;
+
 export function inStartOrder(definitions: readonly ContainerDefinition[]): ContainerDefinition[] {
   const names = definitions.map((d) => d.name);
   for (const name of START_ORDER) if (!names.includes(name)) throw new Error(`The task has no container "${name}" (it has ${names.join(', ')}).`);
@@ -21,6 +28,7 @@ export function inStartOrder(definitions: readonly ContainerDefinition[]): Conta
     return {
       ...definition,
       essential: at === START_ORDER.length - 1,
+      ...(definition.name === 'app' ? { stopTimeout: APP_STOP_TIMEOUT_SECONDS } : {}),
       ...(previous === undefined ? {} : { dependsOn: [{ containerName: previous, condition: 'SUCCESS' }] }),
     };
   });

@@ -33,6 +33,8 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 | files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the server runs in `external` CORS mode, so it checks the rule and never writes it) | virtual addressing; the file origin in the policy names the bucket host |
 | identity | the Descope project of the stage | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID` |
 | task | `db-setup`, then `migrate`, then `app` (`init-order.ts`) | the first two are not essential and the next container waits for each one's exit with 0 (ECS `dependsOn` with `SUCCESS`): a failing step stops the task before it serves, the old task keeps serving |
+| task size and stop | 0.5 vCPU, 2 GB; the app has a 64 second stop timeout | the memory is above the collaboration memory guard (1 GiB by default) so the guard refuses work before the task is killed; 64 seconds is what the server needs to drain and save open pages (ECS's default of 30 would cut a deploy short; a test ties it to the server's budget) |
+| secrets | Parameter Store `SecureString`, as ECS secrets | the database passwords and the three connection strings reach the containers by ARN, not as plain environment values; the `app` container gets only the runtime role's string, the schema owner's stays with `migrate` |
 | file access | the task role, `GetObject`, `PutObject` and `DeleteObject` on the bucket's objects and `ListBucket` on the bucket | no access keys anywhere |
 
 Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_ALLOWED_EMAIL_DOMAINS` (comma separated) and `STAGING_FIRST_ADMIN_EMAILS` (optional). Run `diff` for `staging` first.
