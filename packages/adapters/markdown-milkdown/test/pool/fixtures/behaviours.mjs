@@ -1,7 +1,12 @@
 // A stand-in worker for the failure tests: the Markdown of a `seed` call names what to do (the real worker is not touched).
+// The stack at the moment this module was evaluated: it names `require` when a worker loaded the module through require(esm).
+const loadStack = new Error().stack ?? '';
+
 export default async function behave(request) {
   const command = request.op === 'seed' ? request.markdown : 'echo';
   switch (command) {
+    case 'load-stack':
+      return { ok: true, state: new TextEncoder().encode(loadStack) };
     case 'spin': {
       // Busy loop: nothing but terminating the thread stops it.
       const end = Date.now() + 5000;
