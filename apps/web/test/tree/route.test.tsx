@@ -14,7 +14,7 @@ describe('the /c/:collectionId route', () => {
       'GET /v1/collections/{id}': { status: 200, body: COLLECTIONS[1] },
     });
     render(
-      <SessionContext.Provider value={{ auth: null as never, api }}>
+      <SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.test' }}>
         <QueryClientProvider client={new QueryClient()}>
           <MemoryRouter initialEntries={['/c/c2']}>
             <Routes>
