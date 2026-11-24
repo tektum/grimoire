@@ -21,7 +21,7 @@ test('an image in a page, light and dark', async ({ page }) => {
 
 test('the "External image not loaded" placeholder, light and dark', async ({ page }) => {
   await scriptStore(page);
-  const opened = await openPage(page, '# Trip notes\n\nA picture from somewhere else:\n\n![A picture from another site](https://evil.test/p.png)\n\nThe text goes on.\n', { sans: true });
+  const opened = await openPage(page, '# Trip notes\n\nA picture from somewhere else:\n\n![A picture from another site](https://photos.example.com/p.png)\n\nThe text goes on.\n', { sans: true });
   try {
     await expect(page.locator('.attachment-image[data-state="external"]')).toHaveCount(1);
     await shots(page, TASK, 'external-image');

@@ -52,6 +52,8 @@ export async function openPage(page: Page, markdown: string, options: { sans?: b
   await page.addStyleTag({ content: bundle.css });
   // This machine's default sans-serif is a monospace face: an installed sans is named for the interface text only; the page text keeps its reading font.
   if (options.sans === true) await page.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
+  // The slash menu's container is drawn as an empty bordered box in an editor that is not editable until its view has updated (the menu's own concern); the shots leave it out.
+  if (options.sans === true) await page.addStyleTag({ content: '.slash-host:not([data-show="true"]) { display: none; }' });
   await page.addScriptTag({ content: bundle.js });
   await page.evaluate(([text, base, editable]) => (window as unknown as { harness: { mount: (m: string, a: string, e: boolean) => Promise<void> } }).harness.mount(text as string, base as string, editable as boolean), [markdown, API, options.editable === true]);
   return { origin: new URL(server.url('/')).origin, markdown: (): Promise<string> => page.evaluate(() => (window as unknown as { harness: { markdown: () => string } }).harness.markdown()), stop: () => server.stop() };
