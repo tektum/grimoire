@@ -116,17 +116,72 @@ test('a title saved by leaving the field for another page in the tree does not t
   await page.getByRole('link', { name: 'Notes', exact: true }).click(); // leaving the field saves it; the click opens the other page
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/);
   await expect(heading(page)).toHaveText('Notes');
-  // The page logs what it decided when the rename ends (`web.title_rename_settled`): the test waits for that, not for a time, and the decision itself is asserted (the address was not moved).
-  const settled: { page?: string; verdict?: string; moved?: boolean }[] = [];
-  page.on('console', (message) => {
-    const text = message.text();
-    if (text.includes('web.title_rename_settled')) settled.push(JSON.parse(text) as { page?: string; verdict?: string; moved?: boolean });
+  // What the page has been answered, in order: the rename, then the tree read that follows it (the rename ends with that read). The page that was renamed is not open any more, so nothing of it may touch the address.
+  const seen: string[] = [];
+  page.on('response', (response) => {
+    const method = response.request().method();
+    if (method === 'PATCH' && response.url().endsWith('/v1/pages/a')) seen.push('rename answered');
+    else if (method === 'GET' && response.url().endsWith('/v1/collections/c1/tree') && seen.includes('rename answered')) seen.push('tree read after the rename');
   });
   release();
-  await expect.poll(() => settled.length).toBe(1);
-  expect(settled[0]).toMatchObject({ page: 'a', verdict: 'applied', moved: false });
+  await expect.poll(() => seen.includes('tree read after the rename')).toBe(true);
   await expect.poll(() => names(page)).toEqual(['Renamed', 'Notes']);
   expect(api.writes()).toEqual(['PATCH /v1/pages/a']);
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/); // the renamed page's address did not replace this one
   await expect(heading(page)).toHaveText('Notes');
 });
+
+for (const [last, heldTitle, slug] of [
+  ['the head', 'From the head', 'from-the-head'],
+  ['the tree', 'From the tree', 'from-the-tree'],
+] as const) {
+  test(`a rename from the page head and a rename from the tree racing, ${last} answered last: the heading, the address and the tree end on the title the server has`, async ({ page, context }) => {
+    const api = await open(page, context);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`${API}/v1/pages/a`, async (route) => {
+      if (route.request().method() === 'PATCH' && (route.request().postDataJSON() as { title: string }).title === heldTitle) await gate; // that one reaches the server last
+      await route.fallback();
+    });
+    const otherTitle = heldTitle === 'From the head' ? 'From the tree' : 'From the head';
+    // Taken hold of before anything is started: the answer may come before the steps below are done.
+    const otherAnswered = page.waitForResponse((response) => response.request().method() === 'PATCH' && response.request().postData()?.includes(`"${otherTitle}"`) === true);
+    const fromHead = async () => {
+      await heading(page).getByRole('button').click();
+      await page.getByRole('textbox', { name: 'Page title' }).fill('From the head');
+      await page.keyboard.press('Enter');
+    };
+    const fromTree = async () => {
+      await page
+        .getByRole('button', { name: /^Actions for / })
+        .first()
+        .click();
+      await page.getByRole('menuitem', { name: 'Rename' }).click();
+      await page.getByRole('textbox', { name: /^New title for / }).fill('From the tree');
+      await page.keyboard.press('Enter');
+    };
+    // The held one is started first, so that it is the older one and is answered last.
+    if (last === 'the head') {
+      await fromHead();
+      await fromTree();
+    } else {
+      await fromTree();
+      await fromHead();
+    }
+    // The other one is answered, and the page and the tree have read their records again after it, while the held one is still on its way: the page then shows the other title (a title the server is about to replace).
+    await otherAnswered;
+    // (When the head's own save is the one still on its way, its field is still open: the heading is the field, so the tree is what shows the other title then.)
+    if (last === 'the tree') await expect(heading(page)).toHaveText(otherTitle);
+    await expect.poll(() => names(page)).toEqual([otherTitle, 'Notes']);
+    expect(api.state.pages.find((p) => p.id === 'a')?.title).toBe(otherTitle);
+    release();
+    await expect.poll(() => api.writes()).toEqual(['PATCH /v1/pages/a', 'PATCH /v1/pages/a']);
+    // The server has the title of the one that reached it last; everything shown is that title.
+    await expect(heading(page)).toHaveText(heldTitle);
+    await expect(page).toHaveURL(new RegExp(`/p/${slug}-a0000000$`));
+    await expect.poll(() => names(page)).toEqual([heldTitle, 'Notes']);
+    expect(api.state.pages.find((p) => p.id === 'a')?.title).toBe(heldTitle);
+  });
+}

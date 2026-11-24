@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
+import { SessionContext, type Session } from '../../src/auth/session';
+import { usePage } from '../../src/screens/page/usePage';
 import { useTreeActions } from '../../src/tree/actions';
 import type { FlatPage } from '../../src/tree/model';
 import { treeKey, useCollectionTree } from '../../src/tree/useTree';
@@ -107,62 +109,69 @@ describe('useTreeActions', () => {
     expect(calls.filter((c) => c.startsWith('GET /v1/collections/{id}/tree'))).toHaveLength(2);
   });
 
-  describe('two renames of one page', () => {
-    const racing = (routes: Record<string, ReturnType<typeof ok>> = {}) => {
-      const { api } = fakeApi({ 'GET /v1/collections/{id}/tree': ok(SERVER), 'PATCH /v1/pages/{id}': ok({}), ...routes });
-      let release: () => void = () => undefined;
-      const gate = new Promise<void>((resolve) => { release = resolve; });
-      let calls = 0;
-      const slowFirst = { ...api, PATCH: (...args: unknown[]) => (calls++ === 0 ? gate.then(() => (api.PATCH as (...a: unknown[]) => unknown)(...args)) : (api.PATCH as (...a: unknown[]) => unknown)(...args)) } as unknown as ApiLike;
+  describe('renames of one page from the page head and from the tree, racing', () => {
+    // A server that keeps the title the last PATCH it was given set, and that answers each PATCH only when the test lets it. The open page reads its record through `usePage`.
+    const race = () => {
+      let serverTitle = 'Start';
+      const holds = new Map<string, () => void>();
+      const gates = new Map<string, Promise<void>>();
+      for (const title of ['From the head', 'From the tree']) gates.set(title, new Promise<void>((resolve) => holds.set(title, resolve)));
+      const record = () => ({ id: 'a', urlId: 'a', collectionId: 'c1', title: serverTitle, parentId: null, myPermission: 'read-write' });
+      const answer = (data: unknown) => ({ data, response: new Response(null, { status: 200 }) });
+      const api = {
+        GET: async (path: string) => (path === '/v1/pages/by-url-id/{urlId}' ? answer(record()) : answer({ pages: SERVER.pages.map((p) => (p.id === 'a' ? { ...p, title: serverTitle } : p)) })),
+        PATCH: async (_path: string, init: { body: { title: string } }) => {
+          await gates.get(init.body.title);
+          serverTitle = init.body.title;
+          return answer({});
+        },
+      } as unknown as ApiLike;
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-      const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-      // Two surfaces of one screen, as the page head and the tree are: each has its own actions, over the same client.
-      const header = renderHook(() => useTreeActions(slowFirst, 'c1'), { wrapper });
-      const tree = renderHook(() => useTreeActions(slowFirst, 'c1'), { wrapper });
-      return { header, tree, release: () => release() };
+      const session = { auth: {}, api, collabUrl: 'ws://x', apiUrl: 'http://x' } as unknown as Session;
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <SessionContext.Provider value={session}>
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        </SessionContext.Provider>
+      );
+      // The page screen reads the record; its head and the tree each have their own actions, over the same client.
+      const open = renderHook(() => ({ page: usePage('a'), tree: useCollectionTree(api, 'c1') }), { wrapper });
+      const head = renderHook(() => useTreeActions(api, 'c1'), { wrapper });
+      const tree = renderHook(() => useTreeActions(api, 'c1'), { wrapper });
+      const shown = () => (open.result.current.page.data?.kind === 'found' ? open.result.current.page.data.page.title : undefined);
+      return { open, head, tree, shown, release: (title: string) => holds.get(title)?.(), server: () => serverTitle, client };
     };
 
-    it('says that only the one that began last is the latest, whichever surface made it and whatever the order of the answers (a header rename and a tree rename racing)', async () => {
-      const { header, tree, release } = racing();
-      let first: unknown;
-      let second: unknown;
+    it.each([
+      ['the head answered first, the tree last', ['From the head', 'From the tree'], 'From the tree'],
+      ['the tree answered first, the head last', ['From the tree', 'From the head'], 'From the head'],
+    ])('ends with the page record, the open page and the tree all on the server title (%s)', async (_name, order, finalTitle) => {
+      const t = race();
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect(t.open.result.current.tree.data).toBeDefined());
       await act(async () => {
-        const slow = header.result.current.rename('a', 'From the header');
-        second = await tree.result.current.rename('a', 'From the tree'); // began later, answered at once
-        release();
-        first = await slow; // began first, answered last
+        const fromHead = t.head.result.current.rename('a', 'From the head');
+        const fromTree = t.tree.result.current.rename('a', 'From the tree');
+        for (const title of order) {
+          t.release(title);
+          await Promise.resolve();
+          await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
+        }
+        await Promise.all([fromHead, fromTree]);
       });
-      expect(second).toMatchObject({ ok: true, latest: true });
-      expect(first).toMatchObject({ ok: true, latest: false });
+      expect(t.server()).toBe(finalTitle);
+      await waitFor(() => expect(t.shown()).toBe(finalTitle)); // what the open page draws from
+      const inTree = (t.client.getQueryData<readonly FlatPage[]>(treeKey('c1')) ?? []).find((p) => p.id === 'a')?.title;
+      expect(inTree).toBe(finalTitle);
     });
 
-    it('counts each page on its own: a rename of another page does not make this one stale', async () => {
-      const { header, tree, release } = racing();
-      let first: unknown;
-      let other: unknown;
-      await act(async () => {
-        const slow = header.result.current.rename('a', 'A renamed');
-        other = await tree.result.current.rename('b', 'B renamed');
-        release();
-        first = await slow;
-      });
-      expect(other).toMatchObject({ latest: true });
-      expect(first).toMatchObject({ ok: true, latest: true });
-    });
-
-    it('does not count the renames of another client of the same page (another tab keeps its own count; the server has the last word)', async () => {
-      const a = racing();
-      const b = racing();
-      let first: unknown;
-      await act(async () => {
-        const slow = a.header.result.current.rename('a', 'In tab A');
-        const inB = b.tree.result.current.rename('a', 'In tab B');
-        b.release();
-        await inB;
-        a.release();
-        first = await slow;
-      });
-      expect(first).toMatchObject({ latest: true });
+    it('shows the new title at once, before any answer, and a rename that fails ends on the title the server still has', async () => {
+      const t = race();
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      let pending: Promise<unknown> = Promise.resolve();
+      await act(async () => { pending = t.head.result.current.rename('a', 'From the head'); });
+      await waitFor(() => expect(t.shown(), 'at once').toBe('From the head'));
+      await act(async () => { t.release('From the head'); await pending; });
+      await waitFor(() => expect(t.shown()).toBe('From the head'));
     });
   });
 });

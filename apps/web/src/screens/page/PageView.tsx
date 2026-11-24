@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
+import { urlIdOf } from '../../app/routes';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
 import type { MountedEditor } from '../../editor/core/mount';
@@ -12,16 +12,14 @@ import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
 import { clientOf, lazyLimits, provideAttachments, quietApiOf, signedUrlsFrom } from '../../editor/attachments';
 import { sessionDirectory } from '../../editor/core/directory';
-import { queryKey, useApiQuery } from '../../api/query';
+import { useApiQuery } from '../../api/query';
 import { useTreeActions } from '../../tree/actions';
 import { recheckMinClientVersion } from '../../gate/recheck';
 import { notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
-import { verdictOf } from './latest';
 import { PageMenu } from './PageMenu';
 import { PageTitle } from './PageTitle';
-import { type PageResult, titled } from './usePage';
 import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
@@ -53,6 +51,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const session = useSession();
   const location = useLocation();
   const navigate = useNavigate();
+  const router = useContext(UNSAFE_DataRouterContext)?.router;
   const rootRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<ConnectionState>(IDLE);
   const [liveReady, setLiveReady] = useState(false);
@@ -83,36 +82,24 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   useEffect(() => {
     if ((location.state as { newPage?: boolean } | null)?.newPage === true) navigate('.', { replace: true, state: null });
   }, []);
-  const client = useQueryClient();
-  // The key of the location now, or null once this page has gone from the screen.
-  const hereKey = useRef<string | null>(location.key);
-  hereKey.current = location.key;
-  useEffect(() => {
-    hereKey.current = location.key;
-    return () => {
-      hereKey.current = null;
-    };
-  });
   const treeActions = useTreeActions(session?.api ?? (null as never), page.collectionId);
   /**
-   * Saves the title through the rename the tree uses (the tree shows it at once), then shows it here and in the address (the slug of the address follows the title; an old address still finds the page by
-   * the id at its end); false when the server refused it. The page is not rebuilt for it: the main area is keyed by the page's id, not by its address.
+   * Saves the title through the rename the tree uses; false when the server refused it. Nothing is decided here about which of several overlapping renames wins: the rename reads the page record again when it
+   * is answered, and the heading and the address below follow the title that record holds, whichever surface (this head or the tree) made the change and in whatever order the answers came.
    */
-  const saveTitle = async (title: string): Promise<boolean> => {
-    const pressedAt = hereKey.current;
-    const outcome = await treeActions.rename(page.id, title); // `latest`: of the renames of this page from the head and the tree, this one began last
-    const verdict = verdictOf(() => outcome.latest, outcome.ok); // a later rename began meanwhile: its title and its address are the ones to show, whichever answer came last
-    let moved = false;
-    if (verdict === 'applied') {
-      // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
-      client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
-      // The address is changed only if the person is still on this page, where they pressed Enter (the key of the location; none once the page is gone): they may have gone elsewhere meanwhile.
-      moved = hereKey.current === pressedAt;
-      if (moved) navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
-    }
-    log('info', 'web.title_rename_settled', { page: page.id, verdict, moved }); // what was decided, for the log and for a test to wait on
-    return verdict !== 'refused';
-  };
+  const saveTitle = async (title: string): Promise<boolean> => (await treeActions.rename(page.id, title)).ok;
+  // The address follows the title of the page record: the slug of `/p/<slug>-<id>` is made from it. This runs only while this page is the open screen on its own address (a person who went to another page, or to
+  // its history, is not brought back), replaces the entry (no history is added), keeps the query and the fragment, and rebuilds nothing: the main area is keyed by the page's id, not by its address. An old
+  // address of a renamed page is brought to the current one the same way.
+  useEffect(() => {
+    // A person who is on the way somewhere else is not sent back. What this effect saw in its render may be older than the router: a link followed a moment ago has begun (`navigation` of the router) or has
+    // already arrived (`location` of the router), and the render here has not caught up. So the router itself is asked, now, and the address is touched only if nothing is pending and it is still where this render was.
+    if (router !== undefined && (router.state.navigation.state !== 'idle' || router.state.location.pathname !== location.pathname)) return;
+    const own = /^\/p\/([^/]+)$/.exec(location.pathname);
+    if (own === null || urlIdOf(own[1]!) !== page.urlId) return;
+    const wanted = pagePath(page.title, page.urlId);
+    if (location.pathname !== wanted) navigate({ pathname: wanted, search: location.search, hash: location.hash }, { replace: true, state: location.state });
+  }, [page.title, page.urlId, location.pathname, location.search, location.hash, location.state, navigate, router]);
 
   useEffect(() => editableRef.current(!readOnly && state.stopped === null), [readOnly, state.stopped]);
 

@@ -12,7 +12,7 @@ import '../support/dom';
 const flat = (id: string, parentId: string | null, position: string, title: string): FlatPage => ({ id, urlId: id, parentId, position, title, icon: null });
 const PAGES = [flat('a', null, 'p1', 'Alpha'), flat('b', null, 'p2', 'Beta'), flat('a1', 'a', 'p1', 'Alpha one')];
 const ok = () => Promise.resolve({ ok: true as const, data: undefined });
-const fakeActions = () => ({ create: vi.fn<TreeActions['create']>(ok), rename: vi.fn<TreeActions['rename']>(() => Promise.resolve({ ok: true as const, data: undefined, latest: true })), move: vi.fn<TreeActions['move']>(ok), remove: vi.fn<TreeActions['remove']>(ok) }) satisfies TreeActions;
+const fakeActions = () => ({ create: vi.fn<TreeActions['create']>(ok), rename: vi.fn<TreeActions['rename']>(ok), move: vi.fn<TreeActions['move']>(ok), remove: vi.fn<TreeActions['remove']>(ok) }) satisfies TreeActions;
 const show = (actions: TreeActions | null = fakeActions()) => render(<MemoryRouter><Tree items={buildTree(PAGES)} editing={actions === null ? undefined : { actions, pages: PAGES }} /></MemoryRouter>);
 const openMenu = async (title: string) => { await userEvent.click(screen.getByRole('button', { name: `Actions for ${title}` })); };
 

@@ -86,7 +86,7 @@ function mountPage(
     staleHeader?: boolean;
     markdownStatus?: number;
     markdownGate?: Promise<void>;
-    renameGate?: Promise<void>;
+    at?: string;
     hiddenMs?: number;
     meRole?: string;
     onReplaced?: () => void;
@@ -97,10 +97,6 @@ function mountPage(
   const fake = fakeEngine();
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
-    PATCH: vi.fn(async () => {
-      await options.renameGate;
-      return { data: {}, response: new Response('', { status: 200 }) };
-    }),
     GET: vi.fn(async (path: string) => {
       if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222', ...(options.meRole === undefined ? {} : { role: options.meRole }) }, response: new Response('', { status: 200 }) };
       if (options.markdownGate) await options.markdownGate;
@@ -118,7 +114,9 @@ function mountPage(
     setPage.current = set;
     return <PageView page={current} engine={engine} {...(options.onReplaced === undefined ? {} : { onReplaced: options.onReplaced })} />;
   };
-  const router = createMemoryRouter([{ path: '/', element: <Host /> }], { initialEntries: [{ pathname: '/', state: options.state }] });
+  const entry = new URL(options.at ?? '/', 'http://x.test');
+  // The page is on `/` and on `/p/:slug` (a rename changes the slug within the one route: nothing is rebuilt); any other address is a screen of no page.
+  const router = createMemoryRouter([{ path: '/', element: <Host /> }, { path: '/p/:slug', element: <Host /> }, { path: '*', element: <p>another screen</p> }], { initialEntries: [{ pathname: entry.pathname, search: entry.search, hash: entry.hash, state: options.state }] });
   const tree = (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <SessionContext.Provider value={value}>
@@ -539,22 +537,40 @@ describe('the page screen', () => {
     await waitFor(() => expect(second.router.state.location.pathname).toBe('/p/page-zz99/history'));
   });
 
-  it('moves the address to the new title when the person is still on the page after the rename, and not when they went elsewhere while it was on its way', async () => {
-    const stayed = mountPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Plan' }));
-    await userEvent.keyboard('Renamed{Enter}');
-    await waitFor(() => expect(stayed.router.state.location.pathname).toBe('/p/renamed-abc'));
-    cleanup();
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    const left = mountPage({ renameGate: gate });
-    await userEvent.click(await screen.findByRole('button', { name: 'Plan' }));
-    await userEvent.keyboard('Renamed{Enter}');
-    await act(async () => { await left.router.navigate('/elsewhere'); });
-    await act(async () => { release(); await gate; });
-    await waitFor(() => expect(left.api.PATCH).toHaveBeenCalledTimes(1));
-    await act(async () => undefined);
-    expect(left.router.state.location.pathname).toBe('/elsewhere');
+  describe('the address follows the title of the page record', () => {
+    it('is replaced when the title changes, with no history entry added and nothing rebuilt', async () => {
+      const t = mountPage({ at: '/p/plan-abc' });
+      await t.synced();
+      const editor = t.root();
+      await t.setPage(page({ title: 'Renamed' }));
+      expect(t.router.state.location.pathname).toBe('/p/renamed-abc');
+      expect(t.router.state.historyAction).toBe('REPLACE');
+      expect(t.root(), 'the page was not rebuilt').toBe(editor);
+    });
+
+    it('brings an old address of the page to the current one on opening, keeping the query and the fragment', async () => {
+      const t = mountPage({ at: '/p/some-old-name-abc?x=1#top' });
+      await waitFor(() => expect(t.router.state.location.pathname).toBe('/p/plan-abc'));
+      expect(t.router.state.location.search).toBe('?x=1');
+      expect(t.router.state.location.hash).toBe('#top');
+    });
+
+    it.each([
+      ['another page', '/p/other-zz'],
+      ['the history of this page', '/p/plan-abc/history'],
+      ['a screen of no page', '/elsewhere'],
+    ])('does not bring a person back from %s when the title changes', async (_name, at) => {
+      const t = mountPage({ at });
+      await t.setPage(page({ title: 'Renamed' }));
+      expect(t.router.state.location.pathname).toBe(at);
+    });
+
+    it('does nothing for an address that is already the current one', async () => {
+      const t = mountPage({ at: '/p/plan-abc' });
+      await t.synced();
+      expect(t.router.state.location.pathname).toBe('/p/plan-abc');
+      expect(t.router.state.historyAction).toBe('POP');
+    });
   });
 
   it('a second reset replaces the offered copy and starts its notice afresh: "Copied." never refers to the old copy', async () => {
