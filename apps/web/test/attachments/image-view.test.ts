@@ -34,6 +34,7 @@ describe('which image sources are uploaded files', () => {
   it('names the host of an address, and says what else it is when there is none', () => {
     expect(placeholderHost('https://evil.test/p.png')).toBe('evil.test');
     expect(placeholderHost('http://a.example:8080/x')).toBe('a.example');
+    expect(placeholderHost('//photos.example.com/x.png')).toBe('photos.example.com'); // no scheme, a host: external too
     expect(placeholderHost('data:image/png;base64,AAAA')).toBe('embedded data');
     expect(placeholderHost('./x.png')).toBe('./x.png');
     expect(placeholderHost(`./${'a'.repeat(100)}.png`).length).toBeLessThanOrEqual(60);
@@ -175,6 +176,71 @@ describe('the image node view', () => {
     expect(dom.querySelector('img')).toBeNull();
     await settle();
     expect(fetchUrls).not.toHaveBeenCalled();
+  });
+
+  it('treats an address with no scheme but a host (//host/path) as external, with the host linked', () => {
+    const dom = viewOf('//photos.example.com/x.png').dom as HTMLElement;
+    expect(dom.dataset['state']).toBe('external');
+    expect(dom.textContent).toBe('External image not loaded: photos.example.com');
+    expect(dom.querySelector('a')?.getAttribute('href')).toBe('https://photos.example.com/x.png');
+    expect(dom.querySelector('img')).toBeNull();
+  });
+
+  it('carries the title of the image onto the img, and follows a change of it', async () => {
+    const titled = (title: string) => harness.view.state.schema.nodes['image']!.create({ src: SRC, alt: 'a', title });
+    const view = imageView(titled('Caption'), harness.view);
+    await settle();
+    const img = (view.dom as HTMLElement).querySelector('img')!;
+    expect(img.getAttribute('title')).toBe('Caption');
+    update(view, titled('Other'));
+    expect(img.getAttribute('title')).toBe('Other');
+    update(view, titled(''));
+    expect(img.hasAttribute('title')).toBe(false);
+  });
+
+  it('does not replace in a loop a link that is already near its end (a clock ahead of the server)', async () => {
+    vi.useFakeTimers();
+    fetchUrls.mockImplementation(async (ids: string[]) => new Map(ids.map((id) => [id, link(1, Date.now() + 10_000)] as const)));
+    const view = viewOf(SRC);
+    await vi.advanceTimersByTimeAsync(0);
+    (view.dom as HTMLElement).querySelector('img')!.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(fetchUrls).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries a refresh before expiry again when it fails, three more times, and then leaves the image as it is', async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    fetchUrls.mockResolvedValueOnce(new Map([[ID, link(7, now + 100_000)]]));
+    fetchUrls.mockRejectedValue(new Error('offline'));
+    const view = viewOf(SRC);
+    await vi.advanceTimersByTimeAsync(0);
+    const img = (view.dom as HTMLElement).querySelector('img')!;
+    await vi.advanceTimersByTimeAsync(70_000);
+    expect(fetchUrls).toHaveBeenCalledTimes(2); // the due refresh failed
+    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchUrls).toHaveBeenCalledTimes(5);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchUrls).toHaveBeenCalledTimes(5);
+    expect(img.getAttribute('src')).toBe('https://files.test/7?sig=7');
+  });
+
+  it('a failed image stays failed: an answer still on its way does not bring it back', async () => {
+    let release: (m: Map<string, SignedUrl>) => void = () => undefined;
+    const view = viewOf(SRC);
+    const dom = view.dom as HTMLElement;
+    await settle();
+    fetchUrls.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const img = dom.querySelector('img')!;
+    img.dispatchEvent(new Event('error')); // asks for a replacement, which is slow
+    img.dispatchEvent(new Event('error')); // fails again before it came
+    expect(dom.dataset['state']).toBe('failed');
+    release(new Map([[ID, link(9)]]));
+    await settle();
+    expect(dom.dataset['state']).toBe('failed');
+    expect(dom.textContent).toContain("Image couldn't be loaded");
   });
 
   it('links the host of a web address by the one link rule, and not a data address', () => {

@@ -2,6 +2,7 @@ import { imageWithLink } from '@tektum/grimoire-editor-schema';
 import { $view } from '@milkdown/utils';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import type { EditorView, NodeView } from '@milkdown/prose/view';
+import { log } from '../../logging';
 import { isSafeHref } from '../../safety';
 import { linksOf } from './host';
 import { attachmentId, placeholderHost } from './path';
@@ -11,6 +12,9 @@ import { EXPIRY_MARGIN_MS, type SignedUrl } from './urls';
 const MAX_TIMER_MS = 2_000_000_000;
 /** Never sooner than this after a link was set: a link that is already inside its margin must not make a loop of timed refreshes. */
 const MIN_REFRESH_MS = 5_000;
+/** A refresh before expiry that failed is tried again this many times, this long after, and then left to the error path (the image reloading with the link it has). */
+const TIMED_RETRIES = 3;
+const TIMED_RETRY_MS = 10_000;
 
 type State = 'loading' | 'ready' | 'failed' | 'external';
 
@@ -27,6 +31,11 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
   let generation = 0; // a late answer for an earlier source or a destroyed view is dropped
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  const setTitle = (img: HTMLImageElement): void => {
+    const title = current.attrs['title'];
+    if (typeof title === 'string' && title !== '') img.title = title;
+    else img.removeAttribute('title');
+  };
   const setState = (state: State): void => { dom.dataset['state'] = state; };
   const clear = (): void => {
     generation += 1;
@@ -39,9 +48,10 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     const text = document.createElement('span');
     text.append('External image not loaded: ');
     const host = placeholderHost(src);
-    if (/^https?:\/\//i.test(src) && isSafeHref(src)) {
+    const address = src.startsWith('//') ? `https:${src}` : src; // an address with no scheme but a host: the page's own scheme would be used, and the link says https
+    if (/^https?:\/\//i.test(address) && isSafeHref(address)) {
       const a = document.createElement('a');
-      a.href = src;
+      a.href = address;
       a.rel = 'noopener noreferrer';
       a.target = '_blank';
       a.textContent = host;
@@ -51,6 +61,7 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
   };
 
   const failed = (): void => {
+    generation += 1; // final: an answer still on its way must not bring the image back, or set a timer
     clearTimeout(timer);
     setState('failed');
     dom.replaceChildren(Object.assign(document.createElement('span'), { textContent: "Image couldn't be loaded" }));
@@ -61,16 +72,26 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     const links = linksOf(view.dom);
     const img = document.createElement('img');
     img.alt = String(current.attrs['alt'] ?? '');
+    setTitle(img);
     dom.append(img);
     setState('loading');
     if (links === null) return failed();
     let refreshed = false; // one replacement is asked for because of a failure between two successful loads: a link that keeps failing is not asked for again and again
+    const refreshBeforeExpiry = (retries: number): void => {
+      links.refresh(id).then(show, () => {
+        if (mine !== generation) return;
+        log('warn', 'web.attachment_link_refresh_failed', { retriesLeft: retries });
+        if (retries > 0) timer = setTimeout(() => refreshBeforeExpiry(retries - 1), TIMED_RETRY_MS);
+      });
+    };
     const show = (link: SignedUrl): void => {
       if (mine !== generation) return;
       img.src = link.url;
       clearTimeout(timer);
-      const wait = Math.min(MAX_TIMER_MS, Math.max(MIN_REFRESH_MS, link.expiresAt - EXPIRY_MARGIN_MS - Date.now()));
-      timer = setTimeout(() => void links.refresh(id).then(show, () => undefined), wait);
+      // Only a link that stays good for longer than the margin and the minimum gets a timer: one that is already near its end (a clock that is ahead of the server's) is not
+      // replaced in a loop; the image keeps it and the error path replaces it once if it fails.
+      const wait = link.expiresAt - EXPIRY_MARGIN_MS - Date.now();
+      if (wait >= MIN_REFRESH_MS) timer = setTimeout(() => refreshBeforeExpiry(TIMED_RETRIES), Math.min(MAX_TIMER_MS, wait));
     };
     const refreshOnce = (): void => {
       if (refreshed) return failed(); // it failed again after a new link: not a matter of expiry
@@ -102,7 +123,11 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
       const sourceChanged = next.attrs['src'] !== current.attrs['src'];
       current = next;
       if (sourceChanged) render();
-      else dom.querySelector('img')?.setAttribute('alt', String(next.attrs['alt'] ?? ''));
+      else {
+        const img = dom.querySelector('img');
+        img?.setAttribute('alt', String(next.attrs['alt'] ?? ''));
+        if (img !== null) setTitle(img);
+      }
       return true;
     },
     selectNode: () => dom.classList.add('is-selected'),

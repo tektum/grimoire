@@ -45,7 +45,8 @@ export function createUrlBatcher(fetchUrls: FetchUrls, now: () => number = Date.
             const link = answer.get(id);
             if (link === undefined) taken.get(id)!.reject(new Error(`no link for attachment ${id}`));
             else {
-              held.set(id, link);
+              // A link that is already inside its margin is handed out (nothing better is to be had, and a clock that is ahead of the server's must not stop the image) but not kept.
+              if (link.expiresAt - EXPIRY_MARGIN_MS > now()) held.set(id, link);
               taken.get(id)!.resolve(link);
             }
           }

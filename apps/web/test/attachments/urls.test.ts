@@ -35,6 +35,14 @@ describe('the signed-URL batcher', () => {
     expect(store.calls).toHaveLength(2);
   });
 
+  it('hands out a fresh link that is already inside its margin, but does not keep it', async () => {
+    const store = fakeStore({ expiresAt: 10_000 });
+    const batcher = createUrlBatcher(store.fetchUrls, () => 0);
+    expect((await batcher.url(id(1))).expiresAt).toBe(10_000); // 10 s left: inside the 30 s margin
+    await batcher.url(id(1));
+    expect(store.calls).toHaveLength(2);
+  });
+
   it(`splits more than ${MAX_BATCH} ids into requests of at most ${MAX_BATCH}`, async () => {
     const store = fakeStore();
     const batcher = createUrlBatcher(store.fetchUrls, () => 0);

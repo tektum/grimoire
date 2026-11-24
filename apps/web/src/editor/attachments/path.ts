@@ -14,7 +14,7 @@ export function attachmentId(src: unknown): string | null {
 /** What a source that is not an uploaded file says in place of the image: where it would have come from. */
 export function placeholderHost(src: string): string {
   try {
-    const url = new URL(src);
+    const url = new URL(src.startsWith('//') ? `https:${src}` : src); // no scheme but a host: an external address
     if (url.protocol === 'http:' || url.protocol === 'https:') return url.hostname;
     return url.protocol === 'data:' ? 'embedded data' : url.protocol;
   } catch {
