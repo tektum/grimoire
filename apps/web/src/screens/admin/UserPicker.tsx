@@ -47,7 +47,7 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
       </form>
       {found.isError && (
         <p role="alert">
-          Couldn&apos;t search. <Button onClick={() => void (found.data === undefined ? found.refetch() : found.fetchNextPage())}>Try again</Button>
+          Couldn&apos;t search. <Button onClick={() => void (found.isFetchNextPageError ? found.fetchNextPage() : found.refetch())}>Try again</Button>
         </p>
       )}
       {q !== '' && found.data !== undefined && offered.length === 0 && !found.hasNextPage && !found.isError && <p>No one to add</p>}
