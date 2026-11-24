@@ -50,6 +50,7 @@ test('the reset dialog, asked and then at the stale confirmation, light and dark
   } finally {
     await reset.stop();
   }
+});
 
 test('a group with its members, light and dark', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
