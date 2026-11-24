@@ -5,7 +5,7 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 | Stage | File | What it makes |
 |---|---|---|
 | `descope-dev` | `descope-dev.ts` | the Descope project "Grimoire development", for local runs |
-| `staging` | (hosting, with its own Descope project "Grimoire staging") | the next change |
+| `staging` | `staging.ts` | the hosted staging site (below) and its own Descope project "Grimoire staging" |
 
 ## One Descope project for each stage, all of it code
 
@@ -21,6 +21,23 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 | look | `Styles` | the design tokens |
 
 The flow is the Descope template "Sign up or in - OTP or sniper email link" (one-time code by email, with a shortcut to the reader's mail inbox), checked with the management API's `ValidateFlow` and kept as a file so a change to it is a pull request. The id of each stage's project is the stack's output (and an SST link), so the application takes it from there, not from a variable set by hand.
+
+## The staging site (`staging.ts`)
+
+One Fargate task (the image of the `Dockerfile`, which serves the web client and the API on port 8080) behind an HTTPS load balancer at `STAGING_DOMAIN`, with the Route 53 zone of that domain looked up (never made), a certificate validated through it, and an HTTP to HTTPS redirect. The load balancer checks `/readyz`.
+
+| Part | Resource | Notes |
+|---|---|---|
+| network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway) |
+| database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate`; the two role passwords are random and live in the state |
+| files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the server runs in `external` CORS mode, so it checks the rule and never writes it) | virtual addressing; the file origin in the policy names the bucket host |
+| identity | the Descope project of the stage | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID` |
+| task | `db-setup`, then `migrate`, then `app` (`init-order.ts`) | the first two are not essential and the next container waits for each one's exit with 0 (ECS `dependsOn` with `SUCCESS`): a failing step stops the task before it serves, the old task keeps serving |
+| file access | the task role, `GetObject`, `PutObject` and `DeleteObject` on the bucket's objects and `ListBucket` on the bucket | no access keys anywhere |
+
+Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_ALLOWED_EMAIL_DOMAINS` (comma separated) and `STAGING_FIRST_ADMIN_EMAILS` (optional). Run `diff` for `staging` first.
+
+Stated plainly: one task only (`scaling` is 1 to 1), because the migrations take no lock and two new tasks would race. The database connection is encrypted but not verified (`sslmode=no-verify`): the managed database requires TLS and its certificate chain is not in the container's trust store; the connection stays inside the VPC. Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the file store check at start.
 
 ## What it does not make
 
@@ -53,5 +70,5 @@ The Descope plugin is a binary that runs with the Descope token in its environme
 ## Running it
 
 - On a pull request that touches `sst.config.ts` or `infra/`: only `bun run check:infra` (installs the providers and typechecks the config). No credentials, no environment.
-- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`. Read the `diff` first.
+- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `descope-dev` or `staging`. Read the `diff` first.
 - Locally with your own credentials: `bunx sst diff --stage descope-dev` with AWS credentials in the environment and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).
