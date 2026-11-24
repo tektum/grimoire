@@ -10,7 +10,20 @@ export interface MadePage {
   readonly path: string;
 }
 
+/** The first call of a person provisions their row, with the role of their token: the administrator makes themselves known to the server before anything else (a collection by someone it does not know yet is refused). */
+let administrator: Promise<void> | undefined;
+function provisionAdministrator(): Promise<void> {
+  administrator ??= (async () => {
+    const response = await fetch(`${apiUrl()}/v1/me`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-admin', 'admin')}` } });
+    if (!response.ok) throw new Error(`GET /v1/me as the administrator answered ${response.status}`);
+    const me = (await response.json()) as { role?: string };
+    if (me.role !== 'admin') throw new Error(`the administrator of the specs has the role ${String(me.role)}`);
+  })();
+  return administrator;
+}
+
 async function call<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+  await provisionAdministrator();
   const response = await fetch(`${apiUrl()}${path}`, {
     method,
     headers: { Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-admin', 'admin')}`, 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },
