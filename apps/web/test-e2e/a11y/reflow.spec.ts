@@ -37,3 +37,32 @@ for (const [zoom, width, height] of [
     expect(wide, `routes that scroll sideways at ${zoom}`).toEqual([]);
   });
 }
+
+test('the access table, with its rows, fits at 320 pixels: every control is inside the window and none overlaps the next', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }), viewport: { width: 320, height: 640 } });
+  try {
+    await signInAs(context, 'e2e-admin', 'admin');
+    const page = await context.newPage();
+    await page.goto(`/admin/collections/${world.collectionId}/access`);
+    const table = page.getByRole('table', { name: 'Who has access' });
+    await expect(table.getByRole('row')).toHaveCount(3); // the header and the two entries of the world
+    const boxes = await table.locator('select, button').evaluateAll((controls) =>
+      controls.map((c) => ({
+        label: c.getAttribute('aria-label') ?? '',
+        ...(c.getBoundingClientRect().toJSON() as { left: number; right: number; top: number; height: number }),
+        cellRight: (c.closest('td') as HTMLElement).getBoundingClientRect().right,
+      })),
+    );
+    expect(boxes.length).toBe(4);
+    for (const box of boxes) {
+      expect(box.right, `${box.label} ends inside the window`).toBeLessThanOrEqual(320);
+      expect(box.right, `${box.label} ends inside its own cell`).toBeLessThanOrEqual(box.cellRight);
+      expect(box.height, `${box.label} is one line (its text is not broken up)`).toBeLessThanOrEqual(44);
+    }
+    const rows = [boxes.slice(0, 2), boxes.slice(2)];
+    for (const [choice, remove] of rows) expect(choice!.right, `${choice!.label} ends before ${remove!.label}`).toBeLessThanOrEqual(remove!.left);
+    expect(await horizontalOverflow(page)).toBe(0);
+  } finally {
+    await context.close();
+  }
+});

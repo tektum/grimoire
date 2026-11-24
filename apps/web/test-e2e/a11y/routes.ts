@@ -29,7 +29,12 @@ export const STOPS: readonly Stop[] = [
   { route: '/import', who: 'member', path: () => '/import', pending: 'M6-T12a' },
   { route: '/admin/users', who: 'admin', path: () => '/admin/users' },
   { route: '/admin/groups', who: 'admin', path: () => '/admin/groups' },
-  { route: '/admin/collections/:id/access', who: 'admin', path: (w) => `/admin/collections/${w.collectionId}/access` },
+  {
+    route: '/admin/collections/:id/access',
+    who: 'admin',
+    path: (w) => `/admin/collections/${w.collectionId}/access`,
+    ready: async (page) => void (await page.getByRole('table', { name: 'Who has access' }).getByRole('row').nth(1).waitFor()),
+  },
   { route: '/help', who: 'member', path: () => '/help' },
   { route: '*', who: 'member', path: () => '/nowhere/at/all' },
 ];
