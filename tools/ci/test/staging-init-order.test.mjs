@@ -51,3 +51,10 @@ test('no component of the staging stack is named "App": SST refuses that name fo
   assert.ok(names.includes("Server"), names.join());
   assert.equal(names.some((name) => name.toLowerCase() === 'app'), false, names.join());
 });
+
+test('every load balancer rule of the staging service names its container: SST refuses a rule without one when the task has more than one container (app, migrate, db-setup), a check that only a deploy ran before', () => {
+  const source = readFileSync(new URL('../../../infra/staging.ts', import.meta.url), 'utf8');
+  const rules = [...source.matchAll(/\{ listen: '[^']+'[^\n]*\},?$/gm)].map((m) => m[0]);
+  assert.equal(rules.length, 2, rules.join());
+  for (const rule of rules) assert.match(rule, /container: '(app)'/, rule);
+});
