@@ -121,6 +121,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         live = mounted;
         liveGeneration = generation;
         editableRef.current = (flag) => live?.setEditable(flag);
+        live.setEditable(editable()); // a read-only signal that came while the editor was being built applies now
         setLiveReady(true);
         const handed = restoreRef.current;
         if (handed !== null) {

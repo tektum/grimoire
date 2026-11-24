@@ -391,8 +391,8 @@ describe('the page screen', () => {
     await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
     expect(t.root().textContent).toBe('live');
     arrive(); // the saved text arrives after the live editor is up
-    await act(async () => undefined);
-    await act(async () => undefined);
+    await (t.api.GET as unknown as { mock: { results: { value: Promise<unknown> }[] } }).mock.results[0]!.value; // the request has settled: that is the signal
+    await act(async () => undefined); // and the few steps that follow it have run
     expect(t.root().textContent).toBe('live');
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
     expect(t.events).not.toContain('saved-destroyed'); // it was never mounted
@@ -409,5 +409,17 @@ describe('the page screen', () => {
     await waitFor(() => expect(t.sessions).toHaveLength(2));
     await waitSaved();
     expect(screen.queryByText(STALE_TEXT)).toBeNull();
+  });
+
+  it('a read-only signal that arrives while the live editor is being built applies to it once it exists', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => void (release = resolve));
+    const t = mountPage({ engine: (base) => ({ mountLive: async (o) => (await gate, base.mountLive(o)) }) });
+    await waitSaved();
+    await t.synced();
+    await act(async () => void t.sessions[0]!.provider.stateless({ kind: 'refusal', code: 'state-cap' })); // too large, before the editor exists
+    release();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    expect(t.lives[0]!.editable).toBe(false);
   });
 });
