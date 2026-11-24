@@ -23,9 +23,9 @@ test('it has read-only permissions, no persisted credentials and a blocked gate 
   for (const v of ['DESCOPE_DEV_PROJECT_ID', 'DESCOPE_DEV_TEST_LOGIN', 'DESCOPE_DEV_MANAGEMENT_KEY']) assert.match(wf, new RegExp(`\\[ -z "\\$\\{${v}\\}" \\]`));
 });
 
-test('the secret lives in an environment and is not used by any other workflow', () => {
+test('the secret lives in an environment and is not used by any other workflow (except the dev infrastructure one)', () => {
   assert.match(wf, /environment: descope-dev/);
-  for (const f of readdirSync(join(root, '.github/workflows')).filter((n) => n !== 'descope-live-m3.yml')) {
+  for (const f of readdirSync(join(root, '.github/workflows')).filter((n) => n !== 'descope-live-m3.yml' && n !== 'descope-infra.yml')) {
     assert.doesNotMatch(readFileSync(join(root, '.github/workflows', f), 'utf8'), /DESCOPE_DEV_|descope-live|m3-live/, f);
   }
 });

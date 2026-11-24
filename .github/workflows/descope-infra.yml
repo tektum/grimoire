@@ -1,0 +1,70 @@
+name: Descope dev infrastructure
+# `plan` runs on pull requests that touch infra/descope (it changes nothing). `apply` runs only on a
+# manual dispatch. Both use the environment `descope-dev` and its secret DESCOPE_DEV_MANAGEMENT_KEY,
+# so they stop at the first step that needs it until the owner has created them. No state file is kept.
+on:
+  pull_request:
+    paths:
+      - "infra/descope/**"
+      - ".github/workflows/descope-infra.yml"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Type apply to change the development project"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: descope-infra
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: descope-dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Plan
+        working-directory: infra/descope
+        env:
+          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          tofu init -input=false
+          tofu validate
+          tofu plan -input=false -lock=false -no-color
+
+  apply:
+    name: Apply
+    if: github.event_name == 'workflow_dispatch' && inputs.apply == 'apply'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: descope-dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: opentofu
+      - name: Apply
+        working-directory: infra/descope
+        env:
+          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          tofu init -input=false
+          tofu apply -input=false -auto-approve -no-color
