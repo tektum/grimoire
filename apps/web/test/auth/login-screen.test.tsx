@@ -70,6 +70,17 @@ describe('the sign-in screen', () => {
     expect(await screen.findByRole('button', { name: 'descope P-test at https://api.eu1.example.test' })).toBeTruthy();
   });
 
+  it('puts the provider flow in an element of its own, apart from the notices next to it', async () => {
+    const { container } = render(<div />); // keeps the helper's own render out of the way
+    container.remove();
+    screenWith({ config: config({ local: false, providerProjectId: 'P-test' }), search: '?reason=expired' });
+    const flow = (await screen.findByRole('button', { name: 'descope P-test' })).closest('.login-flow');
+    expect(flow).not.toBeNull();
+    expect(flow?.parentElement?.tagName).toBe('MAIN');
+    expect(screen.getByRole('status').parentElement).toBe(flow?.parentElement);
+    expect(flow?.contains(screen.getByRole('status'))).toBe(false);
+  });
+
   it('shows "Sign-in did not finish. Try again." as an alert when the provider flow reports an error, and clears it when the flow then succeeds', async () => {
     const t = screenWith({ config: config({ local: false, providerProjectId: 'P-test' }) });
     (await screen.findByRole('button', { name: 'flow error' })).click();

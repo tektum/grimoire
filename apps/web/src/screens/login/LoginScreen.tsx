@@ -63,14 +63,17 @@ export function LoginScreen(props: LoginScreenProps) {
     body = <p className="login-notice">{LOGIN_TEXTS.noProject}</p>;
   } else {
     body = (
-      <Suspense fallback={null}>
-        <Descope
-          projectId={props.config.providerProjectId}
-          {...(props.config.providerBaseUrl == null ? {} : { baseUrl: props.config.providerBaseUrl })}
-          onSuccess={onFlowSuccess}
-          onError={onFlowError}
-        />
-      </Suspense>
+      // The provider's element moves nodes around its own place in the page; its own wrapper keeps those moves away from the notices React puts next to it.
+      <div className="login-flow">
+        <Suspense fallback={null}>
+          <Descope
+            projectId={props.config.providerProjectId}
+            {...(props.config.providerBaseUrl == null ? {} : { baseUrl: props.config.providerBaseUrl })}
+            onSuccess={onFlowSuccess}
+            onError={onFlowError}
+          />
+        </Suspense>
+      </div>
     );
   }
   return (
