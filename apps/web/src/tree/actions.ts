@@ -41,7 +41,8 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
     };
     const settle = async <T,>(call: () => Result, onOk?: (data: T) => void, before?: () => void): Promise<Outcome> => {
       before?.();
-      const outcome = await run<T>(call);
+      // A request that fails outright (the network) rejects after the wrapper has shown its notice: still an outcome, and still a new read, so a change shown at once is undone.
+      const outcome = await run<T>(call).catch((): Outcome<T> => ({ ok: false, status: 0, code: undefined }));
       if (outcome.ok) onOk?.(outcome.data);
       await client.invalidateQueries({ queryKey: key });
       return outcome;

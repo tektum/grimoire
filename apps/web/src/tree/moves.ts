@@ -81,7 +81,8 @@ export function applyDelete(pages: readonly FlatPage[], id: string): FlatPage[] 
 
 /**
  * The list as it will be after a move, for showing it before the server has answered: the page gets a sort key that fits its place (just after the
- * sibling, just before the one it goes before, or after all of them). The next read of the tree replaces these keys with the server's.
+ * sibling, just before the one it goes before, or after all of them). The anchor's key plus a space sorts right after the anchor and before any key that
+ * extends it (server keys are base62 and a space is below every digit). The next read of the tree replaces these keys with the server's.
  */
 export function applyMove(pages: readonly FlatPage[], id: string, to: Placement): FlatPage[] {
   const siblings = pages.filter((p) => p.parentId === to.parentId && p.id !== id).sort((a, b) => (a.position < b.position ? -1 : 1));
@@ -89,10 +90,10 @@ export function applyMove(pages: readonly FlatPage[], id: string, to: Placement)
   if (to.beforeId !== null) {
     const at = siblings.findIndex((p) => p.id === to.beforeId);
     const previous = siblings[at - 1];
-    position = previous === undefined ? ' ' : `${previous.position}~`; // nothing before it: a key that sorts first
+    position = previous === undefined ? ' ' : `${previous.position} `; // nothing before it: a key that sorts first
   } else {
     const anchor = to.afterId === null ? siblings[siblings.length - 1] : siblings.find((p) => p.id === to.afterId);
-    if (anchor !== undefined) position = `${anchor.position}~`;
+    if (anchor !== undefined) position = `${anchor.position} `;
   }
   return pages.map((p) => (p.id === id ? { ...p, parentId: to.parentId, position } : p));
 }

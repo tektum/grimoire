@@ -92,4 +92,18 @@ describe('useTreeActions', () => {
     });
     expect(bodies.map((b) => b.body)).toEqual([{ parentId: null, afterId: 'a' }, { parentId: null, beforeId: 'a' }, { parentId: 'a', afterId: null }]);
   });
+
+  it('reads the tree again and gives an outcome, without throwing, when the request itself fails (the network)', async () => {
+    const { api, calls } = fakeApi({ 'GET /v1/collections/{id}/tree': ok(SERVER) });
+    (api as unknown as { DELETE: () => Promise<never> }).DELETE = () => Promise.reject(new TypeError('network'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const view = renderHook(() => ({ tree: useCollectionTree(api, 'c1'), actions: useTreeActions(api, 'c1') }), { wrapper });
+    await waitFor(() => { expect(view.result.current.tree.data).toBeDefined(); });
+    let outcome;
+    await act(async () => { outcome = await view.result.current.actions.remove('a'); });
+    expect(outcome).toEqual({ ok: false, status: 0, code: undefined });
+    await waitFor(() => { expect((view.result.current.tree.data ?? []).map((x) => x.id)).toEqual(['a', 'b', 'a1']); }); // the page that was shown as gone is back
+    expect(calls.filter((c) => c.startsWith('GET /v1/collections/{id}/tree'))).toHaveLength(2);
+  });
 });

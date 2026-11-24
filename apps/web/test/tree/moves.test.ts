@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildTree } from '../../src/tree/model';
 import { applyCreate, applyDelete, applyMove, applyRename, descendantsOf, moveTargets, planDrop } from '../../src/tree/moves';
 import type { FlatPage } from '../../src/tree/model';
 
@@ -65,5 +66,14 @@ describe('local changes (shown at once, replaced by the next read of the tree)',
     expect(order(applyMove(PAGES, 'c', { parentId: null, afterId: null, beforeId: 'a' }), null)).toEqual(['c', 'a', 'b']); // first
     expect(order(applyMove(PAGES, 'c', { parentId: null, afterId: null, beforeId: 'b' }), null)).toEqual(['a', 'c', 'b']); // between
     expect(order(applyMove(PAGES, 'a1', under), 'b')).toEqual(['a1']);
+  });
+
+  it('gives the moved page a key that sorts between the neighbours when the server keys are fractional (a0, then a0V, then a1)', () => {
+    const keyed = [p('x', null, 'a0'), p('y', null, 'a0V'), p('z', null, 'a1'), p('m', null, 'b')];
+    const order = (pages: readonly FlatPage[]) => buildTree(pages).map((i) => i.id);
+    expect(order(applyMove(keyed, 'm', { parentId: null, afterId: 'x', beforeId: null }))).toEqual(['x', 'm', 'y', 'z']); // after x, before y
+    expect(order(applyMove(keyed, 'm', { parentId: null, afterId: null, beforeId: 'y' }))).toEqual(['x', 'm', 'y', 'z']);
+    expect(order(applyMove(keyed, 'm', { parentId: null, afterId: null, beforeId: 'x' }))).toEqual(['m', 'x', 'y', 'z']);
+    expect(order(applyMove(keyed, 'm', { parentId: null, afterId: 'y', beforeId: null }))).toEqual(['x', 'y', 'm', 'z']);
   });
 });
