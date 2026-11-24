@@ -25,18 +25,25 @@ test('it checks the browsers and the list of scenarios before it builds or start
   assert.match(steps[check - 1] ?? '', /playwright install --with-deps chromium firefox webkit/, 'it tries to install the browsers first');
 });
 
-test('it builds in e2e mode, runs check:build, and starts the stack with the handshake required', () => {
-  assert.ok(at(/vite build --mode e2e/) > 0);
-  assert.ok(at(/check:build/) > at(/vite build --mode e2e/));
+test('it runs check:build on a production build (an e2e build has the development sign-in, which it refuses), then builds in e2e mode, and starts the stack with the handshake required', () => {
+  const production = steps.findIndex((l) => /vite build && bun run check:build$/.test(l));
+  const e2e = at(/vite build --mode e2e/);
+  assert.ok(production > 0, 'a production build with the check after it');
+  assert.ok(e2e > production, 'the e2e build comes after the check, so that the stack is tried against it');
+  assert.equal(steps.filter((l) => /check:build/.test(l)).length, 1, 'the check runs once, and on no e2e build');
   const up = steps[at(/ up$/)] ?? '';
   assert.match(up, /M6_REQUIRE_HANDSHAKE=1/);
   assert.match(up, /COMPOSE_FILE=compose\.yaml:compose\.m6\.yaml/);
 });
 
-test('it serves the client with the headers rendered for the running stack, in both runs of the specifications', () => {
+test('it renders the headers once, in a line of its own that stops the run when it fails, and serves both runs with that folder', () => {
+  const render = steps.findIndex((l) => /^bun run apps\/web\/test-e2e\/m6\/headers\.ts$/.test(l));
   const runs = steps.filter((l) => /bunx playwright test/.test(l));
+  assert.ok(render > at(/files-setup/), 'after the stack is up, which the headers are rendered for');
+  assert.equal(steps.filter((l) => /m6\/headers\.ts/.test(l)).length, 1, 'once');
+  assert.ok(render < steps.findIndex((l) => /bunx playwright test/.test(l)), 'before the first run');
   assert.equal(runs.length, 2);
-  for (const run of runs) assert.match(run, /GRIMOIRE_WEB_HEADERS_DIR="\$\(bun run apps\/web\/test-e2e\/m6\/headers\.ts\)"/);
+  for (const run of runs) assert.match(run, /GRIMOIRE_WEB_HEADERS_DIR="\/[^"]*\/test-results\/m6-headers"/, 'an absolute folder: the server of the run starts in apps/web');
 });
 
 test('it runs the handshake check on its own first, then the scenarios in the three browsers', () => {
