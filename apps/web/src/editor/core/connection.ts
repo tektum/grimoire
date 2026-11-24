@@ -251,6 +251,8 @@ export class ConnectionManager {
         const mapping = mapSignal({ type: 'close', code: event.code, ...(event.reason === undefined ? {} : { reason: event.reason }) });
         // The server closes the socket a moment after it refused the token: that close is the same event, not a second refusal.
         if (mapping.behaviour === 'REFRESH' && this.timers.now() - this.refusedAt < REFUSAL_CLOSE_WINDOW_MS) return;
+        // The close of our own disconnect while the token is being refreshed is a plain drop: the refresh reconnects, so no retry of its own. A close that says more (access changed, a reset) still counts.
+        if (this.refreshingFor === from && (mapping.behaviour === 'RETRY' || mapping.behaviour === 'BUSY')) return;
         this.act(mapping);
         return;
       }

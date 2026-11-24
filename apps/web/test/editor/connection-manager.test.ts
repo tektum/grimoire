@@ -439,4 +439,20 @@ describe('what the first review found', () => {
     expect(h.last().provider.connects).toBe(2);
     expect(manager.state().stopped).toBeNull();
   });
+
+  it('the close of our own disconnect while a refresh runs schedules no retry: the connect waits for the new token, once', async () => {
+    const { h } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    p.close(1006); // what disconnect() looks like from the provider
+    expect(h.clock.pendingCount()).toBe(0);
+    await h.clock.advance(60_000);
+    expect(p.connects).toBe(1); // no connect with the token being replaced
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(2);
+  });
 });
