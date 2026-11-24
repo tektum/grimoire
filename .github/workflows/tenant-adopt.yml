@@ -77,40 +77,39 @@ jobs:
             [ -n "${!name}" ] || missing="${missing} ${name}"
           done
           [ -z "${missing}" ] || { echo "::error::the variable(s)${missing} of the environment ${STAGE} are not set"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: Take a snapshot of the database first, and wait until it can be restored from
+      - name: Find the database and the cluster of the stage, by their exact names, and check they are in one network
+        id: targets
         env:
           STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          # Retained resources of a replaced stage keep their prefix: exactly one database must match, and it must be the one in the network of the stage's service.
-          matches=$(aws rds describe-db-instances --query "DBInstances[?starts_with(DBInstanceIdentifier, 'grimoire-${STAGE}-')].DBInstanceIdentifier" --output json)
-          [ "$(printf '%s' "${matches}" | jq length)" = "1" ] || { echo "::error::expected one database of the stage ${STAGE}, found: ${matches}"; exit 1; }
-          instance=$(printf '%s' "${matches}" | jq -r '.[0]')
-          db_vpc=$(aws rds describe-db-instances --db-instance-identifier "${instance}" --query 'DBInstances[0].DBSubnetGroup.VpcId' --output text)
-          clusters=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')]" --output json)
-          [ "$(printf '%s' "${clusters}" | jq length)" = "1" ] || { echo "::error::expected one cluster of the stage ${STAGE}, found: ${clusters}"; exit 1; }
-          subnet=$(aws ecs describe-services --cluster "$(printf '%s' "${clusters}" | jq -r '.[0]')" --services Server --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets[0]' --output text)
-          service_vpc=$(aws ec2 describe-subnets --subnet-ids "${subnet}" --query 'Subnets[0].VpcId' --output text)
-          [ "${db_vpc}" = "${service_vpc}" ] || { echo "::error::the database ${instance} is not in the network of the service (${db_vpc} against ${service_vpc})"; exit 1; }
-          snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
-          aws rds create-db-snapshot --db-instance-identifier "${instance}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
-          aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
-          echo "snapshot ${snapshot} is available: it is what a restore of this stage's data starts from"
-      - name: Run the command as a task of the stage's service
+          bash tools/adopt/targets.sh "${STAGE}" | tee -a "${GITHUB_OUTPUT}"
+      - name: Take a snapshot of the database first, and wait until it can be restored from
         env:
           STAGE: ${{ inputs.stage }}
+          INSTANCE: ${{ steps.targets.outputs.instance }}
+        run: |
+          set -euo pipefail
+          snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
+          aws rds create-db-snapshot --db-instance-identifier "${INSTANCE}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
+          aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
+          echo "snapshot ${snapshot} of ${INSTANCE} is available: it is what a restore of this stage's data starts from"
+      - name: Run the command as a task of the stage's service
+        env:
+          CLUSTER: ${{ steps.targets.outputs.cluster }}
           TO: ${{ inputs.to }}
           NAME: ${{ inputs.name }}
           DOMAIN: ${{ inputs.domain }}
         run: |
           set -euo pipefail
-          clusters=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')]" --output json)
-          [ "$(printf '%s' "${clusters}" | jq length)" = "1" ] || { echo "::error::expected one cluster of the stage ${STAGE}, found: ${clusters}"; exit 1; }
-          cluster=$(printf '%s' "${clusters}" | jq -r '.[0]')
+          cluster="${CLUSTER}"
           service=$(aws ecs describe-services --cluster "${cluster}" --services Server --query 'services[0]' --output json)
           taskdef=$(printf '%s' "${service}" | jq -r '.taskDefinition')
           network=$(printf '%s' "${service}" | jq -c '{awsvpcConfiguration: .networkConfiguration.awsvpcConfiguration}')
@@ -120,13 +119,8 @@ jobs:
           task=$(aws ecs run-task --cluster "${cluster}" --task-definition "${taskdef}" --launch-type FARGATE --network-configuration "${network}" --overrides "${overrides}" --query 'tasks[0].taskArn' --output text)
           [ -n "${task}" ] && [ "${task}" != "None" ] || { echo "::error::the task did not start"; exit 1; }
           echo "task ${task##*/}"
-          # Poll the task's own status: the waiter gives up after about ten minutes, and the task may run longer (it starts, sets up, then adopts). A failing call (a bad role, no access) stops the
-          # step at once (`set -e`); only a task that is not stopped yet is waited for, a pause at a time, and the job's own timeout bounds it.
-          while :; do
-            status=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0].lastStatus' --output text)
-            [ "${status}" != "STOPPED" ] || break
-            sleep 15
-          done
+          # An error stops the step at once; a task still on its way is waited for a pause at a time, and the job's own timeout bounds it (tools/adopt/wait-task.sh).
+          bash tools/adopt/wait-task.sh "${cluster}" "${task}"
           described=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0]' --output json)
           printf '%s' "${described}" | jq -r '.containers[] | "\(.name): exit \(.exitCode // "none") \(.reason // "")"'
           # What the command said (log events, no personal data), from the container's log stream.

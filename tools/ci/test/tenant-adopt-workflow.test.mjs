@@ -30,14 +30,16 @@ test('the whole value of an input is checked, not one line of it, and the variab
   assert.ok(workflow.indexOf('for name in AWS_ROLE_ARN AWS_REGION') < workflow.indexOf('uses: aws-actions/configure-aws-credentials'));
 });
 
-test('exactly one database and one cluster of the stage, in the same network, or the job stops before it snapshots or changes anything; and it waits for the task as long as the job lasts', () => {
-  assert.match(runs, /expected one database of the stage/);
-  assert.equal((runs.match(/expected one cluster of the stage/g) ?? []).length, 2, 'the snapshot step and the task step');
-  assert.match(runs, /is not in the network of the service/);
-  assert.match(runs, /while :; do\n\s+status=\$\(aws ecs describe-tasks/, 'it polls the task, not the waiter that gives up after ten minutes');
-  assert.match(runs, /\[ "\$\{status\}" != "STOPPED" \] \|\| break\n\s+sleep 15/, 'a pause between polls, and the loop ends when the task has stopped');
-  assert.doesNotMatch(runs, /ecs wait/, 'a waiter retried without a pause spins on an immediate error until the job times out');
-  assert.ok(workflow.indexOf('is not in the network of the service') < workflow.indexOf('create-db-snapshot'));
+test('the database and the cluster come from one step that runs the tested script, and the snapshot and the task both take its outputs', () => {
+  assert.match(runs, /bash tools\/adopt\/targets\.sh "\$\{STAGE\}" \| tee -a "\$\{GITHUB_OUTPUT\}"/);
+  assert.match(workflow, /INSTANCE: \$\{\{ steps\.targets\.outputs\.instance \}\}/);
+  assert.match(workflow, /CLUSTER: \$\{\{ steps\.targets\.outputs\.cluster \}\}/);
+  assert.doesNotMatch(runs, /describe-db-instances|list-clusters|starts_with|contains\(@/, 'no lookup of its own by a prefix');
+  assert.ok(workflow.indexOf('id: targets') < workflow.indexOf('create-db-snapshot'));
+  assert.ok(workflow.indexOf('create-db-snapshot') < workflow.indexOf('ecs run-task'));
+  assert.match(runs, /bash tools\/adopt\/wait-task\.sh/);
+  assert.doesNotMatch(runs, /ecs wait/);
+  assert.ok(workflow.indexOf('actions/checkout@') < workflow.indexOf('configure-aws-credentials'), 'the scripts are in the job');
 });
 
 test('no input is written into a script: every one goes through an environment variable', () => {
@@ -49,7 +51,6 @@ test('the command is the one of the migration step\'s container, from legacy, an
   assert.match(runs, /"tenant-adopt","--from","legacy","--to"/);
   assert.match(runs, /name: "migrate", command: \$args/);
   assert.match(runs, /name: "app", command: \["-e", "0"\]/);
-  assert.match(runs, /lastStatus/);
   assert.match(runs, /exitCode/);
 });
 
@@ -57,7 +58,6 @@ test('a snapshot of the database is taken and waited for before the command runs
   assert.match(runs, /create-db-snapshot/);
   assert.match(runs, /wait db-snapshot-available/);
   assert.ok(workflow.indexOf('create-db-snapshot') < workflow.indexOf('ecs run-task'), 'the snapshot comes first');
-  assert.match(runs, /expected one database of the stage/);
 });
 
 test('it shares the concurrency group of the deploys, so one stage is never deployed and adopted together', () => {
