@@ -15,12 +15,15 @@ export const MIN_CREDENTIAL_LIFETIME_MS = 11 * 60_000;
 /**
  * The default credential chain (the task role on Fargate), made safe for signing URLs: when the credentials it holds expire within `MIN_CREDENTIAL_LIFETIME_MS` it
  * is asked for fresh ones, and the SDK is told the credentials expire that much earlier, so it asks again in time. Credentials that never expire are passed on as they are.
- * When the source itself only has short-lived credentials to give, they are used (nothing better exists); a URL signed then can still outlive them.
+ * When the source itself only has short-lived credentials to give, or refreshing them fails, the credentials in hand are used (nothing better exists); a URL signed then can still outlive them.
  */
 export function signingCredentials(chain: CredentialProvider, now: () => number = Date.now): CredentialProvider {
   return async (properties) => {
     let credentials: Credentials = await chain(properties);
-    if (credentials.expiration !== undefined && credentials.expiration.getTime() - now() < MIN_CREDENTIAL_LIFETIME_MS) credentials = await chain({ ...properties, forceRefresh: true });
+    if (credentials.expiration !== undefined && credentials.expiration.getTime() - now() < MIN_CREDENTIAL_LIFETIME_MS) {
+      // A failed refresh (a transient error of the credential endpoint) must not fail a request the credentials in hand can still serve: they are valid for a while yet.
+      credentials = await chain({ ...properties, forceRefresh: true }).catch(() => credentials);
+    }
     return credentials.expiration === undefined ? credentials : { ...credentials, expiration: new Date(credentials.expiration.getTime() - MIN_CREDENTIAL_LIFETIME_MS) };
   };
 }

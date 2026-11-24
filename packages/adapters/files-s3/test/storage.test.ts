@@ -323,6 +323,11 @@ describe('the credentials a URL is signed with', () => {
     expect(calls).toEqual([false, true]);
   });
 
+  it('stay in use when the forced refresh fails (a transient error of the credential endpoint), instead of failing the request', async () => {
+    const chain = ((properties?: { forceRefresh?: boolean }) => (properties?.forceRefresh === true ? Promise.reject(new Error('credential endpoint unavailable')) : Promise.resolve(at(7 * 60_000, 'STILL-VALID')))) as Parameters<typeof signingCredentials>[0];
+    expect((await signingCredentials(chain, () => NOW)()).accessKeyId).toBe('STILL-VALID');
+  });
+
   it('are used when the source has nothing longer to give, and credentials that never expire are passed on untouched', async () => {
     const short = chainOf(at(2 * 60_000, 'SHORT'), at(3 * 60_000, 'STILL-SHORT'));
     expect((await signingCredentials(short.chain, () => NOW)()).accessKeyId).toBe('STILL-SHORT');
