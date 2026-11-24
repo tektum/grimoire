@@ -49,6 +49,7 @@ test.describe('axe, with each message shown', () => {
 
   test('"Offline: changes kept in this tab"', async ({ browser, baseURL }) => {
     await withScriptedPage(browser, baseURL, {}, async ({ page, collab }) => {
+      await expect.poll(() => collab.tokens.length).toBe(1); // connected once: the offline timer starts when it is lost
       await collab.stop();
       await page.clock.runFor(11_000);
       await statusLine(page).filter({ hasText: 'Offline: changes kept in this tab' }).waitFor();
