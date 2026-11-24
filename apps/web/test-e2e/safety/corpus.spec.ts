@@ -3,6 +3,7 @@ import { isSafeHref } from '../../src/safety';
 import { type XssEntry, xssCorpus } from '../../test/corpus/xss';
 import { bundleHarness } from '../collections/bundle';
 import { fixtureServer } from '../support/fixtures';
+import { dropOnEditor, pasteIntoEditor } from '../support/paste';
 
 // The one corpus of hostile input (test/corpus/xss.ts) through the three ways text gets into a page: Markdown read into the editor (an import, a restore, a saved page),
 // HTML or text pasted, and Markdown applied to the editor that is open. Whatever the way, nothing runs, nothing is fetched from elsewhere, and what is drawn is text and
@@ -17,7 +18,10 @@ async function open(page: Page) {
   const server = await fixtureServer({ '/': '<!doctype html><meta charset="utf-8"><title>Grimoire</title><div id="host"></div>' });
   const dialogs: string[] = [];
   const requests: string[] = [];
-  page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+  page.on('dialog', (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
   page.on('request', (r) => requests.push(r.url()));
   await page.goto(server.url('/'));
   await page.addStyleTag({ content: bundle.css });
@@ -33,7 +37,16 @@ async function open(page: Page) {
  */
 const settled = (page: Page): Promise<void> =>
   page.evaluate(async () => {
-    await Promise.all([...document.images].map((img) => (img.complete ? undefined : new Promise((resolve) => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); }))));
+    await Promise.all(
+      [...document.images].map((img) =>
+        img.complete
+          ? undefined
+          : new Promise((resolve) => {
+              img.addEventListener('load', resolve);
+              img.addEventListener('error', resolve);
+            }),
+      ),
+    );
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
 
@@ -46,7 +59,12 @@ async function problems(page: Page, id: string, dialogs: string[], offOrigin: ()
     const elements = surface === null ? [] : [...surface.querySelectorAll('*')];
     return {
       tags: elements.map((e) => e.tagName.toLowerCase()).filter((t) => forbidden.includes(t)),
-      attributes: elements.flatMap((e) => e.getAttributeNames().filter((a) => /^on/i.test(a) || a === 'style' || a === 'srcdoc' || a === 'formaction').map((a) => `${e.tagName.toLowerCase()}[${a}]`)),
+      attributes: elements.flatMap((e) =>
+        e
+          .getAttributeNames()
+          .filter((a) => /^on/i.test(a) || a === 'style' || a === 'srcdoc' || a === 'formaction')
+          .map((a) => `${e.tagName.toLowerCase()}[${a}]`),
+      ),
       links: surface === null ? [] : [...surface.querySelectorAll('a[href]')].map((a) => a.getAttribute('href') ?? ''),
       pwned: (window as unknown as { __pwned?: unknown }).__pwned !== undefined,
     };
@@ -88,10 +106,13 @@ test.describe('the corpus of hostile input', () => {
       const wrong: string[] = [];
       for (const entry of entries) {
         const before = opened.offOrigin().length;
-        await page.evaluate(([markdown]) => {
-          const harness = (window as unknown as { harness: Harness }).harness;
-          return harness.mount('Start.\n', true).then(() => harness.apply(markdown!));
-        }, [asMarkdown(entry)]);
+        await page.evaluate(
+          ([markdown]) => {
+            const harness = (window as unknown as { harness: Harness }).harness;
+            return harness.mount('Start.\n', true).then(() => harness.apply(markdown!));
+          },
+          [asMarkdown(entry)],
+        );
         await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
@@ -112,15 +133,7 @@ test.describe('the corpus of hostile input', () => {
         await page.locator('.ProseMirror').click();
         await page.keyboard.press('Control+End');
         await page.keyboard.press('Enter');
-        await page.evaluate(
-          ([pastedHtml, text]) => {
-            const data = new DataTransfer();
-            if (pastedHtml !== undefined && pastedHtml !== null) data.setData('text/html', pastedHtml);
-            data.setData('text/plain', text!);
-            document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-          },
-          [html ?? null, entry.markdown ?? entry.html ?? entry.href ?? ''],
-        );
+        await pasteIntoEditor(page, { ...(html === undefined ? {} : { html }), text: entry.markdown ?? entry.html ?? entry.href ?? '' });
         await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
@@ -138,15 +151,7 @@ test.describe('the corpus of hostile input', () => {
         const before = opened.offOrigin().length;
         await page.evaluate(([markdown]) => (window as unknown as { harness: Harness }).harness.mount(markdown!, true), ['Start.\n']);
         const box = (await page.locator('.ProseMirror p').first().boundingBox())!;
-        await page.evaluate(
-          ([html, text, x, y]) => {
-            const data = new DataTransfer();
-            if (html !== null) data.setData('text/html', html as string);
-            data.setData('text/plain', text as string);
-            document.querySelector('.ProseMirror')!.dispatchEvent(new DragEvent('drop', { dataTransfer: data, clientX: x as number, clientY: y as number, bubbles: true, cancelable: true }));
-          },
-          [entry.html ?? null, entry.markdown ?? entry.html ?? entry.href ?? '', box.x + 5, box.y + box.height / 2],
-        );
+        await dropOnEditor(page, { ...(entry.html === undefined ? {} : { html: entry.html }), text: entry.markdown ?? entry.html ?? entry.href ?? '' }, { x: box.x + 5, y: box.y + box.height / 2 });
         await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
@@ -154,11 +159,7 @@ test.describe('the corpus of hostile input', () => {
       // And the drop does land: a dropped Markdown image is the text it was typed as (the editor reads a dropped text as text), with no image made from it.
       await page.evaluate(([markdown]) => (window as unknown as { harness: Harness }).harness.mount(markdown!, true), ['Start.\n']);
       const box = (await page.locator('.ProseMirror p').first().boundingBox())!;
-      await page.evaluate(([x, y]) => {
-        const data = new DataTransfer();
-        data.setData('text/plain', '![](https://evil.example/x.png)');
-        document.querySelector('.ProseMirror')!.dispatchEvent(new DragEvent('drop', { dataTransfer: data, clientX: x!, clientY: y!, bubbles: true, cancelable: true }));
-      }, [box.x + 5, box.y + box.height / 2]);
+      await dropOnEditor(page, { text: '![](https://evil.example/x.png)' }, { x: box.x + 5, y: box.y + box.height / 2 });
       await settled(page);
       await expect(page.locator('.ProseMirror')).toContainText('https://evil.example/x.png');
       await expect(page.locator('.ProseMirror .attachment-image')).toHaveCount(0);

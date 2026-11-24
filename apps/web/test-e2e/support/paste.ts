@@ -42,9 +42,32 @@ export async function pasteIntoEditor(page: Page, data: PasteData): Promise<Past
     return saw;
   }, data);
   const wantFiles = data.files?.length ?? 0;
-  const wantTypes = [...(data.html === undefined ? [] : ['text/html']), ...(data.text === undefined && data.textOfHtml !== true ? [] : ['text/plain'])];
+  const wantTypes = [...(data.html === undefined || data.html === '' ? [] : ['text/html']), ...((data.text === undefined || data.text === '') && data.textOfHtml !== true ? [] : ['text/plain'])]; // an empty value puts no type in
   if (seen.files !== wantFiles || wantTypes.some((t) => !seen.types.includes(t))) {
     throw new Error(`the paste carried no data in this engine: the page saw ${seen.files} file(s) and the types [${seen.types.join(', ')}], where ${wantFiles} file(s) and [${wantTypes.join(', ')}] were put in`);
   }
   return seen;
+}
+
+/**
+ * Drops `data` (HTML and text) on the editor at a point of the page, as a browser's drag carries it: the same helper idea as the paste (a drag event made by a script has an empty
+ * `dataTransfer` in Firefox, so the data goes on the event as a property), and the same failure when the page saw nothing.
+ */
+export async function dropOnEditor(page: Page, data: { html?: string; text?: string }, point: { x: number; y: number }): Promise<void> {
+  const seen = await page.evaluate(
+    ({ input, at }) => {
+      const transfer = new DataTransfer();
+      if (input.html !== undefined) transfer.setData('text/html', input.html);
+      if (input.text !== undefined) transfer.setData('text/plain', input.text);
+      let saw: string[] = [];
+      document.addEventListener('drop', (e) => (saw = Array.from((e as DragEvent).dataTransfer?.types ?? [])), { capture: true, once: true });
+      const event = new DragEvent('drop', { clientX: at.x, clientY: at.y, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', { value: transfer });
+      document.querySelector('.ProseMirror')!.dispatchEvent(event);
+      return saw;
+    },
+    { input: data, at: point },
+  );
+  const wantTypes = [...(data.html === undefined || data.html === '' ? [] : ['text/html']), ...(data.text === undefined || data.text === '' ? [] : ['text/plain'])];
+  if (wantTypes.some((t) => !seen.includes(t))) throw new Error(`the drop carried no data in this engine: the page saw the types [${seen.join(', ')}], where [${wantTypes.join(', ')}] were put in`);
 }
