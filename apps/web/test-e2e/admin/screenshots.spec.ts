@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { shots } from '../support/shots';
 import { signInAs } from '../support/sign-in';
 import { adminApi, type MockUser } from './mock-api';
+import { openReset } from './reset-support';
 
 process.env['E2E_DEV_TOKEN_SECRET'] ??= 'admin-specs-secret-000000001';
 
@@ -33,4 +34,20 @@ test('the last-admin message, light and dark', async ({ page, context, browserNa
   await expect(page.getByText('There must be at least one admin')).toBeVisible();
   await page.mouse.move(0, 0);
   await shots(page, TASK, 'last-admin');
+});
+
+test('the reset dialog, asked and then at the stale confirmation, light and dark', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const reset = await openReset(page, [{ status: 409, body: { error: { code: 'markdown_stale', message: 'x' } } }], true);
+  try {
+    const dialog = page.getByRole('dialog', { name: 'Reset the saved state of Quarterly plan?' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox', { name: 'Replacement Markdown (optional)' }).fill('# Quarterly plan\n\nThe text to keep.');
+    await shots(page, TASK, 'reset-dialog');
+    await dialog.getByRole('button', { name: 'Reset state' }).click();
+    await expect(page.getByRole('alertdialog', { name: 'The saved text is older than the page' })).toBeVisible();
+    await shots(page, TASK, 'reset-stale');
+  } finally {
+    await reset.stop();
+  }
 });

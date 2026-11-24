@@ -61,6 +61,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.4); }
 .modal { position: fixed; top: 20vh; inset-inline: 0; margin-inline: auto; width: min(32rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-2); }
+.modal button + button { margin-inline-start: var(--space-2); }
 .menu { min-width: 10rem; padding: var(--space-1); background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-2); }
 .menu-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; outline: none; }
 .menu-item[data-highlighted], [cmdk-item][data-selected='true'] { background: var(--code-bg); }

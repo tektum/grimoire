@@ -76,6 +76,14 @@ The trash.
 
 A page that does not exist.
 
+![The reset-state dialog](docs/screenshots/m6-t12/reset-dialog-light.png)
+
+Administrators: resetting a page's saved state, with an optional replacement text.
+
+![The warning when the saved text is older](docs/screenshots/m6-t12/reset-stale-light.png)
+
+The second question when the saved text is older than the page.
+
 The same page in the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
