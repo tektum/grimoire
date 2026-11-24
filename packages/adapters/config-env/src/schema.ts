@@ -180,6 +180,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(60),
   GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: field(int(1, MAX_INT)).default(6000),
   GRIMOIRE_PUBLIC_API_URL: field(httpUrl),
+  GRIMOIRE_WEB_ROOT: field(z.string(msg('must be an absolute path')).refine((v) => v.startsWith('/') || /^[A-Za-z]:[\\/]/.test(v), msg('must be an absolute path'))),
   GRIMOIRE_PUBLIC_COLLAB_URL: field(z.url({ protocol: /^(?:https?|wss?)$/, ...msg('must be an http(s):// or ws(s):// URL') })),
   GRIMOIRE_FIRST_ADMIN_EMAILS: field(list(email.transform((v) => v.toLowerCase()), emailRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
   GRIMOIRE_ALLOWED_EMAIL_DOMAINS: field(list(domain, domainRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
@@ -295,6 +296,19 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       error: () => `is required when the other ${P}S3_ADMIN_* key is set`,
     })
     // The running server never holds the admin key; only a local development stack may pass it (the test harness does).
+    // Serving the web client needs what its response headers and its configuration are made from: the public API and live editing addresses and the file store.
+    .refine(() => !(server && set('GRIMOIRE_WEB_ROOT') && !set('GRIMOIRE_PUBLIC_API_URL')), {
+      path: ['GRIMOIRE_PUBLIC_API_URL'], when: always,
+      error: () => `is required when ${P}WEB_ROOT is set (the web client is configured with it)`,
+    })
+    .refine(() => !(server && set('GRIMOIRE_WEB_ROOT') && !set('GRIMOIRE_PUBLIC_COLLAB_URL')), {
+      path: ['GRIMOIRE_PUBLIC_COLLAB_URL'], when: always,
+      error: () => `is required when ${P}WEB_ROOT is set (the content security policy names it)`,
+    })
+    .refine(() => !(server && set('GRIMOIRE_WEB_ROOT') && !set('GRIMOIRE_S3_ENDPOINT')), {
+      path: ['GRIMOIRE_S3_ENDPOINT'], when: always,
+      error: () => `is required when ${P}WEB_ROOT is set (the content security policy names the file store)`,
+    })
     // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
     .refine(() => !(server && (set('GRIMOIRE_DATABASE_ADMIN_URL') || set('GRIMOIRE_DB_APP_PASSWORD') || set('GRIMOIRE_DB_MIGRATOR_PASSWORD'))), {
       path: [set('GRIMOIRE_DATABASE_ADMIN_URL') ? 'GRIMOIRE_DATABASE_ADMIN_URL' : set('GRIMOIRE_DB_APP_PASSWORD') ? 'GRIMOIRE_DB_APP_PASSWORD' : 'GRIMOIRE_DB_MIGRATOR_PASSWORD'], when: always,
@@ -377,6 +391,8 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
   requireHandshake: v.GRIMOIRE_REQUIRE_HANDSHAKE === '1',
   minClientVersion: v.GRIMOIRE_MIN_CLIENT_VERSION,
   ...(v.GRIMOIRE_PUBLIC_COLLAB_URL !== undefined ? { publicCollabUrl: v.GRIMOIRE_PUBLIC_COLLAB_URL } : {}),
+  ...(v.GRIMOIRE_PUBLIC_API_URL !== undefined ? { publicApiUrl: v.GRIMOIRE_PUBLIC_API_URL } : {}),
+  ...(v.GRIMOIRE_WEB_ROOT !== undefined ? { webRoot: v.GRIMOIRE_WEB_ROOT } : {}),
   http: {
     userLimitPerMinute: v.GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE,
     addressLimitPerMinute: v.GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE,

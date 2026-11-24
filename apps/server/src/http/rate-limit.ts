@@ -34,7 +34,11 @@ function refuse(log: HttpDeps['log'], c: Context, scope: 'user' | 'address' | 'r
  * also counts against the credential counter, and so does a request whose token fails verification, after the fact. A valid, signed-in
  * request never touches the credential counter, so many users behind one office address are limited per user only.
  */
-export function addressLimiter(http: HttpConfig, trustedProxies: readonly string[], log: HttpDeps['log']): MiddlewareHandler<AppEnv> {
+/**
+ * `exempt` names the requests that do not count against the credential limit of an address (the pages and assets of the web client): a browser loads a page as anonymous requests,
+ * and a few reloads, or several people behind one address, would exhaust a limit meant for credential traffic. They still count against the flood ceiling.
+ */
+export function addressLimiter(http: HttpConfig, trustedProxies: readonly string[], log: HttpDeps['log'], exempt: (c: Context) => boolean): MiddlewareHandler<AppEnv> {
   const ceiling = new RateLimiterMemory({ points: http.addressCeilingPerMinute, duration: WINDOW_SECONDS });
   const credentials = new RateLimiterMemory({ points: http.addressLimitPerMinute, duration: WINDOW_SECONDS });
   const trusted = trustedProxyList(trustedProxies);
@@ -44,7 +48,7 @@ export function addressLimiter(http: HttpConfig, trustedProxies: readonly string
     const flooded = await consume(ceiling, address);
     if (flooded !== undefined) return refuse(log, c, 'address', flooded);
     const wellFormed = BEARER.test(c.req.header('authorization') ?? '');
-    if (!wellFormed) {
+    if (!wellFormed && !exempt(c)) {
       const blocked = await consume(credentials, address);
       if (blocked !== undefined) return refuse(log, c, 'address', blocked);
     }

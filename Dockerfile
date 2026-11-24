@@ -11,20 +11,23 @@ WORKDIR /app
 COPY . .
 # bun runs a dependency's install script only if it is trusted: the root package.json sets "trustedDependencies": [] (which also switches off bun's built-in default list), so no install script runs, as with npm's --ignore-scripts.
 RUN bun install --frozen-lockfile
-# Only the server and the Markdown adapter (which the server loads, with its worker file) plus what they reference; no test projects.
-RUN bun run tsc -b apps/server packages/adapters/markdown-milkdown
+# The root build, in its own order: the server, the OpenAPI document and the client types made from it, then every package (the Markdown adapter with its worker file, and the packages the web client imports).
+RUN bun run build
+# The web client, built once for every deployment (its imports are built above): its address-dependent files (config.json and the response headers) are made by the server at start from its settings.
+RUN bun run --cwd apps/web build
 # Production dependencies only: bun does not prune an existing node_modules, so install again from nothing with just the two workspaces
 # (and what they depend on); the dist directories built above stay in place and the workspace links are made again.
 RUN rm -rf node_modules && bun install --frozen-lockfile --production --filter @tektum/grimoire-server --filter @tektum/grimoire-adapter-markdown-milkdown
 # Stage exactly what runs: per workspace package its package.json, dist and any CommonJS entry (`*.cjs`) beside it, the pruned node_modules, the migrations
-# directory (@types/debug, mdast, ms and unist are real dependencies of the Markdown libraries, but hold only type declarations; test helpers compiled into dist/testing and build info are left out). A shell is fine here: this stage is not shipped.
+# directory (@types/debug, mdast, ms and unist are real dependencies of the Markdown libraries, but hold only type declarations; test helpers compiled into dist/testing, the declarations of the test projects in dist/test and build info are left out). A shell is fine here: this stage is not shipped.
 RUN set -eu; mkdir /out; cp package.json /out/; cp -a node_modules /out/node_modules; \
     for d in apps/server packages/core packages/editor-schema packages/adapters/*; do \
       mkdir -p "/out/$d"; cp "$d/package.json" "/out/$d/"; cp -a "$d/dist" "/out/$d/dist"; cp "$d"/*.cjs "/out/$d/" 2>/dev/null || true; \
     done; \
     mkdir -p /out/db; cp -a db/migrations /out/db/migrations; \
+    mkdir -p /out/web; cp -a apps/web/dist /out/web/dist; cp apps/web/headers/headers.template /out/web/headers.template; \
     rm -rf /out/packages/adapters/auth-fake /out/node_modules/@tektum/grimoire-adapter-auth-fake; \
-    find /out -path /out/node_modules -prune -o \( -name testing -type d -o -name '*.tsbuildinfo' \) -exec rm -rf {} +; \
+    find /out -path /out/node_modules -prune -o \( -name testing -type d -o -path '*/dist/test' -type d -o -name '*.tsbuildinfo' \) -exec rm -rf {} +; \
     rm -rf /out/node_modules/@types; \
     find /out/node_modules -xtype l -delete # drop links to packages not shipped (web, api-client)
 
@@ -32,7 +35,7 @@ FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:1d736cf8b5716c07a245301f
 ENV NODE_ENV=production GRIMOIRE_HOST=0.0.0.0
 WORKDIR /app
 COPY --from=build /out/ /app/
-# WEB CLIENT PLACEHOLDER: a later milestone adds the built static files of apps/web here (COPY --from=<web build stage>).
+# The built web client is in /app/web. The server serves it only when GRIMOIRE_WEB_ROOT=/app/web is set, which needs the public API and live editing addresses and the file store.
 USER 65532:65532
 EXPOSE 8080
 # Node is PID 1; the server handles SIGTERM (drains, saves open pages, exits). No image-level healthcheck: the shell-less base has no curl, Compose probes /readyz.
