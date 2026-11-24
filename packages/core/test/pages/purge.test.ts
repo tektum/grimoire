@@ -114,7 +114,7 @@ describe('purgeBatch', () => {
   it('marks the objects it removed when a restore brought the page back in between, and writes no audit row', async () => {
     const trash = new FakeTrashRepo();
     const root = trash.seedDeleted({ collectionId: COLLECTION, attachments: ['attachments/r/1/r.png', 'attachments/r/2/s.png'] });
-    const restored = () => trash.restore('legacy', root, COLLECTION, { maxDepth: 32, maxPages: 10_000 }, () => 'z');
+    const restored = () => trash.restore('legacy', root, COLLECTION, { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 }, () => 'z');
     const out = await purgeBatch(
       {
         trash,

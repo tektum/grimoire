@@ -56,6 +56,16 @@ export interface HttpConfig {
   readonly addressCeilingPerMinute: number;
 }
 
+/** The caps of one tenant (docs/tenancy.md section 3.8); field = camelCase of the GRIMOIRE_TENANT_* suffix. */
+export interface TenantLimitsConfig {
+  /** People of one tenant; a new person past it is refused at sign-in. */
+  readonly maxUsers: number;
+  /** Bytes of the files of one tenant; an upload past it is refused. */
+  readonly maxStorageBytes: number;
+  /** Open pages (not in the trash) of one tenant; a create or a restore past it is refused. */
+  readonly maxPages: number;
+}
+
 /** The file store (S3 protocol). Present when the store variables are set; the admin key is never part of it. */
 export interface FilesConfig {
   /** Internal URL the server uses. */
@@ -152,6 +162,7 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   /** Only for the files-setup purpose. */
   readonly filesSetup?: FilesSetupConfig;
   readonly http: HttpConfig;
+  readonly tenantLimits: TenantLimitsConfig;
   /** The address browsers use for the API (GRIMOIRE_PUBLIC_API_URL); absent when unset. */
   readonly publicApiUrl?: string;
   /** A folder with the built web client (GRIMOIRE_WEB_ROOT): when set the server serves it, with its own response headers. Absent: API and live editing only. */

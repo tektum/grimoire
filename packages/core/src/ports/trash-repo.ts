@@ -1,4 +1,4 @@
-import type { PageLimits, PageMeta } from './page-repo.js';
+import type { PageMeta, TenantPageLimits } from './page-repo.js';
 
 /** The root of a deleted batch, as the trash list shows it. `deletedAt` is epoch milliseconds. */
 export interface TrashRoot {
@@ -30,6 +30,8 @@ export type RestoreResult =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'collection-deleted' }
   | { readonly kind: 'collection-full' }
+  /** The tenant's open pages and the batch together would pass its cap: nothing is restored. */
+  | { readonly kind: 'tenant-pages-full' }
   /** The page is in another collection than the one the caller's access was checked against (it moved since): nothing is restored. */
   | { readonly kind: 'conflict' };
 
@@ -50,9 +52,10 @@ export interface TrashRepo {
    * `expectedCollectionId`, the collection the caller's access check was made against (else `conflict`). A root whose parent is gone
    * or deleted, or under which the batch would be deeper than `maxDepth`, returns at the top level, before the first live top-level
    * sibling; otherwise (a live parent, or no parent) it keeps its place, or goes last among the siblings when a live page took the
-   * place. Refused when the collection is deleted, or when the live pages and the batch together would pass `maxPages`.
+   * place. Refused when the collection is deleted, or when the live pages and the batch together would pass `maxPages`, or when the
+   * tenant's open pages and the batch would pass `maxTenantPages` (counted under a per-tenant lock).
    */
-  restore(tenantId: string, id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult>;
+  restore(tenantId: string, id: string, expectedCollectionId: string, limits: TenantPageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult>;
   /**
    * The object keys of the attachments of every page the purge of the batch removes: the batch and any page below it that was deleted
    * earlier, in a batch of its own (a page cannot be removed while a child still points at it).

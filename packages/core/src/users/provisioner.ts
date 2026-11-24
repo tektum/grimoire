@@ -17,7 +17,7 @@ export interface SignInPolicy {
  * before granting any access. Suspension has no provisioning-refusal reason by contract.
  */
 export type SignInResult = { kind: 'ok'; user: UserRecord; created: boolean }
-  | { kind: 'refused'; reason: 'domain-not-allowed' | 'email-taken' | 'profile-unavailable' | 'profile-missing' | 'no-tenant' | 'tenant-ambiguous' | 'tenant-mismatch' };
+  | { kind: 'refused'; reason: 'domain-not-allowed' | 'email-taken' | 'profile-unavailable' | 'profile-missing' | 'no-tenant' | 'tenant-ambiguous' | 'tenant-mismatch' | 'tenant-full' };
 
 type NewUserInput = Parameters<UserStore['createIfAbsent']>[0];
 /** Admin is decided only for the full, verified email address, never a suffix or substring. */
@@ -127,7 +127,8 @@ export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier;
       const role = d.policy.allowDevRole && i.devRole ? i.devRole : firstAdmin(allowed.email, profile, d.policy);
       const input: NewUserInput = { descopeUserId: i.identity.userId, email: profile.email, name: profile.name, ...(validAvatarUrl(profile.avatarUrl) ? { avatarUrl: profile.avatarUrl } : {}), role, ...(i.identity.tenant?.kind === 'one' ? { tenant: { id: i.identity.tenant.id, name: allowed.domain } } : {}) };
       const result = await d.users.createIfAbsent(input);
-      if (result.kind === 'email-taken') return refuse('email-taken');
+      // A new person of a tenant at its cap of people is refused; one who already has a row is not affected (docs/tenancy.md section 3.8).
+      if (result.kind === 'email-taken' || result.kind === 'tenant-full') return refuse(result.kind);
       // A race winner created one row only, but any losing local-dev sign-in still synchronizes its own explicit role.
       if (result.kind === 'existing') return finishExisting(result.user);
       d.logger?.info('users.created', { userId: result.user.id, role: result.user.role });

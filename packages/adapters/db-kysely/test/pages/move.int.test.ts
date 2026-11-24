@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { MovePageResult, PageLimits } from '@tektum/grimoire-core/ports/page-repo';
+import type { MovePageResult, PageLimits, TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
@@ -11,7 +11,7 @@ let t: TestDatabase;
 let user: string;
 const ordering = new FakeOrdering();
 const between = (a: string | null, b: string | null): string => ordering.between(a, b);
-const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
+const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const pages = () => createPages(t.app);
 const newCollection = async (name: string): Promise<string> => (await createCollections(t.app).append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 const make = async (collectionId: string, parentId: string | null = null): Promise<string> => {

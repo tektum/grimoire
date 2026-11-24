@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
-import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
+import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
@@ -15,7 +15,7 @@ let t: TestDatabase;
 let user: string;
 let collection: string;
 const ordering = new FakeOrdering();
-const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
+const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const pages = () => createPages(t.app);
 const make = async (title: string, parentId: string | null = null, content?: Awaited<ReturnType<typeof seeded>>): Promise<string> => {
   const r = await pages().create('legacy', { collectionId: collection, parentId, afterId: null, title, createdBy: user, content }, limits, (a, b) => ordering.between(a, b));

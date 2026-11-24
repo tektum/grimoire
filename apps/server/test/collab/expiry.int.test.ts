@@ -51,7 +51,7 @@ async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}):
   const clock = { now: () => Date.now() };
   const verifier: DescopeVerifier = createDescopeVerifier({ projectId: PROJECT_ID, baseUrl: keys.baseUrl, logger, clock, maxTokenLifetimeMs: 3_600_000 });
   const db = createDatabase(o.dbUrl ?? appUrl(DB), { maxConnections: 4, queryTimeoutMs: 1500, connectionTimeoutMs: 1500 });
-  const users = createUserStore(db);
+  const users = createUserStore(db, 1000);
   const real = createAccessStore(db);
   const facts: number[] = [];
   const store: AccessStore = { ...real, facts: (rs) => { facts.push(rs.length); return real.facts(rs); } };

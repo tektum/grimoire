@@ -4,6 +4,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   too_deep: "Pages can't be nested this deep",
   collection_full: 'This collection is full',
   collection_deleted: 'This collection was deleted',
+  tenant_pages_full: 'This workspace has reached its limit of pages',
   name_taken: 'That name is already used',
   last_admin: 'There must be at least one admin',
   save_failed: "Couldn't save. Try again",

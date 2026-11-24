@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { purgeBatch } from '@tektum/grimoire-core/pages/purge';
-import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
+import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
@@ -12,7 +12,7 @@ let t: TestDatabase;
 let user: string;
 let collection: string;
 const ordering = new FakeOrdering();
-const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
+const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const pages = () => createPages(t.app);
 const trash = () => createTrash(t.app);
 const place = (before: string | null, after: string | null) => ordering.between(before, after);
@@ -181,7 +181,7 @@ describe('TrashRepo.restore', () => {
     await make('leaf', root);
     await remove(root);
     // top (1), mid (2), root (3), leaf (4): four levels under the parent's two do not fit three, and the same tree fits four.
-    const tight = { maxDepth: 3, maxPages: 10_000 };
+    const tight = { maxDepth: 3, maxPages: 10_000, maxTenantPages: 50_000 };
     const out = await trash().restore('legacy', root, collection, tight, place);
     if (out.kind !== 'restored') throw new Error(out.kind);
     expect(out.page.parentId).toBeNull();
@@ -193,7 +193,7 @@ describe('TrashRepo.restore', () => {
     const edge = await make('edge', mid);
     await make('edge-leaf', edge);
     await remove(edge);
-    const exact = await trash().restore('legacy', edge, collection, { maxDepth: 4, maxPages: 10_000 }, place);
+    const exact = await trash().restore('legacy', edge, collection, { maxDepth: 4, maxPages: 10_000, maxTenantPages: 50_000 }, place);
     if (exact.kind !== 'restored') throw new Error(exact.kind);
     expect(exact.page.parentId).toBe(mid);
   });
@@ -211,7 +211,7 @@ describe('TrashRepo.restore', () => {
     const root = await make('root');
     const child = await make('child', root);
     await remove(root);
-    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 1 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 1, maxTenantPages: 50_000 }, place)).kind).toBe('collection-full');
     expect(await state(root)).toBe('deleted');
     expect((await trash().restore('legacy', child, collection, limits, place)).kind).toBe('not-found');
     expect((await trash().restore('legacy', '00000000-0000-4000-8000-000000000999', collection, limits, place)).kind).toBe('not-found');
@@ -227,10 +227,10 @@ describe('TrashRepo.restore', () => {
     await make('live');
     const other = await newCollection('elsewhere');
     await make('x', null, other);
-    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('restored');
+    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 3, maxTenantPages: 50_000 }, place)).kind).toBe('restored');
     const again = await make('r2');
     await remove(again);
-    expect((await trash().restore('legacy', again, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore('legacy', again, collection, { maxDepth: 32, maxPages: 3, maxTenantPages: 50_000 }, place)).kind).toBe('collection-full');
   });
 });
 

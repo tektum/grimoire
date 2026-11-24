@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { purgeBatch } from '@tektum/grimoire-core/pages/purge';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
-import type { PageLimits, PageMeta } from '@tektum/grimoire-core/ports/page-repo';
+import type { TenantPageLimits, PageMeta } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
@@ -15,7 +15,7 @@ import type { TestDatabase } from '../collections/support.js';
 // docs/tenancy.md section 7, surfaces 1 and 5 (pages, history and trash): a page, its trash entry and its revisions belong to the tenant of its collection; another tenant sees
 // them as absent, and the rows written for a tenant other than legacy carry it.
 const ordering = new FakeOrdering();
-const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
+const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const place = (before: string | null, after: string | null) => ordering.between(before, after);
 let t: TestDatabase;
 let a: { boss: string; collection: string };

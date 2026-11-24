@@ -447,6 +447,24 @@ describe('the tenant of a sign-in (docs/tenancy.md sections 2 and 6)', () => {
     expect(provisioner.recheck({ identity: { userId: 's1', tenant: one('T-x') }, user: stored })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
     expect(await provisioner.signIn({ identity: withTenant(one('T-ok'), profile('someone@example.test')) })).toMatchObject({ kind: 'ok' });
   });
+
+  it('refuses a new person of a tenant at its cap of people with tenant-full and makes nothing; a returning person and another tenant are not affected (section 3.8)', async () => {
+    const { provisioner, users, logger } = fixture({}, new FakeUserStore([], 2));
+    const first = withTenant(one('T-full'));
+    expect(await provisioner.signIn({ identity: first })).toMatchObject({ kind: 'ok', created: true });
+    expect(await provisioner.signIn({ identity: withTenant(one('T-full'), profile('second@example.test')) })).toMatchObject({ kind: 'ok', created: true });
+    expect(await provisioner.signIn({ identity: withTenant(one('T-full'), profile('third@example.test')) })).toEqual({ kind: 'refused', reason: 'tenant-full' });
+    expect(logger.entries).toContainEqual({ level: 'warn', event: 'users.refused', fields: { reason: 'tenant-full' } });
+    expect(users.all()).toHaveLength(2);
+    expect(await provisioner.signIn({ identity: first })).toMatchObject({ kind: 'ok', created: false });
+    expect(await provisioner.signIn({ identity: withTenant(one('T-other'), profile('third@example.test')) })).toMatchObject({ kind: 'ok', created: true, user: { tenantId: 'T-other' } });
+  });
+
+  it('counts the people of legacy for a token that names no tenant', async () => {
+    const { provisioner } = fixture({}, new FakeUserStore([], 1));
+    expect(await provisioner.signIn({ identity: identity(profile('one@example.test')) })).toMatchObject({ kind: 'ok', created: true });
+    expect(await provisioner.signIn({ identity: identity(profile('two@example.test')) })).toEqual({ kind: 'refused', reason: 'tenant-full' });
+  });
 });
 
 describe('the list of public mailbox providers', () => {

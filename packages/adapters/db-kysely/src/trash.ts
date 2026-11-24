@@ -2,7 +2,7 @@ import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { RestoreResult, TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import { insertAuditEvent } from './audit.js';
 import type { KyselyDatabase } from './index.js';
-import { META_COLUMNS, meta } from './pages.js';
+import { META_COLUMNS, meta, openPagesOfTenant } from './pages.js';
 
 /** A deleted page is the root of its batch when it has no parent or its parent is not in the same batch (a collection delete has many roots). */
 const IS_ROOT = `p.deleted_at is not null and (p.parent_id is null or not exists (
@@ -73,6 +73,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
           )
         )[0];
         if (Number(counts?.live) + Number(counts?.batch) > limits.maxPages) return { kind: 'collection-full' };
+        if ((await openPagesOfTenant(tx, tenantId)) + Number(counts?.batch) > limits.maxTenantPages) return { kind: 'tenant-pages-full' };
         // A parent that is gone or deleted, or under which the batch would be deeper than allowed, sends the root to the top level.
         const underParent = root.parent_id === null || (await liveParentFits(tx, root.parent_id, expectedCollectionId, root.deleted_batch, id, limits.maxDepth));
         const siblings = `collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null`;

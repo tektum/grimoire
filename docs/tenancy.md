@@ -109,9 +109,9 @@ Decided (question 6): before sign-up is open, each tenant has caps, from setting
 
 | Cap | Setting | Default | Refusal |
 |---|---|---|---|
-| people | `GRIMOIRE_TENANT_MAX_USERS` | 1,000 (the scale of decision 2) | a new person of a full tenant is refused at sign-in (`tenant-full`); existing people are not affected |
-| storage | `GRIMOIRE_TENANT_MAX_STORAGE_BYTES` | 10 GiB | an upload is refused (`409`, `tenant-storage-full`) before a link is made |
-| open pages | `GRIMOIRE_TENANT_MAX_PAGES` | 50,000 (not in the trash) | creating or restoring a page is refused (`409`, `tenant-pages-full`) |
+| people | `GRIMOIRE_TENANT_MAX_USERS` | 1,000 (the scale of decision 2) | a new person of a full tenant is refused at sign-in (`tenant-full`, answered `403` `not_allowed` like every refused sign-in); existing people are not affected. Every user row of the tenant counts, suspended or not |
+| storage | `GRIMOIRE_TENANT_MAX_STORAGE_BYTES` | 10 GiB | an upload is refused (`409`, `tenant_storage_full`) before a link is made |
+| open pages | `GRIMOIRE_TENANT_MAX_PAGES` | 50,000 (not in the trash) | creating or restoring a page is refused (`409`, `tenant_pages_full`); a restore counts its whole batch |
 
 The counts are read inside the same transaction as the write, under a per-tenant lock, so two requests cannot both pass the last slot. Tests: each cap refused at its limit and accepted one below it, a refusal that changes nothing, and one tenant at its cap never affecting another.
 
