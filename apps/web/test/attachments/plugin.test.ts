@@ -210,6 +210,24 @@ describe('opening an attachment link', () => {
       expect(told).not.toHaveBeenCalled();
     });
 
+    it.each(['account_suspended', 'not_allowed'])('adds no notice for a 403 %s: the client signs the person out, and the sign-in screen says why', async (code) => {
+      const tab = fakeTab();
+      vi.spyOn(window, 'open').mockReturnValue(tab as never);
+      GET.mockResolvedValueOnce({ error: { error: { code } }, response: new Response('{}', { status: 403 }) } as never);
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await vi.waitFor(() => expect(tab.close).toHaveBeenCalledTimes(1));
+      expect(told).not.toHaveBeenCalled();
+    });
+
+    it('still says it for an ordinary 403 (no access to that file)', async () => {
+      const tab = fakeTab();
+      vi.spyOn(window, 'open').mockReturnValue(tab as never);
+      GET.mockResolvedValueOnce({ error: { error: { code: 'forbidden' } }, response: new Response('{}', { status: 403 }) } as never);
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await vi.waitFor(() => expect(told).toHaveBeenCalledWith("That file isn't available"));
+      expect(tab.close).toHaveBeenCalledTimes(1);
+    });
+
     it('does nothing more when the browser refused the new tab', async () => {
       const opener = vi.spyOn(window, 'open').mockReturnValue(null);
       click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
