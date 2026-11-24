@@ -36,7 +36,15 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     id: 'xss',
     title: 'hostile content is shown as text or refused: links, images, raw HTML, names and titles',
-    specs: [`${E}/editor/unsafe-links.spec.ts`, `${E}/history/safety.spec.ts`, `${E}/safety/raw-html.spec.ts`, `${E}/attachments/corpus-images.spec.ts`],
+    specs: [
+      `${E}/editor/unsafe-links.spec.ts`,
+      `${E}/history/safety.spec.ts`,
+      `${E}/safety/raw-html.spec.ts`,
+      `${E}/safety/paste.spec.ts`,
+      `${E}/safety/corpus.spec.ts`,
+      `${E}/safety/milkdown-guard.spec.ts`,
+      `${E}/attachments/corpus-images.spec.ts`,
+    ],
   },
   { id: 'axe', title: 'axe finds nothing serious on every route, in the light and the dark scheme', specs: [`${E}/a11y/tour.spec.ts`] },
   { id: 'origins', title: 'the web origin differs from the API origin in every request, and no request carries a cookie', specs: [`${E}/m6/origins.spec.ts`] },
