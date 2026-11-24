@@ -9,8 +9,8 @@ import PageScreen from '../../src/screens/page';
 afterEach(cleanup);
 
 /** Opens `/p/<slug>`; the API answers the same 404 for the page of someone else's private collection and for an id nobody has (R11.15). */
-function open(slug: string) {
-  const GET = vi.fn(async () => ({ data: { error: { code: 'not_found', message: 'Not found' } }, response: new Response('', { status: 404 }) }));
+function open(slug: string, status = 404) {
+  const GET = vi.fn(async () => ({ data: { error: { code: status === 404 ? 'not_found' : 'forbidden', message: 'x' } }, response: new Response('', { status }) }));
   const value: AppSession = { auth: {} as Auth, api: { GET } as unknown as AppSession['api'], collabUrl: 'ws://collab.test' };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter([{ path: '/p/:slug', element: <PageScreen /> }], { initialEntries: [`/p/${slug}`] });
@@ -39,17 +39,14 @@ describe('a page the person may not read looks the same as a page that does not 
     expect(unknown.GET).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the same screen for a 403 as for a 404', async () => {
-    const GET = vi.fn(async () => ({ data: {}, response: new Response('', { status: 403 }) }));
-    const value: AppSession = { auth: {} as Auth, api: { GET } as unknown as AppSession['api'], collabUrl: 'ws://collab.test' };
-    const router = createMemoryRouter([{ path: '/p/:slug', element: <PageScreen /> }], { initialEntries: ['/p/x-ccc333'] });
-    render(
-      <SessionContext.Provider value={value}>
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <RouterProvider router={router} />
-        </QueryClientProvider>
-      </SessionContext.Provider>,
-    );
-    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+  it('shows the same markup for a 403 as for a 404, with nothing of the address', async () => {
+    const missing = open('x-ccc333');
+    await screen.findByRole('heading', { name: 'Page not found' });
+    const missingHtml = missing.view.container.innerHTML;
+    missing.view.unmount();
+    const refused = open('x-ccc333', 403);
+    await screen.findByRole('heading', { name: 'Page not found' });
+    expect(refused.view.container.innerHTML).toBe(missingHtml);
+    expect(refused.view.container.innerHTML).not.toMatch(/ccc333|forbidden/i);
   });
 });
