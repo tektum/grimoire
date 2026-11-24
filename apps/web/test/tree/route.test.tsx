@@ -5,13 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { SessionContext } from '../../src/auth/session';
 import Screen from '../../src/screens/collections';
 import '../support/dom';
-import { COLLECTIONS, fakeApi, page } from './support';
+import { COLLECTIONS, fakeApi } from './support';
 
 describe('the /c/:collectionId route', () => {
   it('shows the collection named in the address, read through the API of the session', async () => {
     const { api, calls } = fakeApi({
       'GET /v1/collections': { status: 200, body: { items: COLLECTIONS } },
-      'GET /v1/collections/{id}/tree': { status: 200, body: { pages: [page('welcome', null, 'p1', 'Welcome')] } },
+      'GET /v1/collections/{id}': { status: 200, body: COLLECTIONS[1] },
     });
     render(
       <SessionContext.Provider value={{ auth: null as never, api }}>
@@ -25,6 +25,6 @@ describe('the /c/:collectionId route', () => {
       </SessionContext.Provider>,
     );
     expect(await screen.findByRole('heading', { level: 1, name: 'Private' })).toBeTruthy();
-    expect(calls).toContain('GET /v1/collections/{id}/tree c2');
+    expect(calls).toContain('GET /v1/collections/{id} c2');
   });
 });

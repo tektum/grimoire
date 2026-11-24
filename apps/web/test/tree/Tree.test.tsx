@@ -117,4 +117,26 @@ describe('Tree', () => {
     await userEvent.keyboard('{ArrowDown}{Enter}');
     expect(seen.filter((entry) => entry.includes('/p/'))).toEqual(['PUSH /p/nested-nested']);
   });
+
+  it('opens the branches above the page that is open, so the page shows and is marked', async () => {
+    render(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>);
+    const link = await screen.findByRole('link', { name: 'Deeper' }); // under Deep, which starts closed
+    expect(link.getAttribute('aria-current')).toBe('page');
+  });
+
+  it('does not open them again on a later read: a branch the person closed stays closed', async () => {
+    const view = render(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>);
+    await screen.findByRole('link', { name: 'Deeper' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Deep' }));
+    expect(screen.queryByRole('link', { name: 'Deeper' })).toBeNull();
+    view.rerender(<MemoryRouter><Tree items={structuredClone(items)} currentUrlId="deeper" /></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: 'Deeper' })).toBeNull();
+  });
+
+  it('opens them again for another page', async () => {
+    const view = render(<MemoryRouter><Tree items={items} currentUrlId="nested" /></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: 'Deeper' })).toBeNull();
+    view.rerender(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>);
+    expect(await screen.findByRole('link', { name: 'Deeper' })).toBeTruthy();
+  });
 });

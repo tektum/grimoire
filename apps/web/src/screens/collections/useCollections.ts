@@ -21,3 +21,16 @@ export function useCollections(api: ApiLike) {
     },
   });
 }
+
+/** One collection by its id: a 404 or 403 here is the same "not found" the person is shown (R11.15), whichever it was. */
+export function useCollection(api: ApiLike, id: string) {
+  return useQuery<CollectionItem, HttpError>({
+    queryKey: queryKey('GET', '/v1/collections/{id}', { params: { path: { id } } }),
+    queryFn: async ({ signal }) => {
+      const { data, response } = await api.GET('/v1/collections/{id}' as never, { params: { path: { id } }, signal } as never);
+      if (!response.ok) throw new HttpError(response.status);
+      return data as CollectionItem;
+    },
+    retry: false,
+  });
+}

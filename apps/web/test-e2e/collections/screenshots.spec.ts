@@ -106,3 +106,16 @@ test('the not-found screen, light and dark', async ({ page: tab, browserName }) 
     await stop();
   }
 });
+
+test('a page open with the tree beside it, light and dark', async ({ page: tab, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  const stop = await open(tab, '/p/install-the-tools-install0', { collections: COLLECTIONS, pages: PAGES });
+  try {
+    await expect(tab.getByRole('heading', { level: 1, name: 'Install the tools' })).toBeVisible();
+    await expect(tab.getByRole('link', { name: 'Install the tools', exact: true }).and(tab.locator('[aria-current="page"]'))).toBeVisible(); // the branches above the page are open and the page is marked
+    await tab.mouse.move(0, 0);
+    await shots(tab, TASK, 'page-with-contents');
+  } finally {
+    await stop();
+  }
+});

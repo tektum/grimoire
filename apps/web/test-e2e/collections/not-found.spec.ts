@@ -11,7 +11,7 @@ test('no access, no such collection and no such address show one screen with one
   await signInAs(context, 'e2e-alice', 'member', { check: false });
   await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [], hidden: ['secret'] });
   const statuses: number[] = [];
-  page.on('response', (r) => { if (/\/v1\/collections\/[^/]+\/tree$/.test(r.url())) statuses.push(r.status()); });
+  page.on('response', (r) => { if (/\/v1\/collections\/[^/]+$/.test(r.url())) statuses.push(r.status()); });
   const seen: string[] = [];
   for (const address of ['/c/secret', '/c/00000000-0000-4000-8000-000000000000', '/nowhere/at-all']) {
     await page.goto(address);

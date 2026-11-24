@@ -10,7 +10,7 @@ import { CollectionsScreen } from '../../src/screens/collections/CollectionsScre
 import { queryKey } from '../../src/api/query';
 import { createClientStorage } from '../../src/storage';
 import '../support/dom';
-import { COLLECTIONS, fakeApi, page } from './support';
+import { COLLECTIONS, fakeApi } from './support';
 
 const memoryStorage = (initial: Record<string, string> = {}) => {
   const data = new Map(Object.entries(initial).map(([k, v]) => [`grimoire.${k}`, v]));
@@ -55,15 +55,15 @@ describe('/ (HomeRedirect)', () => {
 });
 
 describe('the collection that was read last', () => {
-  const routes = { ...list(COLLECTIONS), 'GET /v1/collections/{id}/tree': { status: 200, body: { pages: [page('w', null, 'p1', 'Welcome')] } } };
-  it('is remembered once its tree has loaded', async () => {
+  const routes = { ...list(COLLECTIONS), 'GET /v1/collections/{id}': { status: 200, body: COLLECTIONS[1] } };
+  it('is remembered once the collection has been read', async () => {
     const storage = memoryStorage();
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><CollectionsScreen api={fakeApi(routes).api} collectionId="c2" storage={storage} /></MemoryRouter></QueryClientProvider>);
     await waitFor(() => { expect(storage.get('last-collection')).toBe('c2'); });
   });
   it('is not replaced by a collection that cannot be read', async () => {
     const storage = memoryStorage({ 'last-collection': 'c1' });
-    const { api } = fakeApi({ ...list(COLLECTIONS), 'GET /v1/collections/{id}/tree': { status: 404 } });
+    const { api } = fakeApi({ ...list(COLLECTIONS), 'GET /v1/collections/{id}': { status: 404 } });
     render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><CollectionsScreen api={api} collectionId="c9" storage={storage} /></MemoryRouter></QueryClientProvider>);
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
     expect(storage.get('last-collection')).toBe('c1');
