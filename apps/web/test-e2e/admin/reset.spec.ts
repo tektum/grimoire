@@ -35,6 +35,27 @@ test('sends a replacement Markdown, and shows the words of a refusal (422) with 
   }
 });
 
+test('the buttons of the dialog do not touch: a token gap lies between them', async ({ page }) => {
+  const reset = await openReset(page, [DONE]);
+  try {
+    const dialog = page.getByRole('dialog');
+    const first = await dialog.getByRole('button', { name: 'Reset state' }).boundingBox();
+    const second = await dialog.getByRole('button', { name: 'Close' }).boundingBox();
+    const gap = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.width = 'var(--space-2)';
+      document.body.append(probe);
+      const width = probe.getBoundingClientRect().width;
+      probe.remove();
+      return width;
+    });
+    expect(gap).toBeGreaterThan(0);
+    expect((second?.x ?? 0) - ((first?.x ?? 0) + (first?.width ?? 0))).toBeGreaterThanOrEqual(gap - 0.5);
+  } finally {
+    await reset.stop();
+  }
+});
+
 for (const scheme of ['light', 'dark'] as const) {
   test(`the dialog has no serious or critical accessibility violation (${scheme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
