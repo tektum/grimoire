@@ -1,0 +1,8 @@
+/* Raw HTML in a page: inert text in a quiet block, with an action to edit it as text. Tokens only. */
+.page-editor .raw-html { display: inline-flex; align-items: baseline; gap: var(--space-2); padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-1); background: var(--code-bg); color: var(--muted); }
+.page-editor .raw-html-text { font-family: var(--font-code); font-size: 0.9em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.page-editor .raw-html-edit { font: inherit; font-size: 0.85em; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.page-editor .raw-html-edit:hover,
+.page-editor .raw-html-edit:focus-visible { color: var(--ink); }
+/* A view that cannot be edited has no action. */
+.page-editor .ProseMirror[contenteditable='false'] .raw-html-edit { display: none; }
