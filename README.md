@@ -60,6 +60,10 @@ The live editor.
 
 Lists in a page: bullets, numbered steps and task boxes.
 
+![Headings one to six in the page text](docs/screenshots/m6-t04/page-text-headings-after-light.png)
+
+Headings, one to six, in the page's reading font.
+
 ![Two people in one page: each sees the other's cursor and selection with a name label](docs/screenshots/m6-t04/cursors-seen-by-bob-light.png)
 
 Two people in one page: each sees the other's cursor and selection, with the name from the directory.

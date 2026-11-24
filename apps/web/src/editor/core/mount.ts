@@ -47,7 +47,8 @@ const base = (element: HTMLElement, flag: { editable: boolean }): Editor =>
   Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, element);
-      ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => flag.editable }));
+      // The editing surface has a role of its own (a text box), so it needs a name, in the saved view as in the live editor.
+      ctx.update(editorViewOptionsCtx, (prev) => ({ ...prev, editable: () => flag.editable, attributes: { ...(typeof prev.attributes === 'object' ? prev.attributes : {}), 'aria-label': 'Page text', 'aria-multiline': 'true' } }));
     })
     .use(grimoireEditorPlugins)
     .use(uiPlugins);
