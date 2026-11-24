@@ -29,15 +29,27 @@ jobs:
     timeout-minutes: 10
     environment: descope-dev
     steps:
+      - name: Stop cleanly while the secret does not exist
+        id: gate
+        env:
+          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked != 'true'
         with:
           persist-credentials: false
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        if: steps.gate.outputs.blocked != 'true'
         with:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: opentofu
       - name: Plan
+        if: steps.gate.outputs.blocked != 'true'
         working-directory: infra/descope
         env:
           DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
@@ -53,15 +65,27 @@ jobs:
     timeout-minutes: 10
     environment: descope-dev
     steps:
+      - name: Stop cleanly while the secret does not exist
+        id: gate
+        env:
+          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+        run: |
+          if [ -z "${KEY}" ]; then
+            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
+            echo "blocked=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.blocked != 'true'
         with:
           persist-credentials: false
       - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        if: steps.gate.outputs.blocked != 'true'
         with:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: opentofu
       - name: Apply
+        if: steps.gate.outputs.blocked != 'true'
         working-directory: infra/descope
         env:
           DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}

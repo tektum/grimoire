@@ -21,10 +21,22 @@ production project is never touched by this folder.
 
 ## State
 
-No state file is committed (`.gitignore` blocks it) and no remote state is used.
-Both resources are singletons whose id is the project id, and `imports.tf` imports
-them on every run, so a run that starts with empty state plans the real difference
-instead of a create. Read every plan before an apply. `.terraform.lock.hcl` is
+There is no state backend and no state file is committed (`.gitignore` blocks it),
+so state lives only inside one run and is lost when it ends. That is safe here
+because of what is managed:
+
+- The project already exists and is not managed, so a lost state can never orphan
+  or duplicate a project.
+- Both resources are singletons whose id is the project id, so there is exactly one
+  object each. `imports.tf` imports them at the start of every run, which rebuilds
+  the state from the project itself. A run therefore plans the real difference
+  (settings in the project against these files), never a create.
+- Nothing here creates an object with an id the state alone remembers.
+
+The cost: removing a resource from these files does not undo it in the project (the
+run has no memory of it), and an apply sets only the fields written in `main.tf`.
+Read every plan before an apply. If resources that create objects are added later
+(flows, roles, tenants), add a remote backend first. `.terraform.lock.hcl` is
 committed to pin the provider's checksums.
 
 ## Run locally
@@ -40,5 +52,5 @@ tofu plan
 ## CI
 
 `.github/workflows/descope-infra.yml` runs `plan` on pull requests that touch this folder and
-`apply` only on manual dispatch. Both use the environment `descope-dev` and its secret
+`apply` only on manual dispatch. Both skip with a notice while the secret is not set, and use the environment `descope-dev` and its secret
 `DESCOPE_DEV_MANAGEMENT_KEY`.
