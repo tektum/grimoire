@@ -50,6 +50,7 @@ test('the walk counts a mouse click (so that "no pointer events" says something)
 test('sign in: the form is filled and sent with the keyboard', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, null, async (page) => {
     await page.goto('/login');
+    await expect(page.getByLabel('User id'), 'the form is drawn (its chunk comes after the page)').toBeVisible(); // the first Tab press is after it, or it lands on an empty page
     await tabTo(page, (el) => (el as HTMLInputElement | null)?.labels?.[0]?.textContent?.startsWith('User id') === true);
     await page.keyboard.type('e2e-keys');
     await tabTo(page, (el) => (el as HTMLInputElement | null)?.labels?.[0]?.textContent?.startsWith('Secret') === true);
