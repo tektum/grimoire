@@ -342,7 +342,7 @@ describe('what the first review found', () => {
     h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
     const p = h.last().provider;
     p.refuse('invalid-token');
-    h.clock.advance(5000); // not within the pairing window of a close: a second refusal of its own
+    await h.clock.advance(5000); // not within the pairing window of a close: a second refusal of its own
     p.refuse('invalid-token');
     finish(true);
     await flush();
