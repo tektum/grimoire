@@ -37,6 +37,12 @@ describe('the users screen', () => {
     expect(screen.getByText('Bob')).toBeTruthy();
   });
 
+  it('limits the search box to the 200 characters the server accepts, so no search is invalid', async () => {
+    const { api } = fakeApi({ 'GET /v1/users': list([ALICE]) });
+    renderAt(<UsersScreen api={api} />);
+    expect((await screen.findByRole('searchbox', { name: 'Search users' })).getAttribute('maxlength')).toBe('200');
+  });
+
   it('says so when nobody matches', async () => {
     const { api } = fakeApi({ 'GET /v1/users': list([]) });
     renderAt(<UsersScreen api={api} />);
