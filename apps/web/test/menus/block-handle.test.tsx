@@ -17,10 +17,16 @@ describe('the block handle button and its menu', () => {
     expect(onToggle).toHaveBeenCalled();
   });
 
-  it('points the button at the item Enter would choose while the menu is open, and at nothing when it is closed', () => {
+  it('the list holds the focus while it is open and points at the item Enter would choose; the button points at nothing (the attribute is for a listbox, not a button)', () => {
     const { rerender } = render(<BlockHandle open kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
-    expect(screen.getByRole('button', { name: 'Block menu' }).getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-1');
+    const list = screen.getByRole('listbox');
+    expect(list.getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-1');
+    expect(document.activeElement).toBe(list);
+    expect(screen.getByRole('button', { name: 'Block menu' }).hasAttribute('aria-activedescendant')).toBe(false);
+    rerender(<BlockHandle open kinds={BLOCK_KINDS} active={2} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.getByRole('listbox').getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-2');
     rerender(<BlockHandle open={false} kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.queryByRole('listbox')).toBeNull();
     expect(screen.getByRole('button', { name: 'Block menu' }).hasAttribute('aria-activedescendant')).toBe(false);
   });
 

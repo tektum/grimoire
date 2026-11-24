@@ -24,6 +24,28 @@ test.describe('accessibility of the editor menus', () => {
     }
   });
 
+  test('no serious or critical violation with the block handle and its menu open', async ({ browser, baseURL }) => {
+    const made = await makePage('Some words.\n');
+    const users = await twoUsers(browser, baseURL);
+    try {
+      const { page } = users.a;
+      await page.goto(made.path);
+      await waitForSynced(page);
+      await surface(page).locator('p').first().hover();
+      await page.getByRole('button', { name: 'Block menu' }).press('Enter'); // from the keyboard: the list takes the focus (a click hands it back to the text)
+      const list = page.getByRole('listbox', { name: 'Turn this block into' });
+      await expect(list).toBeFocused();
+      await expect(list).toHaveAttribute('aria-activedescendant', /option-text$/);
+      await page.keyboard.press('ArrowDown');
+      await expect(list).toHaveAttribute('aria-activedescendant', /option-heading-1$/);
+      await expectNoAxeViolations(page);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('button', { name: 'Block menu' })).toBeFocused();
+    } finally {
+      await users.close();
+    }
+  });
+
   test('no serious or critical violation with the bubble open, and with its link editor showing a refusal', async ({ browser, baseURL }) => {
     const made = await makePage('selectable\n');
     const users = await twoUsers(browser, baseURL);

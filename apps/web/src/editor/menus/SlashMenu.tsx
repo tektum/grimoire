@@ -6,9 +6,10 @@ export const optionId = (menu: string, kind: BlockKind): string => (menu === SLA
 
 /**
  * The list of block kinds under the cursor after a `/`. It is a listbox the editor points at (`aria-activedescendant` on the editing surface), because the focus stays in the
- * text: the keys are the editor's, the list only shows which item they would choose, and a click chooses one too.
+ * text: the keys are the editor's, the list only shows which item they would choose, and a click chooses one too. With `focused` the list takes the focus itself (the handle's
+ * menu, opened from a button) and points at the item with its own `aria-activedescendant`: that attribute belongs on a listbox, not on a button.
  */
-export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; onPick: (kind: BlockKind) => void; onHover: (index: number) => void; id?: string; label?: string }) {
+export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; onPick: (kind: BlockKind) => void; onHover: (index: number) => void; id?: string; label?: string; focused?: boolean }) {
   const menu = props.id ?? SLASH_MENU_ID;
   if (props.kinds.length === 0) {
     return (
@@ -18,7 +19,15 @@ export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; 
     );
   }
   return (
-    <div id={menu} className="slash-list" role="listbox" aria-label={props.label ?? 'Turn this block into'}>
+    <div
+      id={menu}
+      className="slash-list"
+      role="listbox"
+      aria-label={props.label ?? 'Turn this block into'}
+      tabIndex={props.focused === true ? -1 : undefined}
+      aria-activedescendant={props.focused === true && props.kinds[props.active] !== undefined ? optionId(menu, props.kinds[props.active] as BlockKind) : undefined}
+      ref={props.focused === true ? (element) => element?.focus() : undefined}
+    >
       {props.kinds.map((kind, index) => (
         <div
           key={kind.id}
