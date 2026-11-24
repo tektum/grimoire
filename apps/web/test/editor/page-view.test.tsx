@@ -656,18 +656,18 @@ describe('the page screen', () => {
     await waitFor(() => expect(t.lives).toHaveLength(1));
     await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed'));
     await waitFor(() => expect(t.sessions).toHaveLength(2));
-    await act(async () => void t.sessions[1]!.provider.refuse('not-found'));
-    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
-    expect(screen.queryByTestId('editor-root')).toBeNull();
-    // Nothing opens again: ten minutes of the page's time go by (any retry, at any backoff, would have fired in them), and the connection was asked for once.
+    // The fake timers are in place before the refusal, so a retry it scheduled would be one that the ten minutes of the page's time below can fire.
     vi.useFakeTimers();
     try {
+      await act(async () => void t.sessions[1]!.provider.refuse('not-found'));
+      expect(screen.getByRole('heading', { name: 'Page not found' })).toBeTruthy();
+      expect(screen.queryByTestId('editor-root')).toBeNull();
       await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+      expect(t.sessions).toHaveLength(2);
+      expect(t.sessions[1]!.provider.connects).toBe(1); // asked for once
     } finally {
       vi.useRealTimers();
     }
-    expect(t.sessions).toHaveLength(2);
-    expect(t.sessions[1]!.provider.connects).toBe(1);
   });
 
   it('shows it for a page that is not there when the screen is opened, too', async () => {
