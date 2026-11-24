@@ -17,22 +17,23 @@ test.describe('links in the page text', () => {
       await expect(editor.locator('a[href="/p/other-ab12cd"]')).toHaveCount(1);
 
       // An unsafe address that reaches the page by any other way than the saved text (another person's edit, a change of the attribute) is not a link either.
-      await editor.evaluate((el) => {
+      // The injected link is clicked here, in the same step, once the guard has had its turn (its observer runs before this continuation): had it stayed
+      // a link, the click would run the script and set the flag.
+      const result = await editor.evaluate(async (el) => {
         const bad = document.createElement('a');
         bad.setAttribute('href', 'javascript:window.__pwned = true');
         bad.textContent = 'bad link';
         el.firstElementChild!.append(bad);
-        const existing = el.querySelector('a[href="https://example.com/a"]')!;
-        existing.setAttribute('href', 'data:text/html,<script>window.__pwned = true</script>');
+        const changed = el.querySelector<HTMLElement>('a[href="https://example.com/a"]')!;
+        changed.setAttribute('href', 'data:text/html,<script>window.__pwned = true</script>');
+        await Promise.resolve();
+        const state = { badHasHref: bad.hasAttribute('href'), changedHasHref: changed.getAttribute('href')?.startsWith('data:') ?? false };
+        bad.click();
+        changed.click();
+        return { ...state, pwned: (window as unknown as { __pwned?: boolean }).__pwned ?? false };
       });
+      expect(result).toEqual({ badHasHref: false, changedHasHref: false, pwned: false });
       await expect(editor.locator('a[href^="javascript:"], a[href^="data:"]')).toHaveCount(0);
-      // The editor may put its own DOM back or leave the guarded link as text: either way nothing can be followed.
-      await editor
-        .getByText('bad link')
-        .click({ trial: true })
-        .catch(() => undefined);
-      await page.evaluate(() => document.querySelectorAll('a[data-unsafe-link]').forEach((a) => (a as HTMLElement).click()));
-      expect(await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned)).toBeUndefined();
     } finally {
       await users.close();
     }

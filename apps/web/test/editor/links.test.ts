@@ -6,10 +6,19 @@ const root = document.createElement('div');
 document.body.append(root);
 afterEach(() => (root.innerHTML = ''));
 
-const settle = async (): Promise<void> => {
-  await Promise.resolve();
-  await Promise.resolve();
-};
+/**
+ * Makes a change to the page and waits until the observers of that change have run: a second observer, made after the guard's, is told of the same
+ * change after the guard's has been. (A guard that was stopped has no observer, and this one is still told: the wait does not depend on the guard.)
+ */
+const change = (make: () => void): Promise<void> =>
+  new Promise((resolve) => {
+    const watcher = new MutationObserver(() => {
+      watcher.disconnect();
+      resolve();
+    });
+    watcher.observe(root, { subtree: true, childList: true, attributes: true });
+    make();
+  });
 const hrefs = (): (string | null)[] => [...root.querySelectorAll('a')].map((a) => a.getAttribute('href'));
 
 const UNSAFE = [
@@ -51,13 +60,11 @@ describe('links in the editor go through the one allow-list', () => {
 
   it("guards links that arrive later: another person's edit, or a re-render, inserts one", async () => {
     const stop = guardLinks(root);
-    root.innerHTML = '<p>text <a href="javascript:alert(1)">bad</a> and <a href="https://example.com">good</a></p>';
-    await settle();
+    await change(() => (root.innerHTML = '<p>text <a href="javascript:alert(1)">bad</a> and <a href="https://example.com">good</a></p>'));
     expect(hrefs()).toEqual([null, 'https://example.com']);
     const direct = document.createElement('a');
     direct.setAttribute('href', 'data:text/html,x');
-    root.append(direct);
-    await settle();
+    await change(() => root.append(direct));
     expect(direct.hasAttribute('href')).toBe(false);
     stop();
   });
@@ -65,8 +72,7 @@ describe('links in the editor go through the one allow-list', () => {
   it('guards a link whose address is changed to an unsafe one afterwards', async () => {
     root.innerHTML = '<a href="https://example.com">link</a>';
     const stop = guardLinks(root);
-    root.querySelector('a')!.setAttribute('href', 'javascript:alert(1)');
-    await settle();
+    await change(() => root.querySelector('a')!.setAttribute('href', 'javascript:alert(1)'));
     expect(root.querySelector('a')!.hasAttribute('href')).toBe(false);
     stop();
   });
@@ -76,8 +82,7 @@ describe('links in the editor go through the one allow-list', () => {
     const stop = guardLinks(root);
     expect(root.querySelector('a')!.hasAttribute('data-unsafe-link')).toBe(false);
     stop();
-    root.insertAdjacentHTML('beforeend', '<a href="javascript:alert(1)">late</a>');
-    await settle();
+    await change(() => root.insertAdjacentHTML('beforeend', '<a href="javascript:alert(1)">late</a>'));
     expect(root.querySelector('a[href^="javascript"]')).not.toBeNull(); // nothing watches any more
   });
 });
