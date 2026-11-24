@@ -23,7 +23,7 @@ afterAll(async () => {
 describe('tenants in the facts and in the decision (PostgreSQL)', () => {
   it('reads the tenant of the user and of the page', async () => {
     const facts = await createAccessStore(db).facts([{ userId: USER_A, pageId: PAGE_A }, { userId: USER_B, pageId: PAGE_B }, { userId: USER_A, pageId: PAGE_B }]);
-    expect(facts.map((f) => [f.user?.tenantId, f.page?.tenantId])).toEqual([['legacy', 'legacy'], ['tenant-b', 'tenant-b'], ['legacy', 'tenant-b']]);
+    expect(facts.map((f) => [f.user?.tenantId, f.page?.tenantId])).toEqual([['tenant-a', 'tenant-a'], ['tenant-b', 'tenant-b'], ['tenant-a', 'tenant-b']]);
   });
 
   it('gives a user nothing on a page of another tenant (not found, as a page that is not there), and everything on its own', async () => {
@@ -40,7 +40,7 @@ describe('tenants in the facts and in the decision (PostgreSQL)', () => {
     expect((await store.visibleCollections(USER_A)).map((c) => c.collectionId)).not.toContain(COL_B);
     expect((await store.visibleCollections(USER_B)).map((c) => c.collectionId)).toEqual([COL_B]);
     const facts = await store.collectionFacts([{ userId: USER_A, collectionId: COL_B }]);
-    expect([facts[0]?.user?.tenantId, facts[0]?.collection?.tenantId]).toEqual(['legacy', 'tenant-b']);
+    expect([facts[0]?.user?.tenantId, facts[0]?.collection?.tenantId]).toEqual(['tenant-a', 'tenant-b']);
   });
 
   it('is wrong nowhere on the whole two-tenant check', async () => {

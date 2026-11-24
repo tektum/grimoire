@@ -79,7 +79,7 @@ export function counting(inner: Queryable): { db: Queryable; statements: () => n
   };
 }
 
-// Two tenants in one database (docs/tenancy.md 3.3, 3.4): an admin of `legacy` with its collection and page, an admin of `tenant-b` with its own. The ids are fixed and apart from the shared table's.
+// Two tenants in one database (docs/tenancy.md 3.3, 3.4): an admin of `tenant-a` with its collection and page, an admin of `tenant-b` with its own. The ids are fixed and apart from the shared table's.
 const tid = (n: number): string => `00000000-0000-4000-8000-000000fa00${String(n).padStart(2, '0')}`;
 export const TENANTS = { userA: tid(1), userB: tid(2), colA: tid(3), colB: tid(4), pageA: tid(5), pageB: tid(6) };
 const tenantWorld: World = {
@@ -89,12 +89,15 @@ const tenantWorld: World = {
   pages: [{ id: TENANTS.pageA, collectionId: TENANTS.colA, epoch: 1, deleted: false }, { id: TENANTS.pageB, collectionId: TENANTS.colB, epoch: 1, deleted: false }],
 };
 
-/** Loads the two-tenant world: everything goes in as `legacy`, then tenant B takes its user, collection and page in one transaction (the keys between them are checked at commit). */
+/** Loads the two-tenant world: everything goes in as `legacy`, then each tenant takes its user, collection and page in one transaction (the keys between them are checked at commit). Neither tenant is `legacy`, where the shared table's world lives, so the fixture is in nobody's list there. */
 export async function loadTenantWorld(db: string): Promise<void> {
   await loadWorld(db, tenantWorld);
   const admin = urlFor('grimoire_admin', db);
-  await sqlAs(admin, `insert into tenants (id, name) values ('tenant-b', 'B')`);
+  await sqlAs(admin, `insert into tenants (id, name) values ('tenant-a', 'A'), ('tenant-b', 'B')`);
   await sqlAs(admin, `begin;
+    update users set tenant_id = 'tenant-a' where id = '${TENANTS.userA}';
+    update collections set tenant_id = 'tenant-a' where id = '${TENANTS.colA}';
+    update pages set tenant_id = 'tenant-a' where id = '${TENANTS.pageA}';
     update users set tenant_id = 'tenant-b' where id = '${TENANTS.userB}';
     update collections set tenant_id = 'tenant-b' where id = '${TENANTS.colB}';
     update pages set tenant_id = 'tenant-b' where id = '${TENANTS.pageB}';
