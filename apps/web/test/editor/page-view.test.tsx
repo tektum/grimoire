@@ -565,6 +565,15 @@ describe('the page screen', () => {
       expect(t.router.state.location.pathname).toBe(at);
     });
 
+    it('does not undo a navigation to the same path with another query or fragment that the person made while the title changed', async () => {
+      const t = mountPage({ at: '/p/plan-abc' });
+      await t.synced();
+      await act(async () => { await t.router.navigate('/p/plan-abc?tab=2#notes'); });
+      await t.setPage(page({ title: 'Renamed' }));
+      expect(t.router.state.location.search).toBe('?tab=2');
+      expect(t.router.state.location.hash).toBe('#notes');
+    });
+
     it('does nothing for an address that is already the current one', async () => {
       const t = mountPage({ at: '/p/plan-abc' });
       await t.synced();

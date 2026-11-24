@@ -111,7 +111,7 @@ describe('useTreeActions', () => {
 
   describe('renames of one page from the page head and from the tree, racing', () => {
     // A server that keeps the title the last PATCH it was given set, and that answers each PATCH only when the test lets it. The open page reads its record through `usePage`.
-    const race = () => {
+    const race = (options: { refuse?: boolean } = {}) => {
       let serverTitle = 'Start';
       const holds = new Map<string, () => void>();
       const gates = new Map<string, Promise<void>>();
@@ -122,6 +122,7 @@ describe('useTreeActions', () => {
         GET: async (path: string) => (path === '/v1/pages/by-url-id/{urlId}' ? answer(record()) : answer({ pages: SERVER.pages.map((p) => (p.id === 'a' ? { ...p, title: serverTitle } : p)) })),
         PATCH: async (_path: string, init: { body: { title: string } }) => {
           await gates.get(init.body.title);
+          if (options.refuse) return { error: { error: { code: 'invalid' } }, response: new Response(null, { status: 422 }) };
           serverTitle = init.body.title;
           return answer({});
         },
@@ -151,12 +152,12 @@ describe('useTreeActions', () => {
       await act(async () => {
         const fromHead = t.head.result.current.rename('a', 'From the head');
         const fromTree = t.tree.result.current.rename('a', 'From the tree');
+        // Each answer is let in only after the one before it has been handled: the PATCH of the one released is awaited through its own rename, not guessed with a pause.
+        const done: Record<string, Promise<unknown>> = { 'From the head': fromHead, 'From the tree': fromTree };
         for (const title of order) {
           t.release(title);
-          await Promise.resolve();
-          await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
+          await done[title];
         }
-        await Promise.all([fromHead, fromTree]);
       });
       expect(t.server()).toBe(finalTitle);
       await waitFor(() => expect(t.shown()).toBe(finalTitle)); // what the open page draws from
@@ -164,7 +165,7 @@ describe('useTreeActions', () => {
       expect(inTree).toBe(finalTitle);
     });
 
-    it('shows the new title at once, before any answer, and a rename that fails ends on the title the server still has', async () => {
+    it('shows the new title at once, before any answer, and keeps it when the server accepts it', async () => {
       const t = race();
       await waitFor(() => expect(t.shown()).toBe('Start'));
       let pending: Promise<unknown> = Promise.resolve();
@@ -172,6 +173,20 @@ describe('useTreeActions', () => {
       await waitFor(() => expect(t.shown(), 'at once').toBe('From the head'));
       await act(async () => { t.release('From the head'); await pending; });
       await waitFor(() => expect(t.shown()).toBe('From the head'));
+    });
+
+    it('rolls the shown title back when the server refuses the rename: the page record and the tree end on the title they had, and the outcome says it was refused', async () => {
+      const t = race({ refuse: true });
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect(t.open.result.current.tree.data).toBeDefined());
+      let pending: Promise<{ ok: boolean }> = Promise.resolve({ ok: true });
+      await act(async () => { pending = t.head.result.current.rename('a', 'From the head'); });
+      await waitFor(() => expect(t.shown(), 'at once').toBe('From the head'));
+      let outcome: { ok: boolean } = { ok: true };
+      await act(async () => { t.release('From the head'); outcome = await pending; });
+      expect(outcome.ok).toBe(false);
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect((t.client.getQueryData<readonly FlatPage[]>(treeKey('c1')) ?? []).find((p) => p.id === 'a')?.title).toBe('Start'));
     });
   });
 });

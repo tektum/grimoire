@@ -57,10 +57,20 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
         ),
       rename: async (id, title) => {
         // Shown at once, in the tree and in the page record of the open page; the answers decide nothing: the page record is read again whatever the order they come in, so the heading and the address follow the server's title.
+        let before: { tree: string | undefined; record: string | undefined } = { tree: undefined, record: undefined };
         const outcome = await settle(() => api.PATCH('/v1/pages/{id}' as never, { params: { path: { id } }, body: { title } } as never), undefined, () => {
+          before = {
+            tree: client.getQueryData<readonly FlatPage[]>(key)?.find((p) => p.id === id)?.title,
+            record: client.getQueriesData<PageResult>({ predicate: isPageRecordQuery }).map(([, r]) => (r?.kind === 'found' && r.page.id === id ? r.page.title : undefined)).find((t) => t !== undefined),
+          };
           local((pages) => applyRename(pages, id, title));
           client.setQueriesData<PageResult>({ predicate: isPageRecordQuery }, (cached) => (cached?.kind === 'found' && cached.page.id === id ? titled(cached, title) : cached));
         });
+        if (!outcome.ok) {
+          // Refused: what was shown at once is taken back now, from the cache, without waiting for a read (and only where it is still the title this rename showed: a later rename may have changed it since).
+          if (before.tree !== undefined) local((pages) => pages.map((p) => (p.id === id && p.title === title ? { ...p, title: before.tree! } : p)));
+          if (before.record !== undefined) client.setQueriesData<PageResult>({ predicate: isPageRecordQuery }, (cached) => (cached?.kind === 'found' && cached.page.id === id && cached.page.title === title ? titled(cached, before.record!) : cached));
+        }
         await client.invalidateQueries({ predicate: isPageRecordQuery });
         return outcome;
       },

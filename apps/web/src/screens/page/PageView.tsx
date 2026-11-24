@@ -94,7 +94,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   useEffect(() => {
     // A person who is on the way somewhere else is not sent back. What this effect saw in its render may be older than the router: a link followed a moment ago has begun (`navigation` of the router) or has
     // already arrived (`location` of the router), and the render here has not caught up. So the router itself is asked, now, and the address is touched only if nothing is pending and it is still where this render was.
-    if (router !== undefined && (router.state.navigation.state !== 'idle' || router.state.location.pathname !== location.pathname)) return;
+    if (router !== undefined && (router.state.navigation.state !== 'idle' || router.state.location.pathname + router.state.location.search + router.state.location.hash !== location.pathname + location.search + location.hash)) return;
     const own = /^\/p\/([^/]+)$/.exec(location.pathname);
     if (own === null || urlIdOf(own[1]!) !== page.urlId) return;
     const wanted = pagePath(page.title, page.urlId);
