@@ -68,3 +68,26 @@ export function insertPage(run: RunSql, overrides: Columns = {}): Promise<string
     ...overrides,
   });
 }
+
+/** The tables that carry `tenant_id` (migration 0009). */
+export const TENANT_TABLES = ['users', 'groups', 'group_members', 'collections', 'collection_access', 'pages', 'revisions', 'attachments', 'audit_events', 'idempotency_keys', 'imports', 'import_items'] as const;
+
+/** One row in every tenant table, all in `tenantId` (whose `tenants` row must exist), around a new person of that tenant; returns that person's id. */
+export async function insertTenantRows(run: RunSql, tenantId: string): Promise<string> {
+  const tenant = { tenant_id: tenantId };
+  const hash = raw(`decode(repeat('00', 32), 'hex')`);
+  const user = await insertUser(run, tenant);
+  const group = await insertRow(run, 'groups', { name: `Group ${randomUUID()}`, ...tenant });
+  await run(insertSql('group_members', { group_id: group, user_id: user, ...tenant }));
+  const collection = await insertCollection(run, { created_by: user, ...tenant });
+  await run(insertSql('collection_access', { collection_id: collection, user_id: user, permission: 'read', ...tenant }));
+  const page = await insertPage(run, { collection_id: collection, created_by: user, ...tenant });
+  await insertRow(run, 'revisions', { page_id: page, title: 'T', markdown: 'M', markdown_hash: hash, reason: 'manual', created_at: raw('now()'), ...tenant });
+  const attachment = randomUUID();
+  await insertRow(run, 'attachments', { id: attachment, page_id: page, file_name: 'a.png', content_type: 'image/png', size: 3, s3_key: `attachments/${attachment}`, status: 'ready', ...tenant });
+  await run(insertSql('audit_events', { actor_id: user, action: 'test', ...tenant }));
+  await run(insertSql('idempotency_keys', { user_id: user, key: 'k', request_hash: hash, ...tenant }));
+  const imported = await insertRow(run, 'imports', { target_collection_id: collection, source: 'markdown_zip', ...tenant });
+  await run(insertSql('import_items', { import_id: imported, path: 'a.md', kind: 'page', ...tenant }));
+  return user;
+}

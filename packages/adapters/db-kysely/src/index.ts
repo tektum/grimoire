@@ -19,6 +19,7 @@ export * from './admin.js';
 export * from './page-state.js';
 export * from './attachments.js';
 export * from './setup.js';
+export * from './tenant-adopt.js';
 
 /** The port plus the Kysely handle, which only this package and the migration command use. */
 export interface KyselyDatabase extends Database { readonly kysely: Kysely<GrimoireTables> }

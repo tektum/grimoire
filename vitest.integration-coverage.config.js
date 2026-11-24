@@ -15,6 +15,7 @@ const fileFloors = {
   "packages/adapters/db-kysely/src/trash.ts": { statements: 95, branches: 89, functions: 99, lines: 99 },
   "packages/adapters/db-kysely/src/revisions.ts": { statements: 99, branches: 99, functions: 99, lines: 99 }, // M4-T08: 100 on every metric in its first run
   "packages/adapters/db-kysely/src/attachments.ts": { statements: 96, branches: 90, functions: 99, lines: 95 }, // M5-T04: first CI reading 97.29 / 91.66 / 100 / 96.55, a point under each
+  "packages/adapters/db-kysely/src/tenant-adopt.ts": { statements: 99, branches: 99, functions: 99, lines: 99 }, // 100 on every metric in its first run
 };
 
 export default {

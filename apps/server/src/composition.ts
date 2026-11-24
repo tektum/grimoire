@@ -18,8 +18,8 @@ import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektu
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
-import { createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import type { KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
@@ -177,6 +177,24 @@ export function composeMigrate(options: MigrateOptions = {}): CommandComposition
   const url = config.database.migrationUrl;
   if (!url) { log.error('migrate.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_MIGRATION_URL', rule: 'is required to run migrations' }] }); return { ok: false, code: 2, log }; }
   return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}
+
+/** `grimoire tenant-adopt`: the migrator's connection, from the `migrate` settings (the runtime role may not change the tenant of a row or a tenant's name). */
+export function composeTenantAdopt(options: { readonly env?: Env } = {}): CommandCompositionResult {
+  const log = createEventLog(createJsonLogger({ clock: systemClock }));
+  let config: Config;
+  try { config = options.env ? loadConfig(options.env, { purpose: 'migrate' }) : loadConfigFromProcessEnv({ purpose: 'migrate' }); } catch (e) {
+    log.error('tenant_adopt.config_invalid', { settings: e instanceof ConfigError ? e.problems : [{ setting: 'configuration', rule: 'invalid' }] });
+    return { ok: false, code: 2, log };
+  }
+  const url = config.database.migrationUrl;
+  if (!url) { log.error('tenant_adopt.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_MIGRATION_URL', rule: 'is required to run tenant-adopt' }] }); return { ok: false, code: 2, log }; }
+  return { ok: true, ctx: { config, db: createDatabase(url, { maxConnections: 1 }), log } };
+}
+
+/** The move itself, bound to the database adapter here like the migrations are. */
+export function runTenantAdopt(db: KyselyDatabase, request: TenantAdoptRequest): Promise<TenantAdoptResult> {
+  return adoptTenant(db, request);
 }
 
 export interface DbSetupComposition { readonly db: KyselyDatabase; readonly passwords: { readonly app: string; readonly migrator: string }; readonly log: EventLog }

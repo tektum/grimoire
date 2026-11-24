@@ -51,6 +51,8 @@ Two things in each project make the sign-in carry a tenant (the design is `docs/
 
 The server does not use the tenant yet (`docs/tenancy.md` is a proposal); until it does, the sign-in of a project stays closed by `GRIMOIRE_ALLOWED_EMAIL_DOMAINS`, and the flow only creates tenants nobody reads.
 
+A stage whose database held data before tenancy moves that `legacy` workspace into its real tenant once, by hand, with `grimoire tenant-adopt` as the migration role (`docs/operations/database-setup.md`); no task runs it.
+
 ## What it does not make
 
 - Roles and permissions: the product authorizes with its own database. Tenants are made by the sign-in flow (below), not by code: the provider has no tenant resource.

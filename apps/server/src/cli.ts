@@ -2,8 +2,9 @@
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
-import { composeDbSetup, composeFilesSetup, composeSeed, runDbSetup, runFilesSetup } from './composition.js';
+import { composeDbSetup, composeFilesSetup, composeSeed, composeTenantAdopt, runDbSetup, runFilesSetup, runTenantAdopt } from './composition.js';
 import { composeMigrate } from './lifecycle/compose-migrate.js';
+import { parseTenantAdoptArgs, TENANT_ADOPT_USAGE } from './lifecycle/tenant-adopt.js';
 import { seedLocal } from './seed/index.js';
 
 // Exit codes: 0 ok, 1 runtime failure, 2 usage or configuration error. Adapters come from composition.ts (S1); this file only runs and closes them.
@@ -103,6 +104,35 @@ async function dbSetup(): Promise<number> {
   }
 }
 
+/**
+ * `grimoire tenant-adopt --from <id> --to <id> [--name <name> --domain <domain>]`: moves the whole `from` workspace into the `to` tenant in one transaction, as the
+ * migrator (docs/tenancy.md section 5, item 4). Prints the rows moved in each table, or the reason it changed nothing; never a name, a domain or a person.
+ */
+async function tenantAdopt(args: string[]): Promise<number> {
+  const request = parseTenantAdoptArgs(args);
+  if (request === undefined) {
+    process.stderr.write(`${TENANT_ADOPT_USAGE}\n`);
+    return 2;
+  }
+  const composed = composeTenantAdopt();
+  if (!composed.ok) return composed.code;
+  const { db, log } = composed.ctx;
+  try {
+    const result = await runTenantAdopt(db, request);
+    if (result.kind === 'refused') {
+      log.error('tenant_adopt.refused', { reason: result.reason });
+      return 1;
+    }
+    log.info('tenant_adopt.done', { from: request.from, to: request.to, tenantCreated: result.tenantCreated, moved: result.moved, sourceTenantRow: 'kept' });
+    return 0;
+  } catch (e) {
+    log.error('tenant_adopt.failed', { error: e instanceof Error ? e.message : 'unknown error' });
+    return 1;
+  } finally {
+    await db.close().catch(() => undefined);
+  }
+}
+
 const [command, ...rest] = process.argv.slice(2);
 if (command === 'migrate') {
   process.exitCode = await migrate(rest);
@@ -112,9 +142,11 @@ if (command === 'migrate') {
   process.exitCode = await filesSetup();
 } else if (command === 'db-setup') {
   process.exitCode = await dbSetup();
+} else if (command === 'tenant-adopt') {
+  process.exitCode = await tenantAdopt(rest);
 } else {
   process.stderr.write(
-    'usage: grimoire migrate [--dir <migrations directory>] | grimoire seed | grimoire files-setup | grimoire db-setup\n',
+    'usage: grimoire migrate [--dir <migrations directory>] | grimoire seed | grimoire files-setup | grimoire db-setup | grimoire tenant-adopt --from <tenant id> --to <tenant id> [--name <name> --domain <domain>]\n',
   );
   process.exitCode = 2;
 }

@@ -18,6 +18,7 @@ export const integrationCovered = [
   "packages/adapters/db-kysely/src/trash.ts", // integration tests: packages/adapters/db-kysely/test/trash
   "packages/adapters/db-kysely/src/revisions.ts", // integration tests: packages/adapters/db-kysely/test/revisions
   "packages/adapters/db-kysely/src/attachments.ts", // integration tests: packages/adapters/db-kysely/test/attachments
+  "packages/adapters/db-kysely/src/tenant-adopt.ts", // integration tests: packages/adapters/db-kysely/test/tenant-adopt
 ];
 
 export default defineConfig({
