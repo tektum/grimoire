@@ -14,7 +14,7 @@ An upload that is not completed within an hour expires. Retrying the first step 
 ## How files are served
 
 - Files are private: every download is a signed link that works for 300 seconds.
-- A PNG, JPEG, GIF, WebP or AVIF image is shown in the page under its own type. Everything else, and every download that was asked for, is an attachment of type `application/octet-stream`, so no browser shows it or guesses its type. SVG and HTML are therefore always downloads.
+- A PNG, JPEG, GIF, WebP or AVIF image is shown in the page under its own type; when a download is asked for, it is an attachment under its own type. Every other type is always an attachment of type `application/octet-stream`, whatever was asked, so no browser shows it or guesses its type. SVG and HTML are therefore always downloads.
 - A file name is cleaned (no path or control characters, at most 255 bytes, an extension that a browser could run gets `.txt`), and the object's key never contains it.
 
 ## Limits
