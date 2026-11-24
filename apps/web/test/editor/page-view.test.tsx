@@ -84,7 +84,6 @@ function mountPage(
     staleHeader?: boolean;
     markdownStatus?: number;
     markdownGate?: Promise<void>;
-    minClientVersion?: string;
     meRole?: string;
     onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
@@ -95,7 +94,6 @@ function mountPage(
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
     GET: vi.fn(async (path: string) => {
-      if (path === '/v1/config') return { data: { minClientVersion: options.minClientVersion ?? '0.0.0' }, response: new Response('', { status: 200 }) };
       if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222', ...(options.meRole === undefined ? {} : { role: options.meRole }) }, response: new Response('', { status: 200 }) };
       if (options.markdownGate) await options.markdownGate;
       return {
@@ -104,7 +102,7 @@ function mountPage(
       };
     }),
   } as unknown as AppSession['api'];
-  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test' };
+  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', apiUrl: 'http://api.test' };
   const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
   const engine = { ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) };
   const Host = () => {
@@ -545,10 +543,18 @@ describe('the page screen', () => {
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
   });
 
-  it('checks the minimum client version again when the connection is made again after more than a minute, and shows nothing else when the server wants a newer client', async () => {
+  it('checks the minimum client version again when the connection is made again after more than a minute, with a plain request, and shows nothing else when the server wants a newer client', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); // only the clock of the page moves: the waits of the test are real
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return new Response(JSON.stringify({ minClientVersion: '999.0.0' }), { status: 200 });
+      }),
+    );
     try {
-      const t = mountPage({ minClientVersion: '999.0.0' });
+      const t = mountPage();
       await t.synced();
       await waitFor(() => expect(t.lives).toHaveLength(1));
       expect(isClientOutdated()).toBe(false);
@@ -556,9 +562,11 @@ describe('the page screen', () => {
       vi.setSystemTime(Date.now() + 61_000);
       await act(async () => void t.sessions[0]!.provider.succeed(1));
       await waitFor(() => expect(isClientOutdated()).toBe(true));
-      expect(t.api.GET).toHaveBeenCalledWith('/v1/config', {});
+      expect(asked).toEqual(['http://api.test/v1/config']);
+      expect(t.api.GET).not.toHaveBeenCalledWith('/v1/config', expect.anything()); // not through the API client: its notices would show a toast for a probe
     } finally {
       resetClientOutdated();
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });

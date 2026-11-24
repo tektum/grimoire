@@ -1,62 +1,66 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ApiLike } from '../../src/api/query';
 import { ConnectionManager } from '../../src/editor/core/connection';
-import { isClientOutdated, resetClientOutdated } from '../../src/gate/outdated';
+import { isClientOutdated, markClientOutdated, resetClientOutdated } from '../../src/gate/outdated';
 import { recheckMinClientVersion } from '../../src/gate/recheck';
 import { flush, harness } from './support';
 
 afterEach(() => resetClientOutdated());
 
-const api = (answer: () => Promise<{ data?: unknown; response: { status: number; ok: boolean } }>): ApiLike => ({ GET: vi.fn(answer) }) as unknown as ApiLike;
-const config = (min: string) => api(async () => ({ data: { minClientVersion: min }, response: { status: 200, ok: true } }));
+type Answer = { status: number; body?: unknown } | Error;
+const fetching = (answer: Answer) => {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    if (answer instanceof Error) throw answer;
+    return new Response(answer.body === undefined ? '' : JSON.stringify(answer.body), { status: answer.status });
+  });
+  return { fetch: fn as unknown as typeof fetch, calls };
+};
+const config = (min: unknown) => fetching({ status: 200, body: { minClientVersion: min } });
 
 describe('the minimum client version, checked again', () => {
-  it('marks the client outdated when the server now asks for a newer one, and asks GET /v1/config', async () => {
-    const client = config('99.0.0');
-    await recheckMinClientVersion(client, '1.2.3');
+  it('marks the client outdated when the server now asks for a newer one, with a plain request: the config, no cookie, the version of this client', async () => {
+    const { fetch, calls } = config('99.0.0');
+    await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch, clientVersion: '1.2.3' });
     expect(isClientOutdated()).toBe(true);
-    expect(client.GET).toHaveBeenCalledWith('/v1/config', {});
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('http://api.test/v1/config');
+    expect(calls[0]!.init).toMatchObject({ credentials: 'omit', headers: { 'X-Grimoire-Client-Version': '1.2.3' } });
   });
 
   it('leaves the client alone when its version is enough (equal or newer)', async () => {
-    await recheckMinClientVersion(config('1.2.3'), '1.2.3');
-    await recheckMinClientVersion(config('1.0.0'), '1.2.3');
+    await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch: config('1.2.3').fetch, clientVersion: '1.2.3' });
+    await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch: config('1.0.0').fetch, clientVersion: '1.2.3' });
     expect(isClientOutdated()).toBe(false);
   });
 
   it('a 426 is the same as too old', async () => {
-    await recheckMinClientVersion(
-      api(async () => ({ response: { status: 426, ok: false } })),
-      '1.2.3',
-    );
+    await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch: fetching({ status: 426 }).fetch, clientVersion: '1.2.3' });
     expect(isClientOutdated()).toBe(true);
   });
 
-  it('changes nothing when the server cannot be asked or answers something else', async () => {
-    await recheckMinClientVersion(
-      api(async () => Promise.reject(new Error('offline'))),
-      '1.2.3',
-    );
-    await recheckMinClientVersion(
-      api(async () => ({ response: { status: 503, ok: false } })),
-      '1.2.3',
-    );
-    await recheckMinClientVersion(
-      api(async () => ({ data: { minClientVersion: 5 }, response: { status: 200, ok: true } })),
-      '1.2.3',
-    );
-    await recheckMinClientVersion(
-      api(async () => ({ data: undefined, response: { status: 200, ok: true } })),
-      '1.2.3',
-    );
+  it('changes nothing, and says nothing, when the server cannot be asked or answers something else', async () => {
+    for (const answer of [new Error('offline'), { status: 503 }, { status: 429 }, { status: 200, body: { minClientVersion: 5 } }, { status: 200, body: null }] as Answer[]) {
+      await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch: fetching(answer).fetch, clientVersion: '1.2.3' });
+    }
     expect(isClientOutdated()).toBe(false);
   });
 
-  it('uses the version of this client when none is given', async () => {
-    await recheckMinClientVersion(config('0.0.0'));
+  it('asks nothing once the client is known to be outdated', async () => {
+    markClientOutdated();
+    const { fetch, calls } = config('99.0.0');
+    await recheckMinClientVersion({ apiUrl: 'http://api.test', fetch });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('uses the version of this client and the platform fetch when none are given', async () => {
+    vi.stubGlobal('fetch', config('0.0.0').fetch);
+    await recheckMinClientVersion({ apiUrl: 'http://api.test' });
     expect(isClientOutdated()).toBe(false);
-    await recheckMinClientVersion(config('999.0.0'));
+    vi.stubGlobal('fetch', config('999.0.0').fetch);
+    await recheckMinClientVersion({ apiUrl: 'http://api.test' });
     expect(isClientOutdated()).toBe(true);
+    vi.unstubAllGlobals();
   });
 });
 

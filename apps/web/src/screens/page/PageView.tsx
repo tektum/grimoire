@@ -85,7 +85,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       createSession: (token) => engine.createSession({ url: session.collabUrl, pageId: page.id, token }),
       captureCopy: () => live?.markdown() ?? null,
       log: (event, fields) => log('warn', event, fields),
-      onLongOffline: () => void recheckMinClientVersion(session.api),
+      onLongOffline: () => void (session.apiUrl === undefined ? undefined : recheckMinClientVersion({ apiUrl: session.apiUrl })),
     });
 
     const showSaved = (): void => {
