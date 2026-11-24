@@ -172,6 +172,41 @@ describe('the groups screen', () => {
     expect(await screen.findByText('No members yet')).toBeTruthy();
   });
 
+  it('keeps the name typed and reads the list again when the network fails on a new group', async () => {
+    const { api, of } = fakeApi({ 'GET /v1/groups': groups([TEAM]), 'POST /v1/groups': () => { throw new Error('offline'); } });
+    show(api);
+    await userEvent.type(await screen.findByRole('textbox', { name: 'New group name' }), 'Crew');
+    await userEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    await waitFor(() => { expect(of('GET', '/v1/groups')).toHaveLength(2); });
+    expect((screen.getByRole('textbox', { name: 'New group name' }) as HTMLInputElement).value).toBe('Crew');
+  });
+
+  it('keeps the name when the rename box loses focus without Enter', async () => {
+    const { api, of } = fakeApi({ 'GET /v1/groups': groups([TEAM]) });
+    show(api);
+    await userEvent.click(await screen.findByRole('button', { name: 'Rename Team' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'New name for Team' }), 'x');
+    await userEvent.tab();
+    expect(screen.queryByRole('textbox', { name: 'New name for Team' })).toBeNull();
+    expect(of('PATCH', '/v1/groups/{id}')).toHaveLength(0);
+  });
+
+  it('offers to try again when the members cannot be read', async () => {
+    let attempt = 0;
+    const { api } = fakeApi({ 'GET /v1/groups': groups([TEAM]), 'GET /v1/groups/{id}/members': () => (attempt++ === 0 ? { status: 503 } : ok({ items: [BOB] })) });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { level: 3, name: 'Bob' })).toBeTruthy();
+  });
+
+  it('says the search failed, in words, when the users cannot be searched', async () => {
+    const { api } = fakeApi({ 'GET /v1/groups': groups([TEAM]), 'GET /v1/groups/{id}/members': ok({ items: [] }), 'GET /v1/users': { status: 400 } });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'x');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByText("Couldn't search. Try again.")).toBeTruthy();
+  });
+
   it('offers to try again when the groups cannot be read', async () => {
     let attempt = 0;
     const { api } = fakeApi({ 'GET /v1/groups': () => (attempt++ === 0 ? { status: 503 } : groups([TEAM])) });

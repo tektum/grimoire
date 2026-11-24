@@ -70,6 +70,23 @@ describe('the collection access screen', () => {
     expect(of('DELETE', '/v1/collections/{id}/access/{entryId}')[0]?.params.path).toEqual({ id: 'c1', entryId: 'e2' });
   });
 
+  it('keeps the entry when the removal is cancelled', async () => {
+    const { api, of } = fakeApi({ ...base, 'GET /v1/collections/{id}/access': access(null) });
+    show(api);
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove Bob' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => { expect(screen.queryByRole('alertdialog')).toBeNull(); });
+    expect(of('DELETE', '/v1/collections/{id}/access/{entryId}')).toHaveLength(0);
+  });
+
+  it('offers no group when the groups cannot be read', async () => {
+    const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/access': access(null, []), 'GET /v1/groups': { status: 503 } });
+    show(api);
+    await userEvent.selectOptions(await screen.findByLabelText('Give access to'), 'group');
+    const options = Array.from((await screen.findByLabelText('Group') as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(options).toEqual(['choose a group']);
+  });
+
   it('gives access to a group chosen from the groups, with the permission chosen', async () => {
     const { api, of } = fakeApi({
       ...base,
