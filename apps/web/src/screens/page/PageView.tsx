@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
 import type { MountedEditor } from '../../editor/core/mount';
@@ -15,9 +15,10 @@ import { sessionDirectory } from '../../editor/core/directory';
 import { queryKey, useApiQuery } from '../../api/query';
 import { useTreeActions } from '../../tree/actions';
 import { recheckMinClientVersion } from '../../gate/recheck';
-import { Button, notify } from '../../ui/primitives';
+import { notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
+import { PageMenu } from './PageMenu';
 import { PageTitle } from './PageTitle';
 import { type PageResult, titled } from './usePage';
 import { ResetNotice } from './ResetNotice';
@@ -63,6 +64,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const me = useApiQuery<{ id: string; role?: string }>(session?.api ?? (null as never), '/v1/me', undefined, { enabled: session !== null });
   const managerRef = useRef<ConnectionManager | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const meRef = useRef<string | null>(null);
   meRef.current = me.data?.id ?? null;
   const permissionRef = useRef(permissionReadOnly);
@@ -261,21 +263,14 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         <header className="page-head">
           <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={newPageRef.current} onSave={saveTitle} />
           {readOnly ? <span className="page-readonly">Read only</span> : null}
-          <Link className="page-history-link" to={`${pagePath(page.title, page.urlId)}/history`}>
-            History
-          </Link>
-          {me.data?.role === 'admin' && session !== null ? (
-            <Button className="page-admin-action" onClick={() => setResetOpen(true)}>
-              Reset saved state…
-            </Button>
-          ) : null}
+          <PageMenu triggerRef={moreRef} onHistory={() => navigate(`${pagePath(page.title, page.urlId)}/history`)} onReset={me.data?.role === 'admin' && session !== null ? () => setResetOpen(true) : undefined} />
         </header>
         <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />
         {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}
         <div ref={rootRef} className="page-editor page-text" data-collab-state={collab} data-testid="editor-root" />
-        {me.data?.role === 'admin' && session !== null ? <ResetPageDialog api={session.api} page={{ id: page.id, title: page.title }} open={resetOpen} onOpenChange={setResetOpen} /> : null}
+        {me.data?.role === 'admin' && session !== null ? <ResetPageDialog api={session.api} page={{ id: page.id, title: page.title }} open={resetOpen} onOpenChange={setResetOpen} returnFocus={moreRef} /> : null}
       </article>
       <div className="page-margin">
         <Outline />

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ import { PageView, STALE_TEXT, type PageMeta } from '../../src/screens/page/Page
 import type { Engine } from '../../src/screens/page/engine';
 import { sessionDirectory } from '../../src/editor/core/directory';
 import { FakeClock, FakeDoc, FakeProvider } from './support';
+import '../support/dom';
 
 afterEach(cleanup);
 
@@ -122,7 +124,7 @@ function mountPage(
   const view = render(options.strict ? <StrictMode>{tree}</StrictMode> : tree);
   const root = () => screen.getByTestId('editor-root');
   const synced = (index = fake.sessions.length - 1) => act(async () => void fake.sessions[index]!.provider.succeed(1));
-  return { ...fake, api, root, synced, view, setPage: (p: PageMeta) => act(async () => setPage.current(p)) };
+  return { ...fake, api, root, synced, view, router, setPage: (p: PageMeta) => act(async () => setPage.current(p)) };
 }
 
 const waitSaved = () => waitFor(() => expect(document.querySelector('.ProseMirror[contenteditable="false"]')).not.toBeNull());
@@ -493,26 +495,43 @@ describe('the page screen', () => {
     spy.mockRestore();
   });
 
-  it('offers an administrator the reset of the saved state, which opens its dialog naming the page; a member is not offered it', async () => {
+  const openMore = async () => userEvent.click(await screen.findByRole('button', { name: 'More page actions' }));
+
+  it('puts the actions that are not the text in one More menu on the page head, and no button of them on the page itself', async () => {
+    mountPage({ meRole: 'admin' });
+    await screen.findByRole('button', { name: 'More page actions' });
+    expect(screen.getByRole('button', { name: 'More page actions' }).textContent).toBe('More');
+    expect(screen.queryByRole('button', { name: /Reset saved state/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'History' })).toBeNull();
+    await openMore();
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['History', 'Reset saved state…']);
+  });
+
+  it('offers an administrator the reset of the saved state in the More menu, which opens its dialog naming the page; a member is not offered it', async () => {
     const admin = mountPage({ meRole: 'admin' });
-    await waitFor(() => expect(screen.getByRole('button', { name: /Reset saved state/ })).toBeTruthy());
-    await act(async () => void screen.getByRole('button', { name: /Reset saved state/ }).click());
+    await openMore();
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Reset saved state/ }));
     expect(await screen.findByText('Reset the saved state of Plan?')).toBeTruthy();
     admin.view.unmount();
     cleanup();
     const member = mountPage({ meRole: 'member' });
     await member.synced();
     await waitFor(() => expect(member.lives).toHaveLength(1));
-    expect(screen.queryByRole('button', { name: /Reset saved state/ })).toBeNull();
+    await openMore();
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual(['History']);
+    expect(screen.queryByRole('menuitem', { name: /Reset saved state/ })).toBeNull();
   });
 
-  it('links to the history of the page, for everyone, at /p/<slug>/history with the same slug the tree links with', async () => {
-    mountPage({ page: page({ title: 'Release plan', urlId: 'ab12cd' }) });
-    const link = await screen.findByRole('link', { name: 'History' });
-    expect(link.getAttribute('href')).toBe('/p/release-plan-ab12cd/history');
+  it('opens the history of the page from the More menu, for everyone, at /p/<slug>/history with the same slug the tree links with', async () => {
+    const first = mountPage({ page: page({ title: 'Release plan', urlId: 'ab12cd' }) });
+    await openMore();
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'History' }));
+    await waitFor(() => expect(first.router.state.location.pathname).toBe('/p/release-plan-ab12cd/history'));
     cleanup();
-    mountPage({ page: page({ title: '', urlId: 'zz99' }), meRole: 'member' });
-    expect((await screen.findByRole('link', { name: 'History' })).getAttribute('href')).toBe('/p/page-zz99/history');
+    const second = mountPage({ page: page({ title: '', urlId: 'zz99' }), meRole: 'member' });
+    await openMore();
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'History' }));
+    await waitFor(() => expect(second.router.state.location.pathname).toBe('/p/page-zz99/history'));
   });
 
   it('a second reset replaces the offered copy and starts its notice afresh: "Copied." never refers to the old copy', async () => {

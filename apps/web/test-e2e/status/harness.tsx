@@ -1,7 +1,7 @@
 import { createRoot, type Root } from 'react-dom/client';
 import type { ConnectionState } from '../../src/editor/core/connection';
 import { StatusLine, type StatusScope } from '../../src/status';
-import { Button } from '../../src/ui/primitives';
+import { PageMenu } from '../../src/screens/page/PageMenu';
 import '../../src/screens/page/page.css';
 import '../../src/ui/global.css';
 
@@ -29,8 +29,8 @@ let root: Root | null = null;
       <article className="page">
         <header className="page-head">
           <h1 id="screen-title">{title}</h1>
-          {admin === true ? <Button className="page-admin-action">Reset saved state…</Button> : null}
           {readOnly === true ? <span className="page-readonly">Read only</span> : null}
+          <PageMenu onHistory={() => undefined} onReset={admin === true ? () => undefined : undefined} />
         </header>
         <StatusLine state={{ text: null, unsynced: 0, changes: 0, readOnly: false, stopped: null, ...state }} collab={collab} onRetry={() => undefined} />
         {state.banner === undefined || state.banner === null ? null : <p className="page-banner">{state.banner}</p>}
