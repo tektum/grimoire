@@ -8,6 +8,7 @@ export function checkBuild(dist) {
   const problems = [];
   if (!existsSync(path.join(dist, 'config.json'))) problems.push('config.json is missing from the build');
   const read = (file) => readFileSync(path.join(dist, file), 'utf8');
+  if (!existsSync(path.join(dist, 'login.html'))) problems.push('login.html is missing from the build (the sign-in screen is its own document)');
   const html = existsSync(path.join(dist, 'index.html')) ? read('index.html') : null;
   if (html === null) return [...problems, 'index.html is missing from the build'];
   const assets = existsSync(path.join(dist, 'assets')) ? readdirSync(path.join(dist, 'assets')).filter((f) => f.endsWith('.js')) : [];

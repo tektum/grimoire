@@ -34,7 +34,12 @@ export function createServer({ dist = path.join(webRoot, 'dist'), headersFile = 
       for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
     },
   });
-  return http.createServer((req, res) => files(req, res));
+  return http.createServer((req, res) => {
+    // The sign-in screen is its own document: `/login` is served as login.html (a host's redirects file says the same).
+    const url = new URL(req.url ?? '/', 'http://x');
+    if (url.pathname === '/login') req.url = `/login.html${url.search}`;
+    files(req, res);
+  });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
