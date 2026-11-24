@@ -25,10 +25,10 @@ function build() {
   const verifier: AuthVerifier = {
     verify: (token) => {
       const row = rows.find((r) => `tok-${r.name}` === token);
-      return Promise.resolve(row === undefined ? { kind: 'invalid-token' } : { kind: 'ok', userId: row.descopeUserId, expiresAt: 9e12, tenant: { kind: 'one', id: row.tenantId } });
+      return Promise.resolve(row === undefined ? { kind: 'invalid-token' } : { kind: 'ok', userId: row.descopeUserId, expiresAt: 9e12, tenant: { kind: 'one', id: row.tenantId as string } });
     },
   };
-  const admin = new FakeAdminRepo(rows.map((r) => ({ id: r.id, email: r.email, name: r.name, role: r.role, suspended: false, tenantId: r.tenantId })));
+  const admin = new FakeAdminRepo(rows.map((r) => ({ id: r.id, email: r.email, name: r.name, role: r.role, suspended: false, tenantId: r.tenantId as string })));
   for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: false });
   const users = new FakeUserStore(rows);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
