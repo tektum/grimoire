@@ -36,6 +36,7 @@ describe('composition root', () => {
     const ctx = ctxOf({ ...base, GRIMOIRE_DESCOPE_PROJECT_ID: 'P123', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test' });
     expect(ctx.collab?.deps.verifier).toBe(ctx.auth.verifier);
     expect(typeof ctx.collab?.deps.access.pageAccess).toBe('function');
+    expect(ctx.collab?.deps.requireTenant, 'the WebSocket refuses a token that names no tenant or several, as the API does').toBe(true);
     expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'page-store-pool', 'auth-pool', 'database-pool']);
   });
 
