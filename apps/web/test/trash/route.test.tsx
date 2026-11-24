@@ -14,7 +14,7 @@ describe('the /trash route', () => {
       'GET /v1/trash': { status: 200, body: { items: [{ id: 'a', title: 'Plan for May', collectionId: 'c1', deletedAt: 1, deletedBy: null, daysLeft: 3 }], nextCursor: null } },
     });
     render(
-      <SessionContext.Provider value={{ auth: null as never, api }}>
+      <SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.test' }}>
         <QueryClientProvider client={new QueryClient()}>
           <MemoryRouter initialEntries={['/trash']}>
             <Routes>
