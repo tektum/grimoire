@@ -63,7 +63,7 @@ function table(op: Operation): { who: Who; hidden?: boolean; outcome: Outcome; c
   const p = op.policy as { kind: string; need?: string };
   const readers = [{ who: 'member' as const }, { who: 'viewer' as const }];
   switch (p.kind) {
-    case 'authenticated': return [...readers, { who: 'admin', outcome: 'pass' }].map((r) => ({ outcome: 'pass' as const, ...r }));
+    case 'authenticated': return [...readers, { who: 'admin' as const }].map((r) => ({ outcome: 'pass' as const, ...r }));
     case 'admin': return [{ who: 'member', outcome: 403, code: 'forbidden' }, { who: 'viewer', outcome: 403, code: 'forbidden' }, { who: 'admin', outcome: 'pass' }];
     case 'collection':
     case 'collection-body':

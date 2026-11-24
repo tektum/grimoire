@@ -8,6 +8,7 @@ import type { DescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import type { HocuspocusCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import { createAccessStore, createDatabase, createPageStore, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
+import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
@@ -44,7 +45,7 @@ async function rig(o: { dbUrl?: string; attempts?: number } = {}): Promise<Rig> 
   await host.start({
     config: makeFakeConfig({ collab: { connectAttemptsPerWindow: o.attempts ?? 1000 } }), logger, clock, verifier,
     resolveUser: (_t, identity) => users.findByDescopeId(identity.userId),
-    access: createPageAccess(createAccessStore(db)), pages: createPageStore(db, clock),
+    access: createPageAccess(createAccessStore(db)), pages: createPageStore(db, clock), revisions: new FakeRevisionRepo(),
     converter: new FakeMarkdownConverter({ convert: () => ({ ok: true, markdown: '', text: '' }) }),
   });
   const server: Server = createServer();

@@ -247,7 +247,7 @@ describe('RevisionRepo.catchUp', () => {
   it('makes one revision, not two, when the catch-up and a revision of the same page run at once', async () => {
     const id = await savedPage({ title: 'Both', markdown: 'both ways', editedMs: NOW - 30 * 60_000, editedBy: ana });
     const repo = createRevisions(t.app);
-    const [fromCatchUp, fromPage] = await holdingThePageLock(id, () => [
+    const [fromCatchUp, fromPage] = await holdingThePageLock<unknown>(id, () => [
       repo.catchUp(NOW - 5 * 60_000, 100),
       repo.createFromPage({ pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at: NOW - 30 * 60_000 }),
     ], 2) as [Awaited<ReturnType<typeof repo.catchUp>>, Awaited<ReturnType<typeof repo.createFromPage>>];

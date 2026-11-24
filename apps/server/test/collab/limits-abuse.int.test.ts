@@ -56,7 +56,7 @@ const page = async (): Promise<string> => { const id = newPage(); await seedPage
 const openRaw = async (s: ServerProcess, id: string, token: string): Promise<RawClient> => { const r = await RawClient.open(wsUrl(s.port), id, token); raws.push(r); return r; };
 /** `count` single-character updates, each from its own Yjs client so that a dropped one never blocks the next. */
 const updates = (id: string, count: number): Uint8Array<ArrayBuffer>[] => Array.from({ length: count }, () => {
-  const d = new Y.Doc(); let u = new Uint8Array(); d.on('update', (x: Uint8Array) => { u = x; });
+  const d = new Y.Doc(); let u: Uint8Array = new Uint8Array(); d.on('update', (x: Uint8Array) => { u = x; });
   d.getText('prosemirror').insert(0, 'a');
   return syncUpdateFrame(id, u);
 });

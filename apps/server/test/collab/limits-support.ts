@@ -3,6 +3,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import { Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { sqlAdmin } from '../server/support/harness.js';
+import { originProviderConfig } from '@tektum/grimoire-test-support';
 import { ALLOWED_ORIGIN, eventually, originSocket } from './support.js';
 
 /** Hocuspocus wire format, just enough for raw-socket tests: message type numbers from its protocol. */
@@ -54,7 +55,7 @@ export class RawClient {
   closed: { code: number; reason: string } | undefined;
   private constructor(readonly socket: WebSocket, readonly doc: string) {
     socket.binaryType = 'arraybuffer';
-    socket.addEventListener('message', (e: MessageEvent<ArrayBuffer>) => { this.frames.push(new Uint8Array(e.data)); });
+    socket.addEventListener('message', (e: MessageEvent) => { this.frames.push(new Uint8Array(e.data as ArrayBuffer)); });
     socket.addEventListener('close', (e) => { this.closed = { code: e.code, reason: e.reason }; });
   }
   static async open(url: string, doc: string, token = 'dev:test-secret-0123456789abcdef:alice:member'): Promise<RawClient> {
@@ -92,7 +93,7 @@ export function stateOfSize(bytes: number): Bytes {
     const d = new Y.Doc();
     d.getText('prosemirror').insert(0, 'p'.repeat(length));
     const s = Y.encodeStateAsUpdate(d);
-    if (s.byteLength === bytes) return s;
+    if (s.byteLength === bytes) return new Uint8Array(s);
     length += bytes - s.byteLength;
   }
   throw new Error(`no state of ${String(bytes)} bytes`);
@@ -110,12 +111,12 @@ export interface Editor {
 export function editor(url: string, name: string, token = 'dev:test-secret-0123456789abcdef:alice:member'): Editor {
   const stateless: string[] = []; const failures: string[] = []; const closes: number[] = [];
   const document = new Y.Doc();
-  const provider = new HocuspocusProvider({
+  const provider = new HocuspocusProvider(originProviderConfig({
     url, name, token, document, WebSocketPolyfill: originSocket(ALLOWED_ORIGIN),
     onStateless: ({ payload }) => { stateless.push(payload); },
     onAuthenticationFailed: ({ reason }) => { failures.push(reason); },
     onClose: ({ event }) => { closes.push(event.code); },
-  });
+  }));
   return { provider, text: document.getText('prosemirror'), stateless, failures, closes, destroy: () => { provider.destroy(); } };
 }
 

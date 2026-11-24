@@ -6,8 +6,8 @@ import type {
 
 const CLOSED = { ok: false, reason: 'internal', detail: 'closed' } as const;
 
-/** What a call returns: a fixed result, or a function of the input. */
-type Script<In, Out> = Out | ((input: In) => Out);
+/** What a call returns: a fixed result, or a function of the input; either may be a promise (a conversion that finishes later). */
+type Script<In, Out> = Out | PromiseLike<Out> | ((input: In) => Out | PromiseLike<Out>);
 
 export interface FakeMarkdownConverterOptions {
   /** Used for each `toMarkdown` call after the scripted ones run out. Default: empty Markdown and text. */

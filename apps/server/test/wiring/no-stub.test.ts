@@ -12,6 +12,7 @@ import { accessCases, worldOfCases } from '@tektum/grimoire-core/testing/access-
 import { createFakeAccessStore } from '@tektum/grimoire-core/testing/fake-access-store';
 import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
+import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
@@ -98,7 +99,7 @@ describe('a user with access only to collection X cannot open a page of collecti
       config: makeFakeConfig({ collab: { connectAttemptsPerWindow: 1_000_000 } }), logger: new FakeLogger(), clock, verifier, pages,
       converter: new FakeMarkdownConverter({ convert: () => ({ ok: true, markdown: '', text: '' }) }),
       resolveUser: (_token, identity) => users.findByDescopeId(identity.userId),
-      access: createPageAccess(createFakeAccessStore(world)),
+      access: createPageAccess(createFakeAccessStore(world)), revisions: new FakeRevisionRepo(),
     });
     const server = createServer();
     server.on('upgrade', (req, socket, head) => { host.handleUpgrade(req, socket, head); });

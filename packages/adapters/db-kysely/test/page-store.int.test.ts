@@ -47,8 +47,8 @@ it('save hashes include the row title (page-store move regression)', async () =>
   await sqlAdmin(DB, `update pages set title = 'Saved title' where id = '${id}'`);
   const store = createPageStore(db, clock);
   await store.store(id, { kind: 'converted', state: new Uint8Array([1]), markdown: 'Body', text: 'Body', epoch: 0, editedAt: Date.now() });
-  expect((await row(id)).markdown_hash).toEqual(expectedHash('Saved title', 'Body'));
-  expect(Buffer.from((await row(id)).markdown_hash ?? '').equals(markdownHash('Saved title', 'Body'))).toBe(true);
+  expect((await row(id))?.markdown_hash).toEqual(expectedHash('Saved title', 'Body'));
+  expect(Buffer.from((await row(id))?.markdown_hash ?? '').equals(markdownHash('Saved title', 'Body'))).toBe(true);
 });
 
 describe('seed', () => {

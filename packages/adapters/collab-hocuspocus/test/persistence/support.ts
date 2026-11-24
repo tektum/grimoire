@@ -18,7 +18,8 @@ export function setup(options: Partial<PersistenceOptions> = {}, role: 'member' 
   const t = makeDeps(role);
   t.pages.seed(PAGE);
   const waits: { ms: number; release: () => void }[] = [];
-  const converter = converterOverride ?? new FakeMarkdownConverter({ convert: okOf });
+  // Typed as the fake: the tests that read its scripts and counters (`convertCalls`, `enqueueConvert`) never pass their own converter.
+  const converter = (converterOverride ?? new FakeMarkdownConverter({ convert: okOf })) as FakeMarkdownConverter;
   const deps = { ...t.deps, converter };
   const ext = createPersistenceExtension({
     deps, log: t.log,

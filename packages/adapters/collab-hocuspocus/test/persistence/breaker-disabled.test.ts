@@ -8,7 +8,7 @@ function run(breaker: { disabled?: boolean } | undefined) {
   for (let i = 0; i < 4; i++) converter.enqueueConvert({ ok: false, reason: 'timeout', detail: 'the conversion exceeded its time limit' });
   const events: string[] = [];
   const log = createCollabLog({ debug: () => undefined, info: () => undefined, warn: () => undefined, error: (e: string) => { events.push(e); } } as never);
-  const saver = createSaver({ converter, log, ...(breaker ? { breaker } : {}) });
+  const saver = createSaver({ converter: Object.assign(converter, { waiting: () => 0 }), log, ...(breaker ? { breaker } : {}) });
   return { converter, events, saver };
 }
 

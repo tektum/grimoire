@@ -6,7 +6,7 @@ function stub() {
     start: vi.fn(async () => boss),
     stop: vi.fn(async () => {}),
     send: vi.fn(async () => 'id-1'),
-    work: vi.fn(async () => 'worker-1'),
+    work: vi.fn<(...args: unknown[]) => Promise<string>>(async () => 'worker-1'),
     schedule: vi.fn(async () => {}),
     createQueue: vi.fn(async () => {}),
     getQueue: vi.fn(async () => null),
@@ -38,7 +38,7 @@ describe('PgBossJobQueue', () => {
       expect(await o.db.executeSql('select 1', [7])).toEqual({ rows: [{ id: 'x' }] });
       return 'id-2';
     }) as never);
-    expect(await new PgBossJobQueue(boss).enqueue('n', {}, {}, { query })).toBe('id-2');
+    expect(await new PgBossJobQueue(boss).enqueue('n', {}, {}, { query: query as never })).toBe('id-2');
     expect(query).toHaveBeenCalledWith('select 1', [7]);
   });
 

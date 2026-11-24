@@ -165,7 +165,7 @@ describe('state cap and warning (R4.16, R4.47, R3.18)', () => {
     const h = harness({ maxStateBytes: cap });
     const doc = withState(h, base); const c = h.conn('s', doc);
     const editor = new Y.Doc(); Y.applyUpdate(editor, Y.encodeStateAsUpdate(base));
-    let last = new Uint8Array(); editor.on('update', (x: Uint8Array) => { last = x; });
+    let last: Uint8Array = new Uint8Array(); editor.on('update', (x: Uint8Array) => { last = x; });
     let accepted = 0; let refused = 0;
     for (let i = 0; i < 200; i++) {
       editor.getText('prosemirror').insert(1 + ((i * 7) % 1500), 'ab'); // each insert lands inside an existing run and splits it

@@ -30,7 +30,7 @@ export const allowedOrigins = setting('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.
   ',',
 );
 
-const runtime = { accessKey: setting('GRIMOIRE_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_S3_SECRET_KEY') };
+export const runtime = { accessKey: setting('GRIMOIRE_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_S3_SECRET_KEY') };
 const admin = { accessKey: setting('GRIMOIRE_DEV_S3_ACCESS_KEY'), secretKey: setting('GRIMOIRE_DEV_S3_SECRET_KEY') };
 export const runtimeBucket = setting('GRIMOIRE_S3_BUCKET', 'grimoire');
 

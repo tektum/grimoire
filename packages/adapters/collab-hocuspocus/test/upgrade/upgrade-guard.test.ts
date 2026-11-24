@@ -278,7 +278,7 @@ describe('reservations belong to their socket (S2, S3)', () => {
       const { guard } = make({ maxUnauthSocketsPerAddress: 5, attemptsPerWindow: LIMIT });
       const addrs = ['203.0.113.1', '203.0.113.2'];
       const failures = [0, 0];
-      const socks = [];
+      const socks: { id: string; end: string; r: ReturnType<typeof request>; v: Awaited<ReturnType<typeof guard.checkUpgrade>> }[] = [];
       for (let i = 0; i < 5; i += 1) {
         const which = rnd(2);
         const end = rnd(2) === 0 ? 'authenticate' : 'fail';

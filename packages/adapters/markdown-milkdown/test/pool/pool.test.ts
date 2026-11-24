@@ -4,7 +4,7 @@ import { loadCorpus } from '../../src/testing/corpus.js';
 import { generateMarkdown } from '../../src/testing/generate.js';
 import { stateFromMarkdown } from '../../src/testing/states.js';
 import { convertInProcess, createMarkdownConverter, seedInProcess } from '../../src/index.js';
-import type { PooledMarkdownConverter } from '../../src/index.js';
+import type { ConverterOptions, PooledMarkdownConverter } from '../../src/index.js';
 import { ensureBuilt } from './support.js';
 
 let converter: PooledMarkdownConverter;
@@ -29,7 +29,7 @@ describe('options', () => {
       expect(() => createMarkdownConverter({ maxBlocks: bad })).toThrow(RangeError);
       expect(() => createMarkdownConverter({ maxStateBytes: bad })).toThrow(RangeError);
     }
-    const defaulted = createMarkdownConverter({ maxDepth: undefined });
+    const defaulted = createMarkdownConverter({ maxDepth: undefined } as unknown as ConverterOptions);
     try {
       expect(defaulted.options.maxDepth).toBe(100); // absent keeps the default
     } finally {
