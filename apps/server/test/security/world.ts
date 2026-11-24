@@ -73,9 +73,9 @@ export async function buildWorld() {
   pageState.track(hidden.id, { markdown: 'secret' });
   const adminRows: AdminUser[] = rows.map((r) => ({ id: r.id, email: r.email, name: r.name, role: r.role, suspended: r.suspended }));
   const admin = new FakeAdminRepo(adminRows);
-  const made = await admin.createGroup('Writers', USER_ID.admin);
+  const made = await admin.createGroup('legacy', 'Writers', USER_ID.admin);
   if (made.kind !== 'saved') throw new Error('group');
-  await admin.addMember(made.group.id, USER_ID.member, USER_ID.admin);
+  await admin.addMember('legacy', made.group.id, USER_ID.member, USER_ID.admin);
   const granted = await collections.upsertAccess(open.id, { principalType: 'user', principalId: USER_ID.member, permission: 'read_write' }, USER_ID.admin);
   if (granted.kind !== 'saved') throw new Error('access entry');
   const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([1, 2, 3]) }, convert: { ok: true, markdown: 'canonical', text: 'canonical' } });

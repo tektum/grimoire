@@ -2,7 +2,7 @@ import { z } from '@hono/zod-openapi';
 import { fail } from '../http/error.js';
 import type { ReplayRebuild } from '../http/idempotency.js';
 import { createRouter, defineRoute } from '../http/factory.js';
-import { caller } from '../http/collection-guard.js';
+import { caller, callerTenant } from '../http/collection-guard.js';
 import { AdminUserSchema, requireAdmin } from './users.js';
 
 const IdParam = z.object({ id: z.string().uuid().openapi({ param: { name: 'id', in: 'path' } }) });
@@ -55,7 +55,7 @@ export const removeGroupMember = defineRoute({
 /** A retry of a create replays the stored group only while the caller is still an administrator and the group is still there. */
 export const replayCreateGroup: ReplayRebuild = async (stored, c) => {
   requireAdmin(c);
-  const groups = await c.get('deps').admin.listGroups();
+  const groups = await c.get('deps').admin.listGroups(callerTenant(c));
   if (!groups.some((g) => g.id === (stored.body as { id: string }).id)) return fail('not_found');
   return Response.json(stored.body, { status: stored.status });
 };
@@ -64,44 +64,44 @@ const router = createRouter();
 
 router.openapi(listGroups, async (c) => {
   requireAdmin(c);
-  return c.json({ items: [...(await c.get('deps').admin.listGroups())] }, 200);
+  return c.json({ items: [...(await c.get('deps').admin.listGroups(callerTenant(c)))] }, 200);
 });
 
 router.openapi(createGroup, async (c) => {
   requireAdmin(c);
-  const result = await c.get('deps').admin.createGroup(c.req.valid('json').name, caller(c).id);
+  const result = await c.get('deps').admin.createGroup(callerTenant(c), c.req.valid('json').name, caller(c).id);
   return result.kind === 'saved' ? c.json(result.group, 201) : fail('name_taken');
 });
 
 router.openapi(patchGroup, async (c) => {
   requireAdmin(c);
-  const result = await c.get('deps').admin.renameGroup(c.req.valid('param').id, c.req.valid('json').name, caller(c).id);
+  const result = await c.get('deps').admin.renameGroup(callerTenant(c), c.req.valid('param').id, c.req.valid('json').name, caller(c).id);
   if (result.kind === 'not-found') return fail('not_found');
   return result.kind === 'saved' ? c.json(result.group, 200) : fail('name_taken');
 });
 
 router.openapi(deleteGroup, async (c) => {
   requireAdmin(c);
-  return (await c.get('deps').admin.deleteGroup(c.req.valid('param').id, caller(c).id)) ? c.body(null, 204) : fail('not_found');
+  return (await c.get('deps').admin.deleteGroup(callerTenant(c), c.req.valid('param').id, caller(c).id)) ? c.body(null, 204) : fail('not_found');
 });
 
 router.openapi(listGroupMembers, async (c) => {
   requireAdmin(c);
-  const members = await c.get('deps').admin.listMembers(c.req.valid('param').id);
+  const members = await c.get('deps').admin.listMembers(callerTenant(c), c.req.valid('param').id);
   return members === undefined ? fail('not_found') : c.json({ items: [...members] }, 200);
 });
 
 router.openapi(addGroupMember, async (c) => {
   requireAdmin(c);
   const { id, userId } = c.req.valid('param');
-  const result = await c.get('deps').admin.addMember(id, userId, caller(c).id);
+  const result = await c.get('deps').admin.addMember(callerTenant(c), id, userId, caller(c).id);
   return result === 'no-group' || result === 'no-user' ? fail('not_found') : c.body(null, 204);
 });
 
 router.openapi(removeGroupMember, async (c) => {
   requireAdmin(c);
   const { id, userId } = c.req.valid('param');
-  return (await c.get('deps').admin.removeMember(id, userId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
+  return (await c.get('deps').admin.removeMember(callerTenant(c), id, userId, caller(c).id)) ? c.body(null, 204) : fail('not_found');
 });
 
 export default router;

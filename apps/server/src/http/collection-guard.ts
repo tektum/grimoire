@@ -11,6 +11,9 @@ export function caller(c: Context<AppEnv>): UserRecord {
   return user ?? fail('unauthenticated');
 }
 
+/** The tenant of the signed-in user: the repository always fills it, and a row with none is `legacy` (docs/tenancy.md). */
+export const callerTenant = (c: Context<AppEnv>): string => caller(c).tenantId ?? 'legacy';
+
 /**
  * The `collection` policy (contracts section 3): the authoriser decides; a caller who cannot read the collection gets 404 whatever the
  * collection is (unknown, deleted, or not theirs), and one who can read but lacks the needed right gets 403. `write` also needs read-write access, `admin` also needs the role.

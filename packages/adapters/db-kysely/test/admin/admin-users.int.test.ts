@@ -19,19 +19,19 @@ describe('the PostgreSQL AdminRepo: users', () => {
     await reset();
     const ids = [await addUser(t.app, 'Bea'), await addUser(t.app, 'ann'), await addUser(t.app, 'cy_x')];
     const repo = createAdmin(t.app);
-    const page = await repo.listUsers({ limit: 2 });
+    const page = await repo.listUsers('legacy', { limit: 2 });
     expect(page.map((u) => u.name)).toEqual(['ann', 'Bea']);
-    const next = await repo.listUsers({ limit: 2, after: [page[1]?.email as string, page[1]?.id as string] });
+    const next = await repo.listUsers('legacy', { limit: 2, after: [page[1]?.email as string, page[1]?.id as string] });
     expect(next.map((u) => u.id).filter((i) => i !== SYSTEM_USER)).toEqual([ids[2]]);
-    expect((await repo.listUsers({ limit: 10, q: 'BEA' })).map((u) => u.name)).toEqual(['Bea']);
-    expect((await repo.listUsers({ limit: 10, q: '_' })).map((u) => u.name)).toEqual(['cy_x']);
-    expect(await repo.listUsers({ limit: 10, q: '%' })).toEqual([]);
+    expect((await repo.listUsers('legacy', { limit: 10, q: 'BEA' })).map((u) => u.name)).toEqual(['Bea']);
+    expect((await repo.listUsers('legacy', { limit: 10, q: '_' })).map((u) => u.name)).toEqual(['cy_x']);
+    expect(await repo.listUsers('legacy', { limit: 10, q: '%' })).toEqual([]);
   });
 
   it('answers names for known ids only', async () => {
     await reset();
     const one = await addUser(t.app, 'one');
-    const names = await createAdmin(t.app).userNames([one, '00000000-0000-4000-8000-000000000000']);
+    const names = await createAdmin(t.app).userNames('legacy', [one, '00000000-0000-4000-8000-000000000000']);
     expect(names).toEqual([{ id: one, name: 'one' }]);
   });
 
@@ -40,8 +40,8 @@ describe('the PostgreSQL AdminRepo: users', () => {
     const only = await addUser(t.app, 'only', 'admin');
     await addUser(t.app, 'other', 'member');
     const repo = createAdmin(t.app);
-    expect(await repo.patchUser(only, { role: 'member' }, only)).toEqual({ kind: 'last-admin' });
-    expect(await repo.patchUser(only, { suspended: true }, only)).toEqual({ kind: 'last-admin' });
+    expect(await repo.patchUser('legacy', only, { role: 'member' }, only)).toEqual({ kind: 'last-admin' });
+    expect(await repo.patchUser('legacy', only, { suspended: true }, only)).toEqual({ kind: 'last-admin' });
     expect(await t.admin.query(`select 1 from users where id = $1 and role = 'admin' and suspended_at is null`, [only])).toHaveLength(1);
     expect(await events('user.role_changed')).toEqual([]);
   });
@@ -63,7 +63,7 @@ describe('the PostgreSQL AdminRepo: users', () => {
       await gate;
     });
     await locked;
-    const both = Promise.all([repo.patchUser(a, { role: 'member' }, b), repo.patchUser(b, { role: 'member' }, a)]);
+    const both = Promise.all([repo.patchUser('legacy', a, { role: 'member' }, b), repo.patchUser('legacy', b, { role: 'member' }, a)]);
     await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 2, 10_000, 'both changes waiting on the administrator rows');
     release();
     await holder;
@@ -77,11 +77,11 @@ describe('the PostgreSQL AdminRepo: users', () => {
     const boss = await addUser(t.app, 'boss', 'admin');
     const user = await addUser(t.app, 'mia');
     const repo = createAdmin(t.app);
-    const suspended = await repo.patchUser(user, { suspended: true }, boss);
+    const suspended = await repo.patchUser('legacy', user, { suspended: true }, boss);
     expect(suspended).toMatchObject({ kind: 'saved', user: { id: user, suspended: true } });
     expect(await t.admin.query(`select 1 from users where id = $1 and suspended_at is not null`, [user])).toHaveLength(1);
-    expect(await repo.patchUser(user, { suspended: false }, boss)).toMatchObject({ kind: 'saved', user: { id: user, suspended: false } });
-    expect(await repo.patchUser(user, { suspended: false }, boss)).toMatchObject({ kind: 'saved' });
+    expect(await repo.patchUser('legacy', user, { suspended: false }, boss)).toMatchObject({ kind: 'saved', user: { id: user, suspended: false } });
+    expect(await repo.patchUser('legacy', user, { suspended: false }, boss)).toMatchObject({ kind: 'saved' });
     const rows = [...(await events('user.suspended')), ...(await events('user.unsuspended'))];
     expect(rows.map((r) => [r.actor_id, r.target_id])).toEqual([[boss, user], [boss, user]]);
     expect(JSON.stringify(rows)).not.toContain('@');
@@ -92,8 +92,8 @@ describe('the PostgreSQL AdminRepo: users', () => {
     const boss = await addUser(t.app, 'boss', 'admin');
     const user = await addUser(t.app, 'lee');
     const repo = createAdmin(t.app);
-    expect(await repo.patchUser(user, { role: 'viewer' }, boss)).toMatchObject({ kind: 'saved', user: { role: 'viewer' } });
+    expect(await repo.patchUser('legacy', user, { role: 'viewer' }, boss)).toMatchObject({ kind: 'saved', user: { role: 'viewer' } });
     expect((await events('user.role_changed')).map((r) => r.detail)).toEqual([{ from: 'member', to: 'viewer' }]);
-    expect(await repo.patchUser('00000000-0000-4000-8000-000000000000', { role: 'viewer' }, boss)).toEqual({ kind: 'not-found' });
+    expect(await repo.patchUser('legacy', '00000000-0000-4000-8000-000000000000', { role: 'viewer' }, boss)).toEqual({ kind: 'not-found' });
   });
 });
