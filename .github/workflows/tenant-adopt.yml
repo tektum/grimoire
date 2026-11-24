@@ -57,11 +57,26 @@ jobs:
           DOMAIN: ${{ inputs.domain }}
         run: |
           [ "${CONFIRM}" = "${STAGE}" ] || { echo "::error::confirm must be the stage name (${STAGE})"; exit 1; }
-          printf '%s' "${TO}" | grep -Eq '^[A-Za-z0-9_-]{1,128}$' || { echo "::error::to is not a tenant id"; exit 1; }
-          [ -z "${NAME}" ] || printf '%s' "${NAME}" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._-]{0,119}$' || { echo "::error::name has characters this job does not pass on"; exit 1; }
-          [ -z "${DOMAIN}" ] || printf '%s' "${DOMAIN}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || { echo "::error::domain is not a host name"; exit 1; }
-          [ -n "${DOMAIN}${NAME}" ] && { [ -n "${DOMAIN}" ] && [ -n "${NAME}" ] || { echo "::error::name and domain go together"; exit 1; }; }
+          # `[[ =~ ]]` matches the whole value; `grep` would pass a value of which one line matches (an input sent through the API can hold newlines).
+          id='^[A-Za-z0-9_-]{1,128}$'
+          label='^[A-Za-z0-9][A-Za-z0-9 ._-]{0,119}$'
+          host='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+          [[ "${TO}" =~ ${id} ]] || { echo "::error::to is not a tenant id"; exit 1; }
+          [ -z "${NAME}" ] || [[ "${NAME}" =~ ${label} ]] || { echo "::error::name has characters this job does not pass on"; exit 1; }
+          [ -z "${DOMAIN}" ] || [[ "${DOMAIN}" =~ ${host} ]] || { echo "::error::domain is not a host name"; exit 1; }
+          if [ -n "${DOMAIN}${NAME}" ] && { [ -z "${DOMAIN}" ] || [ -z "${NAME}" ]; }; then echo "::error::name and domain go together"; exit 1; fi
           exit 0
+      - name: Check the variables of the stage's environment before the role is assumed
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          STAGE: ${{ inputs.stage }}
+        run: |
+          missing=""
+          for name in AWS_ROLE_ARN AWS_REGION; do
+            [ -n "${!name}" ] || missing="${missing} ${name}"
+          done
+          [ -z "${missing}" ] || { echo "::error::the variable(s)${missing} of the environment ${STAGE} are not set"; exit 1; }
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
@@ -71,8 +86,16 @@ jobs:
           STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          instance=$(aws rds describe-db-instances --query "DBInstances[?starts_with(DBInstanceIdentifier, 'grimoire-${STAGE}-')] | [0].DBInstanceIdentifier" --output text)
-          [ -n "${instance}" ] && [ "${instance}" != "None" ] || { echo "::error::no database of the stage ${STAGE}"; exit 1; }
+          # Retained resources of a replaced stage keep their prefix: exactly one database must match, and it must be the one in the network of the stage's service.
+          matches=$(aws rds describe-db-instances --query "DBInstances[?starts_with(DBInstanceIdentifier, 'grimoire-${STAGE}-')].DBInstanceIdentifier" --output json)
+          [ "$(printf '%s' "${matches}" | jq length)" = "1" ] || { echo "::error::expected one database of the stage ${STAGE}, found: ${matches}"; exit 1; }
+          instance=$(printf '%s' "${matches}" | jq -r '.[0]')
+          db_vpc=$(aws rds describe-db-instances --db-instance-identifier "${instance}" --query 'DBInstances[0].DBSubnetGroup.VpcId' --output text)
+          clusters=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')]" --output json)
+          [ "$(printf '%s' "${clusters}" | jq length)" = "1" ] || { echo "::error::expected one cluster of the stage ${STAGE}, found: ${clusters}"; exit 1; }
+          subnet=$(aws ecs describe-services --cluster "$(printf '%s' "${clusters}" | jq -r '.[0]')" --services Server --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets[0]' --output text)
+          service_vpc=$(aws ec2 describe-subnets --subnet-ids "${subnet}" --query 'Subnets[0].VpcId' --output text)
+          [ "${db_vpc}" = "${service_vpc}" ] || { echo "::error::the database ${instance} is not in the network of the service (${db_vpc} against ${service_vpc})"; exit 1; }
           snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
           aws rds create-db-snapshot --db-instance-identifier "${instance}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
           aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
@@ -85,8 +108,9 @@ jobs:
           DOMAIN: ${{ inputs.domain }}
         run: |
           set -euo pipefail
-          cluster=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')] | [0]" --output text)
-          [ -n "${cluster}" ] && [ "${cluster}" != "None" ] || { echo "::error::no cluster of the stage ${STAGE}"; exit 1; }
+          clusters=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')]" --output json)
+          [ "$(printf '%s' "${clusters}" | jq length)" = "1" ] || { echo "::error::expected one cluster of the stage ${STAGE}, found: ${clusters}"; exit 1; }
+          cluster=$(printf '%s' "${clusters}" | jq -r '.[0]')
           service=$(aws ecs describe-services --cluster "${cluster}" --services Server --query 'services[0]' --output json)
           taskdef=$(printf '%s' "${service}" | jq -r '.taskDefinition')
           network=$(printf '%s' "${service}" | jq -c '{awsvpcConfiguration: .networkConfiguration.awsvpcConfiguration}')
@@ -96,7 +120,8 @@ jobs:
           task=$(aws ecs run-task --cluster "${cluster}" --task-definition "${taskdef}" --launch-type FARGATE --network-configuration "${network}" --overrides "${overrides}" --query 'tasks[0].taskArn' --output text)
           [ -n "${task}" ] && [ "${task}" != "None" ] || { echo "::error::the task did not start"; exit 1; }
           echo "task ${task##*/}"
-          aws ecs wait tasks-stopped --cluster "${cluster}" --tasks "${task}"
+          # The waiter gives up after about 10 minutes and the task may run longer (it starts, sets up, then adopts): wait again, the job's own timeout bounds it.
+          until aws ecs wait tasks-stopped --cluster "${cluster}" --tasks "${task}"; do :; done
           described=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0]' --output json)
           printf '%s' "${described}" | jq -r '.containers[] | "\(.name): exit \(.exitCode // "none") \(.reason // "")"'
           # What the command said (log events, no personal data), from the container's log stream.
