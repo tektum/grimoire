@@ -16,7 +16,13 @@ const dirs: string[] = [];
 const build = (mode: string): string => {
   const out = mkdtempSync(path.join(tmpdir(), `grimoire-${mode}-`));
   dirs.push(out);
-  execFileSync(process.execPath, [path.join(web, '../../node_modules/vite/bin/vite.js'), 'build', '--mode', mode, '--outDir', out, '--emptyOutDir'], { cwd: web, stdio: 'pipe' });
+  execFileSync(process.execPath, [path.join(web, '../../node_modules/vite/bin/vite.js'), 'build', '--mode', mode, '--outDir', out, '--emptyOutDir'], {
+    cwd: web,
+    stdio: 'pipe',
+    // vitest sets NODE_ENV=test, which the child would inherit: the React plugin then compiles JSX for development and writes the absolute path of every source file into the chunks, so the
+    // check below read a path that holds the word "descope" (a clone in a folder of that name) as the provider's code. A build is checked as it is shipped: production.
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
   return out;
 };
 const files = (dir: string, ext: string) => readdirSync(path.join(dir, 'assets')).filter((f) => f.endsWith(ext));
