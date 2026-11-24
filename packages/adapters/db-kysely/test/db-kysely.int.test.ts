@@ -90,10 +90,10 @@ describe('grimoire migrate', () => {
   it('applies on an empty database and is idempotent on a second run', async () => {
     const first = await migrate();
     expect(first.code).toBe(0);
-    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 8 }); // 0001 to 0008
+    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 9 }); // 0001 to 0008
     expect(await tables()).toEqual(expect.arrayContaining(['kysely_migration', 'pages']));
     const rows = await migrationRows();
-    expect(rows).toEqual(['0001_pages', '0002_page_markdown', '0003_schema_version', '0004_permissions', '0005_history_files_imports_audit', '0006_page_search_and_positions', '0007_idempotency_created_index', '0008_drop_page_defaults']);
+    expect(rows).toEqual(['0001_pages', '0002_page_markdown', '0003_schema_version', '0004_permissions', '0005_history_files_imports_audit', '0006_page_search_and_positions', '0007_idempotency_created_index', '0008_drop_page_defaults', '0009_tenancy']);
 
     const second = await migrate();
     expect(second.code).toBe(0);
@@ -210,13 +210,13 @@ describe('least privilege', () => {
     await expect(sqlAs(URLS.app, 'select * from nogrant')).rejects.toMatchObject({ code: '42501' });
   });
 
-  it('\\dp-equivalent: the runtime role holds rights only on the permission tables and the 0005 tables, each with its exact privileges', async () => {
+  it('\\dp-equivalent: the runtime role holds rights only on the permission tables, the 0005 tables and the tenants, each with its exact privileges', async () => {
     expect((await migrate()).code).toBe(0);
     const rows = await sqlAs<{ t: string; p: string }>(URLS.admin, "select c.relname as t, string_agg(p, ',' order by p) as p from pg_class c cross join (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) v(p) where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and has_table_privilege('grimoire_app', c.oid, p) group by 1");
     const crud = 'DELETE,INSERT,SELECT,UPDATE';
     const expected = [
       ...['collection_access', 'collections', 'group_members', 'groups', 'pages', 'users', 'attachments', 'idempotency_keys'].map((t) => ({ t, p: crud })),
-      ...['revisions', 'audit_events'].map((t) => ({ t, p: 'INSERT,SELECT' })),
+      ...['revisions', 'audit_events', 'tenants'].map((t) => ({ t, p: 'INSERT,SELECT' })),
       ...['imports', 'import_items'].map((t) => ({ t, p: 'INSERT,SELECT,UPDATE' })),
     ].sort((a, b) => a.t.localeCompare(b.t));
     expect([...rows].sort((a, b) => a.t.localeCompare(b.t))).toEqual(expected);
