@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { axeViolations, type AxeViolation } from '../support/axe';
 
 export const SCHEMES = ['light', 'dark'] as const;
@@ -56,16 +56,21 @@ export const COUNT_POINTER_EVENTS = `(() => {
 export const pointerEvents = (page: Page): Promise<number> => page.evaluate((key) => Number(sessionStorage.getItem(key) ?? 0), POINTER_COUNTER);
 
 /**
- * Presses Tab until `match` is true of the focused element (at most `limit` times, the focus is checked once more after the last press); fails with the place it gave up at.
- * `match` runs in the page, as source text: it must not use anything of the test. A value it needs goes in `arg`, which it gets as its second parameter.
+ * Presses Tab until the focus is on `target` (at most `limit` times; the focus is checked once more after the last press). It first waits for the target to be on the page and
+ * visible: a screen that is still being drawn is not a Tab walk that failed. When the focus never gets there, the error says whether the target is there (its tag, `tabindex`,
+ * whether it is disabled, hidden from assistive technology or inert) and which elements the focus went over: a target that is there and skipped is a finding.
  */
-export async function tabTo<A = undefined>(page: Page, match: (element: Element | null, arg: A) => boolean, options: { limit?: number; arg?: A } = {}): Promise<void> {
+export async function tabTo(page: Page, target: Locator, options: { limit?: number; timeout?: number } = {}): Promise<void> {
   const limit = options.limit ?? 60;
-  const call = `(${match.toString()})(document.activeElement, ${JSON.stringify(options.arg) ?? 'undefined'})`;
-  const reached = (): Promise<boolean> => page.evaluate(call);
-  const seen: string[] = [];
+  try {
+    await target.first().waitFor({ state: 'visible', timeout: options.timeout ?? 10_000 });
+  } catch {
+    throw new Error(`the element to Tab to is not on the page, or not visible: ${String(target)}`);
+  }
+  const reached = (): Promise<boolean> => target.evaluateAll((elements) => (elements as Element[]).includes(document.activeElement as Element));
   const here = (): Promise<string> =>
     page.evaluate(() => `${document.activeElement?.tagName.toLowerCase() ?? 'nothing'} "${(document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent ?? '').trim().slice(0, 30)}"`);
+  const seen: string[] = [];
   for (let i = 0; i < limit; i += 1) {
     if (await reached()) return;
     const at = await here();
@@ -73,7 +78,12 @@ export async function tabTo<A = undefined>(page: Page, match: (element: Element 
     await page.keyboard.press('Tab');
   }
   if (await reached()) return;
-  throw new Error(`the focus never reached the element in ${limit} Tab presses (it is on ${await here()}; it went over: ${seen.slice(0, 12).join(', ')})`);
+  const state = await target.first().evaluate((element) => {
+    const html = element as HTMLElement & { disabled?: boolean };
+    const tabindex = element.getAttribute('tabindex');
+    return `<${element.tagName.toLowerCase()}${tabindex === null ? '' : ` tabindex="${tabindex}"`}${html.disabled === true ? ' disabled' : ''}${element.closest('[aria-hidden="true"]') === null ? '' : ' inside aria-hidden'}${element.closest('[inert]') === null ? '' : ' inside inert'}>`;
+  });
+  throw new Error(`the focus never reached ${String(target)} in ${limit} Tab presses: the element is there, ${state}, and Tab skips it (the focus is on ${await here()}; it went over: ${seen.slice(0, 12).join(', ')})`);
 }
 
 /** The element is the one the person has the focus on. */

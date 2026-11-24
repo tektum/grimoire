@@ -21,7 +21,7 @@ for (const reduced of [false, true]) {
     if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/c/c1');
     await expect(page.getByRole('treeitem')).toHaveCount(4);
-    await tabTo(page, (el) => el?.getAttribute('role') === 'treeitem');
+    await tabTo(page, page.getByRole('treeitem'));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await shots(page, TASK, reduced ? 'tree-focus-reduced-motion' : 'tree-focus');
@@ -34,7 +34,7 @@ test('the Move to dialog with the focus on a choice', async ({ page, context, br
   await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
   await page.goto('/c/c1');
   await expect(page.getByRole('treeitem')).toHaveCount(4);
-  await tabTo(page, (el) => el?.getAttribute('role') === 'treeitem');
+  await tabTo(page, page.getByRole('treeitem'));
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Tab');
@@ -46,7 +46,7 @@ test('the Move to dialog with the focus on a choice', async ({ page, context, br
   await expect(page.getByRole('menuitem', { name: 'Move to…' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Move Plan for May to…' })).toBeVisible();
-  await tabTo(page, (el) => el?.textContent?.startsWith('Welcome') === true);
+  await tabTo(page, page.getByRole('dialog').getByRole('button', { name: /^Welcome/ }));
   await shots(page, TASK, 'dialog-focus');
 });
 
@@ -59,7 +59,7 @@ test('the editor with the focus in the text', async ({ browser, baseURL, browser
     const page = await context.newPage();
     await page.goto(made.path);
     await waitForSynced(page);
-    await tabTo(page, (el) => el?.classList.contains('ProseMirror') === true);
+    await tabTo(page, page.locator('.ProseMirror'));
     await page.keyboard.press('Control+End');
     await shots(page, TASK, 'editor-focus');
   } finally {

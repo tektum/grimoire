@@ -20,6 +20,10 @@ test.beforeAll(async () => {
       '<h1>Fading</h1><button>Fades</button>',
       'button{color:#000;background:#fff;border:1px solid #000;transition:background 3s}@media (prefers-color-scheme: dark){body{background:#000}button{color:#fff;background:#000;border-color:#fff}}@media (prefers-reduced-motion: reduce){*{transition:none!important}}',
     ),
+    '/late': PAGE(
+      '<h1>Late</h1><button>Early</button><script>setTimeout(() => { const b = document.createElement("button"); b.id = "late"; b.textContent = "Late"; document.querySelector("main").append(b); }, 600);</script>',
+    ),
+    '/skipped': PAGE('<h1>Skipped</h1><button id="a">First</button><button>Second</button><div id="skipped" tabindex="-1">Not in the Tab order</div><button id="off" disabled>Off</button>'),
     '/broken': PAGE('<h1>Broken</h1><button></button>'),
   });
 });
@@ -62,22 +66,30 @@ test('the pointer count is zero for keys, even Enter on a button (a click made b
   expect(await pointerEvents(page)).toBeGreaterThanOrEqual(2);
 });
 
-test('Tab reaches the element asked for, and the failure says where the focus was', async ({ page }) => {
+test('Tab reaches the element asked for, also with the very last press allowed', async ({ page }) => {
   await page.goto(server.url('/buttons'));
-  await tabTo(page, (el) => el?.id === 'b');
+  await tabTo(page, page.locator('#b'));
   expect(await page.evaluate(() => document.activeElement?.id)).toBe('b');
-  await expect(tabTo(page, (el) => el?.id === 'nowhere', { limit: 4 })).rejects.toThrow(/never reached the element in 4 Tab presses.*it went over:(?=.*button "First")(?=.*button "Second")/s);
+  await page.goto(server.url('/buttons'));
+  await tabTo(page, page.locator('#b'), { limit: 2 }); // the second press reaches it: not "never reached"
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('b');
+  await page.goto(server.url('/buttons'));
+  await expect(tabTo(page, page.locator('#b'), { limit: 1 })).rejects.toThrow(/never reached/);
 });
 
-test('Tab takes a value as an argument (the predicate runs in the page), and the last Tab press is checked too', async ({ page }) => {
+test('it waits for an element that is drawn late, and says when the element is not there at all', async ({ page }) => {
+  await page.goto(server.url('/late'));
+  await tabTo(page, page.locator('#late')); // drawn 600 ms after the page: the walk does not start before it is there
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('late');
   await page.goto(server.url('/buttons'));
-  await tabTo(page, (el, id) => el?.id === id, { arg: 'a' });
-  expect(await page.evaluate(() => document.activeElement?.id)).toBe('a');
-  await page.goto(server.url('/buttons'));
-  await tabTo(page, (el, id) => el?.id === id, { arg: 'b', limit: 2 }); // the second press reaches it: not "never reached"
-  expect(await page.evaluate(() => document.activeElement?.id)).toBe('b');
-  await page.goto(server.url('/buttons'));
-  await expect(tabTo(page, (el, id) => el?.id === id, { arg: 'b', limit: 1 })).rejects.toThrow(/never reached/);
+  await expect(tabTo(page, page.locator('#nowhere'), { timeout: 300 })).rejects.toThrow(/not on the page, or not visible/);
+});
+
+test('an element that is there and that Tab skips is told apart from one that is not: the error names its tag and tabindex, and the elements the focus went over', async ({ page }) => {
+  await page.goto(server.url('/skipped'));
+  await expect(tabTo(page, page.locator('#skipped'), { limit: 5 })).rejects.toThrow(/the element is there, <div tabindex="-1">, and Tab skips it.*it went over:(?=.*button "First")(?=.*button "Second")/s);
+  await page.goto(server.url('/skipped'));
+  await expect(tabTo(page, page.locator('#off'), { limit: 5 })).rejects.toThrow(/<button disabled>, and Tab skips it/);
 });
 
 test('a transition or an animation that lasts is found, and nothing is under reduced motion', async ({ page }) => {

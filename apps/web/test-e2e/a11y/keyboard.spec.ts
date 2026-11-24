@@ -29,9 +29,6 @@ async function walk(browser: Browser, baseURL: string | undefined, who: { userId
   }
 }
 
-/** For `tabTo(page, isLabelled, { arg: label })`: it runs in the page, so the label comes as the argument. */
-const isLabelled = (element: Element | null, label: string): boolean => element?.getAttribute('aria-label') === label;
-
 test('the walk counts a mouse click (so that "no pointer events" says something)', async ({ browser, baseURL }) => {
   const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }) });
   try {
@@ -51,9 +48,9 @@ test('sign in: the form is filled and sent with the keyboard', async ({ browser,
   await walk(browser, baseURL, null, async (page) => {
     await page.goto('/login');
     await expect(page.getByLabel('User id'), 'the form is drawn (its chunk comes after the page)').toBeVisible(); // the first Tab press is after it, or it lands on an empty page
-    await tabTo(page, (el) => (el as HTMLInputElement | null)?.labels?.[0]?.textContent?.startsWith('User id') === true);
+    await tabTo(page, page.getByLabel('User id'));
     await page.keyboard.type('e2e-keys');
-    await tabTo(page, (el) => (el as HTMLInputElement | null)?.labels?.[0]?.textContent?.startsWith('Secret') === true);
+    await tabTo(page, page.getByLabel('Secret'));
     await page.keyboard.type(devSecret());
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/c\//);
@@ -64,7 +61,7 @@ test('the contents tree: a page is opened', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, { userId: 'e2e-keys', role: 'member' }, async (page) => {
     await page.goto(`/c/${world.collectionId}`);
     await expect(page.getByRole('treeitem')).toHaveCount(2);
-    await tabTo(page, (el) => el?.getAttribute('role') === 'treeitem');
+    await tabTo(page, page.getByRole('treeitem'));
     await page.keyboard.press('ArrowDown'); // Beta, after Alpha
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(world.beta.address);
@@ -76,7 +73,7 @@ test('the contents tree: a page is moved through the menu of its row', async ({ 
   await walk(browser, baseURL, { userId: 'e2e-keys', role: 'member' }, async (page) => {
     await page.goto(`/c/${world.collectionId}`);
     await expect(page.getByRole('treeitem').filter({ has: page.getByRole('link', { name: 'Zeta mover', exact: true }) })).toBeVisible();
-    await tabTo(page, (el) => el?.getAttribute('role') === 'treeitem');
+    await tabTo(page, page.getByRole('treeitem'));
     await page.keyboard.press('ArrowDown'); // Beta
     await page.keyboard.press('ArrowDown'); // Zeta mover, the last of the three
     await page.keyboard.press('Tab'); // the menu button of that row
@@ -89,7 +86,7 @@ test('the contents tree: a page is moved through the menu of its row', async ({ 
     await expect(page.getByRole('menuitem', { name: 'Move to…' })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('dialog', { name: 'Move Zeta mover to…' })).toBeVisible();
-    await tabTo(page, (el) => el?.textContent?.startsWith('Alpha') === true);
+    await tabTo(page, page.getByRole('dialog').getByRole('button', { name: /^Alpha/ }));
     await page.keyboard.press('Enter');
     const row = page.getByRole('treeitem').filter({ has: page.getByRole('link', { name: 'Zeta mover', exact: true }) });
     await expect(row).toHaveAttribute('aria-level', '2');
@@ -100,7 +97,7 @@ test('the page: text is typed, and a heading is made from the slash menu', async
   await walk(browser, baseURL, { userId: 'e2e-keys', role: 'member' }, async (page) => {
     await page.goto(world.alpha.path);
     await waitForSynced(page);
-    await tabTo(page, (el) => el?.classList.contains('ProseMirror') === true);
+    await tabTo(page, page.locator('.ProseMirror'));
     await page.keyboard.press('Control+End');
     await page.keyboard.press('Enter');
     await page.keyboard.type('/');
@@ -116,19 +113,19 @@ test('history: a version is opened and restored', async ({ browser, baseURL }) =
   await walk(browser, baseURL, { userId: 'e2e-keys', role: 'member' }, async (page) => {
     await page.goto(world.alpha.path);
     await waitForSynced(page);
-    await tabTo(page, (el) => el?.tagName === 'A' && el.textContent?.trim().startsWith('History') === true);
+    await tabTo(page, page.getByRole('link', { name: /^History/ }));
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/history$/);
     await expect(page.getByRole('link', { name: /^Open this version/ }).first(), 'the list of versions is drawn (it is fetched after the page)').toBeVisible();
-    await tabTo(page, (el) => el?.tagName === 'A' && (el.getAttribute('aria-label') ?? '').startsWith('Open this version'));
+    await tabTo(page, page.getByRole('link', { name: /^Open this version/ }));
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/history\/[^/]+$/);
     await expect(page.getByRole('button', { name: 'Restore this version' })).toBeVisible();
-    await tabTo(page, (el) => el?.textContent?.trim() === 'Restore this version');
+    await tabTo(page, page.getByRole('button', { name: 'Restore this version' }));
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('alertdialog', { name: 'Restore this version?' });
     await expect(dialog).toBeVisible();
-    await tabTo(page, (el) => el?.textContent?.trim() === 'Restore');
+    await tabTo(page, page.getByRole('alertdialog').getByRole('button', { name: 'Restore', exact: true }));
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(world.alpha.address);
   });
@@ -141,7 +138,7 @@ test('the trash: a page is restored', async ({ browser, baseURL }) => {
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/trash');
     await expect(page.getByRole('button', { name: `Restore ${title}` })).toBeVisible();
-    await tabTo(page, isLabelled, { arg: `Restore ${title}` });
+    await tabTo(page, page.getByRole('button', { name: `Restore ${title}` }));
     await page.keyboard.press('Enter');
     await expect(page.getByRole('button', { name: `Restore ${title}` })).toHaveCount(0);
   });
@@ -151,25 +148,25 @@ test('the admin screens: a role is changed, a group is made, the default access 
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/admin/users');
     await expect(page.getByRole('searchbox', { name: 'Search users' }), 'the screen is drawn (the page asks who is signed in first)').toBeVisible();
-    await tabTo(page, isLabelled, { arg: 'Search users' });
+    await tabTo(page, page.getByRole('searchbox', { name: 'Search users' }));
     await page.keyboard.type(world.colleague.name);
     await page.keyboard.press('Enter');
     await expect(page.getByLabel(`Role of ${world.colleague.name}`), 'the list is drawn after the search').toBeVisible();
-    await tabTo(page, isLabelled, { arg: `Role of ${world.colleague.name}` });
+    await tabTo(page, page.getByLabel(`Role of ${world.colleague.name}`));
     await page.keyboard.press('ArrowDown'); // member to viewer
     await expect(page.getByLabel(`Role of ${world.colleague.name}`)).toHaveValue('viewer');
 
     await page.goto('/admin/groups');
     await expect(page.getByRole('textbox', { name: 'New group name' })).toBeVisible();
     const group = `Made with keys ${Date.now()}`; // a group name is unique on the stack, and the tour can be run again
-    await tabTo(page, isLabelled, { arg: 'New group name' });
+    await tabTo(page, page.getByRole('textbox', { name: 'New group name' }));
     await page.keyboard.type(group);
     await page.keyboard.press('Enter');
     await expect(page.getByText(group, { exact: true })).toBeVisible();
 
     await page.goto(`/admin/collections/${world.collectionId}/access`);
     await expect(page.getByLabel('Everyone with an account can')).toBeVisible();
-    await tabTo(page, isLabelled, { arg: 'Everyone with an account can' });
+    await tabTo(page, page.getByLabel('Everyone with an account can'));
     const before = await page.getByLabel('Everyone with an account can').inputValue();
     await page.keyboard.press('ArrowDown');
     if ((await page.getByLabel('Everyone with an account can').inputValue()) === before) await page.keyboard.press('ArrowUp'); // it was the last choice
@@ -182,7 +179,7 @@ test('the screens with nothing to do but read, and the way out of the not-found 
     await page.goto('/help');
     await expect(page.getByRole('heading', { level: 1, name: 'Editing together' })).toBeVisible();
     await page.goto('/nowhere/at/all');
-    await tabTo(page, (el) => el?.tagName === 'A' && el.textContent?.trim() === 'Go to your collections');
+    await tabTo(page, page.getByRole('link', { name: 'Go to your collections' }));
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/c\//);
   });
