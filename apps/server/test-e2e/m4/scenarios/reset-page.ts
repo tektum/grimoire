@@ -3,7 +3,7 @@ import { canonicalOfState, docPeer, peerSynced, recreateApp, rowOf } from '../..
 import { apiAs, appEvents, closeDb, errorCode, eventually, expectStatus, openCollection, scenario, signInAll, tab } from '../support.ts';
 
 // Resetting a page's editing state (R13.8): the administrator replaces the state of a page with the seed of new Markdown. The connected tab is closed by the access
-// re-check within its interval, the tab that comes back by itself with the epoch it recorded and an unsent edit is refused `stale-epoch`, and
+// re-check within its interval, the tab that comes back by itself with the epoch it recorded and an unsent edit is refused `stale-epoch` (R4.33: a connect with an old epoch is refused; the refusal is delivered as the reason, the 4409 close is the one of the save and of the first-frame check), and
 // neither the old text nor the unsent edit reaches the stored page; the next open seeds the document from the new Markdown.
 const RECHECK_SECONDS = 2;
 const OLD_TEXT = 'Text before the reset.';
