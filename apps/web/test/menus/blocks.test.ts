@@ -34,6 +34,12 @@ describe('the block kinds of the menu', () => {
     expect(matchingKinds('LIST').map((kind) => kind.id)).toEqual(['bullet-list', 'numbered-list', 'task-list']);
     expect(matchingKinds('todo').map((kind) => kind.id)).toEqual(['task-list']);
     expect(matchingKinds('ode').map((kind) => kind.id)).toEqual(['code']); // inside a word: found, after the ones that start with it
+    expect(matchingKinds('c')[0]?.id, 'a label that starts with it comes before a keyword that does').toBe('code');
+    expect(
+      matchingKinds('c')
+        .map((kind) => kind.id)
+        .indexOf('task-list'),
+    ).toBeGreaterThan(0);
     expect(matchingKinds('zzz')).toEqual([]);
   });
 

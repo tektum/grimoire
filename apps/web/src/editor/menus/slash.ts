@@ -36,8 +36,9 @@ function createView(ctx: Ctx, view: EditorView) {
   // A press on the list (its scroll bar, the space between items) must not take the focus from the text. (The items are focusable without being tab stops, so the scrolling list has keyboard access.)
   host.addEventListener('mousedown', (event) => event.preventDefault());
   const root = createRoot(host);
-  const provider = new SlashProvider({ content: host, debounce: 0, offset: 6, shouldShow: (v) => slashQuery(v) !== null && state.dismissedAt !== v.state.selection.from });
-  const state = { kinds: BLOCK_KINDS, active: 0, dismissedAt: -1, open: false };
+  const provider = new SlashProvider({ content: host, debounce: 0, offset: 6, shouldShow: (v) => slashQuery(v) !== null && state.dismissed === null });
+  /** `dismissed`: Escape closed the menu for this paragraph and this text; it stays closed until the text after the slash changes, or the cursor leaves the slash. */
+  const state = { kinds: BLOCK_KINDS, active: 0, dismissed: null as { start: number; query: string } | null, open: false };
 
   const render = (): void => {
     root.render(
@@ -72,6 +73,7 @@ function createView(ctx: Ctx, view: EditorView) {
   const spec = {
     update(next: EditorView, prev?: Parameters<typeof provider.update>[1]) {
       const query = slashQuery(next);
+      if (query === null || (state.dismissed !== null && (state.dismissed.query !== query || state.dismissed.start !== next.state.selection.$from.start()))) state.dismissed = null;
       const kinds = query === null ? BLOCK_KINDS : matchingKinds(query);
       if (kinds.length !== state.kinds.length || kinds.some((kind, i) => kind !== state.kinds[i])) state.active = 0;
       state.kinds = kinds;
@@ -91,7 +93,7 @@ function createView(ctx: Ctx, view: EditorView) {
     if (!state.open || slashQuery(view) === null) return false;
     const count = state.kinds.length;
     if (event.key === 'Escape') {
-      state.dismissedAt = view.state.selection.from;
+      state.dismissed = { start: view.state.selection.$from.start(), query: slashQuery(view) ?? '' };
       provider.hide();
       return true;
     }

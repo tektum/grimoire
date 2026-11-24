@@ -1,6 +1,5 @@
 import { TextSelection } from '@milkdown/prose/state';
-import { waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { slashQuery } from '../../src/editor/menus/slash';
 import { plainEditor } from './support';
 
@@ -62,30 +61,30 @@ describe('the menu in the editor', () => {
   it('opens on a slash at the start of a paragraph with every kind, points the editor at the active one, and narrows as the person types', async () => {
     const t = await emptyParagraph();
     typeText(t, '/');
-    await waitFor(() => expect(open(t)).toBe(true));
+    await vi.waitFor(() => expect(open(t)).toBe(true));
     expect(options(t)).toHaveLength(14);
     expect(t.view().dom.getAttribute('aria-activedescendant')).toBe('slash-option-text');
     expect(t.view().dom.getAttribute('aria-controls')).toBe('slash-menu');
     typeText(t, 'head');
-    await waitFor(() => expect(options(t)).toHaveLength(6));
+    await vi.waitFor(() => expect(options(t)).toHaveLength(6));
     typeText(t, 'zz');
-    await waitFor(() => expect(host(t).textContent).toContain('No block matches'));
+    await vi.waitFor(() => expect(host(t).textContent).toContain('No block matches'));
   });
 
   it('closes when the slash is gone', async () => {
     const t = await emptyParagraph();
     typeText(t, '/');
-    await waitFor(() => expect(open(t)).toBe(true));
+    await vi.waitFor(() => expect(open(t)).toBe(true));
     const view = t.view();
     view.dispatch(view.state.tr.delete(view.state.selection.from - 1, view.state.selection.from));
-    await waitFor(() => expect(open(t)).toBe(false));
+    await vi.waitFor(() => expect(open(t)).toBe(false));
     expect(view.dom.getAttribute('aria-activedescendant')).toBeNull();
   });
 
   it('arrow keys move the active item, wrapping round; Enter chooses it: the slash text goes and the block is that kind', async () => {
     const t = await emptyParagraph();
     typeText(t, '/head');
-    await waitFor(() => expect(options(t)).toHaveLength(6));
+    await vi.waitFor(() => expect(options(t)).toHaveLength(6));
     press(t, 'ArrowDown');
     expect(t.view().dom.getAttribute('aria-activedescendant')).toBe('slash-option-heading-2');
     press(t, 'ArrowUp');
@@ -96,20 +95,20 @@ describe('the menu in the editor', () => {
     press(t, 'Enter');
     expect(t.view().state.doc.lastChild?.attrs['level']).toBe(2); // the block is the heading, level 2, and no slash text is left in it
     expect(t.view().state.doc.lastChild?.textContent).toBe('');
-    await waitFor(() => expect(open(t)).toBe(false));
+    await vi.waitFor(() => expect(open(t)).toBe(false));
   });
 
   it('Tab chooses too, and a click on an item chooses that one', async () => {
     const t = await emptyParagraph();
     typeText(t, '/quote');
-    await waitFor(() => expect(options(t)).toEqual(['Quote']));
+    await vi.waitFor(() => expect(options(t)).toEqual(['Quote']));
     press(t, 'Tab');
     expect(t.markdown()).toContain('>');
     await t.destroy();
     current = null;
     const second = await emptyParagraph();
     typeText(second, '/divider');
-    await waitFor(() => expect(options(second)).toEqual(['Divider']));
+    await vi.waitFor(() => expect(options(second)).toEqual(['Divider']));
     host(second)
       .querySelector('[role=option]')!
       .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -119,11 +118,11 @@ describe('the menu in the editor', () => {
   it("Escape closes it, and it stays closed until the text changes; keys other than its own are the editor's", async () => {
     const t = await emptyParagraph();
     typeText(t, '/q');
-    await waitFor(() => expect(open(t)).toBe(true));
+    await vi.waitFor(() => expect(open(t)).toBe(true));
     press(t, 'Escape');
     expect(open(t)).toBe(false);
     typeText(t, 'u');
-    await waitFor(() => expect(open(t)).toBe(true));
+    await vi.waitFor(() => expect(open(t)).toBe(true));
     const other = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true });
     t.view().dom.dispatchEvent(other);
     expect(other.defaultPrevented).toBe(false);
@@ -138,12 +137,36 @@ describe('the menu in the editor', () => {
     expect(open(t)).toBe(false);
   });
 
-  it('puts the typed text back when the schema refuses the kind where the cursor is', async () => {
-    current = await plainEditor('```\ncode\n```');
+  it('puts the typed text back when the schema refuses the kind where the cursor is: the first block of a table cell cannot be a heading', async () => {
+    current = await plainEditor('| Head | Other |\n| --- | --- |\n| cell | more |\n');
     const t = current;
-    t.cursorAtEnd();
-    typeText(t, '/h'); // inside a code block: not a paragraph, so no menu and nothing is taken
-    expect(slashQuery(t.view())).toBeNull();
-    expect(host(t)?.dataset['show'] ?? 'false').not.toBe('true');
+    const view = t.view();
+    let cell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (cell < 0 && node.type.name === 'table_cell' && node.textContent === 'cell') cell = pos;
+    });
+    expect(cell).toBeGreaterThan(0);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, cell + 2))); // at the start of the paragraph in the cell
+    view.dispatch(view.state.tr.insertText('/head', cell + 2));
+    await vi.waitFor(() => expect(open(t)).toBe(true));
+    expect(options(t)).toHaveLength(6);
+    press(t, 'Enter');
+    const after = view.state.doc.nodeAt(cell)!;
+    expect(after.textContent).toBe('/headcell'); // nothing lost, nothing misplaced
+    expect(after.firstChild?.type.name).toBe('paragraph');
+    expect(after.firstChild?.attrs['level']).toBe(0); // and still a paragraph: the schema refused
+  });
+
+  it('Escape keeps it closed until the text after the slash changes, or the cursor has left the slash: delete the slash and type it again, and it opens', async () => {
+    const t = await emptyParagraph();
+    typeText(t, '/');
+    await vi.waitFor(() => expect(open(t)).toBe(true));
+    press(t, 'Escape');
+    const view = t.view();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.selection.from))); // a move of the cursor that changes nothing
+    expect(open(t)).toBe(false);
+    view.dispatch(view.state.tr.delete(view.state.selection.from - 1, view.state.selection.from));
+    typeText(t, '/');
+    await vi.waitFor(() => expect(open(t)).toBe(true));
   });
 });

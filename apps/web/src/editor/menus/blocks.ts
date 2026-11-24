@@ -58,16 +58,20 @@ export const BLOCK_KINDS: readonly BlockKind[] = [
   { id: 'table', label: 'Table', description: 'Rows and columns', keywords: ['table', 'grid', 'rows', 'columns'], run: (ctx) => call(ctx, insertTableCommand.key, { row: 3, col: 3 }) },
 ];
 
-/** The kinds that match what was typed after the slash: every kind for nothing, else those with the text (any case) in the label or a keyword, label matches first. */
+/**
+ * The kinds that match what was typed after the slash: every kind for nothing, else those with the text (any case) in the label or a keyword, in four groups: the label
+ * starts with it, a keyword starts with it, the label has it inside, a keyword has it inside. (So `/c` offers the code block before the task list, whose keyword "check" starts with c.)
+ */
 export function matchingKinds(query: string, kinds: readonly BlockKind[] = BLOCK_KINDS): readonly BlockKind[] {
   const needle = query.trim().toLowerCase();
   if (needle === '') return kinds;
-  const starts: BlockKind[] = [];
-  const contains: BlockKind[] = [];
+  const groups: BlockKind[][] = [[], [], [], []];
   for (const kind of kinds) {
     const label = kind.label.toLowerCase();
-    if (label.startsWith(needle) || kind.keywords.some((word) => word.startsWith(needle))) starts.push(kind);
-    else if (label.includes(needle) || kind.keywords.some((word) => word.includes(needle))) contains.push(kind);
+    if (label.startsWith(needle)) groups[0]!.push(kind);
+    else if (kind.keywords.some((word) => word.startsWith(needle))) groups[1]!.push(kind);
+    else if (label.includes(needle)) groups[2]!.push(kind);
+    else if (kind.keywords.some((word) => word.includes(needle))) groups[3]!.push(kind);
   }
-  return [...starts, ...contains];
+  return groups.flat();
 }
