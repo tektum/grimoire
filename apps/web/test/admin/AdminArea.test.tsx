@@ -17,6 +17,18 @@ describe('the admin area', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Users' })).toBeTruthy();
   });
 
+  it('checks who is signed in again after a change to a user, so an administrator who demoted themselves sees the not-found screen', async () => {
+    let role = 'admin';
+    const { api } = fakeApi({
+      'GET /v1/me': () => me(role),
+      'GET /v1/users': () => ok({ items: [user('u1', 'Alice', 'admin'), user('u2', 'Bob', 'admin')], nextCursor: null }),
+      'PATCH /v1/users/{id}': () => { role = 'member'; return ok(user('u1', 'Alice', 'member')); },
+    });
+    show(api, '/admin/users');
+    await userEvent.selectOptions(await screen.findByLabelText('Role of Alice'), 'member');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
+  });
+
   it.each(['member', 'viewer'])('shows a %s the not-found screen, and makes no admin request', async (role) => {
     const { api, requests } = fakeApi({ 'GET /v1/me': me(role), 'GET /v1/users': ok({ items: [], nextCursor: null }) });
     show(api, '/admin/users');

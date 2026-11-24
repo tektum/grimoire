@@ -42,7 +42,8 @@ export function UsersScreen({ api }: { readonly api: ApiLike }) {
     } catch {
       // The network failed: the wrapper has said so.
     } finally {
-      await client.invalidateQueries({ queryKey: queryKey('GET', USERS_PATH, undefined).slice(0, 2) });
+      // The caller's own role too: an administrator who demoted or suspended themselves must not keep this screen.
+      await Promise.all([client.invalidateQueries({ queryKey: queryKey('GET', USERS_PATH, undefined).slice(0, 2) }), client.invalidateQueries({ queryKey: queryKey('GET', '/v1/me', undefined) })]);
       setBusy((s) => { const next = new Set(s); next.delete(id); return next; });
     }
   };
