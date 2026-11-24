@@ -7,8 +7,8 @@ import { apiAs, closeDb, errorCode, expectStatus, openCollection, query, scenari
 // Markdown has fallen behind its state says so.
 const LIMIT_BYTES = 4096;
 
-/** Paragraphs of 23 bytes each plus a 2-byte separator: at least `bytes` in all, well inside the line and marker limits. */
-const paragraphs = (bytes: number): string => Array.from({ length: Math.ceil((bytes + 2) / 25) }, (_, i) => `Paragraph number ${String(i).padStart(5, '0')}.`).join('\n\n');
+/** Paragraphs of 46 bytes plus a 2-byte separator: at least `bytes` in all, and about 21 lines per KB, so 100 KB stays under the 8,000-line seed limit (which no setting changes). */
+const paragraphs = (bytes: number): string => Array.from({ length: Math.ceil((bytes + 2) / 48) }, (_, i) => `Paragraph number ${String(i).padStart(5, '0')}.`.padEnd(46, ' filler')).join('\n\n');
 
 await scenario('markdown-limits', 240_000, async (t) => { // timeout: recreates the app twice and converts documents of up to 100 KB
   t.onDone(closeDb);
