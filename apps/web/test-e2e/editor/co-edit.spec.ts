@@ -1,16 +1,8 @@
-import { buildDevToken } from '../../test/support/dev-token';
 import { expect, test } from '@playwright/test';
 import { COLLAB_COLOURS, colourIndex } from '../../src/ui/collab';
-import { apiUrl, devSecret } from '../support/env';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
-import { makePage } from './pages';
-
-/** The signed-in person as the server knows them: the id presence uses, and the name the directory gives for it. */
-async function whoIs(userId: string): Promise<{ id: string; name: string }> {
-  const response = await fetch(`${apiUrl()}/v1/me`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), userId, 'member')}` } });
-  return (await response.json()) as { id: string; name: string };
-}
+import { makePage, whoIs } from './pages';
 
 test.describe('editing together', () => {
   test("both people edit the same paragraph and both texts survive; the other person's cursor carries the directory name and the colour derived from the id", async ({ browser, baseURL }) => {

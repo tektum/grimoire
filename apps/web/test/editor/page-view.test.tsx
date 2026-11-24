@@ -649,4 +649,23 @@ describe('the page screen', () => {
       Reflect.deleteProperty(navigator, 'onLine');
     }
   });
+
+  it('shows the not-found screen, and nothing of the editor, when the server says the page is gone', async () => {
+    const t = mountPage();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed'));
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    await act(async () => void t.sessions[1]!.provider.refuse('not-found'));
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+    expect(screen.queryByTestId('editor-root')).toBeNull();
+    await waitFor(() => expect(t.sessions).toHaveLength(2)); // nothing opens again
+  });
+
+  it('shows it for a page that is not there when the screen is opened, too', async () => {
+    const t = mountPage();
+    await act(async () => void t.sessions[0]!.provider.refuse('not-found'));
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+    expect(t.sessions).toHaveLength(1);
+  });
 });

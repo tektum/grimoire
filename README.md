@@ -64,6 +64,10 @@ Lists in a page: bullets, numbered steps and task boxes.
 
 Two people in one page: each sees the other's cursor and selection, with the name from the directory.
 
+![Two people with their cursor on the same character](docs/screenshots/m6-t04/cursors-same-place-light.png)
+
+Two cursors on the same character: both carets and both name labels stay visible.
+
 ![A page opened read-only](docs/screenshots/m6-t04/read-only-page-light.png)
 
 A page opened read-only.
