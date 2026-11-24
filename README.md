@@ -80,6 +80,14 @@ The link editor refuses an address of a kind that is not allowed (a script addre
 
 The handle beside a block opens the list of kinds to turn it into.
 
+![The lock message: another person is in the block, with the help open](docs/screenshots/m6-t05/lock-message-why-light.png)
+
+Turning a block into a list, a quote or a code block is held back while another person's cursor is in it; "Why?" says what the lock can and cannot do.
+
+![The help page on editing together](docs/screenshots/m6-t05/help-page-light.png)
+
+The help page on editing together.
+
 ![Two people in one page: each sees the other's cursor and selection with a name label](docs/screenshots/m6-t04/cursors-seen-by-bob-light.png)
 
 Two people in one page: each sees the other's cursor and selection, with the name from the directory.

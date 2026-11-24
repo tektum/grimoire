@@ -36,9 +36,10 @@ afterAll(() => {
 describe("the test hook that puts the open page's shared document on the window", () => {
   it('is in the end-to-end build, where the specifications read it', () => {
     expect(chunks(e2e).some((text) => text.includes('__grimoireDoc'))).toBe(true);
+    expect(chunks(e2e).some((text) => text.includes('__grimoireAwareness'))).toBe(true);
   });
 
   it('is not in the production build: no chunk has it', () => {
-    expect(chunks(production).filter((text) => text.includes('__grimoireDoc'))).toEqual([]);
+    expect(chunks(production).filter((text) => text.includes('__grimoireDoc') || text.includes('__grimoireAwareness'))).toEqual([]);
   });
 });

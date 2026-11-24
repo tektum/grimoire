@@ -32,3 +32,27 @@ export async function blocks(page: Page): Promise<Block[]> {
 
 /** The editing surface of a page. */
 export const surface = (page: Page) => page.locator('.ProseMirror');
+
+/**
+ * The blocks other people's cursors are in, as this tab's awareness has them: `blockId` of every other client that has one, with the person's user id. The ids are those
+ * of `blocks()`, so a spec can wait for "Bob is in the block with this id" before it acts.
+ */
+export async function remoteBlocks(page: Page): Promise<{ user: string; blockId: string }[]> {
+  return page.evaluate(() => {
+    const awareness = (window as unknown as { __grimoireAwareness?: { clientID: number; getStates(): Map<number, Record<string, unknown>> } }).__grimoireAwareness;
+    if (awareness === undefined) throw new Error('the page does not expose its awareness: the end-to-end build is needed');
+    const found: { user: string; blockId: string }[] = [];
+    for (const [client, state] of awareness.getStates()) {
+      const user = (state['user'] as { id?: string } | undefined)?.id;
+      if (client !== awareness.clientID && typeof state['blockId'] === 'string' && typeof user === 'string') found.push({ user, blockId: state['blockId'] });
+    }
+    return found;
+  });
+}
+
+/** The words of R3.15, as the "Why?" of the lock message says them. */
+export const SOFT_LOCK_HELP = 'The soft lock protects only connected people. Two people editing offline, or a sub-second race between connected clients, can still lose typing.';
+
+/** The first-version limit text of the contracts' section 7a (R3.26 and R3.27), exactly. */
+export const LIMIT_TEXT =
+  "Two people changing the structure of the same paragraph at the same moment (splitting it, joining it with the one above, or turning it into a list) can still lose or repeat a few words, because one person's change reaches the other after a short delay. If you worked offline and the document was restructured meanwhile, keep a separate copy of your edits before reconnecting. Separately, if two people type several letters at exactly the same spot at the same moment, their letters can end up mixed together; nothing is lost, but the words may need retyping, and seeing the other person's cursor on the same spot is the sign to wait. The structure lock and the automatic copy offer are planned after the first version.";

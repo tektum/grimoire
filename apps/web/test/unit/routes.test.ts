@@ -3,7 +3,7 @@ import { ROUTES, safeReturn, urlIdOf } from '../../src/app/routes';
 
 describe('route table', () => {
   it('has every path of the contract once, with the catch-all last', () => {
-    expect(ROUTES.map((r) => r.path)).toEqual(['/login', '/c/:collectionId', '/p/:slug', '/p/:slug/history', '/p/:slug/history/:revisionId', '/search', '/trash', '/import', '/admin/users', '/admin/groups', '/admin/collections/:id/access', '*']);
+    expect(ROUTES.map((r) => r.path)).toEqual(['/login', '/c/:collectionId', '/p/:slug', '/p/:slug/history', '/p/:slug/history/:revisionId', '/search', '/trash', '/import', '/admin/users', '/admin/groups', '/admin/collections/:id/access', '/help', '*']);
     expect(ROUTES.at(-1)?.screen).toBe('notfound');
   });
   it('takes the page id from after the last dash of the slug', () => {

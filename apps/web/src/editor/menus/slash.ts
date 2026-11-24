@@ -4,6 +4,7 @@ import type { Ctx, MilkdownPlugin } from '@milkdown/ctx';
 import { SlashProvider, slashFactory } from '@milkdown/plugin-slash';
 import { TextSelection } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
+import { allowBlockChange } from '../lock';
 import { BLOCK_KINDS, matchingKinds, type BlockKind } from './blocks';
 import { SLASH_MENU_ID, SlashMenu, slashOptionId } from './SlashMenu';
 
@@ -26,7 +27,8 @@ function choose(ctx: Ctx, view: EditorView, kind: BlockKind): void {
   const from = $from.start();
   const typed = view.state.doc.textBetween(from, $from.pos);
   view.dispatch(view.state.tr.delete(from, $from.pos));
-  if (!kind.run(ctx)) view.dispatch(view.state.tr.insertText(typed, from));
+  // Refused by the lock, or by the schema: the text the person typed is put back.
+  if (!allowBlockChange(ctx, kind, from) || !kind.run(ctx)) view.dispatch(view.state.tr.insertText(typed, from));
   view.focus();
 }
 

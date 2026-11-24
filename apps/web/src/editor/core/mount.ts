@@ -6,6 +6,7 @@ import type * as Y from 'yjs';
 import { applyMarkdown, markdownOf } from './api';
 import { presenceAwareness } from './awareness';
 import { cursorBuilders } from './cursor';
+import { lockContext } from '../lock';
 import { guardLinks } from './links';
 import type { Directory } from './directory';
 import { uiPlugins } from './plugins';
@@ -85,16 +86,25 @@ export async function mountLive(options: {
     const { cursorBuilder, selectionBuilder } = cursors;
     // Only `user.id`, `cursor` and `blockId` go out, at most four times a second; remote cursors show the directory name and the colour derived from the id.
     const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
+    // The soft lock reads the others' blocks from this awareness and publishes the person's own through it.
+    ctx.set(lockContext.key, { awareness: awareness as never, userId: options.presence.userId, directory: options.presence.directory });
     ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
   // A test build (the end-to-end build, or development) lets a specification read the shared document of the open page, to check what the editor did to it (which
   // element a command changed, not only how it looks). `__GRIMOIRE_DEV_SIGNIN__` is a constant of the build: in the production build this is removed, as the sample page is.
   const exposed = typeof __GRIMOIRE_DEV_SIGNIN__ !== 'undefined' && __GRIMOIRE_DEV_SIGNIN__;
-  if (exposed) (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc = options.doc;
+  const hooks = window as unknown as { __grimoireDoc?: Y.Doc; __grimoireAwareness?: unknown };
+  if (exposed) {
+    hooks.__grimoireDoc = options.doc;
+    hooks.__grimoireAwareness = options.awareness; // and who is where: the other people's blocks, for the specs of the soft lock
+  }
   const stopGuarding = guardLinks(options.element);
   return wrap(editor, flag, () => {
     stopGuarding();
-    if (exposed && (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc === options.doc) delete (window as unknown as { __grimoireDoc?: Y.Doc }).__grimoireDoc;
+    if (exposed && hooks.__grimoireDoc === options.doc) {
+      delete hooks.__grimoireDoc;
+      delete hooks.__grimoireAwareness;
+    }
     cursors.dispose();
     // Unbinds the document and the awareness while the editor can still answer, so that taking the editor down does not apply a last change to a view that is going.
     try {
