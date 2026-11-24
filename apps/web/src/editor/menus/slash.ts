@@ -5,7 +5,7 @@ import { SlashProvider, slashFactory } from '@milkdown/plugin-slash';
 import { TextSelection } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { allowBlockChange } from '../lock';
-import { BLOCK_KINDS, matchingKinds, type BlockKind } from './blocks';
+import { matchingKinds, SLASH_KINDS, type BlockKind } from './blocks';
 import { SLASH_MENU_ID, SlashMenu, slashOptionId } from './SlashMenu';
 
 const slash = slashFactory('grimoire-slash');
@@ -40,7 +40,7 @@ function createView(ctx: Ctx, view: EditorView) {
   const root = createRoot(host);
   const provider = new SlashProvider({ content: host, debounce: 0, offset: 6, shouldShow: (v) => slashQuery(v) !== null && state.dismissed === null });
   /** `dismissed`: Escape closed the menu for this paragraph and this text; it stays closed until the text after the slash changes, or the cursor leaves the slash. */
-  const state = { kinds: BLOCK_KINDS, active: 0, dismissed: null as { start: number; query: string } | null, open: false };
+  const state = { kinds: SLASH_KINDS, active: 0, dismissed: null as { start: number; query: string } | null, open: false };
 
   const render = (): void => {
     root.render(
@@ -76,7 +76,7 @@ function createView(ctx: Ctx, view: EditorView) {
     update(next: EditorView) {
       const query = slashQuery(next);
       if (query === null || (state.dismissed !== null && (state.dismissed.query !== query || state.dismissed.start !== next.state.selection.$from.start()))) state.dismissed = null;
-      const kinds = query === null ? BLOCK_KINDS : matchingKinds(query);
+      const kinds = query === null ? SLASH_KINDS : matchingKinds(query, SLASH_KINDS);
       if (kinds.length !== state.kinds.length || kinds.some((kind, i) => kind !== state.kinds[i])) state.active = 0;
       state.kinds = kinds;
       // The library acts only on the last update of a burst, and skips an update whose document and selection are those of the state before it: a transaction that changes
