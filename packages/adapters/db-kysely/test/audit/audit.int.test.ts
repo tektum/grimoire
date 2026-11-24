@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAudit } from '../../src/audit.js';
 import { createCollections } from '../../src/collections.js';
-import { addGroup, addUser, createTestDatabase } from '../collections/support.js';
+import { addGroup, addTenant, addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
 let t: TestDatabase;
@@ -34,6 +34,21 @@ describe('the PostgreSQL AuditLog', () => {
     await expect(t.app.query(`update audit_events set action = 'x' where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
     await expect(t.app.query(`delete from audit_events where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
     expect(await events('target-2')).toHaveLength(1);
+  });
+
+  it('records the tenant of the actor when the event names none, the named one when it does, and legacy for the system', async () => {
+    await addTenant(t.app, 'T-audit');
+    const actor = await addUser(t.app, 'audited', 'member', 'T-audit');
+    const audit = createAudit(t.app);
+    await audit.append({ actorId: actor, action: 'thing.unnamed', targetType: 'thing', targetId: 'target-3' });
+    await audit.append({ actorId: actor, action: 'thing.named', targetType: 'thing', targetId: 'target-3', tenantId: 'legacy' });
+    await audit.append({ actorId: null, action: 'thing.system', targetType: 'thing', targetId: 'target-3' });
+    const rows = await t.admin.query<{ action: string; tenant_id: string }>(`select action, tenant_id from audit_events where target_id = 'target-3' order by id`);
+    expect(rows).toEqual([
+      { action: 'thing.unnamed', tenant_id: 'T-audit' },
+      { action: 'thing.named', tenant_id: 'legacy' },
+      { action: 'thing.system', tenant_id: 'legacy' },
+    ]);
   });
 });
 

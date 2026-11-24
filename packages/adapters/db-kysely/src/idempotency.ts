@@ -3,12 +3,17 @@ import type { KyselyDatabase } from './index.js';
 
 interface Existing { same: boolean; status: number | null; response: unknown }
 
-/** The PostgreSQL IdempotencyStore over `idempotency_keys` (primary key `(user_id, key)`): every statement is one indexed lookup or insert. */
+/**
+ * The PostgreSQL IdempotencyStore over `idempotency_keys` (primary key `(user_id, key)`): every statement is one indexed lookup or insert.
+ * A key is stored in the tenant of its user (legacy for a user the database does not know).
+ */
 export function createIdempotency(db: KyselyDatabase): IdempotencyStore {
   return {
     async claim(userId, key, requestHash): Promise<ClaimResult> {
       const inserted = await db.query<{ one: number }>(
-        `insert into idempotency_keys (user_id, key, request_hash) values ($1, $2, decode($3, 'hex')) on conflict (user_id, key) do nothing returning 1 as one`,
+        `insert into idempotency_keys (user_id, key, request_hash, tenant_id)
+         values ($1, $2, decode($3, 'hex'), coalesce((select tenant_id from users where id = $1), 'legacy'))
+         on conflict (user_id, key) do nothing returning 1 as one`,
         [userId, key, requestHash],
       );
       if (inserted.length > 0) return { kind: 'claimed' };
