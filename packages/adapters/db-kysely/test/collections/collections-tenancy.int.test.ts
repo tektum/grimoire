@@ -21,6 +21,18 @@ beforeAll(async () => {
 afterAll(async () => { await t?.drop(); });
 
 describe('the PostgreSQL CollectionRepo across tenants', () => {
+  it('writes every audit row of a collection change under the tenant it happened in', async () => {
+    const repo = createCollections(t.app);
+    const made = await repo.append('T-b', { name: 'Audited', defaultPermission: 'read', createdBy: b.boss }, after);
+    await repo.update('T-b', made.id, { defaultPermission: 'read_write' }, b.boss);
+    const granted = await repo.upsertAccess('T-b', made.id, { principalType: 'user', principalId: b.bea, permission: 'read' }, b.boss);
+    await repo.removeAccess('T-b', made.id, granted.kind === 'saved' ? granted.entry.id : '', b.boss);
+    await repo.softDelete('T-b', made.id, b.boss);
+    const rows = await t.admin.query<{ action: string; tenant_id: string }>(`select action, tenant_id from audit_events where target_id = '${made.id}' order by action`);
+    expect(rows.map((r) => r.action)).toEqual(['collection.access_removed', 'collection.access_upserted', 'collection.default_permission_changed', 'collection.default_permission_changed', 'collection.deleted']);
+    expect([...new Set(rows.map((r) => r.tenant_id))]).toEqual(['T-b']);
+  });
+
   it('creates a collection in the tenant, with the same first position free in the other, and lists, reads and changes only its own', async () => {
     const repo = createCollections(t.app);
     const inA = await repo.append('T-a', { name: 'Docs', createdBy: a.boss }, after);

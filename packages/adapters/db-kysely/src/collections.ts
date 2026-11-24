@@ -49,7 +49,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
         // A default permission set at creation grants access just as a later change does, so it leaves the same audit row.
         if (created.defaultPermission !== null) {
           await insertAuditEvent(tx, {
-            actorId: input.createdBy, action: 'collection.default_permission_changed', targetType: 'collection', targetId: created.id,
+            tenantId, actorId: input.createdBy, action: 'collection.default_permission_changed', targetType: 'collection', targetId: created.id,
             detail: { from: null, to: created.defaultPermission },
           });
         }
@@ -73,7 +73,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
           const after = record(rows[0] as Row);
           if (after.defaultPermission !== before.default_permission) {
             await insertAuditEvent(tx, {
-              actorId, action: 'collection.default_permission_changed', targetType: 'collection', targetId: id,
+              tenantId, actorId, action: 'collection.default_permission_changed', targetType: 'collection', targetId: id,
               detail: { from: before.default_permission, to: after.defaultPermission },
             });
           }
@@ -106,7 +106,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
             [collectionId, grant.principalId, grant.permission, tenantId],
           );
           const id = (saved[0] as { id: string }).id;
-          await insertAuditEvent(tx, { actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant, entryId: id, previousPermission: previous } });
+          await insertAuditEvent(tx, { tenantId, actorId, action: 'collection.access_upserted', targetType: 'collection', targetId: collectionId, detail: { ...grant, entryId: id, previousPermission: previous } });
           const rows = await tx.query<EntryRow>(`${ENTRY_SELECT} where a.id = $1`, [id]);
           return { kind: 'saved' as const, entry: entry(rows[0] as EntryRow) };
         });
@@ -125,7 +125,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
         const row = removed[0];
         if (row === undefined) return false;
         await insertAuditEvent(tx, {
-          actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
+          tenantId, actorId, action: 'collection.access_removed', targetType: 'collection', targetId: collectionId,
           detail: { entryId: row.id, principalType: row.user_id === null ? 'group' : 'user', principalId: row.user_id ?? row.group_id, permission: row.permission },
         });
         return true;
@@ -151,7 +151,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
         const pages = await tx.query(
           `update pages set deleted_at = now(), deleted_by = $2, deleted_batch = $3 where collection_id = $1 and deleted_at is null returning 1`, [collectionId, actorId, batch],
         );
-        await insertAuditEvent(tx, { actorId, action: 'collection.deleted', targetType: 'collection', targetId: collectionId, detail: { batch, pages: pages.length } });
+        await insertAuditEvent(tx, { tenantId, actorId, action: 'collection.deleted', targetType: 'collection', targetId: collectionId, detail: { batch, pages: pages.length } });
         return { batch, pages: pages.length };
       });
     },
