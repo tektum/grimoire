@@ -86,6 +86,7 @@ function mountPage(
     staleHeader?: boolean;
     markdownStatus?: number;
     markdownGate?: Promise<void>;
+    renameGate?: Promise<void>;
     hiddenMs?: number;
     meRole?: string;
     onReplaced?: () => void;
@@ -96,6 +97,10 @@ function mountPage(
   const fake = fakeEngine();
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
+    PATCH: vi.fn(async () => {
+      await options.renameGate;
+      return { data: {}, response: new Response('', { status: 200 }) };
+    }),
     GET: vi.fn(async (path: string) => {
       if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222', ...(options.meRole === undefined ? {} : { role: options.meRole }) }, response: new Response('', { status: 200 }) };
       if (options.markdownGate) await options.markdownGate;
@@ -532,6 +537,24 @@ describe('the page screen', () => {
     await openMore();
     await userEvent.click(await screen.findByRole('menuitem', { name: 'History' }));
     await waitFor(() => expect(second.router.state.location.pathname).toBe('/p/page-zz99/history'));
+  });
+
+  it('moves the address to the new title when the person is still on the page after the rename, and not when they went elsewhere while it was on its way', async () => {
+    const stayed = mountPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Plan' }));
+    await userEvent.keyboard('Renamed{Enter}');
+    await waitFor(() => expect(stayed.router.state.location.pathname).toBe('/p/renamed-abc'));
+    cleanup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const left = mountPage({ renameGate: gate });
+    await userEvent.click(await screen.findByRole('button', { name: 'Plan' }));
+    await userEvent.keyboard('Renamed{Enter}');
+    await act(async () => { await left.router.navigate('/elsewhere'); });
+    await act(async () => { release(); await gate; });
+    await waitFor(() => expect(left.api.PATCH).toHaveBeenCalledTimes(1));
+    await act(async () => undefined);
+    expect(left.router.state.location.pathname).toBe('/elsewhere');
   });
 
   it('a second reset replaces the offered copy and starts its notice afresh: "Copied." never refers to the old copy', async () => {

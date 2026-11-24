@@ -83,17 +83,28 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     if ((location.state as { newPage?: boolean } | null)?.newPage === true) navigate('.', { replace: true, state: null });
   }, []);
   const client = useQueryClient();
+  // The key of the location now, or null once this page has gone from the screen.
+  const hereKey = useRef<string | null>(location.key);
+  hereKey.current = location.key;
+  useEffect(() => {
+    hereKey.current = location.key;
+    return () => {
+      hereKey.current = null;
+    };
+  });
   const treeActions = useTreeActions(session?.api ?? (null as never), page.collectionId);
   /**
    * Saves the title through the rename the tree uses (the tree shows it at once), then shows it here and in the address (the slug of the address follows the title; an old address still finds the page by
    * the id at its end); false when the server refused it. The page is not rebuilt for it: the main area is keyed by the page's id, not by its address.
    */
   const saveTitle = async (title: string): Promise<boolean> => {
+    const pressedAt = hereKey.current;
     const outcome = await treeActions.rename(page.id, title);
     if (!outcome.ok) return false;
     // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
     client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
-    navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
+    // The address is changed only if the person is still on this page, where they pressed Enter (the key of the location; none once the page is gone): they may have gone elsewhere meanwhile.
+    if (hereKey.current === pressedAt) navigate(pagePath(title, page.urlId), { replace: true, state: location.state });
     return true;
   };
 
