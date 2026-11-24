@@ -68,6 +68,18 @@ Headings, one to six, in the page's reading font.
 
 The block menu: type `/` at the start of a line, narrow it by typing, choose with the arrow keys and Enter.
 
+![The bubble over a selection, with bold on](docs/screenshots/m6-t05/bubble-bold-light.png)
+
+The bubble over selected text: bold, italic, strikethrough, code and a link; Ctrl or Cmd with K opens the link editor.
+
+![The link editor refusing an address that is not allowed](docs/screenshots/m6-t05/bubble-link-refused-light.png)
+
+The link editor refuses an address of a kind that is not allowed (a script address, for one) and says so, in a message the screen reader announces.
+
+![The block handle beside a paragraph](docs/screenshots/m6-t05/block-handle-light.png)
+
+The handle beside a block opens the list of kinds to turn it into.
+
 ![Two people in one page: each sees the other's cursor and selection with a name label](docs/screenshots/m6-t04/cursors-seen-by-bob-light.png)
 
 Two people in one page: each sees the other's cursor and selection, with the name from the directory.

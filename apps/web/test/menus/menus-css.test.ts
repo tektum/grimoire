@@ -14,8 +14,13 @@ describe('the styles of the editor menus', () => {
     for (const line of colours) expect(line).toMatch(/var\(--[a-z-]+\)|color-mix\(|transparent|none|solid/);
   });
 
-  it('keep the slash menu out of sight until the library shows it: the host has no `data-show` before that, and never has one in an editor that cannot be edited', () => {
+  it('keep the slash menu out of sight until the library shows it: the host has no `data-show` before that', () => {
     expect(css).toMatch(/\.slash-host:not\(\[data-show='true'\]\)\s*\{\s*display:\s*none/);
-    expect(css).not.toMatch(/\.slash-host\[data-show='false'\]/); // that selector leaves the host showing until the first update
+  });
+
+  it('hide the bubble the same way, and the block handle by its visibility (the library measures it before it marks it shown)', () => {
+    expect(css).toMatch(/\.bubble-host:not\(\[data-show='true'\]\)\s*\{\s*display:\s*none/);
+    expect(css).toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{\s*visibility:\s*hidden/);
+    expect(css).not.toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{[^}]*display:\s*none/);
   });
 });

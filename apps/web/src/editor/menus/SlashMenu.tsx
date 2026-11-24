@@ -2,12 +2,14 @@ import type { BlockKind } from './blocks';
 
 export const SLASH_MENU_ID = 'slash-menu';
 export const slashOptionId = (kind: BlockKind): string => `slash-option-${kind.id}`;
+export const optionId = (menu: string, kind: BlockKind): string => (menu === SLASH_MENU_ID ? slashOptionId(kind) : `${menu}-option-${kind.id}`);
 
 /**
  * The list of block kinds under the cursor after a `/`. It is a listbox the editor points at (`aria-activedescendant` on the editing surface), because the focus stays in the
  * text: the keys are the editor's, the list only shows which item they would choose, and a click chooses one too.
  */
-export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; onPick: (kind: BlockKind) => void; onHover: (index: number) => void }) {
+export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; onPick: (kind: BlockKind) => void; onHover: (index: number) => void; id?: string; label?: string }) {
+  const menu = props.id ?? SLASH_MENU_ID;
   if (props.kinds.length === 0) {
     return (
       <p className="slash-empty" role="status">
@@ -16,11 +18,11 @@ export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; 
     );
   }
   return (
-    <div id={SLASH_MENU_ID} className="slash-list" role="listbox" aria-label="Turn this block into">
+    <div id={menu} className="slash-list" role="listbox" aria-label={props.label ?? 'Turn this block into'}>
       {props.kinds.map((kind, index) => (
         <div
           key={kind.id}
-          id={slashOptionId(kind)}
+          id={optionId(menu, kind)}
           role="option"
           aria-selected={index === props.active}
           className="slash-option"

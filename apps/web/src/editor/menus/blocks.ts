@@ -34,10 +34,9 @@ function wrapInTaskList(ctx: Ctx): boolean {
   const { $from } = view.state.selection;
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth);
-    if (node.type.name === 'list_item') {
-      view.dispatch(view.state.tr.setNodeMarkup($from.before(depth), undefined, { ...node.attrs, checked: false }));
-      return true;
-    }
+    if (node.type.name !== 'list_item') continue;
+    view.dispatch(view.state.tr.setNodeMarkup($from.before(depth), undefined, { ...node.attrs, checked: false }));
+    break;
   }
   return true;
 }
