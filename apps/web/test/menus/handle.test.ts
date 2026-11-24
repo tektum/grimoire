@@ -140,6 +140,24 @@ describe('the handle button, its menu and its keys', () => {
     host.remove();
   });
 
+  it('does act on a text block that starts with an inline atom (an image): only a block-level atom is left alone', async () => {
+    current = await plainEditor('First.\n\n![a picture](https://example.com/x.png) and words\n\nLast.');
+    const t = current;
+    const block = t.view().dom.children[1] as HTMLElement;
+    expect(t.view().state.doc.child(1).firstChild?.type.name).toBe('image');
+    const { host } = createHandleHost(await t.editor.action((ctx) => ctx), () => ({ el: block }));
+    document.body.append(host);
+    button(host).click();
+    await vi.waitFor(() => expect(optionIds(host)).toHaveLength(14));
+    const quote = Array.from(host.querySelectorAll('[role=option]')).find((o) => o.textContent?.startsWith('Quote'))!;
+    quote.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    const doc = t.view().state.doc;
+    expect(doc.child(1).type.name).toBe('blockquote'); // that block, with its image, is the one turned
+    expect(doc.child(0).type.name).toBe('paragraph');
+    expect(doc.child(2).type.name).toBe('paragraph');
+    host.remove();
+  });
+
   it('does nothing when the pointer is over no block', async () => {
     const { t, host, setActive } = await handleOnSecond();
     setActive(false);

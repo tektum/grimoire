@@ -22,9 +22,9 @@ function turnBlockInto(ctx: Ctx, active: ActiveBlock | null, kind: BlockKind): v
   const view = ctx.get(editorViewCtx);
   if (active === null || !view.dom.contains(active.el)) return;
   const pos = view.posAtDOM(active.el, 0);
-  // A block with no text in it (a divider) has no place for a cursor: the nearest text block would be turned instead, a neighbour that was not asked for.
+  // A block with no text in it (a divider, a block-level atom) has no place for a cursor: the nearest text block would be turned instead, a neighbour that was not asked for.
   const after = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)).nodeAfter;
-  if (after !== null && after.isAtom && !after.isText) return;
+  if (after !== null && after.isAtom && after.isBlock) return; // a block-level atom only: a text block that starts with an image or a break has a place for the cursor
   view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)))));
   kind.run(ctx);
   view.focus();
