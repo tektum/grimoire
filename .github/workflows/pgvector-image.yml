@@ -1,0 +1,81 @@
+name: pgvector image
+# M7-T10: what only a container runtime can show about the database image. On a pull request that changes the image or its checks, and on demand. Informational: not part of CI Required.
+# The whole integration suite on the new image is the `Integration tests` job of CI (`make db-up` starts the image of compose.yaml).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - compose.yaml
+      - compose.pgvector087.yaml
+      - db/init/**
+      - mk/test-m7.mk
+      - tools/licence-report/image-packages.mjs
+      - apps/server/test/migrations/semantic/**
+      - .github/workflows/pgvector-image.yml
+
+permissions:
+  contents: read
+
+env:
+  MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
+  OLD_IMAGE: postgres:17@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
+  NEW_IMAGE: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Package audit of the database image
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ format('runs-on={0}-{1}-audit/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node
+      - name: List the packages of both images and compare them (exit 1 on a package the owner has to decide)
+        run: |
+          mkdir -p proof
+          status=0
+          node tools/licence-report/image-packages.mjs --compare "$OLD_IMAGE" "$NEW_IMAGE" --out proof/m7-pgvector-image.md || status=$?
+          cat proof/m7-pgvector-image.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Upload the audit
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m7-pgvector-image
+          path: proof/m7-pgvector-image.md
+          retention-days: 30
+          if-no-files-found: ignore
+
+  pgvector-087:
+    name: pgvector 0.8.7 (second image)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ format('runs-on={0}-{1}-pgv087/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: The semantic tests on pgvector 0.8.7
+        run: make test-pgvector-087
