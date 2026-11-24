@@ -41,6 +41,12 @@ const int = (min: number, max: number) => {
     .transform(Number).pipe(z.number(msg(rule)).int(msg(rule)).min(min, msg(rule)).max(max, msg(rule)));
 };
 
+/** Five fields of digits, `*`, `/`, `,` and `-`: UTC cron as the job queue reads it. Not a full parse: the queue refuses what is still wrong when it registers the schedule. */
+const CRON_RULE = 'must be a cron schedule of five fields (minute hour day month weekday, UTC)';
+const cron = z.string(msg(CRON_RULE)).regex(/^[0-9*/,-]+( [0-9*/,-]+){4}$/, msg(CRON_RULE));
+/** A cron value has spaces inside it, which `field` does not allow in a single value; the characters are checked by the rule itself. */
+const cronField = z.string(msg(CRON_RULE)).pipe(cron).optional();
+
 const PORT_MAX = 65535;
 const HOST_RULE = 'must be an IPv4 or IPv6 address literal (no hostname, no port)';
 /** Whether an operand already satisfies its own field rule (integer within its range). */
@@ -171,6 +177,27 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_CREATE_ONLY_HEADER: field(z.enum(['if-none-match', 'x-goog-if-generation-match'], msg('must be one of: if-none-match, x-goog-if-generation-match'))).default('if-none-match'),
   GRIMOIRE_S3_CORS_MODE: field(z.enum(['api', 'external'], msg('must be one of: api, external'))).default('api'),
+  GRIMOIRE_IMPORT_MAX_ZIP_BYTES: field(int(1, MAX_INT)).default(524_288_000),
+  GRIMOIRE_IMPORT_MAX_ENTRIES: field(int(1, MAX_INT)).default(20_000),
+  GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES: field(int(1, MAX_INT)).default(2_147_483_648),
+  GRIMOIRE_IMPORT_MAX_RATIO: field(int(1, MAX_INT)).default(100),
+  GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: field(int(1, MAX_INT)).default(104_857_600),
+  GRIMOIRE_IMPORT_MAX_TABLE_BYTES: field(int(1, MAX_INT)).default(262_144),
+  GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
+  GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('1'),
+  GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES: field(int(1, MAX_INT)).default(200),
+  GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: field(int(1, MAX_INT)), // unset: 20 MiB, or the upload limit when that is smaller (below)
+  GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS: field(int(1, 60)).default(10),
+  GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS: field(int(10, 3600)).default(300),
+  GRIMOIRE_IMPORT_CONCURRENCY: field(int(1, 16)).default(2),
+  GRIMOIRE_IMPORT_CONVERTER_THREADS: field(int(1, 8)).default(1),
+  GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: field(int(1, MAX_INT)).default(900),
+  GRIMOIRE_JOBS_STOP_GRACE_MS: field(int(1, MAX_INT)).default(15_000),
+  GRIMOIRE_JOBS_PURGE_CRON: cronField.default('17 3 * * *'),
+  GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON: cronField.default('*/15 * * * *'),
+  GRIMOIRE_JOBS_REVISION_CRON: cronField.default('47 3 * * *'),
+  GRIMOIRE_JOBS_SWEEP_CRON: cronField.default('*/5 * * * *'),
+  GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS: field(int(100, 30_000)).default(3000),
   GRIMOIRE_FILES_MAX_BYTES: field(int(1, MAX_INT)).default(26_214_400),
   GRIMOIRE_FILES_ALLOWED_TYPES: field(list(mime, MIME_RULE), undefined, true).default(DEFAULT_TYPES),
   GRIMOIRE_FILES_PENDING_MAX_PER_USER: field(int(1, MAX_INT)).default(10),
@@ -322,6 +349,11 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       path: ['GRIMOIRE_S3_ENDPOINT'], when: always,
       error: () => `is required when ${P}WEB_ROOT is set (the content security policy names the file store)`,
     })
+    // A remote image is no larger than an upload (contracts section 6).
+    .refine(() => raw['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'] === undefined || Number(raw['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES']) <= Number(raw['GRIMOIRE_FILES_MAX_BYTES'] ?? 26_214_400), {
+      path: ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'], when: always,
+      error: () => `must not be larger than ${P}FILES_MAX_BYTES`,
+    })
     // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
     .refine(() => !(server && (set('GRIMOIRE_DATABASE_ADMIN_URL') || set('GRIMOIRE_DB_APP_PASSWORD') || set('GRIMOIRE_DB_MIGRATOR_PASSWORD'))), {
       path: [set('GRIMOIRE_DATABASE_ADMIN_URL') ? 'GRIMOIRE_DATABASE_ADMIN_URL' : set('GRIMOIRE_DB_APP_PASSWORD') ? 'GRIMOIRE_DB_APP_PASSWORD' : 'GRIMOIRE_DB_MIGRATOR_PASSWORD'], when: always,
@@ -430,6 +462,21 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
     bytesPerSecondPerUser: v.GRIMOIRE_COLLAB_BYTES_PER_SECOND_PER_USER,
     recheckSeconds: v.GRIMOIRE_COLLAB_RECHECK_SECONDS,
   },
+  import: {
+    maxZipBytes: v.GRIMOIRE_IMPORT_MAX_ZIP_BYTES, maxEntries: v.GRIMOIRE_IMPORT_MAX_ENTRIES, maxUncompressedBytes: v.GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES,
+    maxRatio: v.GRIMOIRE_IMPORT_MAX_RATIO, maxEntryBytes: v.GRIMOIRE_IMPORT_MAX_ENTRY_BYTES, maxTableBytes: v.GRIMOIRE_IMPORT_MAX_TABLE_BYTES,
+    allowNestedZips: v.GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS === '1', fetchRemoteImages: v.GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES === '1',
+    remote: {
+      maxImages: v.GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES, maxBytes: v.GRIMOIRE_IMPORT_REMOTE_MAX_BYTES ?? Math.min(20_971_520, v.GRIMOIRE_FILES_MAX_BYTES),
+      timeoutSeconds: v.GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS, totalSeconds: v.GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS,
+    },
+    concurrency: v.GRIMOIRE_IMPORT_CONCURRENCY, converterThreads: v.GRIMOIRE_IMPORT_CONVERTER_THREADS,
+  },
+  jobs: {
+    importExpireSeconds: v.GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS, stopGraceMs: v.GRIMOIRE_JOBS_STOP_GRACE_MS,
+    purgeCron: v.GRIMOIRE_JOBS_PURGE_CRON, uploadCleanupCron: v.GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON, revisionCron: v.GRIMOIRE_JOBS_REVISION_CRON, sweepCron: v.GRIMOIRE_JOBS_SWEEP_CRON,
+  },
+  search: { statementTimeoutMs: v.GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS },
 });
 
 /** Validates the environment (empty string counts as unset) and maps it to Config, or returns every issue. */

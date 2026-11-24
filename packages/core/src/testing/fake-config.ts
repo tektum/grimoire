@@ -1,4 +1,4 @@
-import type { CollabConfig, Config, HttpConfig } from '../ports/config.js';
+import type { CollabConfig, Config, HttpConfig, ImportConfig, JobsConfig, SearchConfig } from '../ports/config.js';
 
 export const defaultCollabConfig: CollabConfig = {
   maxPayloadBytes: 1048576,
@@ -32,11 +32,20 @@ export const defaultCollabConfig: CollabConfig = {
 
 export const defaultHttpConfig: HttpConfig = { userLimitPerMinute: 1000, addressLimitPerMinute: 60, addressCeilingPerMinute: 6000 };
 
+export const defaultImportConfig: ImportConfig = {
+  maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
+  fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2, converterThreads: 1,
+};
+export const defaultJobsConfig: JobsConfig = { importExpireSeconds: 900, stopGraceMs: 15_000, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' };
+export const defaultSearchConfig: SearchConfig = { statementTimeoutMs: 3000 };
+
 /** A valid local-mode Config for tests, with shallow overrides (collab is merged). */
 export function makeFakeConfig(
-  overrides: Partial<Omit<Config, 'collab' | 'http'>> & { readonly collab?: Partial<CollabConfig>; readonly http?: Partial<HttpConfig> } = {},
+  overrides: Partial<Omit<Config, 'collab' | 'http' | 'import' | 'jobs' | 'search'>> & {
+    readonly collab?: Partial<CollabConfig>; readonly http?: Partial<HttpConfig>; readonly import?: Partial<ImportConfig>; readonly jobs?: Partial<JobsConfig>; readonly search?: Partial<SearchConfig>;
+  } = {},
 ): Config {
-  const { collab, http, ...rest } = overrides;
+  const { collab, http, import: importing, jobs, search, ...rest } = overrides;
   return {
     local: true,
     role: 'all',
@@ -57,5 +66,8 @@ export function makeFakeConfig(
     ...rest,
     collab: { ...defaultCollabConfig, ...collab },
     http: { ...defaultHttpConfig, ...http },
+    import: { ...defaultImportConfig, ...importing },
+    jobs: { ...defaultJobsConfig, ...jobs },
+    search: { ...defaultSearchConfig, ...search },
   };
 }

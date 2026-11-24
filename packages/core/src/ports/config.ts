@@ -102,6 +102,27 @@ export interface DatabaseSetupConfig {
   readonly migratorPassword: string;
 }
 
+/** The import's limits and the remote-image fetcher's (contracts section 6). The size of a Markdown file is the seed cap of `collab`, not a setting of its own. */
+export interface ImportConfig {
+  readonly maxZipBytes: number; readonly maxEntries: number; readonly maxUncompressedBytes: number;
+  /** The ratio of uncompressed to compressed bytes, for the archive and for each entry. */
+  readonly maxRatio: number; readonly maxEntryBytes: number; readonly maxTableBytes: number;
+  readonly allowNestedZips: boolean; readonly fetchRemoteImages: boolean;
+  readonly remote: { readonly maxImages: number; readonly maxBytes: number; readonly timeoutSeconds: number; readonly totalSeconds: number };
+  /** Workers of the `import` queue. */
+  readonly concurrency: number;
+  /** Threads of the converter pool of the roles `api` and `all`. */
+  readonly converterThreads: number;
+}
+
+/** The job queue's expiries and schedules (cron is UTC, five fields). */
+export interface JobsConfig {
+  readonly importExpireSeconds: number; readonly stopGraceMs: number;
+  readonly purgeCron: string; readonly uploadCleanupCron: string; readonly revisionCron: string; readonly sweepCron: string;
+}
+
+export interface SearchConfig { readonly statementTimeoutMs: number }
+
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
   readonly database: { readonly url?: string; readonly migrationUrl?: string };
@@ -124,6 +145,9 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   /** Local mode may bind a non-loopback address only when this is set (GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK). */
   readonly localAllowNonLoopback: boolean;
   readonly collab: CollabConfig;
+  readonly import: ImportConfig;
+  readonly jobs: JobsConfig;
+  readonly search: SearchConfig;
   readonly files?: FilesConfig;
   /** Only for the files-setup purpose. */
   readonly filesSetup?: FilesSetupConfig;
