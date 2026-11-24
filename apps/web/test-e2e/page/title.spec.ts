@@ -116,12 +116,15 @@ test('a title saved by leaving the field for another page in the tree does not t
   await page.getByRole('link', { name: 'Notes', exact: true }).click(); // leaving the field saves it; the click opens the other page
   await expect(page).toHaveURL(/\/p\/notes-b0000000$/);
   await expect(heading(page)).toHaveText('Notes');
-  const treeReadsBefore = api.treeReads('c1');
-  const patched = page.waitForResponse((response) => response.request().method() === 'PATCH' && response.url().endsWith('/v1/pages/a'));
+  // What the page has seen, in order: the answer to the rename, then the answer of the tree read that ends the rename (`rename` waits for it before the page decides about the address).
+  const seen: string[] = [];
+  page.on('response', (response) => {
+    const method = response.request().method();
+    if (method === 'PATCH' && response.url().endsWith('/v1/pages/a')) seen.push('rename answered');
+    else if (method === 'GET' && response.url().endsWith('/v1/collections/c1/tree') && seen.includes('rename answered')) seen.push('tree read after the rename');
+  });
   release();
-  await patched;
-  // The rename is finished for the page when the tree has been read again after it (that read ends the rename); then the page has had its chance to move the address.
-  await expect.poll(() => api.treeReads('c1')).toBeGreaterThan(treeReadsBefore);
+  await expect.poll(() => seen.includes('tree read after the rename')).toBe(true);
   await expect.poll(() => names(page)).toEqual(['Renamed', 'Notes']);
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))); // what the answer set going has been handled
   expect(api.writes()).toEqual(['PATCH /v1/pages/a']);
