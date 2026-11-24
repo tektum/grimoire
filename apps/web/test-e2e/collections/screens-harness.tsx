@@ -58,7 +58,7 @@ function TrashRoute({ api }: { api: ApiLike }) {
   const host = document.getElementById('host');
   if (host === null) throw new Error('no host element');
   createRoot(host).render(
-    <SessionContext.Provider value={{ auth: null as never, api }}>
+    <SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.test' }}>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <RouterProvider router={router} />
       </QueryClientProvider>

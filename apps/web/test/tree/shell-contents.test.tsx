@@ -13,7 +13,7 @@ describe('the contents area of the shell', () => {
   it('holds the tree of the open collection beside the screen, once there is a session', async () => {
     const { api } = fakeApi({ 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}/tree': ok({ pages: [page('welcome', null, 'p1', 'Welcome'), page('nested', 'welcome', 'p1', 'Nested')] }) });
     render(
-      <SessionContext.Provider value={{ auth: null as never, api }}>
+      <SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.test' }}>
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/c/c1'] })} />
         </QueryClientProvider>
