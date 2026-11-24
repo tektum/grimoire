@@ -29,4 +29,10 @@ describe('the list styles use the design tokens only', () => {
     expect(css).toMatch(/ol > li \{[^}]*display: grid[^}]*max-content/);
     expect(css).toMatch(/ol > li::before \{[^}]*position: static/);
   });
+
+  it('applies to the editor only: every selector starts at the editor root, so the plain lists of other pages in the reading column keep their markers', () => {
+    const selectors = [...css.matchAll(/(?:^|\})\s*([^{}]+)\{/g)].flatMap((m) => m[1]!.split(',').map((x) => x.trim()));
+    expect(selectors.length).toBeGreaterThan(5);
+    for (const selector of selectors) expect(selector.startsWith('.page-editor.page-text')).toBe(true);
+  });
 });
