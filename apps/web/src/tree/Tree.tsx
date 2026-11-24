@@ -53,6 +53,7 @@ export function Tree({ items, currentUrlId }: TreeProps) {
         height={TREE_HEIGHT}
         rowHeight={ROW_HEIGHT}
         indent={INDENT}
+        className="tree"
         rowClassName="tree-item"
         openByDefault={false}
         initialOpenState={initialOpen(items)}

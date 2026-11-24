@@ -29,6 +29,8 @@ test('the collection list and the contents tree, light and dark', async ({ page:
   try {
     await tab.goto(server.url('/'));
     await tab.addStyleTag({ content: bundle.css });
+    // This machine's default sans-serif is a monospace face, so `system-ui` would draw everything in monospace: name an installed sans for the interface text, as the shots of M6-T01 do.
+    await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
     await tab.addScriptTag({ content: bundle.js });
     await tab.evaluate(([data, id]) => { (window as unknown as { showCollections: (d: unknown, i: string) => void }).showCollections(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, 'c1']);
     await expect(tab.getByRole('treeitem')).toHaveCount(5); // Welcome is open: Welcome, Nested, Getting started guide, Plan for May, Meeting notes
@@ -36,9 +38,11 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     // Three levels, one row expanded and one focused, from the keyboard.
     await tab.getByRole('button', { name: 'Expand Getting started guide' }).click();
     await expect(tab.getByRole('treeitem')).toHaveCount(7);
-    await tab.getByRole('tree').focus();
+    // The way a keyboard user arrives: Tab until a row of the tree has the focus (it is one stop), then the arrow keys move down two rows.
+    for (let i = 0; i < 12 && !(await tab.evaluate(() => document.activeElement?.classList.contains('tree-item') === true)); i += 1) await tab.keyboard.press('Tab');
     await tab.keyboard.press('ArrowDown');
     await tab.keyboard.press('ArrowDown');
+    await expect(tab.locator('.tree-row[data-focused]')).toHaveCount(1); // the point of this shot: one row has the focus
     await tab.mouse.move(0, 0); // no hover shade on the toggle just clicked
     await shots(tab, TASK, 'contents-tree');
   } finally {

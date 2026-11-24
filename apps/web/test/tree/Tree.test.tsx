@@ -84,4 +84,13 @@ describe('Tree', () => {
     expect(screen.getByLabelText('location').textContent).toBe('/');
     expect(screen.getAllByRole('treeitem')).toHaveLength(5);
   });
+
+  it('marks the row that has the focus, and moves the mark with the arrow keys', async () => {
+    show();
+    const marked = () => Array.from(document.querySelectorAll('.tree-row[data-focused]')).map((r) => r.textContent);
+    await userEvent.click(screen.getAllByRole('treeitem')[0]?.querySelector('.tree-row') as HTMLElement);
+    expect(marked()).toEqual(['📘Welcome']);
+    await userEvent.keyboard('{ArrowDown}');
+    expect(marked()).toEqual(['Nested']);
+  });
 });

@@ -1,3 +1,10 @@
+/* The list as a whole takes the focus for the arrow keys, and the focused row draws the ring: no second ring around everything. */
+.tree:focus,
+.tree:focus-visible,
+[role='tree']:focus,
+[role='tree']:focus-visible {
+  outline: none;
+}
 /* The row inside it draws the focus ring (data-focused); the item around the row would draw a second, wider one. */
 .tree-item:focus,
 .tree-item:focus-visible {
