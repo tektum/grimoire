@@ -37,3 +37,10 @@ test('the workflow installs the listed plugins with their checksums and then for
   assert.match(workflow, /PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION: "true"/);
   assert.ok(workflow.indexOf('done < infra/pulumi-plugins.txt') < workflow.indexOf('PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION'), 'installed before the run that forbids downloads');
 });
+
+test('the plugin install step has the job\'s token, so GitHub\'s unauthenticated limit of the runners\' address cannot stop a run', () => {
+  const workflow = read('.github/workflows/descope-infra.yml');
+  const step = workflow.slice(workflow.indexOf('name: Install the provider plugins'), workflow.indexOf('uses: aws-actions/configure-aws-credentials'));
+  assert.match(step, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.ok(step.indexOf('GITHUB_TOKEN') < step.indexOf('pulumi" plugin install'), 'the token is in the environment of the install');
+});

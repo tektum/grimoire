@@ -107,6 +107,9 @@ jobs:
         if: steps.gate.outputs.blocked != 'true'
       - name: Install the provider plugins of infra/pulumi-plugins.txt with their pinned checksums, before any credential exists
         if: steps.gate.outputs.blocked != 'true'
+        env:
+          # The plugins are release assets on GitHub: without a token the download shares the runners' address limit (60 requests an hour) and fails when it is used up.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           bunx sst install
           export PULUMI_HOME="$HOME/.config/sst" # SST keeps its plugins here
