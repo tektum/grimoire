@@ -58,7 +58,7 @@ export function devWorld(pages: readonly string[] = KNOWN_PAGES): World {
 }
 
 export const userRow = (id: string, descopeUserId: string, role: Role, suspended = false): UserRecord =>
-  ({ id, descopeUserId, email: `${descopeUserId}@example.test`, name: descopeUserId, role, suspended, tenantId: 'legacy' });
+  ({ id, descopeUserId, email: `${descopeUserId}@example.test`, name: descopeUserId, role, suspended });
 
 /**
  * Fake host deps. `role` set: the user `SUBJECT` exists with that role (database id `U1`); unset: no user row, so connections are

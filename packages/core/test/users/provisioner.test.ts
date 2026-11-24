@@ -408,8 +408,11 @@ describe('the tenant of a sign-in (docs/tenancy.md sections 2 and 6)', () => {
   });
 
   it('puts a token that names no tenant in the legacy tenant: only a verifier that knows nothing of tenants leaves it out', async () => {
-    const { provisioner } = fixture();
-    expect(await provisioner.signIn({ identity: identity(profile()) })).toMatchObject({ kind: 'ok', user: { tenantId: 'legacy' } });
+    const { provisioner, users } = fixture();
+    const result = await provisioner.signIn({ identity: identity(profile()) });
+    expect(result).toMatchObject({ kind: 'ok', created: true });
+    expect(result.kind === 'ok' ? (result.user.tenantId ?? 'legacy') : '').toBe('legacy');
+    expect(users.tenants()).toEqual([]);
   });
 
   it.each([

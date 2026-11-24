@@ -18,7 +18,7 @@ export class FakeUserStore implements UserStore {
     const existing = this.users.find((u) => u.descopeUserId === n.descopeUserId);
     if (existing) return Promise.resolve({ kind: 'existing', user: this.copy(existing) });
     if (this.users.some((u) => u.email.toLowerCase() === n.email.toLowerCase())) return Promise.resolve({ kind: 'email-taken' });
-    const user: UserRecord = { id: randomUUID(), descopeUserId: n.descopeUserId, email: n.email, name: n.name, ...(n.avatarUrl === undefined ? {} : { avatarUrl: n.avatarUrl }), role: n.role, suspended: false, tenantId: n.tenant?.id ?? 'legacy' };
+    const user: UserRecord = { id: randomUUID(), descopeUserId: n.descopeUserId, email: n.email, name: n.name, ...(n.avatarUrl === undefined ? {} : { avatarUrl: n.avatarUrl }), role: n.role, suspended: false, ...(n.tenant === undefined ? {} : { tenantId: n.tenant.id }) };
     if (n.tenant && !this.madeTenants.some((t) => t.id === n.tenant?.id)) this.madeTenants.push({ ...n.tenant });
     this.users.push(user);
     return Promise.resolve({ kind: 'created', user: this.copy(user) });

@@ -47,6 +47,7 @@ const domainRefused = (domain: string, policy: SignInPolicy): boolean => PUBLIC_
 /** The refusal a tenant claim earns on its own, and the tenant a row must be in. A token with no claim at all belongs to a verifier that knows nothing of tenants: `legacy`. */
 const tenantRefusal = (claim: TenantClaim | undefined): 'no-tenant' | 'tenant-ambiguous' | undefined => (claim?.kind === 'none' ? 'no-tenant' : claim?.kind === 'many' ? 'tenant-ambiguous' : undefined);
 const claimedTenantId = (claim: TenantClaim | undefined): string => (claim?.kind === 'one' ? claim.id : 'legacy');
+const storedTenantId = (user: UserRecord): string => user.tenantId ?? 'legacy';
 
 function newCredentials(profile: Profile, policy: SignInPolicy): { email: string; domain: string } | undefined {
   const domain = emailDomain(profile.email); // the ASCII check runs on the address as it is stored, before any lowercasing
@@ -84,14 +85,14 @@ export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier;
       if (i.identity.profile && !newCredentials(i.identity.profile, d.policy)) return refuse('domain-not-allowed');
       const refusal = tenantRefusal(i.identity.tenant);
       if (refusal) return refuse(refusal);
-      if (claimedTenantId(i.identity.tenant) !== i.user.tenantId) return refuse('tenant-mismatch');
+      if (claimedTenantId(i.identity.tenant) !== storedTenantId(i.user)) return refuse('tenant-mismatch');
       return storedDomainAllowed(i.user) ? { kind: 'ok', user: i.user, created: false } : refuse('domain-not-allowed');
     },
     /** `ok` is not authorization: callers MUST deny a session when the returned user is suspended. */
     async signIn(i) {
       // Only fixed refusal strings cross the public API: no personal data or detailed IdP errors.
       const finishExisting = async (user: UserRecord): Promise<SignInResult> => {
-        if (claimedTenantId(i.identity.tenant) !== user.tenantId) return refuse('tenant-mismatch');
+        if (claimedTenantId(i.identity.tenant) !== storedTenantId(user)) return refuse('tenant-mismatch');
         if (!storedDomainAllowed(user)) return refuse('domain-not-allowed');
         // Domain eligibility never changes a stored role. Explicit devRole is the sole local-mode role update, section 4.
         if (d.policy.allowDevRole && i.devRole !== undefined && i.devRole !== user.role) {

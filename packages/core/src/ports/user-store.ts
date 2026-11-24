@@ -8,8 +8,8 @@ export interface UserRecord {
   readonly avatarUrl?: string;
   readonly role: Role;
   readonly suspended: boolean;
-  /** The workspace the person belongs to (docs/tenancy.md); `legacy` for every row that existed before tenants. */
-  readonly tenantId: string;
+  /** The row's `tenant_id` (docs/tenancy.md): the repository always fills it, and `legacy` is what every row that existed before tenants has; a store that knows nothing of tenants leaves it out. */
+  readonly tenantId?: string;
 }
 
 /** A tenant as the first sign-in of its domain names it: the provider's id and the domain as its name. */
