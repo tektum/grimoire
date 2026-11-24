@@ -113,7 +113,11 @@ export function Tree({ items, editing, currentUrlId }: TreeProps) {
   // a branch the person has closed).
   const revealed = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (currentUrlId === undefined || revealed.current === currentUrlId) return;
+    if (currentUrlId === undefined) {
+      revealed.current = undefined; // no page is open: the next one opened is shown again
+      return;
+    }
+    if (revealed.current === currentUrlId) return;
     const find = (list: readonly TreeItem[]): TreeItem | undefined => {
       for (const item of list) {
         if (item.urlId === currentUrlId) return item;

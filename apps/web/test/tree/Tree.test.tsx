@@ -139,4 +139,14 @@ describe('Tree', () => {
     view.rerender(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>);
     expect(await screen.findByRole('link', { name: 'Deeper' })).toBeTruthy();
   });
+
+  it('shows the page again when it is opened again after a screen with no page (the tree stays mounted)', async () => {
+    const view = render(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>);
+    await screen.findByRole('link', { name: 'Deeper' });
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Deep' }));
+    view.rerender(<MemoryRouter><Tree items={items} currentUrlId={undefined} /></MemoryRouter>); // a screen with no page open
+    expect(screen.queryByRole('link', { name: 'Deeper' })).toBeNull();
+    view.rerender(<MemoryRouter><Tree items={items} currentUrlId="deeper" /></MemoryRouter>); // and back to the page
+    expect(await screen.findByRole('link', { name: 'Deeper' })).toBeTruthy();
+  });
 });

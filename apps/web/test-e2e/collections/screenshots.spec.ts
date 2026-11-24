@@ -33,6 +33,7 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     await tab.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
     await tab.addScriptTag({ content: bundle.js });
     await tab.evaluate(([data, id]) => { (window as unknown as { show: (d: unknown, p: string) => void }).show(data as never, id as string); }, [{ collections: COLLECTIONS, pages: PAGES }, '/c/c1']);
+    await expect(tab.getByRole('heading', { level: 1, name: 'Dev' })).toBeVisible(); // the collection's own name, from the collection read
     await expect(tab.getByRole('treeitem')).toHaveCount(5); // Welcome is open: Welcome, Nested, Getting started guide, Plan for May, Meeting notes
     await shots(tab, TASK, 'collection-list');
     // Three levels, one row expanded and one focused, from the keyboard.
