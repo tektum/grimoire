@@ -37,12 +37,16 @@ describe('configuration errors carry the setting name and the rule, never the va
     const names = [...new Set(src.match(/GRIMOIRE_[A-Z0-9_]+/g) ?? [])];
     expect(names.length).toBeGreaterThan(20);
     const mark = 'ZZvalueMarkZZ-9f3a';
+    // One assertion at the end, not one for each problem of each case: with 77 settings and three values that is some 230 loads of the whole schema, and a matcher call for
+    // every problem each of them returns, which made the test the slowest of the package (about 2.4 s alone, over the 5 s limit when the whole suite runs at once).
+    const leaks: string[] = [];
     for (const name of names) {
       for (const value of [mark, `-${mark}`, `http://${mark}:${mark}@h/${mark}`]) {
         for (const p of problemsOf({ ...local, [name]: value })) {
-          expect(`${p.setting} ${p.rule}`, name).not.toContain(mark);
+          if (`${p.setting} ${p.rule}`.includes(mark)) leaks.push(`${name}: ${p.setting} ${p.rule}`);
         }
       }
     }
+    expect(leaks).toEqual([]);
   });
 });
