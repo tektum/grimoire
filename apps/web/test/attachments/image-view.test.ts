@@ -113,6 +113,34 @@ describe('the image node view', () => {
     expect(dom.textContent).toContain("Image couldn't be loaded");
   });
 
+  it('allows one error-driven refresh between two successful loads, however long the answers take', async () => {
+    vi.useFakeTimers();
+    const view = viewOf(SRC);
+    const dom = view.dom as HTMLElement;
+    await vi.advanceTimersByTimeAsync(0);
+    const img = dom.querySelector('img')!;
+    img.dispatchEvent(new Event('error'));
+    await vi.advanceTimersByTimeAsync(60_000); // a slow network: much longer than any time guard
+    img.dispatchEvent(new Event('error'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dom.dataset['state']).toBe('failed');
+    expect(fetchUrls).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows another refresh after an image has loaded again', async () => {
+    const view = viewOf(SRC);
+    const dom = view.dom as HTMLElement;
+    await settle();
+    const img = dom.querySelector('img')!;
+    img.dispatchEvent(new Event('error'));
+    await settle();
+    img.dispatchEvent(new Event('load'));
+    img.dispatchEvent(new Event('error'));
+    await settle();
+    expect(fetchUrls).toHaveBeenCalledTimes(3);
+    expect(dom.dataset['state']).not.toBe('failed');
+  });
+
   it('says so when no link comes (the server has none for the id)', async () => {
     fetchUrls.mockResolvedValueOnce(new Map());
     const view = viewOf(SRC);

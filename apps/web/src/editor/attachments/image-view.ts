@@ -9,7 +9,7 @@ import { EXPIRY_MARGIN_MS, type SignedUrl } from './urls';
 
 /** The longest a timer may wait (the browser keeps it in 32 bits). */
 const MAX_TIMER_MS = 2_000_000_000;
-/** Never sooner than this after a link was set: a link that is already inside its margin must not make a loop. */
+/** Never sooner than this after a link was set: a link that is already inside its margin must not make a loop of timed refreshes. */
 const MIN_REFRESH_MS = 5_000;
 
 type State = 'loading' | 'ready' | 'failed' | 'external';
@@ -64,7 +64,7 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     dom.append(img);
     setState('loading');
     if (links === null) return failed();
-    let refreshedAt = -Infinity; // the last time a replacement was asked for because of a failure
+    let refreshed = false; // one replacement is asked for because of a failure between two successful loads: a link that keeps failing is not asked for again and again
     const show = (link: SignedUrl): void => {
       if (mine !== generation) return;
       img.src = link.url;
@@ -73,11 +73,15 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
       timer = setTimeout(() => void links.refresh(id).then(show, () => undefined), wait);
     };
     const refreshOnce = (): void => {
-      if (Date.now() - refreshedAt < MIN_REFRESH_MS) return failed(); // it failed again just after a new link: not a matter of expiry
-      refreshedAt = Date.now();
+      if (refreshed) return failed(); // it failed again after a new link: not a matter of expiry
+      refreshed = true;
       links.refresh(id).then(show, () => mine === generation && failed());
     };
-    img.addEventListener('load', () => mine === generation && setState('ready'));
+    img.addEventListener('load', () => {
+      if (mine !== generation) return;
+      refreshed = false;
+      setState('ready');
+    });
     img.addEventListener('error', () => mine === generation && refreshOnce());
     links.url(id).then(show, () => mine === generation && failed());
   };
