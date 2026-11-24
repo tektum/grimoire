@@ -39,6 +39,10 @@ Observed: the first person got a tenant named `spike.test` with `spike.test` as 
 
 The action `check-if-free-email` ("check if the provided email is a free email domain") exists in the flow catalog. Placing it before step 2 would refuse public mailbox providers inside the flow itself, which is one way to refuse them (decided: the refusal is the server's, with a list and a setting, section 3.7; the flow action is not used) 
 
+### 2.4 Local mode (development tokens)
+
+The development verifier (`auth-dev`, local mode only) accepts `dev:<secret>:<user id>:<role>` and has no provider behind it, so it has no `tenants`. Left alone, every local request and collaboration handshake, and every integration test, would be refused as "no tenant". The token gains an optional fifth part: `dev:<secret>:<user id>:<role>[:<tenant id>]`, the tenant id being 1 to 64 characters of `[a-z0-9_-]`, and the verifier answers it exactly as the provider's claim is read (one tenant, no more). When the part is absent the tenant is the fixed local tenant `local`, so `make up`, the existing tests and every token already written keep working unchanged. The isolation suite of section 7 makes tokens for tenants A and B with the part. The part exists only in local mode (the adapter refuses to start outside it), so it is no way into a deployed tenant.
+
 ## 3. What is scoped, and how
 
 The rule, for every table: a `tenant_id` column that is not null and references `tenants`, set from the token on every write, and a filter on it in every read. The server never takes a tenant id from a path, a query, a body or a header.
@@ -128,7 +132,7 @@ No deployment holds data yet except development databases. The migration is forw
 
 1. Make `tenants` and add `tenant_id` to every table as nullable, in one transaction.
 2. Backfill every existing row with one tenant whose id is the fixed text `legacy`.
-3. Make the columns not null, add the composite foreign keys and the per-tenant unique indexes (this replaces the global ones), and enable the policies (section 3.2) if accepted.
+3. Make the columns not null, add the composite foreign keys (`on update cascade`) and the per-tenant unique indexes (this replaces the global ones). The row-level security policies are not enabled here: they come with step 7 of section 8, after the server sets `app.tenant` on every transaction (step 5), because until then the `nullif` policy would hide every row from the runtime role.
 4. The command `grimoire tenant-adopt --from legacy --to <tenant id>` (decided: question 7, explicit, never automatic) moves the `legacy` workspace into a real tenant, in one transaction. The key strategy: every foreign key to `tenants(id)`, the composite ones included, is `on update cascade`, so renaming the `legacy` row rewrites every child row in the same statement. If a `tenants` row for the target already exists (made at its first sign-in), the command proceeds only when no tenant-owned table has a row for it (the target is empty): it deletes that empty row and renames `legacy` in its place; otherwise it refuses and changes nothing. Nothing runs it by itself.
 
 New uploads use the new key prefix; old files keep their keys.
