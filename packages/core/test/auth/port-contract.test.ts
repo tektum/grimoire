@@ -20,7 +20,7 @@ const userStore: UserStore = {
 const profileResult: ProfileResult = { kind: 'ok', profile };
 const verifyResult: VerifyResult = { kind: 'ok', userId: 'u', expiresAt: 1, profile };
 const permission: Permission = 'read_write';
-const userRecord: UserRecord = { id: 'u', descopeUserId: 'd', email: profile.email, name: 'u', role: 'member', suspended: false };
+const userRecord: UserRecord = { id: 'u', descopeUserId: 'd', email: profile.email, name: 'u', role: 'member', suspended: false, tenantId: 'legacy' };
 const verifier: AuthVerifier = {
   async verify(token: string): Promise<VerifyResult> { void token; return verifyResult; },
   async profile(userId: string): Promise<ProfileResult> { void userId; return profileResult; },

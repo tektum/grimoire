@@ -44,7 +44,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
   const config = makeFakeConfig();
   const log = createEventLog(logger);
   const verifier = { verify: () => Promise.resolve({ kind: 'service-unavailable' as const }) };
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true };
   const users = new FakeUserStore();
   const http: AppContext['http'] = {
     config, providerBaseUrl: null, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),

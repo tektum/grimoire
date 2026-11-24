@@ -61,7 +61,7 @@ function appOver(store: FileStorage, settings: FilesConfig = FILES) {
   const config = makeFakeConfig({ files: settings, allowedEmailDomains: ['example.com'] });
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
   const users = createUserStore(db);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const access = createAccessStore(db);
   return createApp({
     ...t.ctx, config, auth: { verifier }, signInPolicy,

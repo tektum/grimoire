@@ -41,7 +41,7 @@ export function authenticate(verifier: AuthVerifier, deps: Pick<HttpDeps, 'users
     }
     // The development role of the token is read in local mode only, as the collaboration host does.
     const devRole = roles !== undefined && deps.config.local ? roles.roleOf(token) : undefined;
-    const identity = { userId: verified.userId, ...(verified.profile === undefined ? {} : { profile: verified.profile }) };
+    const identity = { userId: verified.userId, ...(verified.profile === undefined ? {} : { profile: verified.profile }), ...(verified.tenant === undefined ? {} : { tenant: verified.tenant }) };
 
     const stored = await deps.users.findByDescopeId(identity.userId);
     if (stored === undefined) {

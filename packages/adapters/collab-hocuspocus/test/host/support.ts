@@ -88,7 +88,7 @@ export function makeDeps(role?: Role) {
     log: createCollabLog(logger), guard: createUpgradeGuard(),
     /** Local-mode resolution: the provisioner creates a row for each verified subject with `devRole`. */
     provisionAs(devRole: Role): void {
-      const provisioner = createProvisioner({ users, verifier, policy: { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true } });
+      const provisioner = createProvisioner({ users, verifier, policy: { firstAdminEmails: [], allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true } });
       t.deps = {
         ...t.deps,
         resolveUser: async (_token, identity) => {

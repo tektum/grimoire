@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateUserResult, Role, UserRecord, UserStore } from '../ports/user-store.js';
+import type { CreateUserResult, NewTenant, Role, UserRecord, UserStore } from '../ports/user-store.js';
 
 /** In-memory user lifecycle for tests. Subject/id conflict rules match PostgreSQL's citext email uniqueness. */
 export class FakeUserStore implements UserStore {
   private readonly users: UserRecord[] = [];
+  private readonly madeTenants: NewTenant[] = [];
 
   constructor(rows: readonly UserRecord[] = []) {
     for (const user of rows) this.users.push(this.copy(user));
@@ -13,11 +14,12 @@ export class FakeUserStore implements UserStore {
     return Promise.resolve(this.copy(this.users.find((u) => u.descopeUserId === descopeUserId)));
   }
 
-  createIfAbsent(n: { descopeUserId: string; email: string; name: string; avatarUrl?: string; role: Role }): Promise<CreateUserResult> {
+  createIfAbsent(n: { descopeUserId: string; email: string; name: string; avatarUrl?: string; role: Role; tenant?: NewTenant }): Promise<CreateUserResult> {
     const existing = this.users.find((u) => u.descopeUserId === n.descopeUserId);
     if (existing) return Promise.resolve({ kind: 'existing', user: this.copy(existing) });
     if (this.users.some((u) => u.email.toLowerCase() === n.email.toLowerCase())) return Promise.resolve({ kind: 'email-taken' });
-    const user: UserRecord = { id: randomUUID(), descopeUserId: n.descopeUserId, email: n.email, name: n.name, ...(n.avatarUrl === undefined ? {} : { avatarUrl: n.avatarUrl }), role: n.role, suspended: false };
+    const user: UserRecord = { id: randomUUID(), descopeUserId: n.descopeUserId, email: n.email, name: n.name, ...(n.avatarUrl === undefined ? {} : { avatarUrl: n.avatarUrl }), role: n.role, suspended: false, ...(n.tenant === undefined ? {} : { tenantId: n.tenant.id }) };
+    if (n.tenant && !this.madeTenants.some((t) => t.id === n.tenant?.id)) this.madeTenants.push({ ...n.tenant });
     this.users.push(user);
     return Promise.resolve({ kind: 'created', user: this.copy(user) });
   }
@@ -28,6 +30,11 @@ export class FakeUserStore implements UserStore {
     const updated = { ...user, role };
     this.users[this.users.indexOf(user)] = updated;
     return Promise.resolve(this.copy(updated));
+  }
+
+  /** The tenants a sign-in made, in order. */
+  tenants(): readonly NewTenant[] {
+    return this.madeTenants.map((t) => ({ ...t }));
   }
 
   /** Returns test records, never the store's private references. */

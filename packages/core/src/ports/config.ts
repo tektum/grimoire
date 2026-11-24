@@ -116,6 +116,8 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   readonly firstAdminEmails: readonly string[];
   /** Lowercase host names; empty is permitted only in local mode, never any domain. */
   readonly allowedEmailDomains: readonly string[];
+  /** Lowercase host names refused on top of the public mailbox providers (GRIMOIRE_REFUSED_EMAIL_DOMAINS). */
+  readonly refusedEmailDomains: readonly string[];
   readonly trustedProxies: readonly string[]; readonly shutdownSaveDeadlineMs: number;
   /** Local mode only: the secret every development token carries (GRIMOIRE_DEV_TOKEN_SECRET). */
   readonly devTokenSecret?: string;

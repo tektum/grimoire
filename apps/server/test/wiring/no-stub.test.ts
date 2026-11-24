@@ -85,7 +85,7 @@ describe('a user with access only to collection X cannot open a page of collecti
     const { world, ids } = worldOfCases(accessCases);
     const clock = new FakeClock(1_000_000);
     const verifier = new FakeAuthVerifier(clock);
-    const users = new FakeUserStore(world.users.map((u) => ({ id: u.id, descopeUserId: `sub-${u.id}`, email: `${u.id}@example.test`, name: 'n', role: u.role, suspended: u.suspended })));
+    const users = new FakeUserStore(world.users.map((u) => ({ id: u.id, descopeUserId: `sub-${u.id}`, email: `${u.id}@example.test`, name: 'n', role: u.role, suspended: u.suspended, tenantId: 'legacy' })));
     for (const u of world.users) verifier.allow(`tok-${u.id}`, `sub-${u.id}`);
     const pages: PageStore = {
       load: () => Promise.resolve({ state: null, markdown: null, markdownHash: null, epoch: 0, markdownStaleSince: null }),

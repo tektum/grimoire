@@ -8,7 +8,7 @@ import type { Identity } from '../../src/http/env.js';
 import { makeContext } from '../server/support/context.js';
 
 const TOKEN = 'tok-secret-123';
-const row = (over: Partial<UserRecord> = {}): UserRecord => ({ id: 'u1', descopeUserId: 'd1', email: 'ann@example.com', name: 'Ann', role: 'member', suspended: false, ...over });
+const row = (over: Partial<UserRecord> = {}): UserRecord => ({ id: 'u1', descopeUserId: 'd1', email: 'ann@example.com', name: 'Ann', role: 'member', suspended: false, tenantId: 'legacy', ...over });
 const PROFILE = { email: 'ann@example.com', name: 'Ann', emailVerified: true };
 
 interface Setup { rows?: UserRecord[]; result?: VerifyResult; domains?: string[] }
@@ -22,7 +22,7 @@ function build(s: Setup = {}) {
   };
   const users = new FakeUserStore(s.rows ?? [row()]);
   const lookups = vi.spyOn(users, 'findByDescopeId');
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: s.domains ?? ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger: t.logger });
   const ctx = { ...t.ctx, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, users, provisioner } };
   const app = createApp(ctx);
@@ -151,6 +151,24 @@ describe('suspended and returning users', () => {
     const res = await get(app, '/v1/things', `Bearer ${TOKEN}`);
     expect(res.status).toBe(403);
     expect(await code(res)).toBe('not_allowed');
+  });
+
+  it.each([
+    ['names another tenant than the row', { kind: 'one', id: 'T-other' }],
+    ['names no tenant', { kind: 'none' }],
+    ['names several tenants', { kind: 'many' }],
+  ] as const)('refuses a returning user whose token %s, on every route, with not_allowed', async (_name, tenant) => {
+    const { app, seen } = build({ result: { kind: 'ok', userId: 'd1', expiresAt: 9e12, tenant } });
+    const res = await get(app, '/v1/things', `Bearer ${TOKEN}`);
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('not_allowed');
+    expect(seen).toEqual([]);
+  });
+
+  it('lets a returning user whose token names the tenant of the row through', async () => {
+    const { app, seen } = build({ rows: [row({ tenantId: 'T-acme' })], result: { kind: 'ok', userId: 'd1', expiresAt: 9e12, tenant: { kind: 'one', id: 'T-acme' } } });
+    expect((await get(app, '/v1/things', `Bearer ${TOKEN}`)).status).toBe(200);
+    expect(seen[0]).toMatchObject({ identity: { tenant: { kind: 'one', id: 'T-acme' } }, user: { tenantId: 'T-acme' } });
   });
 
   it('lets a returning user of an allowed domain through, whatever the case of the stored address', async () => {

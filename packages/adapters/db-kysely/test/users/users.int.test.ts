@@ -100,7 +100,7 @@ describe('createUserStore', () => {
     // The generated id collision cannot practically be induced. Synthesize only pg's failure boundary; keep a matching
     // publicly returned database row for the follow-up select if a mutation wrongly suppresses this other constraint error.
     const cause = Object.assign(new Error('users_pkey duplicate key'), { code: '23505', constraint: 'users_pkey' });
-    const collided: UserRecord = { id: 'collision', descopeUserId: 'collision-subject', email: 'collision@example.test', name: 'Collision', role: 'member', suspended: false };
+    const collided: UserRecord = { id: 'collision', descopeUserId: 'collision-subject', email: 'collision@example.test', name: 'Collision', role: 'member', suspended: false, tenantId: 'legacy' };
     let readAlreadySupplied = false;
     const failing: Queryable = {
       async query<Row>(source: string): Promise<readonly Row[]> {
@@ -172,3 +172,40 @@ describe('createIfAbsent when the same user signs in several times at once', () 
   });
 });
 
+
+describe('the tenant of a new person (docs/tenancy.md section 3.1)', () => {
+  const store = () => createUserStore(db);
+  const tenants = async (): Promise<readonly { id: string; name: string; domain: string | null }[]> => db.query('select id, name, domain from tenants order by id');
+  const person = (n: string) => ({ descopeUserId: `tenant-subject-${n}`, email: `${n}@tenant-${n}.test`, name: n, role: 'member' as Role });
+
+  it('makes the tenant with the person in one statement, names it after the domain, and a second person of it joins the same row', async () => {
+    const first = await store().createIfAbsent({ ...person('a'), tenant: { id: 'T-a', name: 'tenant-a.test' } });
+    expect(first).toMatchObject({ kind: 'created', user: { tenantId: 'T-a' } });
+    const second = await store().createIfAbsent({ ...person('a2'), email: 'second@tenant-a.test', tenant: { id: 'T-a', name: 'tenant-a.test' } });
+    expect(second).toMatchObject({ kind: 'created', user: { tenantId: 'T-a' } });
+    expect((await tenants()).filter((t) => t.id === 'T-a')).toEqual([{ id: 'T-a', name: 'tenant-a.test', domain: 'tenant-a.test' }]);
+  });
+
+  it('puts a person who names no tenant in legacy', async () => {
+    expect(await store().createIfAbsent(person('b'))).toMatchObject({ kind: 'created', user: { tenantId: 'legacy' } });
+  });
+
+  it('leaves no tenant behind when the person is refused because the email is taken', async () => {
+    await store().createIfAbsent(person('c'));
+    const refused = await store().createIfAbsent({ ...person('c'), descopeUserId: 'tenant-subject-c2', tenant: { id: 'T-c', name: 'tenant-c.test' } });
+    expect(refused).toEqual({ kind: 'email-taken' });
+    expect((await tenants()).map((t) => t.id)).not.toContain('T-c');
+  });
+
+  it('leaves no tenant behind when the person already exists, as the loser of a race between two first sign-ins of one subject', async () => {
+    await store().createIfAbsent({ ...person('e'), tenant: { id: 'T-e', name: 'tenant-e.test' } });
+    const loser = await store().createIfAbsent({ ...person('e'), tenant: { id: 'T-e-late', name: 'tenant-e-late.test' } });
+    expect(loser).toMatchObject({ kind: 'existing', user: { tenantId: 'T-e' } });
+    expect((await tenants()).map((t) => t.id)).not.toContain('T-e-late');
+  });
+
+  it('refuses a tenant id outside the shape the database allows, and makes nothing', async () => {
+    await expect(store().createIfAbsent({ ...person('d'), tenant: { id: 'not a valid id', name: 'tenant-d.test' } })).rejects.toMatchObject({ code: '23514' });
+    expect(await store().findByDescopeId('tenant-subject-d')).toBeUndefined();
+  });
+});

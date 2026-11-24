@@ -41,6 +41,13 @@ describe('production allowed email domains cannot mean any domain', () => {
     expect(loadConfig({ ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: '' }).allowedEmailDomains).toEqual([]);
   });
 
+  it('reads the extra refused domains: lowercase, without duplicates, none by default, and a bad one is named', () => {
+    const load = (v: string | undefined) => loadConfig({ ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_REFUSED_EMAIL_DOMAINS: v });
+    expect(load(undefined).refusedEmailDomains).toEqual([]);
+    expect(load('Mail.Example.test, other.test,mail.example.test').refusedEmailDomains).toEqual(['mail.example.test', 'other.test']);
+    expect(() => load('not a domain')).toThrow(/GRIMOIRE_REFUSED_EMAIL_DOMAINS/);
+  });
+
   it('does not require domains for migrations', () => {
     expect(loadConfig({
       GRIMOIRE_DATABASE_MIGRATION_URL: placeholderDatabaseUrl(),

@@ -20,7 +20,7 @@ function build(s: Setup = {}) {
     profile,
   };
   const users = new FakeUserStore(s.rows ?? []);
-  const signInPolicy = { firstAdminEmails: s.admins ?? [], allowedEmailDomains: s.domains ?? ['example.com'], allowDevRole: s.local ?? true };
+  const signInPolicy = { firstAdminEmails: s.admins ?? [], allowedEmailDomains: s.domains ?? ['example.com'], refusedEmailDomains: [], allowDevRole: s.local ?? true };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger: t.logger });
   const roleOf = vi.fn(() => s.devRole);
   const config = { ...t.ctx.config, local: s.local ?? true };
@@ -29,7 +29,7 @@ function build(s: Setup = {}) {
   return { app, users, profile, me, roleOf };
 }
 
-const stored = (over: Partial<UserRecord> = {}): UserRecord => ({ id: 'u1', descopeUserId: 'd1', email: 'ann@example.com', name: 'Ann', role: 'member', suspended: false, ...over });
+const stored = (over: Partial<UserRecord> = {}): UserRecord => ({ id: 'u1', descopeUserId: 'd1', email: 'ann@example.com', name: 'Ann', role: 'member', suspended: false, tenantId: 'legacy', ...over });
 const code = async (res: Response) => ((await res.json()) as { error: { code: string } }).error.code;
 
 describe('GET /v1/me', () => {

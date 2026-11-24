@@ -17,9 +17,9 @@ function office() {
       ? Promise.resolve({ kind: 'ok', userId: `d${token.slice(1)}`, expiresAt: 9e12 })
       : Promise.resolve({ kind: 'invalid-token' })),
   };
-  const rows: UserRecord[] = Array.from({ length: USERS }, (_, n) => ({ id: `id${String(n)}`, descopeUserId: `d${String(n)}`, email: `p${String(n)}@example.com`, name: 'P', role: 'member', suspended: false }));
+  const rows: UserRecord[] = Array.from({ length: USERS }, (_, n) => ({ id: `id${String(n)}`, descopeUserId: `d${String(n)}`, email: `p${String(n)}@example.com`, name: 'P', role: 'member', suspended: false, tenantId: 'legacy' }));
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
   const config = makeFakeConfig();
   const app = createApp({ ...t.ctx, config, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, config, users, provisioner } });

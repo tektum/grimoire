@@ -1,4 +1,4 @@
-import type { Profile } from '@tektum/grimoire-core/ports/auth-verifier';
+import type { Profile, TenantClaim } from '@tektum/grimoire-core/ports/auth-verifier';
 import type { PageAccessChecker } from '@tektum/grimoire-core/authorize';
 import type { Authorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import type { AttachmentRepo } from '@tektum/grimoire-core/ports/attachment-repo';
@@ -19,7 +19,7 @@ import type { PageStateRepo } from '@tektum/grimoire-core/ports/page-state-repo'
 import type { Ordering } from '@tektum/grimoire-core/tree/position';
 import type { EventLog } from '../events.js';
 
-export interface Identity { readonly userId: string; readonly profile?: Profile }
+export interface Identity { readonly userId: string; readonly profile?: Profile; readonly tenant?: TenantClaim }
 
 /** Every port a route may use. Handlers read it from the context; a router keeps no state of its own. */
 export interface HttpDeps {

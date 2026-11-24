@@ -103,7 +103,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   if (builtVerifier === undefined) return { ok: false, issues: ['GRIMOIRE_DESCOPE_PROJECT_ID: is required'], problems: [{ setting: 'GRIMOIRE_DESCOPE_PROJECT_ID', rule: 'is required' }], log };
   const verifier = overrides.verifier ?? builtVerifier;
   const auth: AppContext['auth'] = { verifier, ...(dev ? { roles: dev.roles } : {}) };
-  const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, allowDevRole: config.local };
+  const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, refusedEmailDomains: config.refusedEmailDomains, allowDevRole: config.local };
   const db = createDatabase(url);
   const collabRole = config.role !== 'api';
   const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs, connectionTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
@@ -141,7 +141,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       : (_token, identity) => users.findByDescopeId(identity.userId);
     collab = {
       host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
-      deps: { config, logger, clock: systemClock, verifier, resolveUser, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, requireTenant: true, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
   const shutdownHooks: ShutdownHook[] = [

@@ -31,10 +31,10 @@ function build() {
     findByDescopeId: (d) => {
       const row = people.find((p) => `d-${p.name}` === d);
       const live = row === undefined ? undefined : admin.find(row.id);
-      return Promise.resolve(live === undefined ? undefined : ({ id: live.id, descopeUserId: d, email: live.email, name: live.name, role: live.role, suspended: live.suspended } satisfies UserRecord));
+      return Promise.resolve(live === undefined ? undefined : ({ id: live.id, descopeUserId: d, email: live.email, name: live.name, role: live.role, suspended: live.suspended, tenantId: 'legacy' } satisfies UserRecord));
     },
   };
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const store = createFakeAccessStore(world);
   const app = createApp({
     ...t.ctx, auth: { verifier }, signInPolicy,

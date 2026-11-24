@@ -38,7 +38,8 @@ function token({ sub, variant = 'good', ttlSeconds = 600, claims = {} }) {
   if (typeof sub !== 'string' || sub === '') throw new Error('sub is required');
   if (!VARIANTS.includes(variant)) throw new Error(`variant must be one of ${VARIANTS.join(', ')}`);
   const now = Math.floor(Date.now() / 1000);
-  const base = { sub, iss: projectId, drn: 'DS', iat: now, exp: now + ttlSeconds, ...claims };
+  // A real session token carries the tenants of the person (docs/tenancy.md section 2.1) and the app refuses one without; the people of the scenarios are in `legacy`, the tenant their rows default to.
+  const base = { sub, iss: projectId, drn: 'DS', iat: now, exp: now + ttlSeconds, tenants: { legacy: {} }, ...claims };
   if (variant === 'expired') { base.iat = now - 7200; base.exp = now - 3600; }
   if (variant === 'wrong-issuer') base.iss = 'P2someoneelseprojectabcdefghi';
   if (variant === 'refresh') base.drn = 'DSR';
