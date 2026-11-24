@@ -98,6 +98,39 @@ describe('the bubble in the editor', () => {
     await vi.waitFor(() => expect(field(t)).toBeNull());
   });
 
+  it('Escape puts the bar away and keeps the selection; the next selection brings it back, and the same selection again does not', async () => {
+    const t = await open();
+    const view = t.view();
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(shown(t)).toBe(false));
+    expect([view.state.selection.from, view.state.selection.to]).toEqual([1, 5]); // the selection is still there
+    view.dispatch(view.state.tr); // a transaction that changes nothing
+    select(t, 1, 5); // the same selection set again
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect(shown(t)).toBe(false);
+    select(t, 6, 11); // another selection
+    await vi.waitFor(() => expect(shown(t)).toBe(true));
+  });
+
+  it('leaves Escape alone where there is no bar, and in the link editor it closes only the editor', async () => {
+    const t = await open();
+    select(t, 3, 3);
+    await vi.waitFor(() => expect(shown(t)).toBe(false));
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    t.view().dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    select(t, 1, 5);
+    await vi.waitFor(() => expect(shown(t)).toBe(true));
+    await vi.waitFor(() => expect(button(t, 'Link')).not.toBeNull());
+    button(t, 'Link').click();
+    await vi.waitFor(() => expect(field(t)).not.toBeNull());
+    field(t)!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(field(t)).toBeNull());
+    expect(shown(t)).toBe(true); // back to the bar, which is still there
+  });
+
   it('is not for code, and not for an editor that cannot be edited; the key is left alone then', async () => {
     current = await plainEditor('```\ncode here\n```');
     const t = current;

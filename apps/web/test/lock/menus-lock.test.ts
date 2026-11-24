@@ -49,7 +49,8 @@ describe('the lock in the menus', () => {
   it('the handle menu: refused while Bob is in the block, the block unchanged; after he moves away the same action works', async () => {
     const t = await open();
     const secondStart = t.view().state.doc.child(0).nodeSize;
-    const { host } = createHandleHost(t.ctx, () => ({ $pos: t.view().state.doc.resolve(secondStart) }));
+    const hovered = t.view().dom.children[1] as HTMLElement; // the element the pointer is over, as the library has it
+    const { host } = createHandleHost(t.ctx, () => ({ el: hovered }));
     document.body.append(host);
     try {
       t.remote(101, BOB, blockIdAt(t.view().state, secondStart + 1));

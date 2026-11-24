@@ -14,7 +14,9 @@ function createView(ctx: Ctx, view: EditorView) {
   const host = document.createElement('div');
   host.className = 'bubble-host';
   const root = createRoot(host);
-  const state = { mode: 'format' as 'format' | 'link', refusal: null as string | null };
+  /** `dismissed`: Escape put the bar away for this selection; it comes back with the next selection. */
+  const state = { mode: 'format' as 'format' | 'link', refusal: null as string | null, dismissed: null as { from: number; to: number } | null };
+  const isDismissed = (v: EditorView): boolean => state.dismissed !== null && state.dismissed.from === v.state.selection.from && state.dismissed.to === v.state.selection.to;
   // Above the selection when there is room for it inside the editor (the library reads this object each time it places the bubble), below it otherwise, and always below for the
   // link editor: it is taller than the bar, and above the text it would cover the lines before it (and the title of the page).
   const placing: { placement: 'top' | 'bottom' } = { placement: 'top' };
@@ -30,7 +32,13 @@ function createView(ctx: Ctx, view: EditorView) {
       placing.placement = 'top'; // no layout to ask (the view is going): the library's own choice
     }
   };
-  const provider = new TooltipProvider({ content: host, debounce: 0, offset: 8, floatingUIOptions: placing, shouldShow: (v) => v.editable && (state.mode === 'link' || bubbleSelection(v)) });
+  const provider = new TooltipProvider({
+    content: host,
+    debounce: 0,
+    offset: 8,
+    floatingUIOptions: placing,
+    shouldShow: (v) => v.editable && (state.mode === 'link' || (bubbleSelection(v) && !isDismissed(v))),
+  });
 
   const render = (): void => {
     root.render(
@@ -95,6 +103,7 @@ function createView(ctx: Ctx, view: EditorView) {
           state.mode = 'format';
           state.refusal = null;
         }
+        if (state.dismissed !== null && !isDismissed(next)) state.dismissed = null; // another selection: the bar is for it
         place(next);
         // The library skips an update whose document and selection are those of the state before it, and keeps only the last update of a burst: it is never told the earlier
         // state, so that a transaction that changes nothing cannot make it skip the update that matters.
@@ -107,8 +116,13 @@ function createView(ctx: Ctx, view: EditorView) {
         host.remove();
       },
     },
-    /** Mod-K: the link editor for the selection. */
+    /** Mod-K: the link editor for the selection. Escape, with the bar showing: puts it away and keeps the selection (the link editor has its own Escape). */
     key: (event: KeyboardEvent): boolean => {
+      if (event.key === 'Escape' && state.mode === 'format' && host.dataset['show'] === 'true') {
+        state.dismissed = { from: view.state.selection.from, to: view.state.selection.to };
+        provider.hide();
+        return true;
+      }
       if (event.key.toLowerCase() !== 'k' || !(event.ctrlKey || event.metaKey) || !bubbleSelection(view)) return false;
       openLink();
       provider.show();

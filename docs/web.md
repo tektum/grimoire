@@ -46,6 +46,13 @@ Lint enforces the boundaries: browser storage only in `src/storage` and `src/aut
 
 Tokens are CSS custom properties in `src/ui/tokens.css`: `--paper`, `--ink`, `--accent`, `--muted`, `--border`, `--focus`, the fonts, spacing and radii. Light is the default; dark follows the system or `data-theme="dark"` on `<html>`. Fonts are system stacks. The eight collaborator colours are fixed, and each name label is black or white by luminance, at least 4.5:1 against its colour. `prefers-reduced-motion: reduce` removes transitions and animations. The values are proposals until the design is settled: changing them is a change to `tokens.css`.
 
+## The editing menus, the soft lock and the help page
+
+- **Menus** (`src/editor/menus`): the slash menu (`/` at the start of a paragraph), the bubble over a selection (inline formatting and the link editor; Escape puts the bar away, the selection stays) and the block handle beside the block the pointer is over. The slash menu and the handle share one list of block kinds (`blocks.ts`). The link editor checks an address with `isSafeUrl` of `editor-schema` and says "This kind of link isn't allowed" for the rest.
+- **Soft lock** (`src/editor/lock`, R3.14 to R3.17): each editor publishes the id of the block its cursor is in (`blockId` on the awareness: the Yjs element's `client:clock`). Turning a block into a list, a quote or a code block is refused while another person's cursor is in it, with "<name> is editing this block" and a "Why?" that opens the help. A heading level, a divider or a table is not refused.
+- **Help page**: `/help` (screen `help`, signed in) is not in the contracts' route table; it is added here because the limit text (R3.26, R3.27) has to be on a help page. Its words are those of the "Why?".
+- **Test builds** (the end-to-end build and development, never production) put the open page's shared document on `window.__grimoireDoc` and its awareness on `window.__grimoireAwareness`, so that specifications can check what an editor did to the document and who is in which block. `test/unit/test-hook.test.ts` checks that no production chunk has them.
+
 ## Connection signals observed from the real server
 
 The client maps what the collab server says to what the page does in `src/editor/core/map-signal.ts`, a refusal by its reason, a close by its code (a few close reasons are read first: `access-changed`, `session-expired`, `stale-epoch`, `rate-limited`). The table below is what the real server answered to the browser's own socket, recorded by `test-e2e/editor/connection-signals.spec.ts` in the `Web browser tests` job (the spec prints the line `observed-signals`; this is its output from a passing run).

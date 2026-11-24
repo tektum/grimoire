@@ -7,13 +7,13 @@ import { surface } from './support';
 const REFUSAL = "This kind of link isn't allowed";
 
 /**
- * Ends the selection, so that the bubble goes: it stands below a selection on the first line of the page, over the next block, and a click on that block would reach the
- * bubble and not the text.
+ * Puts the bar away with Escape (the selection stays): it stands below a selection on the first line of the page, over the next block, and a click on that block would reach
+ * the bar and not the text.
  */
 async function clearSelection(page: Page): Promise<void> {
   const bar = page.getByRole('toolbar', { name: 'Text formatting' });
   if (await bar.isVisible()) {
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Escape');
     await expect(bar).toBeHidden();
   }
 }
