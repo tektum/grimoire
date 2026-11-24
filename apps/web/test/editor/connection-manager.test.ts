@@ -456,3 +456,285 @@ describe('what the first review found', () => {
     expect(p.connects).toBe(2);
   });
 });
+
+describe('a hidden tab', () => {
+  it('suspend disconnects the provider and stays quiet: no retry, no offline text, whatever the provider reports afterwards', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    manager.suspend();
+    expect(p.disconnects).toBe(1);
+    expect(manager.state().suspended).toBe(true);
+    p.disconnected();
+    p.close(1006); // what disconnect() looks like from the provider
+    await h.clock.advance(10 * 60_000);
+    expect(p.connects).toBe(1);
+    expect(manager.state()).toMatchObject({ suspended: true, offline: false, text: null });
+    expect(h.clock.pendingCount()).toBe(0);
+  });
+
+  it('resume within a minute connects again with the recorded epoch, on the same document', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(4);
+    h.last().doc.text = 'what the tab holds';
+    manager.suspend();
+    await h.clock.advance(59_000);
+    manager.resume();
+    expect(manager.state().suspended).toBe(false);
+    expect(p.connects).toBe(2);
+    await flush();
+    expect(decodeHandshake(p.tokens.at(-1)!).e).toBe(4);
+    expect(h.sessions).toHaveLength(1);
+  });
+
+  it('resume after a long time still connects the same document with the epoch: what was typed offline is merged, and a reset is caught by the epoch, not by throwing the document away', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(4);
+    h.last().doc.text = 'typed while offline, never sent';
+    manager.suspend();
+    await h.clock.advance(10 * 60_000);
+    manager.resume();
+    await flush();
+    expect(h.sessions).toHaveLength(1);
+    expect(h.sessions[0]!.doc.destroyed).toBe(false);
+    expect(p.connects).toBe(2);
+    expect(decodeHandshake(p.tokens.at(-1)!).e).toBe(4);
+    // The page was reset meanwhile: the server refuses the old epoch, and the tab takes the stale-epoch path with a copy of what it held.
+    p.refuse('stale-epoch');
+    await flush();
+    expect(manager.state().copy).toBe('typed while offline, never sent');
+    expect(h.sessions).toHaveLength(2);
+  });
+
+  it('a token refresh that was running when the tab was hidden does not connect it again', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(1);
+    expect(manager.state().suspended).toBe(true);
+  });
+
+  it('keeps the reason a page is read-only or too large through a hide and a show, and drops only the offline text', async () => {
+    const reader = start();
+    await flush();
+    reader.h.last().provider.emit({ type: 'authenticated', scope: 'readonly' });
+    reader.manager.suspend();
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    reader.manager.resume();
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    const large = start();
+    await flush();
+    large.h.last().provider.stateless({ kind: 'refusal', code: 'state-cap' });
+    large.manager.suspend();
+    expect(large.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.tooLarge });
+    const offline = start();
+    await flush();
+    offline.h.last().provider.succeed(1);
+    offline.h.last().provider.disconnected();
+    await offline.h.clock.advance(10_000);
+    expect(offline.manager.state().text).toBe(TEXTS.offline);
+    offline.manager.suspend();
+    expect(offline.manager.state().text).toBeNull();
+  });
+
+  it('does nothing for a manager that is stopped, not started, already suspended, or not suspended', async () => {
+    const idle = new ConnectionManager(harness().options);
+    idle.suspend();
+    idle.resume();
+    expect(idle.state().suspended).toBe(false);
+    const { h, manager } = start();
+    await flush();
+    manager.resume(); // not suspended
+    expect(h.last().provider.connects).toBe(1);
+    manager.suspend();
+    manager.suspend(); // already suspended: one disconnect
+    expect(h.last().provider.disconnects).toBe(1);
+    manager.resume();
+    h.last().provider.refuse('forbidden');
+    manager.suspend(); // stopped: nothing
+    expect(manager.state().suspended).toBe(false);
+  });
+});
+
+describe('the network, as the browser tells it', () => {
+  it('networkLost starts the offline text on its clock even though the socket stays open: after 10 s, not before', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.networkLost();
+    await h.clock.advance(9999);
+    expect(manager.state()).toMatchObject({ offline: false, text: null });
+    await h.clock.advance(1);
+    expect(manager.state()).toMatchObject({ offline: true, text: TEXTS.offline, phase: 'synced' });
+    expect(h.last().provider.disconnects).toBe(0); // the connection is not touched: it may come back by itself
+  });
+
+  it('networkBack takes the text away, and the timer, when the socket never dropped', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.networkLost();
+    await h.clock.advance(11_000);
+    manager.networkBack();
+    expect(manager.state()).toMatchObject({ offline: false, text: null });
+    manager.networkLost();
+    manager.networkBack(); // back before the text: it never shows
+    await h.clock.advance(20_000);
+    expect(manager.state().offline).toBe(false);
+    expect(h.clock.pendingCount()).toBe(0);
+  });
+
+  it('networkBack connects at once a connection that was lost meanwhile, instead of waiting out the backoff', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      p.close(1001);
+      await h.clock.advance(h.clock.nextIn()!);
+    }
+    p.close(1001); // every attempt fails: the wait is longer now
+    expect(h.clock.nextIn()).toBeGreaterThan(1500);
+    const connects = p.connects;
+    manager.networkBack();
+    expect(p.connects).toBe(connects + 1);
+    await flush(); // the token of the new attempt is read
+    expect(h.clock.pendingCount()).toBe(0); // and no wait is left running
+  });
+
+  it('a wait the server asked for (it is busy) is not cut short', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.close(4429, 'rate-limited');
+    expect(h.clock.nextIn()).toBe(30_000);
+    manager.networkBack();
+    expect(h.last().provider.connects).toBe(1);
+    expect(h.clock.nextIn()).toBe(30_000);
+  });
+
+  it('neither is a wait after an error the server reported, nor the wait for sign-in to be available', async () => {
+    const failing = start();
+    await flush();
+    failing.h.last().provider.refuse('internal-error');
+    expect(failing.h.clock.nextIn()).toBe(30_000);
+    failing.manager.networkBack();
+    expect(failing.h.last().provider.connects).toBe(1);
+    expect(failing.h.clock.nextIn()).toBe(30_000);
+    const signIn = start();
+    await flush();
+    signIn.h.auth.token = null;
+    signIn.h.last().provider.refuse('Failed to get token during sendToken(): signed out');
+    expect(signIn.h.clock.nextIn()).toBe(5000);
+    signIn.manager.networkBack();
+    expect(signIn.h.last().provider.connects).toBe(1);
+    expect(signIn.h.clock.nextIn()).toBe(5000);
+  });
+
+  it('does nothing for a manager that is stopped, not started or hidden', async () => {
+    const idle = new ConnectionManager(harness().options);
+    idle.networkLost();
+    idle.networkBack();
+    expect(idle.state().offline).toBe(false);
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.refuse('forbidden');
+    manager.networkLost();
+    expect(h.clock.pendingCount()).toBe(0);
+    const hidden = start();
+    await flush();
+    hidden.h.last().provider.succeed(1);
+    hidden.manager.suspend();
+    hidden.manager.networkLost();
+    hidden.manager.networkBack();
+    expect(hidden.h.clock.pendingCount()).toBe(0);
+    expect(hidden.h.last().provider.connects).toBe(1);
+  });
+});
+
+describe('what a hide leaves behind', () => {
+  it('a token refresh that fails while the tab is hidden does not sign anyone out: it decides nothing, and the tab connects when it is shown', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    finish(false);
+    await flush();
+    expect(h.auth.signOuts).toEqual([]);
+    expect(manager.state()).toMatchObject({ suspended: true, stopped: null });
+    manager.resume();
+    expect(p.connects).toBe(2);
+  });
+
+  it('a token refresh that succeeds after the tab was shown again does not connect a second time', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    manager.resume();
+    expect(p.connects).toBe(2);
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(2);
+  });
+
+  it('the late close of the socket that was let go is not a failure of the connection made on resume: no retry, no offline text', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    manager.suspend();
+    manager.resume();
+    p.disconnected(); // the old socket reports itself gone, after the new one was asked for
+    p.close(1006);
+    expect(manager.state().phase).toBe('connecting');
+    await h.clock.advance(1999);
+    expect(manager.state()).toMatchObject({ phase: 'connecting', offline: false });
+    p.emit({ type: 'status', status: 'connected' }); // the new connection is open
+    await h.clock.advance(60_000);
+    expect(manager.state().offline).toBe(false);
+    expect(p.connects).toBe(2);
+    // From here on a close is the new connection's, and is acted on.
+    p.close(1001);
+    expect(manager.state().phase).toBe('retrying');
+  });
+
+  it('if the connection made on resume never opens, the silence is treated as a failure after a moment, and retried', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(1);
+    manager.suspend();
+    manager.resume();
+    await h.clock.advance(2000);
+    expect(manager.state().phase).toBe('retrying');
+    await h.clock.advance(5000);
+    expect(h.last().provider.connects).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a connection that becomes healthy has no retry left running', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.close(1001);
+    expect(h.clock.pendingCount()).toBeGreaterThan(0);
+    p.succeed(1); // it connected by itself, another way
+    expect(h.clock.pendingCount()).toBe(0);
+    expect(manager.state().phase).toBe('synced');
+  });
+});

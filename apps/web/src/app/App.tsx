@@ -50,13 +50,13 @@ export function App(props: AppProps): ReactNode {
           <p>The settings of this page could not be read. Reload the page, or tell whoever runs this server.</p>
         </main>
       ) : (
-        <Gate options={{ apiUrl: web.apiUrl }}>{(config) => <Session props={props} apiUrl={web.apiUrl} config={config} />}</Gate>
+        <Gate options={{ apiUrl: web.apiUrl }}>{(config) => <Session props={props} apiUrl={web.apiUrl} config={config} hiddenDisconnectMs={web.hiddenDisconnectMs} />}</Gate>
       )}
     </ErrorBoundary>
   );
 }
 
-function Session({ props, apiUrl, config }: { props: AppProps; apiUrl: string; config: ServerConfig }) {
+function Session({ props, apiUrl, config, hiddenDisconnectMs }: { props: AppProps; apiUrl: string; config: ServerConfig; hiddenDisconnectMs: number }) {
   const [devSignIn, setDevSignIn] = useState<DevSignIn | null | undefined>(props.loadDevSignIn === null || !config.local ? null : undefined);
   useEffect(() => {
     if (devSignIn !== undefined || props.loadDevSignIn === null) return;
@@ -70,10 +70,10 @@ function Session({ props, apiUrl, config }: { props: AppProps; apiUrl: string; c
     };
   }, [devSignIn, apiUrl, props]);
   if (devSignIn === undefined) return null;
-  return <Running props={props} apiUrl={apiUrl} config={config} devSignIn={devSignIn} />;
+  return <Running props={props} apiUrl={apiUrl} config={config} devSignIn={devSignIn} hiddenDisconnectMs={hiddenDisconnectMs} />;
 }
 
-function Running({ props, apiUrl, config, devSignIn }: { props: AppProps; apiUrl: string; config: ServerConfig; devSignIn: DevSignIn | null }) {
+function Running({ props, apiUrl, config, devSignIn, hiddenDisconnectMs }: { props: AppProps; apiUrl: string; config: ServerConfig; devSignIn: DevSignIn | null; hiddenDisconnectMs: number }) {
   const session = useMemo(() => {
     const auth: Auth = createAuth({ config, storage: props.storage, loadDescope: props.loadDescope, devSignIn });
     const api = createWebApi({
@@ -85,8 +85,8 @@ function Running({ props, apiUrl, config, devSignIn }: { props: AppProps; apiUrl
       reload: markClientOutdated,
       fetch: props.fetch === undefined ? guardedFetch : blockWhenOutdated(props.fetch),
     });
-    return { auth, api: api satisfies ApiLike, collabUrl: config.collabUrl, apiUrl };
-  }, [apiUrl, config, devSignIn, props]);
+    return { auth, api: api satisfies ApiLike, collabUrl: config.collabUrl, apiUrl, hiddenDisconnectMs };
+  }, [apiUrl, config, devSignIn, props, hiddenDisconnectMs]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }), []);
   const router = useMemo(() => props.router(), [props]);
   return (
