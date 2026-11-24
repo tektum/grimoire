@@ -5,8 +5,8 @@ import type { KyselyDatabase } from './index.js';
 /** One audit row on `q`: pass a transaction handle so the row commits or rolls back with the change it describes. */
 export async function insertAuditEvent(q: Queryable, event: AuditEvent): Promise<void> {
   await q.query(
-    `insert into audit_events (actor_id, action, target_type, target_id, detail) values ($1, $2, $3, $4, $5::jsonb)`,
-    [event.actorId, event.action, event.targetType, event.targetId, event.detail === undefined ? null : JSON.stringify(event.detail)],
+    `insert into audit_events (actor_id, action, target_type, target_id, detail, tenant_id) values ($1, $2, $3, $4, $5::jsonb, coalesce($6::text, 'legacy'))`,
+    [event.actorId, event.action, event.targetType, event.targetId, event.detail === undefined ? null : JSON.stringify(event.detail), event.tenantId ?? null],
   );
 }
 

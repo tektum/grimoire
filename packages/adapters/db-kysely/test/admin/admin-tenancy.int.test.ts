@@ -24,6 +24,20 @@ const groupId = (r: { kind: string; group?: { id: string } }): string => {
 };
 
 describe('the PostgreSQL AdminRepo across tenants', () => {
+  it('writes every audit row of a change under the tenant it happened in', async () => {
+    const repo = createAdmin(t.app);
+    const group = groupId(await repo.createGroup('T-b', 'Audited', b.boss));
+    await repo.renameGroup('T-b', group, 'Audited too', b.boss);
+    await repo.addMember('T-b', group, b.bea, b.boss);
+    await repo.removeMember('T-b', group, b.bea, b.boss);
+    await repo.patchUser('T-b', b.bea, { role: 'viewer' }, b.boss);
+    await repo.patchUser('T-b', b.bea, { suspended: true }, b.boss);
+    await repo.deleteGroup('T-b', group, b.boss);
+    const rows = await t.admin.query<{ action: string; tenant_id: string }>(`select action, tenant_id from audit_events where actor_id = '${b.boss}' order by action`);
+    expect(rows.map((r) => r.action)).toEqual(['group.created', 'group.deleted', 'group.member_added', 'group.member_removed', 'group.renamed', 'user.role_changed', 'user.suspended']);
+    expect([...new Set(rows.map((r) => r.tenant_id))]).toEqual(['T-b']);
+  });
+
   it('lists only the users of the tenant asked for, and resolves names only inside it', async () => {
     const repo = createAdmin(t.app);
     expect((await repo.listUsers('T-a', { limit: 10 })).map((u) => u.name)).toEqual(['amy-a', 'boss-a']);

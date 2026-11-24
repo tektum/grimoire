@@ -47,9 +47,9 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
            where id = $1 and tenant_id = $4 returning ${USER_COLUMNS}`,
           [id, role, suspended, tenantId],
         );
-        if (role !== before.role) await insertAuditEvent(tx, { actorId, action: 'user.role_changed', targetType: 'user', targetId: id, detail: { from: before.role, to: role } });
+        if (role !== before.role) await insertAuditEvent(tx, { tenantId, actorId, action: 'user.role_changed', targetType: 'user', targetId: id, detail: { from: before.role, to: role } });
         if (suspended !== before.suspended) {
-          await insertAuditEvent(tx, { actorId, action: suspended ? 'user.suspended' : 'user.unsuspended', targetType: 'user', targetId: id });
+          await insertAuditEvent(tx, { tenantId, actorId, action: suspended ? 'user.suspended' : 'user.unsuspended', targetType: 'user', targetId: id });
         }
         return { kind: 'saved', user: saved[0] as UserRow };
       });
@@ -65,7 +65,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
         return await db.transaction(async (tx): Promise<GroupSaveResult> => {
           const made = await tx.query<{ id: string }>(`insert into groups (name, tenant_id) values ($1, $2) returning id`, [name, tenantId]);
           const groupId = (made[0] as { id: string }).id;
-          await insertAuditEvent(tx, { actorId, action: 'group.created', targetType: 'group', targetId: groupId });
+          await insertAuditEvent(tx, { tenantId, actorId, action: 'group.created', targetType: 'group', targetId: groupId });
           return { kind: 'saved', group: (await tx.query<AdminGroup>(`${GROUP_SELECT} where g.id = $1`, [groupId]))[0] as AdminGroup };
         });
       } catch (e) {
@@ -79,7 +79,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
           const found = await tx.query(`select 1 from groups where id = $1 and tenant_id = $2 for update`, [groupId, tenantId]);
           if (found.length === 0) return { kind: 'not-found' };
           await tx.query(`update groups set name = $2, updated_at = now() where id = $1`, [groupId, name]);
-          await insertAuditEvent(tx, { actorId, action: 'group.renamed', targetType: 'group', targetId: groupId });
+          await insertAuditEvent(tx, { tenantId, actorId, action: 'group.renamed', targetType: 'group', targetId: groupId });
           return { kind: 'saved', group: (await tx.query<AdminGroup>(`${GROUP_SELECT} where g.id = $1`, [groupId]))[0] as AdminGroup };
         });
       } catch (e) {
@@ -92,7 +92,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
         // The members and the collection access entries of the group go with it (foreign keys on delete cascade).
         const removed = await tx.query(`delete from groups where id = $1 and tenant_id = $2 returning id`, [groupId, tenantId]);
         if (removed.length === 0) return false;
-        await insertAuditEvent(tx, { actorId, action: 'group.deleted', targetType: 'group', targetId: groupId });
+        await insertAuditEvent(tx, { tenantId, actorId, action: 'group.deleted', targetType: 'group', targetId: groupId });
         return true;
       });
     },
@@ -110,7 +110,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
         if ((await tx.query(`select 1 from users where id = $1 and tenant_id = $2`, [userId, tenantId])).length === 0) return 'no-user' as const;
         const added = await tx.query(`insert into group_members (group_id, user_id, tenant_id) values ($1, $2, $3) on conflict do nothing returning user_id`, [groupId, userId, tenantId]);
         if (added.length === 0) return 'already-member' as const;
-        await insertAuditEvent(tx, { actorId, action: 'group.member_added', targetType: 'group', targetId: groupId, detail: { userId } });
+        await insertAuditEvent(tx, { tenantId, actorId, action: 'group.member_added', targetType: 'group', targetId: groupId, detail: { userId } });
         return 'added' as const;
       });
     },
@@ -118,7 +118,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
       return db.transaction(async (tx) => {
         const removed = await tx.query(`delete from group_members where group_id = $1 and user_id = $2 and tenant_id = $3 returning user_id`, [groupId, userId, tenantId]);
         if (removed.length === 0) return false;
-        await insertAuditEvent(tx, { actorId, action: 'group.member_removed', targetType: 'group', targetId: groupId, detail: { userId } });
+        await insertAuditEvent(tx, { tenantId, actorId, action: 'group.member_removed', targetType: 'group', targetId: groupId, detail: { userId } });
         return true;
       });
     },
