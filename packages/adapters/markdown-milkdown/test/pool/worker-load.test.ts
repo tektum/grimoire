@@ -7,8 +7,8 @@ describe('the worker module is loaded by import(), never by require(esm)', () =>
   const converter = () => createMarkdownConverter({ workerPath: FIXTURE_WORKER, poolSize: 1 });
 
   it('piscina is given the CommonJS entry', () => {
-    expect(workerEntryPath('file:///app/packages/x/dist/pool.js')).toBe('/app/packages/x/dist/worker-entry.cjs');
-    expect(workerEntryPath('file:///app/packages/x/src/pool.ts')).toBe('/app/packages/x/dist/worker-entry.cjs');
+    expect(workerEntryPath('file:///app/packages/x/dist/pool.js')).toBe('/app/packages/x/worker-entry.cjs');
+    expect(workerEntryPath('file:///app/packages/x/src/pool.ts')).toBe('/app/packages/x/worker-entry.cjs');
   });
 
   const pools: ReturnType<typeof converter>[] = [];

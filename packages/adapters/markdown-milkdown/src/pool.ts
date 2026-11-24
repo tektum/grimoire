@@ -70,10 +70,9 @@ export function defaultWorkerPath(moduleUrl: string = import.meta.url): string {
   return fileURLToPath(new URL(built, moduleUrl));
 }
 
-/** The CommonJS entry piscina loads (the built one next to this file, `../dist` from the source). */
+/** The CommonJS entry piscina loads: `worker-entry.cjs` in the package root, one level above both `src` and `dist`. */
 export function workerEntryPath(moduleUrl: string = import.meta.url): string {
-  const built = moduleUrl.endsWith('.ts') ? '../dist/worker-entry.cjs' : './worker-entry.cjs';
-  return fileURLToPath(new URL(built, moduleUrl));
+  return fileURLToPath(new URL('../worker-entry.cjs', moduleUrl));
 }
 
 const positive = (name: string, value: number): number => {
@@ -174,7 +173,7 @@ export function createMarkdownConverter(options?: ConverterOptions): PooledMarkd
   const testSlow = options?.testSlow;
   if (testSlow && (testSlow.marker === '' || !Number.isInteger(testSlow.ms) || testSlow.ms < 1)) throw new RangeError('testSlow needs a marker and a positive integer ms');
   const pool = new Piscina<WorkerRequest, unknown>({
-    // The entry is CommonJS and import()s the ES-module worker: piscina would otherwise load that with require (see worker-entry.cts).
+    // The entry is CommonJS and import()s the ES-module worker: piscina would otherwise load that with require (see worker-entry.cjs).
     filename: workerEntryPath(),
     minThreads: poolSize,
     maxThreads: poolSize,
