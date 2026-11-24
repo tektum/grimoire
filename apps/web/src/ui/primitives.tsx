@@ -6,6 +6,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Command } from 'cmdk';
 import { type ButtonHTMLAttributes, type CSSProperties, type ReactNode, useSyncExternalStore } from 'react';
 import { Toaster as SonnerToaster, toast } from 'sonner';
+import 'sonner/dist/styles.css';
 
 /** The primitives screens build on: Radix for behaviour and focus handling, tokens for looks. Every control needs an accessible name. */
 export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' }) {
