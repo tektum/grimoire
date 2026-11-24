@@ -1,7 +1,7 @@
 /*
  * Lists in the editor's page text (scoped to the editor, so the plain lists of other pages that use the reading column keep their own markers).
  * Bullets are drawn from the item's marker data. Ordered numbers are drawn from position, never from the stored label: merged concurrent edits can
- * leave stale labels (1. 2. 3. 4. 4. 5.), so a counter numbers the items as they stand. Nested bullets step through three shapes; task items draw
+ * leave stale labels (1. 2. 3. 4. 4. 5.), so a counter numbers the items as they stand, from the list's own start (a list written as 3. 4. reads 3. 4.). Nested bullets step through three shapes; task items draw
  * a box, filled and ticked when done. Colours and spacing are tokens only.
  */
 .page-editor.page-text ul,
@@ -9,11 +9,10 @@
 .page-editor.page-text li > ul,
 .page-editor.page-text li > ol { margin: var(--space-1) 0 0; }
 .page-editor.page-text li { position: relative; padding-inline-start: var(--space-5); margin: 0 0 var(--space-1); }
-/* Ordered items: numbered by position, in a column of their own that is at least wide enough for three digits and grows for a longer number. */
-.page-editor.page-text ol { counter-reset: item-position; }
-.page-editor.page-text ol > li { counter-increment: item-position; }
+/* Ordered items: numbered by position from the list's start, in a column of their own that is at least wide enough for three digits and grows for a longer number. */
+.page-editor.page-text ol > li { counter-increment: list-item; } /* the browser's own list counter, which starts at the list's `start` (the editor writes it when the list does not start at 1) */
 .page-editor.page-text ol > li { display: grid; grid-template-columns: minmax(2em, max-content) minmax(0, 1fr); column-gap: var(--space-2); padding-inline-start: 0; }
-.page-editor.page-text ol > li::before { content: counter(item-position) '.'; position: static; grid-column: 1; grid-row: 1; white-space: nowrap; }
+.page-editor.page-text ol > li::before { content: counter(list-item) '.'; position: static; grid-column: 1; grid-row: 1; white-space: nowrap; }
 .page-editor.page-text ol > li > * { grid-column: 2; }
 .page-editor.page-text li > p { margin: 0; line-height: 1.7; }
 .page-editor.page-text li::before { content: attr(data-label); position: absolute; inset-inline-start: 0; color: var(--muted); font-variant-numeric: tabular-nums; }

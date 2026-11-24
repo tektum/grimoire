@@ -41,12 +41,14 @@ test.describe('lists in the page text', () => {
       expect(await marker(bullets.nth(2))).toBe('"◦"');
       expect(await marker(bullets.nth(3))).toBe('"▪"');
       const numbered = editor.locator('li[data-list-type="ordered"]');
-      // numbered by position, not from the stored label: a list that starts at 3 in the Markdown reads 1, 2
-      expect(await marker(numbered.nth(0))).toBe('counter(item-position) "."'); // Chrome reports the counter expression, not its value
+      // numbered by position, not from the stored label
+      expect(await marker(numbered.nth(0))).toBe('counter(list-item) "."'); // Chrome reports the counter expression, not its value
       expect(await marker(numbered.nth(1))).not.toContain('data-label');
+      // ... from the list's own start: the editor writes `start` when a list does not start at 1, and the counter begins there (3, 4)
+      await expect(editor.locator('ol').first()).toHaveAttribute('start', '3');
       // A wide number runs into nothing: the text starts after the whole label.
       const long = editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ });
-      expect(await marker(long)).toBe('counter(item-position) "."');
+      expect(await marker(long)).toBe('counter(list-item) "."');
       await expect(editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ })).toHaveCount(1);
       const gap = await long.evaluate((li) => li.firstElementChild!.getBoundingClientRect().left - li.getBoundingClientRect().left);
       const labelWidth = await long.evaluate((li) => {
