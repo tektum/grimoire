@@ -7,8 +7,32 @@ const MAX_INDENT = 3;
 const DEBOUNCE_MS = 200;
 
 interface Entry {
+  /** Stays the same for the same heading element however the list around it changes: the key of its link, so a link that has the focus is not rebuilt. */
+  readonly id: number;
   readonly text: string;
   readonly level: number;
+}
+
+const ids = new WeakMap<Element, number>();
+let nextId = 0;
+const idOf = (element: Element): number => {
+  let id = ids.get(element);
+  if (id === undefined) {
+    id = nextId;
+    nextId += 1;
+    ids.set(element, id);
+  }
+  return id;
+};
+
+/** What the editor puts into a heading besides the person's own text: the labels and carets of other people's cursors. */
+const NOT_TEXT = '.ProseMirror-yjs-cursor, .ProseMirror-widget, .cursor-label';
+
+/** The text of a heading as the person typed it, without the cursors of others drawn inside it, with the spaces made one. */
+function textOf(element: HTMLElement): string {
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll(NOT_TEXT).forEach((extra) => { extra.remove(); });
+  return (copy.textContent ?? '').replace(/\s+/gu, ' ').trim();
 }
 
 /** The editor's element in the page screen's layout (page.css), or null when there is no page. */
@@ -17,7 +41,7 @@ const editorElement = (): HTMLElement | null => document.querySelector<HTMLEleme
 /** The headings the editor draws (a paragraph with a level of 1 to 6 is drawn as h1 to h6), in order, without the ones that hold only whitespace. */
 function headingsOf(root: HTMLElement): { element: HTMLElement; entry: Entry }[] {
   return Array.from(root.querySelectorAll<HTMLElement>(HEADINGS))
-    .map((element) => ({ element, entry: { text: (element.textContent ?? '').replace(/\s+/gu, ' ').trim(), level: Number(element.tagName.slice(1)) } }))
+    .map((element) => ({ element, entry: { id: idOf(element), text: textOf(element), level: Number(element.tagName.slice(1)) } }))
     .filter(({ entry }) => entry.text !== '');
 }
 
@@ -65,7 +89,7 @@ export function Outline() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const read = (): void => {
       const found = headingsOf(root);
-      setEntries((before) => (before.length === found.length && before.every((e, i) => e.text === found[i]?.entry.text && e.level === found[i].entry.level) ? before : found.map((f) => f.entry)));
+      setEntries((before) => (before.length === found.length && before.every((e, i) => e.id === found[i]?.entry.id && e.text === found[i].entry.text && e.level === found[i].entry.level) ? before : found.map((f) => f.entry)));
       setCurrent(currentIndex(root, found));
     };
     const later = (): void => {
@@ -114,7 +138,7 @@ export function Outline() {
     <nav aria-label="Page outline" className="outline">
       <ul ref={list} onKeyDown={move}>
         {entries.map((entry, i) => (
-          <li key={`${String(i)}-${entry.text}`}>
+          <li key={entry.id}>
             <a
               href="#"
               data-indent={Math.min(entry.level, MAX_INDENT + 1) - 1}
