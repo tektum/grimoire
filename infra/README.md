@@ -31,7 +31,7 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 | network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway) |
 | database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate` (under a database lock, so a second one waits); the connections use `sslmode=verify-full` against Amazon's database CA bundle, which the image fetches with a pinned checksum into `/app/certs`; the two role passwords are random and live in the state |
 | files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the rule belongs to the infrastructure: the task runs in `external` CORS mode, which means nothing in it writes the rule, and nothing checks it at start either, because only `grimoire files-setup` runs the check and the task does not run it; a drifted rule shows as failed browser uploads) | virtual addressing; the file origin in the policy names the bucket host |
-| identity | the Descope project of the stage, and a management key of it with the role `project-asset-mgmt-read` (read users, access keys and tenants, nothing else) | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID`; the key (an ECS secret) lets the server read the profile of a user it does not know yet, which the session token does not carry, so a first sign-in works. Creating it needs the deploy key to be allowed to make management keys |
+| identity | the Descope project of the stage | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID`; the session token carries the person's profile (see "Tenants and the token"), so the server needs no Descope key |
 | task | `db-setup`, then `migrate`, then `app` (`init-order.ts`) | the first two are not essential and the next container waits for each one's exit with 0 (ECS `dependsOn` with `SUCCESS`): a failing step stops the task before it serves, the old task keeps serving |
 | task size and stop | 0.5 vCPU, 2 GB; the app has a 64 second stop timeout | the memory is above the collaboration memory guard (1 GiB by default) so the guard refuses work before the task is killed; 64 seconds is what the server needs to drain and save open pages (ECS's default of 30 would cut a deploy short; a test ties it to the server's budget) |
 | secrets | Parameter Store `SecureString`, as ECS secrets | the database passwords and the three connection strings reach the containers by ARN, not as plain environment values; the `app` container gets only the runtime role's string, the schema owner's stays with `migrate` |
@@ -41,11 +41,19 @@ Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_
 
 Stated plainly: one task only (`scaling` is 1 to 1); the migration lock would make a second task wait, but staging needs no more. When Amazon publishes a new CA bundle, the image build fails at its checksum until the checksum in the `Dockerfile` is updated. The images are built three times from one Dockerfile (one for each container: SST names its build and its cache by container and has no way to share one, and the layers are the same, so the second and third builds are cache hits and push nothing new). Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the browser uploads against the bucket's rule.
 
-The management key is never a plain environment value or a stack output: it is stored as a Parameter Store `SecureString` and reaches the `app` container as an ECS secret (the execution role reads it when a task starts). It has no expiry. To rotate it, change the logical name of the `RuntimeKey` resource in `staging.ts` (and its `DescopeKey` parameter) and deploy: the old key is deleted, the new one stored, and the service rolls to a task that reads it. A later change can remove the key altogether by putting the profile into the user token with a Descope JWT template (the server already reads `email`, `name` and `emailVerified` claims); that needs the template syntax confirmed against a real project first.
+
+## Tenants and the token
+
+Two things in each project make the sign-in carry a tenant (the design is `docs/tenancy.md`):
+
+- **The flow** `sign-up-or-in` (`descope/flows/sign-up-or-in.json`): after the one-time code is verified, a person who has a tenant goes on; otherwise `update-user-tenant-email-domain` joins them to the tenant whose self-provisioning domain is their email domain, and when there is none `createTenant` makes one named after the domain, with the domain as its self-provisioning domain, and selects it. Checked on a throwaway project with two test users of one domain (the first made the tenant, the second joined it).
+- **The user token** (`JwtTemplate` `grimoire-user`, the project's user template): the automatic current-tenant claim `dct`, and the claims `email`, `name` and `emailVerified` (a boolean), next to the `tenants` map. The server already reads the profile claims, so it asks the provider for nothing and needs no management key. Checked on the same project.
+
+The server does not use the tenant yet (`docs/tenancy.md` is a proposal); until it does, the sign-in of a project stays closed by `GRIMOIRE_ALLOWED_EMAIL_DOMAINS`, and the flow only creates tenants nobody reads.
 
 ## What it does not make
 
-- Roles, permissions and tenants: the product authorizes with its own database, and the provider has no tenant resource (only a tenant attribute).
+- Roles and permissions: the product authorizes with its own database. Tenants are made by the sign-in flow (below), not by code: the provider has no tenant resource.
 - Passkeys, widgets and connectors: the sign-in does not use them (the built-in email delivery sends the code).
 - Test users: the provider has only a static code for them, which is a secret. Create them through the management API when the live check needs one.
 - The hand-made project "Grimoire dev" is not adopted. It stays as it is until the new development project works, and is then retired by the owner.

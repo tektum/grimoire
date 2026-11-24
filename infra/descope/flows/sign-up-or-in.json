@@ -1,8 +1,4 @@
 {
-  "metadata": {
-    "description": "Sign up or in with a one-time code sent by email.",
-    "name": "Sign up or in"
-  },
   "contents": {
     "startTask": "1",
     "tasks": {
@@ -13,7 +9,7 @@
         "next": {},
         "type": "automated",
         "view": {
-          "x": 2688,
+          "x": 4080,
           "y": 432
         }
       },
@@ -36,6 +32,97 @@
         "view": {
           "x": 372,
           "y": 288
+        }
+      },
+      "10": {
+        "action": "update-user-tenant-email-domain",
+        "errorHandlingV2": {
+          "ActionErrorUpdateUserTenantByEmailDomainNoTenant": {
+            "errorHandlingType": "custom"
+          }
+        },
+        "id": "10",
+        "name": "Join the tenant of the email domain",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "success",
+              "taskId": "0"
+            },
+            {
+              "interactionId": "ActionErrorUpdateUserTenantByEmailDomainNoTenant",
+              "taskId": "11"
+            }
+          ]
+        },
+        "type": "automated",
+        "view": {
+          "x": 3036,
+          "y": 420
+        }
+      },
+      "11": {
+        "action": "createTenant",
+        "arguments": {
+          "dynamicName": {
+            "type": "inline",
+            "value": "{{user.emailDomain}}"
+          },
+          "dynamicSelfProvision": {
+            "type": "inline",
+            "value": "{{user.emailDomain}}"
+          },
+          "setAsSelectedTenant": {
+            "type": "inline",
+            "value": true
+          }
+        },
+        "errorHandlingV2": {
+          "TenantExists": {
+            "errorHandlingType": "custom"
+          }
+        },
+        "id": "11",
+        "name": "Create the tenant of the email domain",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "success",
+              "taskId": "0"
+            },
+            {
+              "interactionId": "TenantExists",
+              "taskId": "12"
+            }
+          ]
+        },
+        "type": "automated",
+        "view": {
+          "x": 3384,
+          "y": 480
+        }
+      },
+      "12": {
+        "action": "update-user-tenant-email-domain",
+        "errorHandlingV2": {
+          "ActionErrorUpdateUserTenantByEmailDomainNoTenant": {
+            "errorHandlingType": "automatic"
+          }
+        },
+        "id": "12",
+        "name": "Join once more after a tenant was made in between",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "success",
+              "taskId": "0"
+            }
+          ]
+        },
+        "type": "automated",
+        "view": {
+          "x": 3732,
+          "y": 600
         }
       },
       "2": {
@@ -117,7 +204,7 @@
           "rules": [
             {
               "interactionId": "success",
-              "taskId": "0"
+              "taskId": "9"
             }
           ]
         },
@@ -242,6 +329,50 @@
           "y": 576
         }
       },
+      "9": {
+        "conditions": [
+          {
+            "atomicConditions": [
+              {
+                "operator": "greater-than",
+                "predicate": {
+                  "type": "inline",
+                  "value": 0
+                },
+                "target": {
+                  "type": "context",
+                  "value": "user.tenantCount"
+                }
+              }
+            ],
+            "interactionId": "has-tenant",
+            "name": "has a tenant"
+          },
+          {
+            "interactionId": "ELSE",
+            "name": "ELSE"
+          }
+        ],
+        "id": "9",
+        "name": "Has a tenant already",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "has-tenant",
+              "taskId": "0"
+            },
+            {
+              "interactionId": "ELSE",
+              "taskId": "10"
+            }
+          ]
+        },
+        "type": "condition",
+        "view": {
+          "x": 2688,
+          "y": 360
+        }
+      },
       "start": {
         "id": "start",
         "name": "start",
@@ -258,6 +389,10 @@
         }
       }
     }
+  },
+  "metadata": {
+    "description": "Sign up or in with a one-time code sent by email.",
+    "name": "Sign up or in"
   },
   "screens": [
     {
