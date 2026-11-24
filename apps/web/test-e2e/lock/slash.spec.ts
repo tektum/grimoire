@@ -4,10 +4,10 @@ import { twoUsers } from '../support/two-users';
 import { makePage } from '../editor/pages';
 import { blocks, surface } from './support';
 
-const KINDS = ['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Bulleted list', 'Numbered list', 'Task list', 'Quote', 'Code block', 'Divider', 'Table'];
+const KINDS = ['Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Bulleted list', 'Numbered list', 'Task list', 'Quote', 'Code block', 'Divider', 'Table', 'Image or file'];
 
 test.describe('the slash menu', () => {
-  test('opens on "/" with every block kind of the schema, each with a name, and is operated with the arrow keys and Enter', async ({ browser, baseURL }) => {
+  test('opens on "/" with every block kind of the schema and the file chooser, each with a name, and is operated with the arrow keys and Enter', async ({ browser, baseURL }) => {
     const made = await makePage('Some words.\n');
     const users = await twoUsers(browser, baseURL);
     try {
