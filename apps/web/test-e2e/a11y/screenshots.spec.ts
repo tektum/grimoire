@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { mockApi } from '../collections/mock-api';
+import { expect, test, type Page } from '@playwright/test';
+import { API, mockApi } from '../collections/mock-api';
 import { makePage } from '../editor/pages';
 import { shots } from '../support/shots';
 import { signInAs } from '../support/sign-in';
@@ -13,14 +13,38 @@ const p = (id: string, parentId: string | null, position: string, title: string)
 const COLLECTIONS = [{ id: 'c1', name: 'Handbook', myPermission: 'read-write' as const }];
 const PAGES = [p('welcome', null, 'p0', 'Welcome'), p('guide', 'welcome', 'p0', 'Getting started'), p('plan', null, 'p1', 'Plan for May'), p('notes', null, 'p2', 'Meeting notes')];
 
+/** The mock API with the person the other shots show, and the page after it has loaded (no "Loading" of a screen that is still being fetched). */
+async function openCollection(page: Page): Promise<void> {
+  await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
+  await page.route(`${API}/v1/me`, (route) =>
+    route.request().method() === 'OPTIONS'
+      ? route.fallback()
+      : route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: { 'access-control-allow-origin': route.request().headers()['origin'] ?? '*' },
+          body: JSON.stringify({ id: 'u1', name: 'Alice Archer', email: 'alice@dev.invalid', role: 'member' }),
+        }),
+  );
+}
+
+/** The page is settled: the tree is drawn, nothing says "Loading", and the person's name is shown. `E2E_SHOT_FONT` (a font stack) stands in for the interface font where the machine has none that looks like the product's. */
+async function settled(page: Page): Promise<void> {
+  await expect(page.getByRole('treeitem')).toHaveCount(4);
+  await expect(page.getByText('Loading', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Alice Archer')).toBeVisible();
+  const font = process.env['E2E_SHOT_FONT'];
+  if (font !== undefined) await page.addStyleTag({ content: `:root { --font-ui: ${font}; }` });
+}
+
 for (const reduced of [false, true]) {
   test(`the contents tree with the focus on a row${reduced ? ', with reduced motion' : ''}`, async ({ page, context, browserName }) => {
     test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
     await signInAs(context, 'e2e-alice', 'member', { check: false });
-    await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
+    await openCollection(page);
     if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/c/c1');
-    await expect(page.getByRole('treeitem')).toHaveCount(4);
+    await settled(page);
     await tabTo(page, page.getByRole('treeitem'));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
@@ -31,18 +55,18 @@ for (const reduced of [false, true]) {
 test('the contents tree in a window 320 pixels wide (a page at 400% zoom)', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
   await signInAs(context, 'e2e-alice', 'member', { check: false });
-  await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
+  await openCollection(page);
   await page.goto('/c/c1');
-  await expect(page.getByRole('treeitem')).toHaveCount(4);
+  await settled(page);
   await shots(page, TASK, 'narrow-320', { width: 320 });
 });
 
 test('the Move to dialog with the focus on a choice', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
   await signInAs(context, 'e2e-alice', 'member', { check: false });
-  await mockApi(page, { collections: COLLECTIONS, pages: PAGES });
+  await openCollection(page);
   await page.goto('/c/c1');
-  await expect(page.getByRole('treeitem')).toHaveCount(4);
+  await settled(page);
   await tabTo(page, page.getByRole('treeitem'));
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
