@@ -98,6 +98,9 @@ export interface LockClient {
 
 async function connectForLock(connectionString: string): Promise<LockClient> {
   const client = new pg.Client({ connectionString });
+  // An idle connection the server drops (a restart, a network blip) would otherwise be an unhandled error that ends the process in the middle of a migration. The loss costs
+  // this extra lock only: Kysely's own lock, held on the migrations' connection, still serialises the schema changes.
+  client.on('error', () => undefined);
   await client.connect();
   return client;
 }
@@ -114,10 +117,11 @@ export async function withMigrationLock<T>(connectionString: string, run: () => 
     try {
       return await run();
     } finally {
-      await client.query(`select pg_advisory_unlock(hashtext('grimoire.migrate'))`);
+      // Letting go is best effort: it must not replace the error of the migration, and the lock goes with the connection anyway.
+      await client.query(`select pg_advisory_unlock(hashtext('grimoire.migrate'))`).catch(() => undefined);
     }
   } finally {
-    await client.end();
+    await client.end().catch(() => undefined);
   }
 }
 
