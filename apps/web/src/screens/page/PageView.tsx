@@ -69,14 +69,18 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     });
 
     const showSaved = (): void => {
-      void queue(element, async () => {
-        if (cancelled || live !== null || saved !== null) return;
+      void (async () => {
+        if (live !== null || saved !== null) return;
+        // The read happens outside the queue: a slow export must not hold up the live editor, which only needs the queue for its DOM steps.
         const { data, response } = await session.api.GET('/v1/pages/{id}/markdown' as never, { params: { path: { id: page.id } }, parseAs: 'text' } as never);
-        if (cancelled || live !== null || saved !== null || !response.ok) return;
-        saved = await engine.mountReadOnly(element, typeof data === 'string' ? data : '');
-        setStale(page.markdownStale || response.headers.get('X-Grimoire-Markdown-Stale') === 'true');
-        setShowingSaved(true);
-      }).catch(() => log('warn', 'web.page_saved_view_failed', { page: page.id }));
+        if (cancelled || !response.ok) return;
+        await queue(element, async () => {
+          if (cancelled || live !== null || saved !== null) return; // a live editor that mounted first wins
+          saved = await engine.mountReadOnly(element, typeof data === 'string' ? data : '');
+          setStale(page.markdownStale || response.headers.get('X-Grimoire-Markdown-Stale') === 'true');
+          setShowingSaved(true);
+        });
+      })().catch(() => log('warn', 'web.page_saved_view_failed', { page: page.id }));
     };
 
     const goLive = (generation: number): void => {

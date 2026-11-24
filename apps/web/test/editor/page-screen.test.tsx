@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Auth } from '../../src/auth';
@@ -11,20 +11,21 @@ afterEach(cleanup);
 const show = (status: number, body: unknown = {}) => {
   const GET = vi.fn(async () => ({ data: body, response: new Response('', { status }) }));
   const value: AppSession = { auth: {} as Auth, api: { GET } as unknown as AppSession['api'], collabUrl: 'ws://collab.test' };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter([{ path: '/p/:slug', element: <PageScreen /> }], { initialEntries: ['/p/my-plan-abc123'] });
   render(
     <SessionContext.Provider value={value}>
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider client={client}>
         <RouterProvider router={router} />
       </QueryClientProvider>
     </SessionContext.Provider>,
   );
-  return GET;
+  return { GET, client };
 };
 
 describe('the page screen asks for the page by the id at the end of its address', () => {
   it('asks by the text after the last dash', async () => {
-    const GET = show(404);
+    const { GET } = show(404);
     await screen.findByRole('heading', { name: 'Page not found' });
     expect(GET).toHaveBeenCalledWith('/v1/pages/by-url-id/{urlId}', expect.objectContaining({ params: { path: { urlId: 'abc123' } } }));
   });
@@ -44,5 +45,16 @@ describe('the page screen asks for the page by the id at the end of its address'
     show(200, { id: '11111111-1111-4111-8111-111111111111', title: 'My plan', myPermission: 'read-write', markdownStale: false });
     expect((await screen.findByRole('heading', { name: 'My plan' })).tagName).toBe('H1');
     await waitFor(() => expect(screen.getByTestId('editor-root').getAttribute('data-collab-state')).toBe('connecting'));
+  });
+
+  it('keeps an open page open when the page cannot be read again: the editor and its unsent typing are not torn down', async () => {
+    const { GET, client } = show(200, { id: '11111111-1111-4111-8111-111111111111', title: 'My plan', myPermission: 'read-write', markdownStale: false });
+    await screen.findByRole('heading', { name: 'My plan' });
+    GET.mockResolvedValue({ data: {}, response: new Response('', { status: 500 }) });
+    await act(async () => void (await client.refetchQueries()));
+    await waitFor(() => expect(client.getQueryCache().getAll()[0]!.state.status).toBe('error')); // the read failed ...
+    await act(async () => undefined); // ... and the screen has had its turn to react
+    expect(screen.getByRole('heading', { name: 'My plan' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

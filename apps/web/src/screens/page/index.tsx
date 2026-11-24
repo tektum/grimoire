@@ -7,7 +7,8 @@ export default function PageScreen() {
   const { slug = '' } = useParams();
   const result = usePage(urlIdOf(slug));
   if (result.isPending) return <p role="status">Loading…</p>;
-  if (result.isError) return <p role="alert">This page can&rsquo;t be opened right now. Reload to try again.</p>;
+  // A failed re-read of a page that is open (its permission is read again when its document is replaced) keeps the page open.
+  if (result.isError && result.data === undefined) return <p role="alert">This page can&rsquo;t be opened right now. Reload to try again.</p>;
   if (result.data.kind === 'missing')
     return (
       <section aria-labelledby="screen-title">

@@ -80,6 +80,7 @@ function mountPage(
     markdown?: string;
     staleHeader?: boolean;
     markdownStatus?: number;
+    markdownHangs?: boolean;
     onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
     authOver?: Partial<Auth>;
@@ -88,10 +89,13 @@ function mountPage(
   const fake = fakeEngine();
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
-    GET: vi.fn(async () => ({
-      data: options.markdown ?? 'Saved text',
-      response: new Response('', { status: options.markdownStatus ?? 200, headers: options.staleHeader ? { 'X-Grimoire-Markdown-Stale': 'true' } : {} }),
-    })),
+    GET: vi.fn(async () => {
+      if (options.markdownHangs) return new Promise<never>(() => undefined);
+      return {
+        data: options.markdown ?? 'Saved text',
+        response: new Response('', { status: options.markdownStatus ?? 200, headers: options.staleHeader ? { 'X-Grimoire-Markdown-Stale': 'true' } : {} }),
+      };
+    }),
   } as unknown as AppSession['api'];
   const value: AppSession = { auth, api, collabUrl: 'ws://collab.test' };
   const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
@@ -375,6 +379,15 @@ describe('the page screen', () => {
     gates[1]!();
     await waitFor(() => expect(t.lives).toHaveLength(1));
     expect(calls).toBe(2);
+    expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+  });
+
+  it('goes live when the page has synced even if the saved text is slow to arrive, and does not show it afterwards', async () => {
+    const t = mountPage({ markdownHangs: true });
+    await waitFor(() => expect(t.api.GET).toHaveBeenCalled());
+    await t.synced();
+    await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
+    expect(t.root().textContent).toBe('live');
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
   });
 });
