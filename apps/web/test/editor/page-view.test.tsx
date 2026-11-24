@@ -607,4 +607,15 @@ describe('the page screen', () => {
     Reflect.deleteProperty(document, 'visibilityState');
 >>>>>>> 987e615 (feat(web): a hidden tab lets go of its connection; the hidden-tab, offline, stale-epoch and connection-signals specs (M6-T04))
   });
+
+  it('starts the clock at once for a page that opens in a tab that is already hidden', async () => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    try {
+      const t = mountPage({ hiddenMs: 20 });
+      await waitFor(() => expect(t.sessions[0]!.provider.disconnects).toBe(1));
+      await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('disconnected'));
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
 });

@@ -193,6 +193,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       else manager.resume();
     };
     document.addEventListener('visibilitychange', onVisibility);
+    if (document.visibilityState === 'hidden') onVisibility(); // a page opened in a background tab starts its clock at once
     showSaved();
 
     return () => {

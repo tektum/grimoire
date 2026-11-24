@@ -490,19 +490,62 @@ describe('a hidden tab', () => {
     expect(h.sessions).toHaveLength(1);
   });
 
-  it('resume after more than a minute starts a new document (the page may have been reset meanwhile) and holds the copy', async () => {
+  it('resume after a long time still connects the same document with the epoch: what was typed offline is merged, and a reset is caught by the epoch, not by throwing the document away', async () => {
     const { h, manager } = start();
     await flush();
-    h.last().provider.succeed(4);
-    h.last().doc.text = 'what the tab holds';
+    const p = h.last().provider;
+    p.succeed(4);
+    h.last().doc.text = 'typed while offline, never sent';
     manager.suspend();
-    await h.clock.advance(61_000);
+    await h.clock.advance(10 * 60_000);
     manager.resume();
     await flush();
+    expect(h.sessions).toHaveLength(1);
+    expect(h.sessions[0]!.doc.destroyed).toBe(false);
+    expect(p.connects).toBe(2);
+    expect(decodeHandshake(p.tokens.at(-1)!).e).toBe(4);
+    // The page was reset meanwhile: the server refuses the old epoch, and the tab takes the stale-epoch path with a copy of what it held.
+    p.refuse('stale-epoch');
+    await flush();
+    expect(manager.state().copy).toBe('typed while offline, never sent');
     expect(h.sessions).toHaveLength(2);
-    expect(h.sessions[0]!.doc.destroyed).toBe(true);
-    expect(manager.state()).toMatchObject({ suspended: false, generation: 2 });
-    expect(h.last().provider.connects).toBe(1);
+  });
+
+  it('a token refresh that was running when the tab was hidden does not connect it again', async () => {
+    const { h, manager } = start();
+    await flush();
+    let finish: (ok: boolean) => void = () => undefined;
+    h.auth.refresh = () => new Promise<boolean>((resolve) => void (finish = resolve));
+    const p = h.last().provider;
+    p.refuse('invalid-token');
+    manager.suspend();
+    finish(true);
+    await flush();
+    expect(p.connects).toBe(1);
+    expect(manager.state().suspended).toBe(true);
+  });
+
+  it('keeps the reason a page is read-only or too large through a hide and a show, and drops only the offline text', async () => {
+    const reader = start();
+    await flush();
+    reader.h.last().provider.emit({ type: 'authenticated', scope: 'readonly' });
+    reader.manager.suspend();
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    reader.manager.resume();
+    expect(reader.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.readOnly });
+    const large = start();
+    await flush();
+    large.h.last().provider.stateless({ kind: 'refusal', code: 'state-cap' });
+    large.manager.suspend();
+    expect(large.manager.state()).toMatchObject({ readOnly: true, text: TEXTS.tooLarge });
+    const offline = start();
+    await flush();
+    offline.h.last().provider.succeed(1);
+    offline.h.last().provider.disconnected();
+    await offline.h.clock.advance(10_000);
+    expect(offline.manager.state().text).toBe(TEXTS.offline);
+    offline.manager.suspend();
+    expect(offline.manager.state().text).toBeNull();
   });
 
   it('does nothing for a manager that is stopped, not started, already suspended, or not suspended', async () => {

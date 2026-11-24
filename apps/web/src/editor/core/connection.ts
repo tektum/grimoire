@@ -87,7 +87,6 @@ const ERROR_RETRY_MS = 30_000;
 const ERROR_TRIES = 3;
 const TOKEN_RETRY_MS = 5000;
 const REFRESH_WINDOW_MS = 60_000;
-const RESUME_FRESH_AFTER_MS = 60_000;
 const REFUSAL_CLOSE_WINDOW_MS = 2000;
 const LONG_OFFLINE_MS = 60_000;
 
@@ -107,7 +106,6 @@ export class ConnectionManager {
   /** When the connection was lost, until it is made again. */
   private lostAt: number | null = null;
   private refreshingFor: Session | null = null;
-  private suspendedAt = 0;
   /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
   private large = false;
   /** True after the manager disconnected the provider itself (a stop, or a wait before an error retry): the close that follows is its own doing and says nothing new. */
@@ -175,20 +173,18 @@ export class ConnectionManager {
     this.clearTimers();
     this.clearOffline();
     this.quiet = true;
-    this.suspendedAt = this.timers.now();
     this.session.provider.disconnect();
-    this.set({ suspended: true, phase: 'retrying', offline: false, text: null });
+    // Only the transient text goes: the reason a page is read-only or too large stays.
+    this.set({ suspended: true, phase: 'retrying', offline: false, text: this.current.text === TEXTS.offline ? null : this.current.text });
   }
 
-  /** The tab is shown again: connect, or, after more than 60 s away (the page may have been reset meanwhile), start a new document. */
+  /**
+   * The tab is shown again: connect again, on the same document with the recorded epoch. What the tab holds that the server never saw (typed while
+   * offline) is merged; and if the page was reset meanwhile the server refuses the old epoch, which takes the stale-epoch path (the copy is offered).
+   */
   resume(): void {
     if (!this.current.suspended || this.session === null) return;
-    const away = this.timers.now() - this.suspendedAt;
     this.set({ suspended: false, phase: 'connecting' });
-    if (away > RESUME_FRESH_AFTER_MS) {
-      this.fresh({ capture: true });
-      return;
-    }
     this.attempts = 0;
     this.connectSession();
   }
@@ -225,7 +221,8 @@ export class ConnectionManager {
   /** Connects the current session; a tab that holds a document but never learned the page's epoch first starts over (it could push stale content). */
   private connectSession(): void {
     const session = this.session;
-    if (session === null) return;
+    if (session === null || this.current.suspended) return; // a hidden tab stays disconnected, whatever was waiting to connect it
+
     if (this.epoch === null && !session.doc.isEmpty()) {
       this.fresh();
       return;
