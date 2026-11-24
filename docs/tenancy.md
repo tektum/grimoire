@@ -12,24 +12,31 @@ A **tenant** is a workspace. There is one for each email domain that anyone has 
 
 ### 2.1 The claim
 
-Descope session tokens carry a `tenants` map (tenant id to that person's roles) and, once a tenant is selected, `dct` (the current tenant id). The documentation does not say whether `tenants` is present without a JWT template; it does say a template option, "set active tenant claim automatically", puts `dct` in the token when the person has exactly one tenant. We rely on that option and not on defaults:
+Checked on a throwaway Descope project (since deleted), by signing two test users in through the flow of section 2.3 and reading the session token:
 
-- **A user JWT template, made by code** (`descope.JwtTemplate`, with `autoTenantClaim` on, assigned as the project's user template in `SessionSettings`). Its exact claim syntax is not confirmed by the documentation I can reach: the first deployment to a real project is the proof.
-- **The server's rule:** a token is accepted for a tenant only if `dct` is present, is a string of a bounded length, and is a key of `tenants`. Anything else is the "no tenant" case (section 7).
-- **One tenant for each person.** Under one tenant for each domain a person has one address and so one tenant. A token with more than one key in `tenants` is refused in the first version (open question 5).
+- **Without a JWT template** the token carries `tenants`, a map from tenant id to that person's roles (`{"T3...": {}}` for a person with no tenant roles), and no `dct`, no email and no name.
+- **With a user JWT template** (`autoDCT` on, and the claims `email`, `name` and `emailVerified` set from `{{user.email}}`, `{{user.name}}` and `{{user.verifiedEmail}}`) the token carries `dct` (the current tenant id), `email`, `name`, `emailVerified` as a real boolean, and `tenants`. The names are the ones the server already reads.
 
-### 2.2 The token carries the profile too
+So the template is made by code (`descope.JwtTemplate`, and its id given to the session settings as the user template) and the server's rule is:
 
-Today the server reads email and name from claims when the token has them, and otherwise asks the provider's management API with a project key (the staging stack makes a read-only key for that, stored as a secret). The same user template can carry `email`, `name` and `emailVerified` as claims (the server already reads those names). Then no runtime key is needed at all. That is the better end state, and it needs the same first-deployment proof (a boolean claim must stay a boolean). Until then the key stays.
+- the tenant is `dct` when it is a string of a bounded length and a key of `tenants`; when `dct` is absent and `tenants` has exactly one key, that key; anything else is the "no tenant" case (section 6);
+- a token with more than one key in `tenants` and no usable `dct` is refused in the first version (open question 5).
+
+### 2.2 The token carries the profile too, so no runtime key is needed
+
+Today the server reads email and name from claims when the token has them, and otherwise asks the provider's management API with a project key (the staging stack makes a read-only key for that). The same template carries `email`, `name` and `emailVerified` (checked, section 2.1), so the key and its secret can go: the staging stack drops them in the change that adds the template.
 
 ### 2.3 What the sign-in flow does
 
-In the flow `sign-up-or-in` (kept as JSON in `infra/descope/flows/`), after the person has proved the address:
+Checked end to end on the throwaway project with two test users of one domain. After the person has proved the address (`verify-code-otp-email`):
 
-1. If the person has no tenant: create a tenant named after the address's domain, with that domain as its self-provisioning domain, and assign the person to it (the flow action `createTenant` does both: "create a new tenant, and assign it to user"; its inputs include the name, a dynamic name, the self-provisioning domains and "set as selected tenant"). If the tenant exists already, the action answers `TenantExists`, and the flow instead lets self-provisioning join the person.
-2. Select that tenant, so `dct` is in the token.
+1. A condition on `user.tenantCount` (greater than 0): a person who has a tenant goes straight to the end.
+2. Otherwise the action `update-user-tenant-email-domain` ("add a tenant to user according to the user's email domain; the email must be valid and verified") joins the person to the tenant whose self-provisioning domain is theirs. When there is none it answers `ActionErrorUpdateUserTenantByEmailDomainNoTenant`.
+3. On that answer the action `createTenant` ("create a new tenant, and assign it to user") runs with the tenant name and the self-provisioning domain both `{{user.emailDomain}}`, and "set as selected tenant" on. If another sign-up made the tenant in the meantime it answers `TenantExists`, and the flow goes back to step 2.
 
-The conditions and the way to read the domain from the address are not in the documentation I can reach. I am building the flow in a throwaway Descope project to learn the exact JSON and to check it with the provider's flow validator; nothing touches the real projects. This section is updated with what that shows.
+Observed: the first person got a tenant named `spike.test` with `spike.test` as its self-provisioning domain; the second person of that domain joined the same tenant and no second tenant was made. The flow is kept as JSON in `infra/descope/flows/`.
+
+The action `check-if-free-email` ("check if the provided email is a free email domain") exists in the flow catalog. Placing it before step 2 would refuse public mailbox providers inside the flow itself, which is one way to answer open question 1 (the other is a refused-domains list in the server's settings, section 3.7). It is not in the flow until the owner decides.
 
 ## 3. What is scoped, and how
 
@@ -115,8 +122,8 @@ New uploads use the new key prefix; old files keep their keys.
 
 | Token | Result |
 |---|---|
-| valid, `dct` present and in `tenants` | the person is that tenant's; the user row is made on first sight with that `tenant_id` (a `member`, or an administrator by section 3.6) |
-| valid, no tenant, or `dct` not in `tenants`, or several tenants | refused: `403` `no-tenant` on the API, a refusal at the collaboration handshake; a log line without personal data. The flow gives a new person a tenant before the token is made, so this is only a token from another flow or a person the provider has not yet assigned. |
+| valid, and a tenant by the rule of section 2.1 (`dct` in `tenants`, or the one key of `tenants`) | the person is that tenant's; the user row is made on first sight with that `tenant_id` (a `member`, or an administrator by section 3.6) |
+| valid, no `tenants`, or `dct` not in `tenants`, or several keys and no `dct` | refused: `403` `no-tenant` on the API, a refusal at the collaboration handshake; a log line without personal data. The flow gives a new person a tenant before the token is made, so this is only a token from another flow or a person the provider has not yet assigned. |
 | valid, the user row exists but belongs to another tenant than the claim | refused, and logged as a possible fault (the provider's claim and our row disagree). Not repaired by itself. |
 
 ## 7. Tests that must exist (written first, red first)
@@ -137,7 +144,7 @@ Two tenants A and B, each with an administrator, a member and a viewer, each wit
 ## 8. Small pull requests, in this order
 
 1. This document, accepted, with the decision and spec entries it changes.
-2. The sign-in flow and the JWT template in code (throwaway project first, then the real projects after the owner's go-ahead), with the token carrying tenant and profile.
+2. The sign-in flow and the JWT template in code (both checked on a throwaway project already; applied to the real projects only after the owner's go-ahead), with the token carrying tenant and profile, and the staging stack's runtime key removed.
 3. The isolation tests, written first against today's code (red).
 4. The migration: `tenants`, `tenant_id` everywhere, the legacy backfill, the composite keys, the per-tenant unique indexes.
 5. The server reads the tenant from the verified token; every repository takes the tenant; the routes follow (several pull requests by area: pages and collections, people and groups, files, history and trash).
