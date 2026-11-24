@@ -121,6 +121,25 @@ describe('the handle button, its menu and its keys', () => {
     host.remove();
   });
 
+  it('does nothing for a block that has no text, a divider: no neighbour is turned in its place', async () => {
+    current = await plainEditor('First.\n\n---\n\nSecond.');
+    const t = current;
+    const divider = t.view().dom.children[1] as HTMLElement;
+    expect(divider.tagName).toBe('HR');
+    const { host } = createHandleHost(await t.editor.action((ctx) => ctx), () => ({ el: divider }));
+    document.body.append(host);
+    button(host).click();
+    await vi.waitFor(() => expect(optionIds(host)).toHaveLength(14));
+    const quote = Array.from(host.querySelectorAll('[role=option]')).find((o) => o.textContent?.startsWith('Quote'))!;
+    quote.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    const doc = t.view().state.doc;
+    expect(doc.childCount, 'nothing was wrapped or added').toBe(3);
+    expect(doc.child(0).type.name).toBe('paragraph'); // the neighbour before it
+    expect(doc.child(2).type.name).toBe('paragraph'); // and the one after it
+    expect(doc.child(1).type.name).toBe('hr');
+    host.remove();
+  });
+
   it('does nothing when the pointer is over no block', async () => {
     const { t, host, setActive } = await handleOnSecond();
     setActive(false);
