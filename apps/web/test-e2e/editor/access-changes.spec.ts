@@ -4,12 +4,12 @@ import { mapSignal } from '../../src/editor/core/map-signal';
 import { apiUrl, devSecret } from '../support/env';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
-import { makePage, readPage, setDefaultPermission } from './pages';
+import { makePage, readPage, setDefaultPermission, setSuspended, whoIs } from './pages';
 import { probe, token } from './probe';
 import { recreateApp } from './stack';
 
 test.describe('an administrator changes access under an open page', () => {
-  test('access taken away: the page stops with "You no longer have access to this page", and the server refuses the person with forbidden', async ({ browser, baseURL }) => {
+  test('access taken away: every denial of a page looks the same, so the page shows "Page not found" and the server refuses the person with not-found', async ({ browser, baseURL }) => {
     test.slow(); // the app is recreated twice
     const made = await makePage('# Closed\n\nA page that is closed to its reader.\n');
     await recreateApp({ M6_RECHECK_SECONDS: '2' });
@@ -20,21 +20,51 @@ test.describe('an administrator changes access under an open page', () => {
         await page.goto(made.path);
         await waitForSynced(page);
         await setDefaultPermission(made.collectionId, null);
-        await expect(page.getByText('You no longer have access to this page')).toBeVisible({ timeout: 30_000 });
-        await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
+        await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('editor-root')).toHaveCount(0);
 
         // What the server says to the same person asking again: the refusal the client has a row for, and a close handled alike.
         const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
         const seen = await probe(page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
-        console.log(`forbidden observed ${JSON.stringify(seen)}`);
-        expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
-        expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NO_ACCESS' });
+        console.log(`access removed observed ${JSON.stringify(seen)}`);
+        expect(seen.denied, 'the reason of the refusal').toBe('not-found');
+        expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NOT_FOUND' });
         expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
-        expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'forbidden' }));
+        expect(seen.close!.reason).toBe('not-found');
+        expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'not-found' }));
       } finally {
         await users.close();
       }
     } finally {
+      await recreateApp();
+    }
+  });
+
+  test('a person who is suspended: the page stops with "You no longer have access to this page", and the server refuses them with forbidden', async ({ browser, baseURL }) => {
+    test.slow();
+    const made = await makePage('# Suspended\n\nA page open in the tab of a person who is then suspended.\n');
+    await recreateApp({ M6_RECHECK_SECONDS: '2' });
+    const users = await twoUsers(browser, baseURL);
+    const bob = await whoIs(users.b.userId);
+    try {
+      const { page } = users.b;
+      await page.goto(made.path);
+      await waitForSynced(page);
+      await setSuspended(bob.id, true);
+      await expect(page.getByText('You no longer have access to this page')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
+
+      const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
+      const seen = await probe(page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
+      console.log(`forbidden observed ${JSON.stringify(seen)}`);
+      expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
+      expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NO_ACCESS' });
+      expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
+      expect(seen.close!.reason).toBe('forbidden');
+      expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'forbidden' }));
+    } finally {
+      await setSuspended(bob.id, false); // the other specs sign in as this person
+      await users.close();
       await recreateApp();
     }
   });

@@ -48,6 +48,11 @@ export async function setDefaultPermission(collectionId: string, permission: 're
   await call('PATCH', `/v1/collections/${collectionId}`, { defaultPermission: permission });
 }
 
+/** Suspends or unsuspends a person, as an administrator: a suspended person has no access to anything, and the server refuses their sockets with `forbidden`. */
+export async function setSuspended(userId: string, suspended: boolean): Promise<void> {
+  await call('PATCH', `/v1/users/${userId}`, { suspended });
+}
+
 /** Resets the saved state of a page as an administrator (`POST /v1/pages/{id}/reset-state`); every open editor of the page is closed with a stale epoch. */
 export async function resetPageState(pageId: string, options: { confirmStale?: boolean; markdown?: string } = {}): Promise<void> {
   await call('POST', `/v1/pages/${pageId}/reset-state`, {
