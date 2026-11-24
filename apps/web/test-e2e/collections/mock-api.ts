@@ -3,6 +3,11 @@ import type { FlatPage } from '../../src/tree/model';
 
 /** Where the page believes the API is. Every request to it is answered here: nothing listens on this address, and no stack is needed. */
 export const API = 'http://127.0.0.1:8080';
+/**
+ * The live connection address the page is told: one nothing listens on. The stack of the Web browser tests job is on the API's host, so a page that opened a screen with a
+ * live editor would reach its collaboration server, which refuses this stand-in's token and makes the client sign the person out.
+ */
+export const COLLAB = 'ws://127.0.0.1:1/collab';
 
 export interface MockCollection {
   readonly id: string;
@@ -54,7 +59,7 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     const { pathname } = new URL(request.url());
-    if (pathname === '/v1/config') return json(route, 200, { collabUrl: 'ws://127.0.0.1:8080/collab', fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
+    if (pathname === '/v1/config') return json(route, 200, { collabUrl: COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
     if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: 'e2e-alice', email: 'e2e-alice@dev.invalid', role: 'member' }, cors);
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
     const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
