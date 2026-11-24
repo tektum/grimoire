@@ -16,7 +16,7 @@ import { clientVersionGate } from './http/client-version.js';
 import { routers } from './routes/registry.js';
 import { routeReplays, routeStored } from './http/replays.js';
 import type { OpenAPIHono } from '@hono/zod-openapi';
-import { errorName } from './events.js';
+import { errorName, errorOrigin } from './events.js';
 import { shippedMigration } from './health/migrations.js';
 import { healthRoutes } from './health/routes.js';
 import type { AppContext } from './composition.js';
@@ -50,8 +50,10 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   const handle = (err: unknown, c: Context): Response => {
     const response = err instanceof ApiError ? err.getResponse() : isBodyRefusal(err) ? errorResponse('invalid') : errorResponse('unavailable');
     const fields = { errorName: errorName(err), method: c.req.method, route: routePath(c), status: response.status };
-    if (response.status >= 500) ctx.log.error('http.handler_error', fields);
-    else ctx.log.warn('http.handler_rejected', fields);
+    if (response.status >= 500) {
+      const origin = errorOrigin(err);
+      ctx.log.error('http.handler_error', origin === undefined ? fields : { ...fields, origin });
+    } else ctx.log.warn('http.handler_rejected', fields);
     return response;
   };
   app.onError(handle);
