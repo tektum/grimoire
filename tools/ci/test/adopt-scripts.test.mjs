@@ -7,7 +7,8 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 // The guards of the adoption run in two scripts, tested here by what they do: `aws` is a stub that answers with the JSON of the real API from files, so a database or a cluster that is
-// not the stage's, an error of the API and a task that is slow are told apart by their effects (the exit code, what is printed, what is called), not by the text of the workflow.
+// not the stage's, an error of the API and a task that is slow are told apart by their effects (the exit code, what is printed, what is called), not by the text of the workflow. `sleep` is a
+// stub that records its argument and returns at once: no outcome depends on how fast the machine is.
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const targets = path.join(root, 'tools/adopt/targets.sh');
 const waitTask = path.join(root, 'tools/adopt/wait-task.sh');
@@ -31,6 +32,8 @@ function scenario(files) {
   mkdirSync(path.join(dir, 'bin'));
   writeFileSync(path.join(dir, 'bin/aws'), STUB);
   chmodSync(path.join(dir, 'bin/aws'), 0o755);
+  writeFileSync(path.join(dir, 'bin/sleep'), '#!/usr/bin/env bash\necho "sleep $1" >> "$STUB_DIR/calls"\n');
+  chmodSync(path.join(dir, 'bin/sleep'), 0o755);
   for (const [name, content] of Object.entries(files)) writeFileSync(path.join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
   const run = (script, args, env = {}) => {
     const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, STUB_DIR: dir }, timeout: 20000 });
@@ -110,55 +113,60 @@ test('targets: a service with no subnet, an API error and a bad stage name stop 
 
 const task = (lastStatus) => ({ tasks: [{ lastStatus }] });
 
-test('wait-task: a task that is still on its way is polled with a pause until it stops, and the calls are the only ones made', () => {
+const asCalls = (r) => r.calls.map((c) => c.split(' ')[0]);
+const sleeps = (r) => r.calls.filter((c) => c.startsWith('sleep '));
+
+test('wait-task: a task that is still on its way is polled with a pause until it stops', () => {
   const s = scenario({ 'tasks.1': task('PROVISIONING'), 'tasks.2': task('RUNNING'), 'tasks.3': task('DEPROVISIONING'), 'tasks.last': task('STOPPED') });
   try {
-    const started = Date.now();
-    const r = s.run(waitTask, ['cluster-arn', 'arn:aws:ecs:r:1:task/c/abc'], { ADOPT_POLL_SECONDS: '0.2' });
+    const r = s.run(waitTask, ['cluster-arn', 'arn:aws:ecs:r:1:task/c/abc'], { ADOPT_POLL_SECONDS: '7' });
     assert.equal(r.code, 0, r.err);
-    assert.equal(r.calls.length, 4);
-    assert.ok(Date.now() - started >= 550, 'three pauses of 0.2 s');
+    assert.deepEqual(r.calls.filter((c) => !c.startsWith('sleep')).length, 4);
+    assert.deepEqual(sleeps(r), ['sleep 7', 'sleep 7', 'sleep 7']);
+    assert.deepEqual(asCalls(r).slice(0, 2), ['ecs', 'sleep'], 'a poll, then a pause');
   } finally { s.done(); }
 });
 
 test('wait-task: an error of the API stops it at once, without a retry or a pause', () => {
   const s = scenario({ 'tasks.fail': '' });
   try {
-    const started = Date.now();
     const r = s.run(waitTask, ['cluster-arn', 'task-arn'], { ADOPT_POLL_SECONDS: '5' });
     assert.notEqual(r.code, 0);
-    assert.equal(r.calls.length, 1);
-    assert.ok(Date.now() - started < 3000, 'no pause was taken');
+    assert.deepEqual(r.calls, ['ecs describe-tasks']);
     assert.match(r.err, /AccessDenied/);
   } finally { s.done(); }
 });
 
+const missing = { tasks: [], failures: [{ reason: 'MISSING' }] };
+
 test('wait-task: a task ECS does not show yet is waited for, because it is eventually consistent, and then followed to its end', () => {
-  const missing = { tasks: [], failures: [{ reason: 'MISSING' }] };
   const s = scenario({ 'tasks.1': missing, 'tasks.2': missing, 'tasks.3': task('PENDING'), 'tasks.last': task('STOPPED') });
   try {
-    const r = s.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '5' });
+    const r = s.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '3', ADOPT_VISIBLE_POLLS: '5' });
     assert.equal(r.code, 0, r.err);
-    assert.equal(r.calls.length, 4);
+    assert.equal(r.calls.filter((c) => !c.startsWith('sleep')).length, 4);
+    assert.equal(sleeps(r).length, 3);
   } finally { s.done(); }
 });
 
-test('wait-task: a task that never shows stops after the window, naming it, and one that was seen and is gone stops at once', () => {
-  const missing = { tasks: [], failures: [{ reason: 'MISSING' }] };
+test('wait-task: a task that never shows stops after the polls of the window, naming it, and one that was seen and is gone stops at once', () => {
   const never = scenario({ 'tasks.last': missing });
+  const byDefault = scenario({ 'tasks.last': missing });
   const gone = scenario({ 'tasks.1': task('RUNNING'), 'tasks.last': missing });
   try {
-    const started = Date.now();
-    const a = never.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '0.5' });
+    const a = never.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '3', ADOPT_VISIBLE_POLLS: '3' });
     assert.equal(a.code, 1);
     assert.match(a.err, /task-arn is not known to ECS \(never seen\)/);
-    assert.ok(a.calls.length >= 3 && a.calls.length <= 12, `${a.calls.length} calls`);
-    assert.ok(Date.now() - started >= 450, 'the window was waited out');
-    const b = gone.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '5' });
+    assert.equal(a.calls.filter((c) => !c.startsWith('sleep')).length, 4, 'the first poll and three more');
+    assert.equal(sleeps(a).length, 3);
+    const defaults = byDefault.run(waitTask, ['c', 'task-arn'], {});
+    assert.equal(sleeps(defaults).length, 4, 'four polls of the window by default');
+    assert.deepEqual([...new Set(sleeps(defaults))], ['sleep 15']);
+    const b = gone.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '3', ADOPT_VISIBLE_POLLS: '5' });
     assert.equal(b.code, 1);
     assert.match(b.err, /seen, then gone/);
-    assert.equal(b.calls.length, 2);
-  } finally { never.done(); gone.done(); }
+    assert.equal(b.calls.filter((c) => !c.startsWith('sleep')).length, 2);
+  } finally { never.done(); byDefault.done(); gone.done(); }
 });
 
 test('wait-task: a status it has never seen stops it with the status named, and a missing argument is a usage error', () => {
