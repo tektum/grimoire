@@ -238,6 +238,14 @@ The contents tree and a dialog, reached with the keyboard: the focused row and t
 
 ![The contents in a window 320 pixels wide (a page at 400% zoom)](docs/screenshots/m6-t10/narrow-320-light.png)
 
+![Two people editing the same paragraph in Chromium: both texts kept, the other person's cursor named](docs/screenshots/m6-t13/co-edit-chromium-light.png)
+
+The same page, edited by two people, in Chromium, Firefox and WebKit (the exit test runs it in all three):
+
+![Co-editing in Firefox, dark theme](docs/screenshots/m6-t13/co-edit-firefox-dark.png)
+
+![Co-editing in WebKit](docs/screenshots/m6-t13/co-edit-webkit-light.png)
+
 ## How it is built
 
 - TypeScript on Node.
