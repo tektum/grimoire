@@ -21,7 +21,7 @@ The tour runs in Chromium in the job; Firefox and WebKit are the exit test's (M6
 |---|---|---|
 | The editor took the focus with no ring (its outline was none; the caret was the only sign) | the page | fixed: a ring of the focus token when the focus came by Tab (`ui/input-modality.ts`, `page.css`); a click keeps the plain look |
 | In forced colours (high contrast) the primary button had its authored paper text on a white face (contrast 1.06): the contents head, the history actions and every confirm dialog | the shell's buttons | fixed: under `@media (forced-colors: active)` it names the system colours (`ButtonFace`, `ButtonText`, a 2px border) |
-| At 320 CSS pixels (400% zoom) every route scrolled sideways: the header did not wrap, the contents sat beside the page, the search form and the access table did not shrink | the shell, collections, admin | fixed: the header wraps, the contents go above the page under 40rem, the forms wrap and the table has a fixed layout |
+| At 320 CSS pixels (400% zoom) every route scrolled sideways: the header did not wrap, the contents sat beside the page, the search form and the access table did not shrink | the shell, collections, admin | fixed: the header wraps, the contents go above the page under 40rem, the forms wrap, and the access table, a data table whose controls need their whole width, scrolls sideways inside its own region (a stop of the Tab order) while nothing else on the page does |
 
 ## NVDA with Firefox
 

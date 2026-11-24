@@ -98,7 +98,7 @@
   width: 4.5rem;
 }
 .admin-table th:nth-child(3) {
-  width: 8rem;
+  width: 12.5rem; /* the longest choice ("read and write") whole, with the arrow and the cell's padding */
 }
 .admin-table th:nth-child(4) {
   width: 7.5rem;
@@ -167,25 +167,32 @@
 .admin-list a[aria-current='true'] {
   font-weight: 600;
 }
-/* Last in the file, so that it wins over the rules above (equal specificity, later wins). A window of up to 52rem, where the contents take 18rem beside the page and the table has little room (above 40rem the shell is two columns): the columns that hold a control keep the room it needs, the name takes the rest and wraps, and the cells give up their side padding. */
+/* The table of who has access is a data table: where the window is too narrow for its columns it scrolls sideways inside its own region (a stop of the Tab order) and nothing else on the page does. */
+.admin-scroll {
+  margin-bottom: var(--space-4);
+  max-width: 100%;
+  min-width: 0; /* in a column of flex items, so that the table's width does not widen the page */
+  overflow-x: auto;
+  position: relative; /* the containing block of the hidden header text (absolute), which would otherwise sit beyond the window */
+}
+.admin-scroll .admin-table {
+  margin-bottom: 0;
+}
+/* Last in the file, so that it wins over the rules above (equal specificity, later wins). A window of up to 52rem, where the contents take 18rem beside the page: the columns take what their content needs, the table keeps the width that makes it readable, and the region scrolls. */
 @media (max-width: 52rem) {
+  .admin-table {
+    min-width: 30rem;
+    table-layout: auto;
+  }
   .admin-table th,
   .admin-table td {
-    padding-inline: var(--space-1);
+    overflow-wrap: break-word;
+    padding-inline: var(--space-2);
   }
-  .admin-table th:nth-child(2) {
-    width: 3.5rem;
-  }
-  .admin-table th:nth-child(3) {
-    width: 6.25rem;
-  }
-  .admin-table th:nth-child(4) {
-    width: 5rem;
+  .admin-table th:nth-child(n) {
+    width: auto;
   }
   .admin-table select {
     font-size: 0.85rem;
-  }
-  .admin-table td button {
-    padding-inline: var(--space-1);
   }
 }
