@@ -63,8 +63,9 @@ describe('the app wired to the gate and the session', () => {
   });
 
   it('renders the app for a signed-in development session, and every API call carries the bearer, the version header and no cookie', async () => {
-    const t = run({ token: `dev:${SECRET}:alice:member` });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Page' })).toBeTruthy();
+    // A screen that asks the API for nothing of its own: the page screen has its own tests and would read the user object as a page.
+    const t = run({ token: `dev:${SECRET}:alice:member`, router: () => createMemoryRouter(routeObjects(), { initialEntries: ['/search'] }) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Search' })).toBeTruthy();
     await waitFor(() => expect(t.requests.length).toBeGreaterThan(0));
     for (const request of t.requests) {
       expect(request.headers.get('Authorization')).toBe(`Bearer dev:${SECRET}:alice:member`);

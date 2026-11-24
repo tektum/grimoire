@@ -20,7 +20,7 @@ describe('useApi', () => {
     const api = { GET, POST: vi.fn(), PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() };
     const auth = createAuth({ config: config(), storage: fakeStorage().storage, devSignIn: null, sdkStorage: fakeSdkStorage(), loadDescope: async () => Promise.reject(new Error('unused')) });
     render(
-      <SessionContext.Provider value={{ auth, api: api as never }}>
+      <SessionContext.Provider value={{ auth, api: api as never, collabUrl: 'ws://collab.test' }}>
         <QueryClientProvider client={new QueryClient()}>
           <Name />
         </QueryClientProvider>

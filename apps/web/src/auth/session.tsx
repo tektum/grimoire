@@ -6,6 +6,8 @@ import type { Auth, AuthState } from './index';
 export interface Session {
   readonly auth: Auth;
   readonly api: ApiLike;
+  /** The address of the collaboration server, from the server's config. */
+  readonly collabUrl: string;
 }
 export const SessionContext = createContext<Session | null>(null);
 export const useSession = (): Session | null => useContext(SessionContext);
