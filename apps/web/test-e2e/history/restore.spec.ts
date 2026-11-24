@@ -12,7 +12,7 @@ test('A restores an older version; B, connected to the page, shows the restored 
   try {
     const { a, b } = users;
     await sitAndLeave(a.page, made.path, ' Second text.');
-    await waitForRevision(made.id, (markdown) => markdown.includes('Second text.'));
+    const older = await waitForRevision(made.id, (markdown) => markdown.includes('Second text.') && !markdown.includes('Third text.'));
     for (const who of [a, b]) {
       await who.page.goto(made.path);
       await waitForSynced(who.page);
@@ -22,12 +22,14 @@ test('A restores an older version; B, connected to the page, shows the restored 
     await a.page.keyboard.type(' Third text.');
     await expect(b.page.locator('.ProseMirror')).toContainText('Third text.');
 
-    await a.page.goto(`${made.path}/history`);
-    await a.page.getByRole('link', { name: /Open this version/ }).first().click();
+    // The version to restore is the one recorded after the first sitting, named by its id: not "the newest in the list", which could be a later one that already holds the third text.
+    await a.page.goto(`${made.path}/history/${older}`);
     await a.page.getByRole('button', { name: 'Restore this version' }).click();
     await a.page.getByRole('alertdialog', { name: 'Restore this version?' }).getByRole('button', { name: 'Restore' }).click();
     await expect(a.page).toHaveURL(new RegExp(`${made.path}$`));
-    await expect(b.page.locator('.ProseMirror')).not.toContainText('Third text.', { timeout: 5000 });
+    // First the person who restored (was the Markdown applied on the page?), then the other (did it reach them?): a failure says which.
+    await expect(a.page.locator('.ProseMirror'), 'the restored text is applied on the restoring page').not.toContainText('Third text.', { timeout: 5000 });
+    await expect(b.page.locator('.ProseMirror'), 'the restored text reaches the other person').not.toContainText('Third text.', { timeout: 5000 });
     await expect(b.page.locator('.ProseMirror')).toContainText('Second text.', { timeout: 5000 });
   } finally {
     await users.close();
