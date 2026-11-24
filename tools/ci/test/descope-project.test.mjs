@@ -133,4 +133,58 @@ test('the styles name no components version: Descope refuses a version that is n
   const data = buildStyles(tokens);
   assert.deepEqual(Object.keys(data).sort(), ['references', 'styles']);
   assert.equal(JSON.parse(projectConfig('descope-dev', { flows: {} }).styles).componentsVersion, undefined);
+
+// The sign-in flow makes or joins the tenant of the email domain (docs/tenancy.md), and the user token carries the tenant and the profile. Both were run on a throwaway project.
+const flow = JSON.parse(read('infra/descope/flows/sign-up-or-in.json'));
+const tasks = flow.contents.tasks;
+const next = (id, interaction) => tasks[id].next.rules.find((r) => r.interactionId === interaction)?.taskId;
+
+test('after the one-time code the flow ends for a person who has a tenant, joins the tenant of the email domain, and makes it only when there is none', () => {
+  const verify = Object.entries(tasks).find(([, t]) => t.action === 'verify-code-otp-email')?.[0];
+  assert.ok(verify);
+  const check = next(verify, 'success');
+  assert.equal(tasks[check].type, 'condition');
+  const [has] = tasks[check].conditions;
+  assert.deepEqual(has.atomicConditions, [{ operator: 'greater-than', predicate: { type: 'inline', value: 0 }, target: { type: 'context', value: 'user.tenantCount' } }]);
+  assert.equal(tasks[next(check, has.interactionId)].action, 'logged-in', 'a person with a tenant is done');
+  const join = next(check, 'ELSE');
+  assert.equal(tasks[join].action, 'update-user-tenant-email-domain');
+  assert.equal(tasks[next(join, 'success')].action, 'logged-in');
+  const create = next(join, 'ActionErrorUpdateUserTenantByEmailDomainNoTenant');
+  assert.equal(tasks[create].action, 'createTenant');
+  assert.equal(tasks[next(create, 'success')].action, 'logged-in');
+  assert.equal(next(create, 'TenantExists'), join, 'a tenant made in the meantime is joined, not made twice');
+});
+
+test('the tenant is named after the email domain, lists that domain for self-provisioning, and is the person\'s current tenant', () => {
+  const create = Object.values(tasks).find((t) => t.action === 'createTenant');
+  assert.deepEqual(create.arguments, {
+    dynamicName: { type: 'inline', value: '{{user.emailDomain}}' },
+    dynamicSelfProvision: { type: 'inline', value: '{{user.emailDomain}}' },
+    setAsSelectedTenant: { type: 'inline', value: true },
+  });
+});
+
+test('every task of the flow is reachable from its start, and every step it names exists', () => {
+  const seen = new Set();
+  const walk = (id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const rule of tasks[id].next?.rules ?? []) {
+      assert.ok(tasks[rule.taskId], `task ${id} names a missing task ${rule.taskId}`);
+      walk(rule.taskId);
+    }
+  };
+  walk(flow.contents.startTask === 'start' ? tasks.start.next.rules[0].taskId : flow.contents.startTask);
+  assert.deepEqual([...seen].sort(), Object.keys(tasks).filter((k) => k !== 'start').sort());
+});
+
+test('the user token carries the profile under the names the server reads, and the tenant is made the current one by the template', () => {
+  const { userToken } = projectConfig('staging', { stagingDomain: 'app.example.test', flows: {} });
+  assert.equal(userToken.name, 'grimoire-user');
+  assert.deepEqual(Object.keys(userToken.claims).sort(), ['email', 'emailVerified', 'name']);
+  assert.deepEqual(userToken.claims, { email: '{{user.email}}', name: '{{user.name}}', emailVerified: '{{user.verifiedEmail}}' });
+  const project = read('infra/descope/project.ts');
+  assert.match(project, /autoTenantClaim: true/);
+  assert.match(project, /userJwtTemplate: userToken\.id/);
 });

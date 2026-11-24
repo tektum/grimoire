@@ -19,6 +19,8 @@ export interface ProjectConfig {
   /** Methods the project switches off: the sign-in flow is a one-time code by email and nothing else. */
   readonly disabledMethods: readonly ('password' | 'magiclink' | 'enchantedlink' | 'embeddedlink' | 'totp' | 'passkey' | 'oauth')[];
   readonly otp: { readonly expirationTime: string };
+  /** The claims of the session token the server reads (see docs/tenancy.md): the person's tenant (`dct`, from the template's automatic current-tenant claim) and the profile, so the server needs no management key. */
+  readonly userToken: { readonly name: string; readonly description: string; readonly claims: Readonly<Record<string, string>> };
   readonly flows: Readonly<Record<string, string>>;
   readonly styles: string;
 }
@@ -46,6 +48,11 @@ export function projectConfig(stage: DescopeStage, options: { readonly stagingDo
     session: { sessionTokenExpiration: '10 minutes', refreshTokenExpiration: '3 weeks', refreshTokenRotation: true },
     disabledMethods: ['password', 'magiclink', 'enchantedlink', 'embeddedlink', 'totp', 'passkey', 'oauth'] as const,
     otp: { expirationTime: '5 minutes' },
+    userToken: {
+      name: 'grimoire-user',
+      description: 'The tenant and the profile of the person, read by the server',
+      claims: { email: '{{user.email}}', name: '{{user.name}}', emailVerified: '{{user.verifiedEmail}}' },
+    },
     flows: options.flows ?? readFlows(),
     styles: JSON.stringify(buildStyles(options.tokens ?? readTokens())),
   };
