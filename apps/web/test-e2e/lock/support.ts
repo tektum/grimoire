@@ -51,7 +51,8 @@ export async function remoteBlocks(page: Page): Promise<{ user: string; blockId:
 }
 
 /** The words of R3.15, as the "Why?" of the lock message says them. */
-export const SOFT_LOCK_HELP = 'The soft lock protects only connected people. Two people editing offline, or a sub-second race between connected clients, can still lose typing.';
+export const SOFT_LOCK_HELP =
+  "While someone else's cursor is in a block, turning that block into a list, a quote or a code block waits until they leave it, so that what they are typing is not lost. This works only while you are both connected: if you edit offline, or two people act within a fraction of a second, text can still be lost.";
 
 /** The first-version limit text of the contracts' section 7a (R3.26 and R3.27), exactly. */
 export const LIMIT_TEXT =

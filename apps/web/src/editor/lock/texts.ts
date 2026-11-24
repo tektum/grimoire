@@ -1,8 +1,9 @@
 /** What a person sees when another person's cursor is in the block they tried to convert: the name is the directory's. */
 export const lockMessage = (name: string): string => `${name} is editing this block`;
 
-/** R3.15, as the "Why?" action and the help page say it. */
-export const SOFT_LOCK_HELP = 'The soft lock protects only connected people. Two people editing offline, or a sub-second race between connected clients, can still lose typing.';
+/** R3.15 in plain words (the requirement has no mandated text): what the lock does and where it stops. The limit text below is mandated and word for word. */
+export const SOFT_LOCK_HELP =
+  "While someone else's cursor is in a block, turning that block into a list, a quote or a code block waits until they leave it, so that what they are typing is not lost. This works only while you are both connected: if you edit offline, or two people act within a fraction of a second, text can still be lost.";
 
 /** The first-version limit text (R3.26 and R3.27), exactly as the contracts give it. */
 export const LIMIT_TEXT =
