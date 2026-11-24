@@ -10,7 +10,7 @@ Run it before the first migration, in the same pre-rollout step, and again whene
 | `GRIMOIRE_DB_APP_PASSWORD` | the password to give the runtime role `grimoire_app` (at least 16 characters) |
 | `GRIMOIRE_DB_MIGRATOR_PASSWORD` | the password to give the migration role `grimoire_migrator` (at least 16 characters) |
 
-End state: both roles exist and can log in, only they may connect to the database, the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists. A run with new passwords changes them. The passwords are quoted by the server and never logged.
+End state: both roles exist and can log in, only they may connect to the database, the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists. A run with new passwords changes them. The server receives a SCRAM-SHA-256 verifier computed here, not the password, so the password is not in any statement the server may log or record (`log_statement`, pgaudit, `pg_stat_statements`); it is never logged by the command either.
 
 The server refuses to start when any of these three settings is set: only this step holds the administrator connection and the passwords.
 

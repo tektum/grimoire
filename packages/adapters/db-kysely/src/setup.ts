@@ -1,3 +1,4 @@
+import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
 import type { KyselyDatabase } from './index.js';
 
 /** The two database roles of the product. Their names are fixed by the migrations (they grant to `grimoire_app`) and by the job queue set-up. */
@@ -7,6 +8,20 @@ export interface DatabaseRoles { readonly app: string; readonly migrator: string
 const ROLE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 const MIN_PASSWORD_LENGTH = 16;
 
+const SCRAM_ITERATIONS = 4096;
+
+/**
+ * The SCRAM-SHA-256 verifier PostgreSQL stores for a password (RFC 5802, as `pg_authid.rolpassword` holds it). Giving the server this instead of the password
+ * keeps the plaintext out of the `CREATE/ALTER ROLE` statement, which a server may record (`log_statement`, pgaudit, `pg_stat_statements`, error logs). The server accepts a
+ * verifier as it is and the role then logs in with the plain password as usual. Needs `password_encryption = scram-sha-256`, the default of every supported version.
+ */
+export function scramVerifier(password: string, salt: Buffer = randomBytes(16)): string {
+  const salted = pbkdf2Sync(password, salt, SCRAM_ITERATIONS, 32, 'sha256');
+  const hmac = (key: Buffer, data: string): Buffer => createHmac('sha256', key).update(data).digest();
+  const storedKey = createHash('sha256').update(hmac(salted, 'Client Key')).digest();
+  return `SCRAM-SHA-256$${String(SCRAM_ITERATIONS)}:${salt.toString('base64')}$${storedKey.toString('base64')}:${hmac(salted, 'Server Key').toString('base64')}`;
+}
+
 export interface SetupResult { readonly created: readonly string[]; readonly updated: readonly string[] }
 
 /**
@@ -14,7 +29,7 @@ export interface SetupResult { readonly created: readonly string[]; readonly upd
  * state as `db/init/roles.psql`, which does this for the local stack, but safe to run again. The two login roles exist with the given passwords (a run with
  * new passwords rotates them), only they may connect, the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may
  * use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists (the migration role cannot create one).
- * Passwords are quoted by the server (`quote_literal`) and never logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
+ * The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
  */
 export async function setupDatabase(
   db: KyselyDatabase,
@@ -34,7 +49,7 @@ export async function setupDatabase(
   const updated: string[] = [];
   for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app]] as const) {
     const exists = (await db.query('select 1 from pg_roles where rolname = $1', [name])).length > 0;
-    await db.query(`${exists ? 'alter' : 'create'} role ${await quote('ident', name)} with login password ${await quote('literal', password)}`);
+    await db.query(`${exists ? 'alter' : 'create'} role ${await quote('ident', name)} with login password ${await quote('literal', scramVerifier(password))}`);
     (exists ? updated : created).push(name);
   }
   const app = await quote('ident', roles.app);
