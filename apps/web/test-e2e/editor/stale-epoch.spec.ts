@@ -41,7 +41,9 @@ test.describe('the epoch handshake', () => {
       await notice.getByRole('button', { name: 'Download my copy' }).click();
       const file = await download;
       expect(file.suggestedFilename()).toBe('Epoch page-your-copy.md');
-      expect(readFileSync((await file.path())!, 'utf8')).toContain('old-edit');
+      const copy = readFileSync((await file.path())!, 'utf8');
+      expect(copy).toContain('old-edit'); // typed while online, saved before the cut
+      expect(copy).toContain('more'); // typed after the cut: never reached the server, only the copy has it
 
       // The saved page, read by anyone, is the reset one and has none of the old edits.
       const response = await fetch(`${apiUrl()}/v1/pages/${made.id}/markdown`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), users.b.userId, 'member')}` } });

@@ -623,6 +623,24 @@ describe('the network, as the browser tells it', () => {
     expect(h.clock.nextIn()).toBe(30_000);
   });
 
+  it('neither is a wait after an error the server reported, nor the wait for sign-in to be available', async () => {
+    const failing = start();
+    await flush();
+    failing.h.last().provider.refuse('internal-error');
+    expect(failing.h.clock.nextIn()).toBe(30_000);
+    failing.manager.networkBack();
+    expect(failing.h.last().provider.connects).toBe(1);
+    expect(failing.h.clock.nextIn()).toBe(30_000);
+    const signIn = start();
+    await flush();
+    signIn.h.auth.token = null;
+    signIn.h.last().provider.refuse('Failed to get token during sendToken(): signed out');
+    expect(signIn.h.clock.nextIn()).toBe(5000);
+    signIn.manager.networkBack();
+    expect(signIn.h.last().provider.connects).toBe(1);
+    expect(signIn.h.clock.nextIn()).toBe(5000);
+  });
+
   it('does nothing for a manager that is stopped, not started or hidden', async () => {
     const idle = new ConnectionManager(harness().options);
     idle.networkLost();

@@ -106,8 +106,8 @@ export class ConnectionManager {
   private refusedAt = Number.NEGATIVE_INFINITY;
   /** When the connection was lost, until it is made again. */
   private lostAt: number | null = null;
-  /** The wait now running was asked for by the server (it is busy): the network coming back does not cut it short. */
-  private busyWait = false;
+  /** The wait now running was asked for by the server (it is busy, or it reported an error, or sign-in is unavailable): the network coming back does not cut it short. */
+  private serverAskedWait = false;
   private refreshingFor: Session | null = null;
   /** Counts the refreshes started and those called off (a hide calls off the one running): a completion acts only if it is still the current one. */
   private refreshRun = 0;
@@ -186,7 +186,7 @@ export class ConnectionManager {
 
   /**
    * The browser says the network is back. The "offline" text goes. A connection that was lost in the meantime is made again at once, without waiting
-   * out the backoff (a server that asked for time, as when it is busy, is still given it).
+   * out the backoff (a server that asked for time (busy, an error it reported, sign-in unavailable) is still given it).
    */
   networkBack(): void {
     if (this.session === null || this.current.suspended || this.current.phase === 'stopped' || this.current.phase === 'idle') return;
@@ -195,7 +195,7 @@ export class ConnectionManager {
       this.lostAt = null; // the connection never dropped: nothing to count
       return;
     }
-    if (this.current.phase === 'retrying' && !this.busyWait) {
+    if (this.current.phase === 'retrying' && !this.serverAskedWait) {
       this.clearRetry();
       this.attempts = 0;
       this.connectSession();
@@ -282,7 +282,7 @@ export class ConnectionManager {
     }
     this.attempts += 1;
     this.quiet = false;
-    this.busyWait = false;
+    this.serverAskedWait = false;
     session.provider.connect();
   }
 
@@ -406,6 +406,7 @@ export class ConnectionManager {
         this.scheduleRetry(mapping);
         return;
       case 'TOKEN':
+        this.serverAskedWait = true;
         this.set({ phase: 'retrying', text: mapping.text ?? null });
         this.later(TOKEN_RETRY_MS, () => this.connectSession());
         return;
@@ -437,7 +438,7 @@ export class ConnectionManager {
   private scheduleRetry(mapping: Mapping): void {
     this.lostAt ??= this.timers.now();
     this.clearRetry();
-    this.busyWait = mapping.behaviour === 'BUSY';
+    this.serverAskedWait = mapping.behaviour === 'BUSY';
     const base = Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** Math.max(0, this.attempts - 1));
     const jittered = base * (1 + (this.random() * 2 - 1) * JITTER);
     const delay = Math.max(mapping.minDelayMs ?? 0, Math.min(RETRY_MAX_MS, Math.max(RETRY_MIN_MS, jittered)));
@@ -464,6 +465,7 @@ export class ConnectionManager {
       return;
     }
     this.errorTries += 1;
+    this.serverAskedWait = true;
     this.set({ phase: 'retrying', text: mapping.text ?? null });
     this.later(ERROR_RETRY_MS, () => this.connectSession());
   }
