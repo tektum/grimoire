@@ -5,11 +5,22 @@ import { apiUrl, devSecret } from '../support/env';
 import { signInAs } from '../support/sign-in';
 import type { Browser } from '@playwright/test';
 
+/** The address the app shows for a page: `/p/<slug>-<urlId>`, or `/p/<urlId>` for a slug with no dash (the slug is the title's, or `page` when the test opened it). */
+export const addressOf = (urlId: string): RegExp => new RegExp(`/p/(?:[^/]*-)?${urlId}$`);
+
+/** A page of the world: `path` opens it (any slug does), `address` matches the address the app shows for it (`/p/<slug>-<id>`, the slug is the title's). */
+export interface WorldPage {
+  readonly id: string;
+  readonly path: string;
+  readonly title: string;
+  readonly address: RegExp;
+}
+
 /** What the tour needs on the stack: a collection with pages, a page in the trash, a group with a member, and a person to change the role of. */
 export interface World {
   readonly collectionId: string;
-  readonly alpha: { id: string; path: string; title: string };
-  readonly beta: { id: string; path: string; title: string };
+  readonly alpha: WorldPage;
+  readonly beta: WorldPage;
   /** The person whose role the keyboard walk changes, as the users screen names them. */
   readonly colleague: { id: string; name: string };
   readonly groupId: string;
@@ -39,7 +50,7 @@ export async function buildWorld(): Promise<World> {
   const collection = await api<{ id: string }>(ADMIN, 'admin', 'POST', '/v1/collections', { name: `Tour ${tag}`, defaultPermission: 'read_write' });
   const page = async (title: string, markdown: string) => {
     const made = await api<{ id: string; urlId: string }>(ADMIN, 'admin', 'POST', '/v1/pages', { collectionId: collection.id, title, markdown });
-    return { id: made.id, title, path: `/p/page-${made.urlId}` };
+    return { id: made.id, title, path: `/p/page-${made.urlId}`, address: addressOf(made.urlId) };
   };
   const alpha = await page(`Alpha ${tag}`, '# Alpha\n\nA first paragraph with some words.\n\nA second paragraph.\n');
   const beta = await page(`Beta ${tag}`, 'The beta page.\n');

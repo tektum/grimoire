@@ -67,7 +67,7 @@ test('the contents tree: a page is opened', async ({ browser, baseURL }) => {
     await tabTo(page, (el) => el?.getAttribute('role') === 'treeitem');
     await page.keyboard.press('ArrowDown'); // Beta, after Alpha
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`${world.beta.path}$`));
+    await expect(page).toHaveURL(world.beta.address);
   });
 });
 
@@ -128,7 +128,7 @@ test('history: a version is opened and restored', async ({ browser, baseURL }) =
     await expect(dialog).toBeVisible();
     await tabTo(page, (el) => el?.textContent?.trim() === 'Restore');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`${world.alpha.path}$`));
+    await expect(page).toHaveURL(world.alpha.address);
   });
 });
 

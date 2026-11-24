@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { ROUTES } from '../../src/app/routes';
 import { fixtureServer, type FixtureServer } from '../support/fixtures';
 import { STOPS } from './routes';
+import { addressOf } from './world';
 import { COUNT_POINTER_EVENTS, axeBothSchemes, blockingText, lastingMotion, pointerEvents, summaryLine, tabTo } from './support';
 
 // What the tour, the keyboard walk and the motion check stand on, tried on small pages: no stack is needed.
@@ -31,6 +32,12 @@ test('the tour has a stop for every route of the route table, and none twice', (
 
 test('the routes whose screens are not built are named, with the task that builds them', () => {
   expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/search pending M6-T09', '/import pending M6-T12a']);
+});
+
+test('the address of a page is matched by its id, whatever the slug', () => {
+  const address = addressOf('qwgiePoP97');
+  for (const url of ['http://x/p/page-qwgiePoP97', 'http://x/p/beta-9cff9a43-qwgiePoP97', 'http://x/p/qwgiePoP97']) expect(url).toMatch(address);
+  for (const url of ['http://x/p/page-qwgiePoP98', 'http://x/p/qwgiePoP97/history', 'http://x/p/xqwgiePoP97']) expect(url).not.toMatch(address);
 });
 
 test('a route that has no stop is found', () => {
