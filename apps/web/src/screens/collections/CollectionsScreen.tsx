@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router';
-import type { ApiLike } from '../../api/query';
+import { type ApiLike, useApiQuery } from '../../api/query';
 import type { ClientStorage } from '../../storage';
 import { Button } from '../../ui/primitives';
 import type { HttpError } from '../../tree/useTree';
@@ -15,6 +15,7 @@ const isNotFound = (error: HttpError | null): boolean => error !== null && (erro
 export function CollectionsScreen({ api, collectionId, storage }: { readonly api: ApiLike; readonly collectionId: string; readonly storage?: ClientStorage }) {
   const collections = useCollections(api);
   const collection = useCollection(api, collectionId);
+  const me = useApiQuery<{ role: string }>(api, '/v1/me');
   const current = collection.data ?? collections.data?.find((c) => c.id === collectionId);
   // The collection that was read last is where `/` goes next time (only a collection that could be read counts).
   const readable = collection.data !== undefined;
@@ -41,6 +42,7 @@ export function CollectionsScreen({ api, collectionId, storage }: { readonly api
         ) : (
           <>
             <h1 id="collection-title">{current?.name ?? 'Collection'}</h1>
+            {me.data?.role === 'admin' && !collection.isError && <Link to={`/admin/collections/${collectionId}/access`}>Manage access</Link>}
             {collection.isError ? (
               <p role="alert">
                 Couldn&apos;t load the collection. <Button onClick={() => void collection.refetch()}>Try again</Button>

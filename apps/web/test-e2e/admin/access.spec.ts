@@ -9,7 +9,7 @@ for (const role of ['member', 'viewer'] as const) {
   test(`a ${role} opening /admin/users sees the not-found screen and no admin request is made`, async ({ page, context }) => {
     await signInAs(context, 'e2e-bob', role, { check: false });
     const api = await adminApi(page, { role, users: [] });
-    for (const address of ['/admin/users', '/admin/nothing']) {
+    for (const address of ['/admin/users', '/admin/groups', '/admin/collections/c1/access', '/admin/nothing']) {
       await page.goto(address);
       await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
     }
