@@ -9,7 +9,7 @@ import { LIMIT_TEXT, blocks, remoteBlocks, surface } from './support';
 function expectCarries(text: string): void {
   expect(text).toBe(LIMIT_TEXT);
   for (const action of ['splitting it', 'joining it with the one above', 'turning it into a list']) expect(text, action).toContain(action);
-  expect(text).toContain('The structure lock and the automatic copy offer are planned after the first version.'); // deferred (decision 147)
+  expect(text).toContain('Holding back Enter, Backspace and list changes while someone else is in the paragraph, and offering to keep a copy automatically, are planned after the first version.'); // deferred (decision 147)
   expect(text).toContain('Separately, if two people type several letters at exactly the same spot at the same moment, their letters can end up mixed together');
 }
 
