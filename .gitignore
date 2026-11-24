@@ -13,3 +13,7 @@ vitest-blob-roots/
 packages/api-client/openapi.json
 packages/api-client/src/schema.d.ts
 .tsbuild/
+
+# SST: its working folder and the generated types
+.sst/
+sst-env.d.ts

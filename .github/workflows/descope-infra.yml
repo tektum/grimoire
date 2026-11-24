@@ -1,22 +1,25 @@
-name: Descope dev infrastructure
-# Pull requests only check the files (init without a backend, validate, fmt): no secret and no
-# environment, because a secret must not reach pull-request code. `plan` and `apply` run only on a
-# manual dispatch of `main`, with the environment `descope-dev` and its secret DESCOPE_DEV_MANAGEMENT_KEY;
-# they skip with a notice until the owner has created the secret. No state file is kept.
+name: SST infrastructure
+# Pull requests only typecheck the SST config (no credentials, no environment: a secret or a cloud role must not reach pull-request code).
+# `diff` and `deploy` run only by manual dispatch of `main`, in the environment `descope-dev`, which deploys from `main` only. There is no stored
+# secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
+# second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
+# Until the owner has created those variables the job stops at its first step with a notice.
 on:
   pull_request:
     paths:
-      - "infra/descope/**"
+      - "sst.config.ts"
+      - "infra/**"
+      - "tsconfig.sst.json"
       - ".github/workflows/descope-infra.yml"
   workflow_dispatch:
     inputs:
       action:
-        description: "plan shows the difference, apply changes the development project"
+        description: "diff shows the difference, deploy changes the development project"
         required: true
         type: choice
         options:
-          - plan
-          - apply
+          - diff
+          - deploy
 
 permissions:
   contents: read
@@ -30,7 +33,7 @@ concurrency:
 
 jobs:
   check:
-    name: Check files
+    name: Typecheck the SST config
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -42,28 +45,29 @@ jobs:
         with:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: opentofu
-      - name: Init, validate and format check
-        working-directory: infra/descope
-        run: |
-          tofu init -backend=false -input=false
-          tofu validate
-          tofu fmt -check -diff
+          install_args: node bun
+      - run: bun install --frozen-lockfile
+      - run: bun run check:infra
 
-  plan:
-    name: Plan
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'plan' && github.ref == 'refs/heads/main'
+  run:
+    name: SST ${{ inputs.action }} (descope-dev)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: descope-dev
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Stop cleanly while the secret does not exist
+      - name: Stop cleanly while the variables do not exist
         id: gate
         env:
-          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          KEY_ID: ${{ vars.DESCOPE_MANAGEMENT_KEY_ID }}
         run: |
-          if [ -z "${KEY}" ]; then
-            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
+          if [ -z "${AWS_ROLE_ARN}" ] || [ -z "${AWS_REGION}" ] || [ -z "${KEY_ID}" ]; then
+            echo "::notice title=Skipped::The variables AWS_ROLE_ARN, AWS_REGION and DESCOPE_MANAGEMENT_KEY_ID of the environment descope-dev are not all set, so nothing ran. This is expected until the owner creates them."
             echo "blocked=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,48 +79,28 @@ jobs:
         with:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: opentofu
-      - name: Plan
+          install_args: node bun
+      - run: bun install --frozen-lockfile
         if: steps.gate.outputs.blocked != 'true'
-        working-directory: infra/descope
-        env:
-          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
-        run: |
-          tofu init -input=false
-          tofu validate
-          tofu plan -input=false -lock=false -no-color
-
-  apply:
-    name: Apply
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: descope-dev
-    steps:
-      - name: Stop cleanly while the secret does not exist
-        id: gate
-        env:
-          KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
-        run: |
-          if [ -z "${KEY}" ]; then
-            echo "::notice title=Skipped::The secret DESCOPE_DEV_MANAGEMENT_KEY of the environment descope-dev is not set, so nothing ran. This is expected until the owner adds it."
-            echo "blocked=true" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         if: steps.gate.outputs.blocked != 'true'
         with:
-          persist-credentials: false
-      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Request the workload identity token for Descope
         if: steps.gate.outputs.blocked != 'true'
-        with:
-          version: 2026.11.9
-          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: opentofu
-      - name: Apply
-        if: steps.gate.outputs.blocked != 'true'
-        working-directory: infra/descope
+        id: wif
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          DESCOPE_MANAGEMENT_KEY: ${{ secrets.DESCOPE_DEV_MANAGEMENT_KEY }}
-        run: |
-          tofu init -input=false
-          tofu apply -input=false -auto-approve -no-color
+          KEY_ID: ${{ vars.DESCOPE_MANAGEMENT_KEY_ID }}
+        with:
+          script: |
+            const token = await core.getIDToken(`https://api.descope.com/${process.env.KEY_ID}`)
+            core.setSecret(token)
+            core.setOutput('token', token)
+      - name: SST ${{ inputs.action }}
+        if: steps.gate.outputs.blocked != 'true'
+        env:
+          DESCOPE_MANAGEMENT_KEY: ${{ steps.wif.outputs.token }}
+          ACTION: ${{ inputs.action }}
+        run: bunx sst "$ACTION" --stage descope-dev
