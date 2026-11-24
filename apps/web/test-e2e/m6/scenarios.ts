@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { BROWSERS } from '../support/browsers.ts';
 import { repoRoot } from '../support/env.ts';
+import { fileDisagreements, reportProblems } from './exit-proof.ts';
 
 /**
  * The scenarios of the web client's exit test, each proved once in every browser by the specifications named here (all of them real-stack specifications except where the file
@@ -85,7 +86,7 @@ if (import.meta.main) {
   const command = process.argv[2];
   const report = readFileSync(process.env['M6_EXIT_REPORT'] ?? path.join(repoRoot, 'docs/proof/m6-exit.md'), 'utf8'); // the variable is for the test of this list: another report
   if (command === 'check') {
-    const problems = listProblems(SCENARIOS, report);
+    const problems = [...listProblems(SCENARIOS, report), ...fileDisagreements(SCENARIOS, report), ...reportProblems(report)]; // the list, the files it names against the report's, and the report itself
     if (problems.length > 0) {
       process.stderr.write(`${problems.join('\n')}\nthe list of scenarios is not sound\n`);
       process.exit(1);

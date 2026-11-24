@@ -33,6 +33,12 @@ test('it builds in e2e mode, runs check:build, and starts the stack with the han
   assert.match(up, /COMPOSE_FILE=compose\.yaml:compose\.m6\.yaml/);
 });
 
+test('it serves the client with the headers rendered for the running stack, in both runs of the specifications', () => {
+  const runs = steps.filter((l) => /bunx playwright test/.test(l));
+  assert.equal(runs.length, 2);
+  for (const run of runs) assert.match(run, /GRIMOIRE_WEB_HEADERS_DIR="\$\(bun run apps\/web\/test-e2e\/m6\/headers\.ts\)"/);
+});
+
 test('it runs the handshake check on its own first, then the scenarios in the three browsers', () => {
   const first = at(/--project=chromium apps\/web\/test-e2e\/m6\/handshake\.spec\.ts/);
   const all = steps.findIndex((l) => /--project=chromium --project=firefox --project=webkit/.test(l));

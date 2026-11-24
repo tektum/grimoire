@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 import { repoRoot } from '../support/env';
 import { fileDisagreements, reportProblems, rowsOf } from './exit-proof';
 import { handshakeProblem } from './handshake-check';
+import { headerArgs } from './headers';
 import { SCENARIOS, listProblems, runLines, scenarioIdsOfReport, specFiles } from './scenarios';
 
 // The list of the scenarios of the exit test and the report that says what proves each behaviour, checked as a script would: no stack is needed. The list is what `make test-m6` runs
@@ -117,4 +118,24 @@ test('a run of the exit test whose server does not require the handshake is refu
   expect(handshakeProblem({ M6_EXIT: '1', M6_REQUIRE_HANDSHAKE: '1' })).toBeNull();
   expect(handshakeProblem({})).toBeNull();
   expect(handshakeProblem({ M6_REQUIRE_HANDSHAKE: '1' })).toBeNull();
+});
+
+test('the headers are rendered for the origins the stack names: the API as asked, the collaboration server and the store as the configuration says', () => {
+  const args = headerArgs('http://127.0.0.1:8080/', { collabUrl: 'ws://127.0.0.1:8081/collab', fileStoreOrigin: 'http://127.0.0.1:8333' }, '/out');
+  expect(args).toEqual(['scripts/render-headers.mjs', '--api-origin', 'http://127.0.0.1:8080', '--collab-origin', 'ws://127.0.0.1:8081', '--store-origin', 'http://127.0.0.1:8333', '--out', '/out']);
+  expect(headerArgs('http://127.0.0.1:8080', { collabUrl: 'ws://127.0.0.1:8081/collab', fileStoreOrigin: null }, '/out')).toContain('http://127.0.0.1:8333');
+});
+
+test('the check of the list also checks the report: a proved row of a file that is not there stops the run, with the row', () => {
+  const dir = mkdtempSync(path.join(repoRoot, 'test-results', 'm6-exit-'));
+  try {
+    const broken = path.join(dir, 'report.md');
+    writeFileSync(broken, report.replace('`apps/web/test-e2e/m6/exit.spec.ts` | proved', '`apps/web/test-e2e/m6/missing.spec.ts` | proved'));
+    const run = spawnSync('bun', ['run', 'apps/web/test-e2e/m6/scenarios.ts', 'check'], { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, M6_EXIT_REPORT: broken } });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain('missing.spec.ts, which is not there');
+    expect(run.stdout).toBe('');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
