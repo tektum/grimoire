@@ -36,15 +36,28 @@ const moveInto = (t: CollabEditor, text: string): number => {
 describe('publishing the block of the cursor', () => {
   it('puts the id of the block the cursor is in on the awareness, changes it with the cursor, and takes it back when the editor loses the focus', async () => {
     const t = await open();
+    t.view().focus();
     const first = moveInto(t, 'First');
     await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBe(blockIdAt(t.view().state, first)));
     const second = moveInto(t, 'Second');
     await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBe(blockIdAt(t.view().state, second)), { timeout: 3000 });
     expect(blockIdAt(t.view().state, first)).not.toBe(blockIdAt(t.view().state, second));
-    t.view().dom.dispatchEvent(new FocusEvent('blur'));
+    t.view().dom.blur();
     await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBeNull(), { timeout: 3000 });
-    t.view().dom.dispatchEvent(new FocusEvent('focus'));
+    t.view().focus();
     await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBe(blockIdAt(t.view().state, second)), { timeout: 3000 });
+  });
+
+  it("holds no block while the editor has no focus, whatever comes into it: another person's edit does not publish the old block again", async () => {
+    const t = await open();
+    t.view().focus();
+    const second = moveInto(t, 'Second');
+    await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBe(blockIdAt(t.view().state, second)), { timeout: 3000 });
+    t.view().dom.blur();
+    await vi.waitFor(() => expect(t.awareness.getLocalState()?.['blockId']).toBeNull(), { timeout: 3000 });
+    t.view().dispatch(t.view().state.tr.insertText('x', 2)); // what y-prosemirror does when another person types
+    expect(t.view().hasFocus()).toBe(false);
+    expect(t.awareness.getLocalState()?.['blockId']).toBeNull();
   });
 });
 
@@ -91,6 +104,42 @@ describe('the soft lock', () => {
     t.awareness.states.set(105, { user: { id: LENA }, blockId: blockIdAt(t.view().state, pos) });
     expect(allowBlockChange(t.ctx, kind('quote'), pos)).toBe(false);
     await vi.waitFor(() => expect(notice(t)?.querySelector('.lock-message')?.textContent).toBe('Lena is editing this block'));
+  });
+
+  it('a name that comes late updates the message it was asked for and no other; a newer refusal, Close and the editor going end the wait', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const t = await open({
+      names: { [BOB]: 'Bob' },
+      fetchNames: async (ids) => {
+        if (ids.includes(LENA)) await gate;
+        return ids.map((id) => ({ id, name: id === LENA ? 'Lena' : 'Bob' }));
+      },
+    });
+    t.directory.request([BOB]); // Bob's name is known before the refusals; Lena's comes when the gate is let go
+    await vi.waitFor(() => expect(t.directory.nameOf(BOB)).toBe('Bob'));
+    const subscribed: Array<() => boolean> = [];
+    const original = t.directory.subscribe.bind(t.directory);
+    t.directory.subscribe = (listener) => {
+      const stop = original(listener);
+      let live = true;
+      subscribed.push(() => live);
+      return () => {
+        live = false;
+        stop();
+      };
+    };
+    const first = moveInto(t, 'First');
+    const second = moveInto(t, 'Second');
+    t.awareness.states.set(105, { user: { id: LENA }, blockId: blockIdAt(t.view().state, first) });
+    t.awareness.states.set(106, { user: { id: BOB }, blockId: blockIdAt(t.view().state, second) });
+    expect(allowBlockChange(t.ctx, kind('quote'), first)).toBe(false); // Lena's name is not known: "Someone"
+    expect(allowBlockChange(t.ctx, kind('quote'), second)).toBe(false); // a newer refusal, for Bob, ends the first wait
+    await vi.waitFor(() => expect(notice(t)?.querySelector('.lock-message')?.textContent).toBe('Bob is editing this block'));
+    expect(subscribed.map((live) => live())).toEqual([false]);
+    release();
+    await vi.waitFor(() => expect(t.directory.nameOf(LENA)).toBe('Lena')); // her name has come, and the listeners have run
+    expect(notice(t)?.querySelector('.lock-message')?.textContent).toBe('Bob is editing this block'); // Lena's name did not take its place
   });
 
   it('the "Why?" opens the help: what the lock protects (R3.15) and the limits of editing together, in their exact words; Close and Escape close the message', async () => {

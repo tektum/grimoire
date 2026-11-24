@@ -4,7 +4,7 @@ import { UNKNOWN_NAME } from '../core/directory';
 import { blockIdAt } from './block-id';
 import { lockContext } from './context';
 import { holderOf } from './holder';
-import { hideLockNotice, lockNoticeShown, showLockNotice } from './notice';
+import { hideLockNotice, showLockNotice, whileLockNoticeShown } from './notice';
 import { lockMessage } from './texts';
 
 /** What the guard needs to know of a block kind: whether running it recreates the block (a list, a quote, a code block) or only changes an attribute. */
@@ -34,12 +34,13 @@ export function allowBlockChange(ctx: Ctx, kind: Guarded, pos: number): boolean 
   showLockNotice(view, pos, lockMessage(name));
   if (name === UNKNOWN_NAME) {
     // The name is not known yet: the message says it as soon as the directory has it.
+    // It is for this message only: a newer message, Close, or the editor going ends the wait (notice.ts), so no listener outlives the message it was made for.
     const stop = context.directory.subscribe(() => {
       const known = context.directory.nameOf(holder);
       if (known === UNKNOWN_NAME) return;
-      stop();
-      if (lockNoticeShown(view)) showLockNotice(view, pos, lockMessage(known));
+      showLockNotice(view, pos, lockMessage(known)); // this ends the wait, and so the subscription
     });
+    whileLockNoticeShown(view, stop);
   }
   return false;
 }

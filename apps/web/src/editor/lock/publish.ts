@@ -7,7 +7,7 @@ import { disposeLockNotice } from './notice';
 
 /**
  * Publishes the block the cursor is in through the awareness (`blockId`, R3.17), when it changes, and takes it back when the editor loses the focus or goes: a cursor that is
- * not there must not hold a block. (The awareness is the screen's: it sends at most four updates a second, and only `user`, `cursor` and `blockId`.)
+ * not there must not hold a block (an update that comes in from another person's edit, to a view that has no focus, publishes nothing). (The awareness is the screen's: it sends at most four updates a second, and only `user`, `cursor` and `blockId`.)
  */
 export const blockPublisher = $prose((ctx) => {
   return new Plugin({
@@ -27,7 +27,7 @@ export const blockPublisher = $prose((ctx) => {
         last = id;
         context.awareness.setLocalStateField('blockId', id);
       };
-      const current = (): string | null => (view.editable && view.state.selection instanceof TextSelection ? blockIdAt(view.state, view.state.selection.from) : null);
+      const current = (): string | null => (view.editable && view.hasFocus() && view.state.selection instanceof TextSelection ? blockIdAt(view.state, view.state.selection.from) : null);
       const onBlur = (): void => publish(null);
       const onFocus = (): void => publish(current());
       view.dom.addEventListener('blur', onBlur);

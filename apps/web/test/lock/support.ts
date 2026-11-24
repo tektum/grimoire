@@ -16,6 +16,7 @@ export interface CollabEditor {
   readonly element: HTMLElement;
   readonly awareness: HocuspocusProvider['awareness'] & {};
   readonly ctx: Ctx;
+  readonly directory: ReturnType<typeof createDirectory>;
   view(): EditorView;
   /** Another person's cursor, as the awareness would say it: `userId` is in the block with this id. */
   remote(clientId: number, userId: string, blockId: string | null): void;
@@ -23,7 +24,10 @@ export interface CollabEditor {
 }
 
 /** The screen's editor bound to a shared document with a real awareness, as `mountLive` binds it, with the lock's context set (names from `names`). */
-export async function collabEditor(markdown: string, options: { userId?: string; names?: Record<string, string>; doc?: Y.Doc } = {}): Promise<CollabEditor> {
+export async function collabEditor(
+  markdown: string,
+  options: { userId?: string; names?: Record<string, string>; doc?: Y.Doc; fetchNames?: (ids: string[]) => Promise<{ id: string; name: string }[]> } = {},
+): Promise<CollabEditor> {
   const doc = options.doc ?? new Y.Doc();
   const socket = new HocuspocusProviderWebsocket({ url: 'ws://127.0.0.1:1', autoConnect: false, maxAttempts: 1 });
   const provider = new HocuspocusProvider({ name: 'page', document: doc, websocketProvider: socket });
@@ -31,7 +35,7 @@ export async function collabEditor(markdown: string, options: { userId?: string;
   const awareness = provider.awareness!;
   const element = document.createElement('div');
   document.body.append(element);
-  const directory = createDirectory({ fetchNames: async (ids) => ids.flatMap((id) => (options.names?.[id] === undefined ? [] : [{ id, name: options.names[id]! }])) });
+  const directory = createDirectory({ fetchNames: options.fetchNames ?? (async (ids) => ids.flatMap((id) => (options.names?.[id] === undefined ? [] : [{ id, name: options.names[id]! }]))) });
   const editor = Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, element);
@@ -53,6 +57,7 @@ export async function collabEditor(markdown: string, options: { userId?: string;
     element,
     awareness,
     ctx,
+    directory,
     view,
     remote: (clientId, userId, blockId) => {
       awareness.states.set(clientId, { user: { id: userId }, blockId });
