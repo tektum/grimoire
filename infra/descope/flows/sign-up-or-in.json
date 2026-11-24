@@ -984,8 +984,8 @@
           "props": {
             "bordered": true,
             "copy-to-clipboard": false,
-            "data-errormessage-pattern-mismatch": "Must be a valid email",
-            "data-errormessage-value-missing": "Please fill out this field.",
+            "data-errormessage-pattern-mismatch": "Enter a valid email address, like name@company.com",
+            "data-errormessage-value-missing": "Enter your email address",
             "full-width": true,
             "id": "4NbN7_i_pn",
             "label": "Email",
@@ -993,37 +993,13 @@
             "max": 100,
             "name": "email",
             "pattern": "^[\\w\\.\\%\\+\\-]+@[\\w\\.\\-]+\\.[A-Za-z]{2,}$",
-            "placeholder": "Email",
-            "required": false,
+            "placeholder": "name@company.com",
+            "required": true,
             "size": "md",
             "type": "email"
           },
           "type": {
             "resolvedName": "EmailInput"
-          }
-        },
-        "LmrSIGOWZb": {
-          "custom": {},
-          "displayName": "Text",
-          "hidden": false,
-          "isCanvas": false,
-          "linkedNodes": {},
-          "nodes": [],
-          "parent": "ROOT",
-          "props": {
-            "children": "Welcome\n\n",
-            "data-errormessage-value-missing": "Please fill out this field.",
-            "full-width": false,
-            "id": "LmrSIGOWZb",
-            "isEnriched": true,
-            "italic": false,
-            "link-target-blank": true,
-            "mode": "primary",
-            "text-align": "center",
-            "variant": "h3"
-          },
-          "type": {
-            "resolvedName": "Text"
           }
         },
         "ROOT": {
@@ -1033,7 +1009,7 @@
           "isCanvas": true,
           "linkedNodes": {},
           "nodes": [
-            "LmrSIGOWZb",
+            "subTitle01",
             "4NbN7_i_pn",
             "iHle_uM5W9",
             "1sMmkeVxVT"
@@ -1066,11 +1042,11 @@
           "nodes": [],
           "parent": "ROOT",
           "props": {
-            "children": "Login",
+            "children": "Continue",
             "color": "primary",
             "data-type": "button",
             "formNoValidate": false,
-            "full-width": false,
+            "full-width": true,
             "id": "iHle_uM5W9",
             "mode": "primary",
             "size": "md",
@@ -1079,12 +1055,36 @@
           "type": {
             "resolvedName": "Button"
           }
+        },
+        "subTitle01": {
+          "custom": {},
+          "displayName": "Subtitle",
+          "hidden": false,
+          "isCanvas": false,
+          "linkedNodes": {},
+          "nodes": [],
+          "parent": "ROOT",
+          "props": {
+            "children": "Sign in or create an account with your email",
+            "data-errormessage-value-missing": "Please fill out this field.",
+            "full-width": true,
+            "id": "subTitle01",
+            "isEnriched": true,
+            "italic": false,
+            "link-target-blank": true,
+            "mode": "secondary",
+            "text-align": "left",
+            "variant": "body1"
+          },
+          "type": {
+            "resolvedName": "Text"
+          }
         }
       },
       "interactions": [
         {
           "id": "iHle_uM5W9",
-          "label": "Login"
+          "label": "Continue"
         }
       ],
       "screenId": "new-1"

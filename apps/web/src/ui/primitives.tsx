@@ -4,9 +4,10 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Command } from 'cmdk';
-import { type ButtonHTMLAttributes, type CSSProperties, type ReactNode, useSyncExternalStore } from 'react';
+import { type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { Toaster as SonnerToaster, toast } from 'sonner';
 import 'sonner/dist/styles.css';
+import { useScheme } from './scheme';
 
 /** The primitives screens build on: Radix for behaviour and focus handling, tokens for looks. Every control needs an accessible name. */
 export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' }) {
@@ -135,32 +136,12 @@ export function CommandPalette({ open, onOpenChange, items }: { open: boolean; o
   );
 }
 
-type Scheme = 'light' | 'dark';
-
-/** The scheme the tokens are showing: `data-theme` on the page when it says one, else the system's (the same order as `tokens.css`). */
-function currentScheme(): Scheme {
-  const set = document.documentElement.dataset['theme'];
-  if (set === 'light' || set === 'dark') return set;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-function subscribeToScheme(notify: () => void): () => void {
-  const system = window.matchMedia('(prefers-color-scheme: dark)');
-  system.addEventListener('change', notify);
-  const attribute = new MutationObserver(notify);
-  attribute.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  return () => {
-    system.removeEventListener('change', notify);
-    attribute.disconnect();
-  };
-}
-
 /** The notices are painted with the tokens, so they follow the theme with the rest of the page; the library is told the scheme for the parts it draws itself. */
 const NOTICE_TOKENS = { '--normal-bg': 'var(--paper-raised)', '--normal-text': 'var(--ink)', '--normal-border': 'var(--border)' } as CSSProperties;
 
 /** Mount once, near the root. The wrapper's notices go through `notify`. */
 export function Toaster() {
-  const theme = useSyncExternalStore(subscribeToScheme, currentScheme);
+  const theme = useScheme();
   return <SonnerToaster position="bottom-right" closeButton theme={theme} style={NOTICE_TOKENS} toastOptions={{ style: { fontFamily: 'var(--font-ui)' } }} />;
 }
 export const notify = (text: string): void => {
