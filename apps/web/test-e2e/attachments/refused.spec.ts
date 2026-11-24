@@ -25,12 +25,12 @@ test.describe('files the server refuses', () => {
     }
   });
 
-  test('a file one byte over the maximum shows "That file is too large" and leaves no node', async ({ page }) => {
+  test('a file one byte over the maximum shows "That file is over 25 MB" (the limit the server announces) and leaves no node', async ({ page }) => {
     await scriptStore(page, { createStatus: () => 413 });
     const opened = await openPage(page, 'Text.\n', { editable: true });
     try {
       await pasteFiles(page, [{ name: 'big.png', type: 'image/png', bytes: 11 }]);
-      await expect(page.getByText('That file is too large')).toBeVisible();
+      await expect(page.getByText('That file is over 25 MB')).toBeVisible();
       expect((await opened.markdown()).trim()).toBe('Text.');
       await expect(page.locator('.attachment-uploading')).toHaveCount(0);
     } finally {

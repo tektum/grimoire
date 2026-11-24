@@ -57,8 +57,8 @@ test('an upload in progress, light and dark', async ({ page }) => {
 
 for (const [name, text, options, files] of [
   ['refused-type', "That file type isn't allowed", { createStatus: () => 422 }, [{ name: 'setup.exe', type: 'application/x-msdownload' }]],
-  ['refused-size', 'That file is too large', { createStatus: () => 413 }, [{ name: 'video.png', type: 'image/png' }]],
-  ['refused-cap', 'Too many uploads at once. Wait a moment.', { createStatus: () => 429 }, [{ name: 'photo.png', type: 'image/png' }]],
+  ['refused-size', 'That file is over 25 MB', { createStatus: () => 413 }, [{ name: 'video.png', type: 'image/png' }]],
+  ['refused-cap', 'Too many uploads at once (10 is the most). Wait a moment.', { createStatus: () => 429 }, [{ name: 'photo.png', type: 'image/png' }]],
 ] as const) {
   test(`the refusal "${text}", light and dark`, async ({ page }) => {
     await scriptStore(page, options);

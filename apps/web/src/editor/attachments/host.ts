@@ -1,4 +1,5 @@
 import type { ApiClient } from '@tektum/grimoire-api-client';
+import type { UploadLimits } from './limits';
 import { createUrlBatcher, type FetchUrls, type UrlBatcher } from './urls';
 
 /** What the page gives the editor of one page for attachments. */
@@ -13,6 +14,8 @@ export interface AttachmentHost {
   readonly uploadApi?: ApiClient | undefined;
   /** `fetch` for the one request to the file store. */
   readonly put?: typeof fetch;
+  /** What the server announced about uploads, read when a refusal needs it. */
+  readonly limits?: () => Promise<UploadLimits | undefined>;
   /** Tells the person something (a toast). */
   readonly notify?: (text: string) => void;
   /** Opens a signed link (a download): in another tab. */
