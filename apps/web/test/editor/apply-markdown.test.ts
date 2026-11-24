@@ -1,5 +1,5 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { createDirectory } from '../../src/editor/core/directory';
 import { mountLive, type MountedEditor } from '../../src/editor/core/mount';
@@ -25,7 +25,6 @@ async function liveEditor(): Promise<{ doc: Y.Doc; editor: MountedEditor }> {
   return { doc, editor };
 }
 
-const turn = (): Promise<void> => new Promise((resolve) => void setTimeout(resolve, 20));
 const relay = (from: Y.Doc, to: Y.Doc): void => {
   from.on('update', (update: Uint8Array, origin: unknown) => {
     if (origin !== 'relay') Y.applyUpdate(to, update, 'relay');
@@ -38,19 +37,20 @@ describe('applying a Markdown text to the live editor (what a restored version d
     const [a, b] = [await liveEditor(), await liveEditor()];
     relay(a.doc, b.doc);
     relay(b.doc, a.doc);
-    await turn();
     a.editor.applyMarkdown('First text. Second text. Third text.');
-    await turn();
-    expect(fragmentText(a.doc)).toContain('Third text');
-    expect(b.editor.markdown()).toContain('Third text');
+    await vi.waitFor(() => {
+      expect(fragmentText(a.doc)).toContain('Third text');
+      expect(b.editor.markdown()).toContain('Third text');
+    });
 
     b.editor.applyMarkdown('Restored text.');
-    await turn();
-    expect(b.editor.markdown()).toContain('Restored text.');
-    expect(fragmentText(b.doc)).toContain('Restored text.');
-    expect(fragmentText(a.doc)).toContain('Restored text.'); // the other side sees it like any other edit
+    await vi.waitFor(() => {
+      expect(b.editor.markdown()).toContain('Restored text.');
+      expect(fragmentText(b.doc)).toContain('Restored text.');
+      expect(fragmentText(a.doc)).toContain('Restored text.'); // the other side sees it like any other edit
+      expect(a.editor.markdown()).toContain('Restored text.');
+    });
     expect(fragmentText(a.doc)).not.toContain('Third text');
-    expect(a.editor.markdown()).toContain('Restored text.');
     expect(a.editor.markdown()).not.toContain('Third text');
   });
 });
