@@ -59,7 +59,7 @@ export type LimitName = 'message-size' | 'state-size' | 'message-rate' | 'presen
 export type AccessClosedReason = 'no-access' | 'access-changed' | 'epoch' | 'session-expired' | 'recheck-unavailable';
 
 /** Fixed refusal details: no identifiers, no provider messages. */
-export type RefusalDetail = 'no-user' | 'suspended';
+export type RefusalDetail = 'no-user' | 'suspended' | 'no-tenant' | 'tenant-ambiguous' | 'tenant-mismatch';
 
 export interface CollabLog {
   emit<E extends keyof CollabEvents>(event: E, fields: CollabEvents[E]['fields']): void;

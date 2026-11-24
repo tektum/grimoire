@@ -36,6 +36,14 @@ export class FakeUserStore implements UserStore {
   }
 
   /** Test fixture helper, deliberately not a UserStore member: sign-in never clears suspension. */
+  /** Moves the user to another tenant (the administrator's or a migration's doing), for the tests of what follows a change of tenant. */
+  setTenant(descopeUserId: string, tenantId: string): boolean {
+    const user = this.users.find((u) => u.descopeUserId === descopeUserId);
+    if (user === undefined) return false;
+    this.users[this.users.indexOf(user)] = { ...user, tenantId };
+    return true;
+  }
+
   suspend(descopeUserId: string, value = true): boolean {
     const user = this.users.find((u) => u.descopeUserId === descopeUserId);
     if (!user) return false;

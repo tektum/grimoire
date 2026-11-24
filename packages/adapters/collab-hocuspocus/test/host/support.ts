@@ -42,7 +42,7 @@ export class FakeVerifier implements AuthVerifier {
 /** An access store over the fake user store's rows and a page world, counting round trips. */
 export function linkedAccessStore(users: FakeUserStore, world: World): AccessStore & { calls: number; fail?: Error | undefined } {
   const s: { calls: number; fail?: Error | undefined } = { calls: 0 };
-  const current = (): AccessStore => createFakeAccessStore({ ...world, users: users.all().map((u) => ({ id: u.id, role: u.role, suspended: u.suspended })) });
+  const current = (): AccessStore => createFakeAccessStore({ ...world, users: users.all().map((u) => ({ id: u.id, role: u.role, suspended: u.suspended, ...(u.tenantId === undefined ? {} : { tenantId: u.tenantId }) })) });
   return Object.assign(s, {
     facts: (rs: readonly AccessRequest[]) => { s.calls++; return s.fail ? Promise.reject(s.fail) : current().facts(rs); },
     collectionFacts: (rs: Parameters<AccessStore['collectionFacts']>[0]) => current().collectionFacts(rs),
