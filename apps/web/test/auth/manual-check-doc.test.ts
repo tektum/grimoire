@@ -78,7 +78,9 @@ describe('docs/proof/m6-signin-manual.md', () => {
 
 describe('the tests of the client and the end-to-end specs', () => {
   const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => (statSync(path.join(dir, n)).isDirectory() ? walk(path.join(dir, n)) : [path.join(dir, n)]));
-  const files = [...walk(path.join(root, 'apps/web/test')), ...walk(path.join(root, 'apps/web/test-e2e'))].filter((f) => /\.(tsx?|mjs)$/.test(f) && !f.endsWith('manual-check-doc.test.ts'));
+  // The tests of the content security policy compare header text that has to name the provider's hosts; they open no connection to them.
+  const POLICY_TEXT = ['apps/web/test/safety/headers.test.ts'];
+  const files = [...walk(path.join(root, 'apps/web/test')), ...walk(path.join(root, 'apps/web/test-e2e'))].filter((f) => /\.(tsx?|mjs)$/.test(f) && !f.endsWith('manual-check-doc.test.ts') && !POLICY_TEXT.includes(path.relative(root, f)));
 
   it("name the provider's domain only in a route interception (none needs the provider or the network beyond localhost)", () => {
     const offenders = files
