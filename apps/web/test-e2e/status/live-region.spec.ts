@@ -56,7 +56,7 @@ test.describe('the live region', () => {
   test('receives the connection-loss text without the focus moving', async ({ browser, baseURL }) => {
     await withScriptedPage(browser, baseURL, {}, async ({ page, collab }) => {
       await expect.poll(() => collab.tokens.length).toBe(1);
-      await page.locator('a.page-history-link').focus();
+      await page.getByRole('button', { name: 'More page actions' }).focus();
       const before = await active(page);
       await collab.stop();
       await page.clock.runFor(11_000);
@@ -67,7 +67,7 @@ test.describe('the live region', () => {
 
   test('receives a refusal text without the focus moving', async ({ browser, baseURL }) => {
     await withScriptedPage(browser, baseURL, { onAuth: { deny: 'page-full' } }, async ({ page }) => {
-      await page.locator('a.page-history-link').focus();
+      await page.getByRole('button', { name: 'More page actions' }).focus();
       const before = await active(page);
       await expect(statusLine(page)).toHaveText('This page already has 100 people editing. Try again in a moment.');
       expect(await active(page)).toBe(before);

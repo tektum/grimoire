@@ -48,7 +48,7 @@
 .page-margin:empty {
   display: none;
 }
-.page-admin-action {
+.page-head > button {
   margin-inline-start: auto;
   font-size: 0.85rem;
 }

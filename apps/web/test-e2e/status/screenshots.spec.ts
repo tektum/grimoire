@@ -62,7 +62,8 @@ test('the "too large" notice with the reset action for admins, light and dark', 
     const text = 'This page is too large to edit further. You can still read it.';
     await harness.show({ title: 'Planning the autumn release', collab: 'synced', state: { text, readOnly: true }, admin: true, body: BODY });
     await expect(page.getByRole('status')).toHaveText(text);
-    await expect(page.getByRole('button', { name: 'Reset saved state…' })).toBeVisible();
+    await page.getByRole('button', { name: 'More page actions' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Reset saved state…' })).toBeVisible();
     await shots(page, TASK, 'too-large-admin');
   } finally {
     await harness.stop();

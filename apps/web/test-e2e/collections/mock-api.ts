@@ -33,6 +33,8 @@ export interface MockState {
   firstNewPageId?: string;
   /** The address id of that page (default: the id padded to eight characters). */
   firstNewPageUrlId?: string;
+  /** The role of the signed-in person (default member). */
+  role?: 'admin' | 'member' | 'viewer';
   /** Collections that exist but that this person may not read: reading their tree answers 404, exactly as for an id that does not exist. */
   hidden?: string[];
   /** The deleted batches, newest first, with the pages of each (the root first). Absent: an empty trash. */
@@ -68,7 +70,7 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     const { pathname } = new URL(request.url());
     if (pathname === '/v1/config') return json(route, 200, { collabUrl: state.collabUrl ?? COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
-    if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: state.userName ?? 'e2e-alice', email: 'e2e-alice@dev.invalid', role: 'member' }, cors);
+    if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: state.userName ?? 'e2e-alice', email: 'e2e-alice@dev.invalid', role: state.role ?? 'member' }, cors);
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
     const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
     if (one_?.[1] !== undefined && request.method() === 'GET') {

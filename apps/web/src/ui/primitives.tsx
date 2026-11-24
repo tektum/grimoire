@@ -4,7 +4,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Command } from 'cmdk';
-import { type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type Ref, type RefObject } from 'react';
 import { Toaster as SonnerToaster, toast } from 'sonner';
 import 'sonner/dist/styles.css';
 import { useScheme } from './scheme';
@@ -14,12 +14,17 @@ export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElem
   return <button type="button" data-variant={variant} {...rest} />;
 }
 
-export function Modal({ title, open, onOpenChange, children }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode }) {
+/** `returnFocus`: the element that gets the focus when the dialog closes (the default is the element that had it before: gone, when the dialog was opened by choosing an item of a menu). */
+export function Modal({ title, open, onOpenChange, children, returnFocus }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode; returnFocus?: RefObject<HTMLElement | null> }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="modal" aria-describedby={undefined}>
+        <Dialog.Content
+          className="modal"
+          aria-describedby={undefined}
+          {...(returnFocus === undefined ? {} : { onCloseAutoFocus: (event: Event) => { event.preventDefault(); returnFocus.current?.focus(); } })}
+        >
           <Dialog.Title>{title}</Dialog.Title>
           {children}
           <Dialog.Close asChild>
@@ -72,11 +77,14 @@ export interface MenuItem {
   readonly label: string;
   readonly onSelect: () => void;
 }
-export function Menu({ label, items }: { label: string; items: readonly MenuItem[] }) {
+/** A menu of actions behind one button: `label` names the button for a screen reader, and `text` (it should be part of `label`) is what the button shows instead of the dots. */
+export function Menu({ label, items, text, triggerRef }: { label: string; items: readonly MenuItem[]; text?: string; triggerRef?: Ref<HTMLButtonElement> }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <Button aria-label={label}>…</Button>
+        <button type="button" ref={triggerRef} aria-label={label}>
+          {text ?? '…'}
+        </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu" align="end">

@@ -1,5 +1,5 @@
 import type { components } from '@tektum/grimoire-api-client';
-import { useRef, useState } from 'react';
+import { type RefObject, useRef, useState } from 'react';
 import type { ApiLike } from '../../api/query';
 import { Button, Confirm, Modal } from '../../ui/primitives';
 import './admin.css';
@@ -11,7 +11,9 @@ type View = 'ask' | 'stale' | 'done';
  * The administrators' reset of a page's saved state (R6.21, R3.20), for the page screen to open. It asks first, naming the page, with an optional replacement
  * Markdown. A saved text older than the state (409 `markdown_stale`) is a second question: the newest edits would be lost. The call is made once per confirmation.
  */
-export function ResetPageDialog({ api, page, open, onOpenChange }: {
+export function ResetPageDialog({ api, page, open, onOpenChange, returnFocus }: {
+  /** Where the focus goes when the dialog closes. */
+  readonly returnFocus?: RefObject<HTMLElement | null>;
   readonly api: ApiLike;
   readonly page: { readonly id: string; readonly title: string };
   readonly open: boolean;
@@ -70,7 +72,7 @@ export function ResetPageDialog({ api, page, open, onOpenChange }: {
 
   return (
     <>
-      <Modal title={`Reset the saved state of ${page.title}?`} open={open && view !== 'stale'} onOpenChange={(isOpen) => { if (!isOpen) close(); }}>
+      <Modal title={`Reset the saved state of ${page.title}?`} open={open && view !== 'stale'} {...(returnFocus === undefined ? {} : { returnFocus })} onOpenChange={(isOpen) => { if (!isOpen) close(); }}>
         {view === 'done' ? (
           <p role="status">
             The state of {page.title} was reset.{older ? ' Its saved text was older than its state, so the newest edits were not kept.' : ''}

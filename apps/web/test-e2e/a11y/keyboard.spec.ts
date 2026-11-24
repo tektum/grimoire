@@ -114,7 +114,9 @@ test('history: a version is opened and restored', async ({ browser, baseURL }) =
   await walk(browser, baseURL, { userId: 'e2e-keys', role: 'member' }, async (page) => {
     await page.goto(world.alpha.path);
     await waitForSynced(page);
-    await tabTo(page, page.getByRole('link', { name: /^History/ }));
+    await tabTo(page, page.getByRole('button', { name: 'More page actions' }));
+    await page.keyboard.press('Enter'); // opens the menu, with the focus on its first item
+    await expect(page.getByRole('menuitem', { name: 'History' })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/history$/);
     await expect(page.getByRole('link', { name: /^Open this version/ }).first(), 'the list of versions is drawn (it is fetched after the page)').toBeVisible();
