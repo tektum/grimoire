@@ -1,0 +1,68 @@
+import { expect, test } from '@playwright/test';
+import { buildDevToken } from '../../test/support/dev-token';
+import { mapSignal } from '../../src/editor/core/map-signal';
+import { apiUrl, devSecret } from '../support/env';
+import { waitForSynced } from '../support/sync';
+import { twoUsers } from '../support/two-users';
+import { makePage, readPage, setDefaultPermission } from './pages';
+import { probe, token } from './probe';
+import { recreateApp } from './stack';
+
+test.describe('an administrator changes access under an open page', () => {
+  test('access taken away: the page stops with "You no longer have access to this page", and the server refuses the person with forbidden', async ({ browser, baseURL }) => {
+    test.slow(); // the app is recreated twice
+    const made = await makePage('# Closed\n\nA page that is closed to its reader.\n');
+    await recreateApp({ M6_RECHECK_SECONDS: '2' });
+    try {
+      const users = await twoUsers(browser, baseURL);
+      try {
+        const { page } = users.b;
+        await page.goto(made.path);
+        await waitForSynced(page);
+        await setDefaultPermission(made.collectionId, null);
+        await expect(page.getByText('You no longer have access to this page')).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
+
+        // What the server says to the same person asking again: the refusal the client has a row for, and a close handled alike.
+        const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
+        const seen = await probe(page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
+        console.log(`forbidden observed ${JSON.stringify(seen)}`);
+        expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
+        expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NO_ACCESS' });
+        expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
+        expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'forbidden' }));
+      } finally {
+        await users.close();
+      }
+    } finally {
+      await recreateApp();
+    }
+  });
+
+  test('write access taken down to read: the page goes read-only, keeps its text and does not offer a copy, and the page is not reset', async ({ browser, baseURL }) => {
+    test.slow();
+    const made = await makePage('# Lowered\n\nA page whose editor is lowered to a reader.\n');
+    await recreateApp({ M6_RECHECK_SECONDS: '2' });
+    try {
+      const users = await twoUsers(browser, baseURL);
+      try {
+        const { page } = users.b;
+        await page.goto(made.path);
+        await waitForSynced(page);
+        const surface = page.locator('.ProseMirror');
+        await expect(surface).toHaveAttribute('contenteditable', 'true');
+        const before = await readPage(made.id);
+        await setDefaultPermission(made.collectionId, 'read');
+        await expect(surface).toHaveAttribute('contenteditable', 'false', { timeout: 30_000 });
+        await expect(page.getByText('Read only')).toBeVisible();
+        await expect(surface).toContainText('A page whose editor is lowered to a reader.');
+        await expect(page.getByText('This page was reset. Your unsent changes were not applied.')).toHaveCount(0);
+        expect((await readPage(made.id)).stateEpoch, 'no reset: the epoch is the same').toBe(before.stateEpoch);
+      } finally {
+        await users.close();
+      }
+    } finally {
+      await recreateApp();
+    }
+  });
+});
