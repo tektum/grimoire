@@ -3,7 +3,7 @@ name: SST infrastructure
 # `diff` and `deploy` run only by manual dispatch of `main`, in the environment `descope-dev`, which deploys from `main` only. There is no stored
 # secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
 # second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
-# The Descope provider plugin is installed from a release asset with a checksum held in this repository (infra/provider-checksums.txt) before either credential is
+# The Descope provider plugin is installed with Pulumi's `plugin install --checksum` (the sha256 below) before either credential is
 # requested. Until the owner has created the variables the job stops at its first step with a notice.
 on:
   pull_request:
@@ -29,6 +29,9 @@ permissions:
 
 env:
   MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
+  # The Descope provider plugin (version of sst.config.ts) and the sha256 of its linux-amd64 release asset. Update both with the provider.
+  DESCOPE_PROVIDER_VERSION: "1.0.1"
+  DESCOPE_PROVIDER_SHA256: "0e376aa5c573aad73be62e8d17bf3f9e4e505d3a9af839e8d5ac189d815ab5c5"
 
 concurrency:
   group: descope-infra
@@ -85,11 +88,12 @@ jobs:
           install_args: node bun
       - run: bun install --frozen-lockfile
         if: steps.gate.outputs.blocked != 'true'
-      - name: Install the Descope provider plugin from a pinned checksum, before any credential exists
+      - name: Install the Descope provider plugin with its pinned checksum, before any credential exists
         if: steps.gate.outputs.blocked != 'true'
         run: |
           bunx sst install
-          infra/install-provider.sh
+          export PULUMI_HOME="$HOME/.config/sst" # SST keeps its plugins here
+          "$PULUMI_HOME/bin/pulumi" plugin install resource descope "$DESCOPE_PROVIDER_VERSION" --server github://api.github.com/descope --checksum "$DESCOPE_PROVIDER_SHA256" --reinstall
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         if: steps.gate.outputs.blocked != 'true'
         with:
