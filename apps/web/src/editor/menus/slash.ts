@@ -101,7 +101,7 @@ function createView(ctx: Ctx, view: EditorView) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       state.active = (state.active + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
       render();
-      host.querySelector('[data-active="true"]')?.scrollIntoView?.({ block: 'nearest' });
+      host.querySelector(`#${slashOptionId(state.kinds[state.active] as BlockKind)}`)?.scrollIntoView?.({ block: 'nearest' }); // the new one, by its id: the render that marks it active has not been committed yet
       return true;
     }
     if (event.key === 'Enter' || event.key === 'Tab') {

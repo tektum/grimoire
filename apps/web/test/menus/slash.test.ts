@@ -98,6 +98,25 @@ describe('the menu in the editor', () => {
     await vi.waitFor(() => expect(open(t)).toBe(false));
   });
 
+  it('scrolls the item that becomes active into view, not the one that was: up from the first item wraps to the last and shows it', async () => {
+    const t = await emptyParagraph();
+    typeText(t, '/');
+    await vi.waitFor(() => expect(open(t)).toBe(true));
+    const shown: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      shown.push(this.id);
+    };
+    try {
+      press(t, 'ArrowUp');
+      press(t, 'ArrowDown');
+      press(t, 'ArrowDown');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+    expect(shown).toEqual(['slash-option-table', 'slash-option-text', 'slash-option-heading-1']);
+  });
+
   it('Tab chooses too, and a click on an item chooses that one', async () => {
     const t = await emptyParagraph();
     typeText(t, '/quote');
