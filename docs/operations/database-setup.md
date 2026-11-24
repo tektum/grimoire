@@ -25,3 +25,13 @@ The server receives a SCRAM-SHA-256 verifier computed here, not the password, so
 The server refuses to start when any of these three settings is set: only this step holds the administrator connection and the passwords.
 
 Tested against PostgreSQL 17 as a superuser and as a non-superuser with `CREATEROLE` (the shape of a managed master user). Not yet run on a real managed service: on one, the master user must be able to become the migration role to hand it the schemas, which the command arranges with `GRANT ... WITH SET TRUE`.
+
+## Moving the existing workspace into a tenant: `grimoire tenant-adopt`
+
+Migration 0009 put every row a database held before tenancy in the tenant `legacy`. `grimoire tenant-adopt --from legacy --to <tenant id> [--name <name> --domain <domain>]` moves all of it into a real tenant, once, by hand (`docs/tenancy.md` section 5, item 4). It runs as the migration role, with `GRIMOIRE_DATABASE_MIGRATION_URL` like `grimoire migrate`.
+
+- One transaction: every row of every tenant table moves, or none does. Writes to those tables wait until it ends; reads go on.
+- The target's `tenants` row is used when it exists (a first sign-in made it). When it does not, `--name` and `--domain` make it, and without them the command refuses.
+- It refuses, and changes nothing, when the target already holds a row in any tenant table other than `users`, or when the source holds no row at all (so a second run is refused). The tenant ids must have the shape `[A-Za-z0-9_-]{1,128}` and differ.
+- The `legacy` row of `tenants` stays: the columns still default to it. The migration that drops those defaults removes it.
+- It prints `tenant_adopt.done` with the rows moved in each table, or `tenant_adopt.refused` with its reason (`bad-tenant-id`, `same-tenant`, `source-unknown`, `source-empty`, `target-unnamed`, `target-not-empty`); never a name, a domain or anything of a person. Exit 0 when done, 1 when refused or failed, 2 for a usage or settings error.

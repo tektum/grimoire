@@ -56,6 +56,11 @@ export interface InfoEvents {
   'db_setup.done': { created: readonly string[]; updated: readonly string[] };
   /** The store set-up finished: the bucket, the origins its CORS rule lists (or was checked for) and who set the rule. */
   'files_setup.done': { bucket: string; origins: readonly string[]; cors: 'api' | 'external' };
+  /**
+   * `grimoire tenant-adopt` moved every row of `from` into `to`: the rows moved in each tenant table, whether the `tenants` row of `to` was made, and that the row of
+   * `from` is kept (the column defaults of migration 0009 still name it). Tenant ids only: never a tenant's name or domain, nor anything of a person.
+   */
+  'tenant_adopt.done': { from: string; to: string; tenantCreated: boolean; moved: Readonly<Record<string, number>>; sourceTenantRow: 'kept' };
 }
 
 export interface WarnEvents {
@@ -98,6 +103,11 @@ export interface ErrorEvents {
   'files_setup.failed': { reason: string };
   /** `external` CORS mode: the first origin, method or header the store's own rule does not allow. */
   'files_setup.cors_refused': { problem: string };
+  'tenant_adopt.config_invalid': { settings: readonly ConfigProblem[] };
+  /** `grimoire tenant-adopt` changed nothing, for this reason. */
+  'tenant_adopt.refused': { reason: 'bad-tenant-id' | 'same-tenant' | 'source-unknown' | 'source-empty' | 'target-unnamed' | 'target-not-empty' };
+  /** The database's own message (it names a table or a constraint, never a value); nothing was changed. */
+  'tenant_adopt.failed': { error: string };
 }
 
 /** The only logger the server code uses. The one non-literal event name in the code base is in this file. */
