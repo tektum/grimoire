@@ -186,14 +186,15 @@ test-m5: dev-secret
 # The web client's browser specs (apps/web/test-e2e) against the real stack: the workspace is built, the client is built in e2e mode (the development sign-in form
 # exists in that mode and in development only), the stack starts with the web overlay (it allows the origin of the
 # client's server, 127.0.0.1:$${E2E_WEB_PORT:-4173}), and the Chromium project of apps/web/playwright.config.ts runs. The development token comes from .env, as for the exit
-# tests. Needs the browser once: `bunx playwright install --with-deps chromium`. Reproduce a CI failure with `make test-web-e2e`; `make down-volumes` afterwards.
+# tests, and is handed to the run as E2E_DEV_TOKEN_SECRET: the specs that stand in for the API give that variable a made-up value when it is unset (`??=`), and
+# in one run every spec file is loaded first, so without it the specs that sign in on the stack would sign with the made-up one and be refused (401). Needs the browser once: `bunx playwright install --with-deps chromium`. Reproduce a CI failure with `make test-web-e2e`; `make down-volumes` afterwards.
 WEB_COMPOSE := COMPOSE_FILE=compose.yaml:compose.m6.yaml
 test-web-e2e: dev-secret
 	bun install --frozen-lockfile
 	bun run build
 	cd apps/web && bunx vite build --mode e2e
 	$(WEB_COMPOSE) $(MAKE) up
-	bunx playwright test -c apps/web/playwright.config.ts --project=chromium
+	E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" bunx playwright test -c apps/web/playwright.config.ts --project=chromium
 
 # Later milestones that run after this one and are not ordered against each other keep their targets in mk/test-mN.mk.
 -include mk/*.mk
