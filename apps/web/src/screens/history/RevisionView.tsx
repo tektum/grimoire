@@ -43,8 +43,8 @@ export function RevisionView({ api, page, slug, revisionId, mount = realEngine.m
     queryFn: async ({ signal }) => {
       const { data, response } = await api.GET('/v1/pages/{id}/markdown' as never, { params: { path: { id: page.id } }, parseAs: 'text', signal } as never);
       if (!response.ok) throw new HttpError(response.status);
-      if (typeof data !== 'string') throw new HttpError(502); // not the text the route promises: a failed comparison, never an empty page
-      return { markdown: data, stale: response.headers.get('x-grimoire-markdown-stale') === 'true' };
+      if (data !== undefined && typeof data !== 'string') throw new HttpError(502); // not the text the route promises: a failed comparison, never an empty page
+      return { markdown: data ?? '', stale: response.headers.get('x-grimoire-markdown-stale') === 'true' };
     },
   });
   if (revision.error?.status === 404 || revision.error?.status === 403) return <NotFoundScreen />;

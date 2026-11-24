@@ -152,6 +152,16 @@ describe('one revision', () => {
     expect(screen.queryByText(/Restoring this version would remove/)).toBeNull();
   });
 
+  it('treats an empty 200 answer as an empty page: the changes are every line of the version added', async () => {
+    const { api } = fakeApi({ [ONE]: ok({ ...rev('r1'), markdown: OLD }), [CURRENT]: ok(undefined) });
+    show(api);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Changes' }));
+    const panel = await screen.findByRole('tabpanel');
+    await waitFor(() => { expect(panel.querySelectorAll('ins').length).toBeGreaterThan(0); });
+    expect(panel.querySelectorAll('del')).toHaveLength(0);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('offers to try again when the revision cannot be read', async () => {
     let attempt = 0;
     const { api } = fakeApi({ [ONE]: () => (attempt++ === 0 ? { status: 503 } : ok({ ...rev('r1'), markdown: OLD })), [CURRENT]: ok(NOW) });
