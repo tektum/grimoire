@@ -28,7 +28,7 @@ export function rawHtmlView(node: ProseNode, view: EditorView, getPos: () => num
     const at = getPos();
     const value = String(node.attrs['value'] ?? '');
     if (at === undefined || !view.editable || value === '') return;
-    view.dispatch(view.state.tr.replaceWith(at, at + node.nodeSize, view.state.schema.text(value)));
+    view.dispatch(view.state.tr.replaceWith(at, at + node.nodeSize, view.state.schema.text(value, node.marks)));
     view.focus();
   });
 

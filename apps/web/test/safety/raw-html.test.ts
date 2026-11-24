@@ -11,7 +11,8 @@ const fakeView = (editable: boolean) => {
   const view = { editable, dispatch, focus, state: { tr: { replaceWith }, schema: { text } } };
   return { view, replaceWith, dispatch, text, focus };
 };
-const nodeOf = (value: string, nodeSize = value.length || 1) => ({ attrs: { value }, nodeSize });
+const MARKS = [{ type: { name: 'emphasis' } }];
+const nodeOf = (value: string, nodeSize = value.length || 1) => ({ attrs: { value }, nodeSize, marks: MARKS });
 
 describe('the raw HTML block', () => {
   it.each(HOSTILE)('shows %j as text and creates no element from it', (value) => {
@@ -30,7 +31,7 @@ describe('the raw HTML block', () => {
     const button = (dom as HTMLElement).querySelector('button') as HTMLButtonElement;
     expect(button.textContent).toBe('Edit source');
     button.click();
-    expect(text).toHaveBeenCalledWith('<b>x</b>');
+    expect(text).toHaveBeenCalledWith('<b>x</b>', MARKS); // the formatting and links around the block stay
     expect(replaceWith).toHaveBeenCalledWith(5, 13, { text: '<b>x</b>' });
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalled();
