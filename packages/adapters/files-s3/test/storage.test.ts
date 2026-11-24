@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createFileStorage, mapError } from '../src/index.js';
@@ -22,6 +22,31 @@ const text = async (body: AsyncIterable<Uint8Array>) => {
   for await (const part of body) out += new TextDecoder().decode(part);
   return out;
 };
+
+describe('the credentials of the clients', () => {
+  const { accessKey, secretKey, ...withoutKeys } = config();
+
+  it('are the key pair of the settings when there is one (a store with its own identity)', async () => {
+    const s = createFileStorage(config({ accessKey, secretKey }), { maxAttempts: 1 });
+    for (const client of [s.client, s.signer]) expect(await client.config.credentials()).toMatchObject({ accessKeyId: accessKey, secretAccessKey: secretKey });
+    expect(new URL((await s.signDownload('k', { ttlSeconds: 60, disposition: 'inline' })).url).searchParams.get('X-Amz-Credential')).toContain(`${accessKey}/`);
+  });
+
+  it('come from the AWS default credential chain when there is none (the task role on Fargate), temporary token included', async () => {
+    vi.stubEnv('AWS_ACCESS_KEY_ID', 'AKIAFROMCHAIN00000000');
+    vi.stubEnv('AWS_SECRET_ACCESS_KEY', 'secret-from-the-chain');
+    vi.stubEnv('AWS_SESSION_TOKEN', 'token-from-the-chain');
+    try {
+      const s = createFileStorage(withoutKeys, { maxAttempts: 1 });
+      for (const client of [s.client, s.signer]) expect(await client.config.credentials()).toMatchObject({ accessKeyId: 'AKIAFROMCHAIN00000000', sessionToken: 'token-from-the-chain' });
+      const signed = new URL((await s.signDownload('k', { ttlSeconds: 60, disposition: 'inline' })).url);
+      expect(signed.searchParams.get('X-Amz-Credential')).toContain('AKIAFROMCHAIN00000000/');
+      expect(signed.searchParams.get('X-Amz-Security-Token')).toBe('token-from-the-chain');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe('the clients', () => {
   it('compute and validate checksums only where required, in both clients', async () => {

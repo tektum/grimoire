@@ -13,7 +13,8 @@ export function createClients(
   const shared = {
     region: config.region,
     forcePathStyle: config.addressing === 'path',
-    credentials: { accessKeyId: config.accessKey, secretAccessKey: config.secretKey },
+    // Both keys: a store with its own identity (local development). Neither: the SDK's default credential chain, which on Fargate is the task role.
+    ...(config.accessKey !== undefined && config.secretKey !== undefined ? { credentials: { accessKeyId: config.accessKey, secretAccessKey: config.secretKey } } : {}),
     requestChecksumCalculation: 'WHEN_REQUIRED' as const,
     responseChecksumValidation: 'WHEN_REQUIRED' as const,
   };

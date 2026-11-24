@@ -84,7 +84,7 @@ const domain = z.string(msg(domainRule)).transform((v, ctx) => {
 
 type Purpose = 'server' | 'migrate' | 'files-setup';
 type Raw = Readonly<Record<string, string>>;
-type S3Required = 'ENDPOINT' | 'BUCKET' | 'ACCESS_KEY' | 'SECRET_KEY';
+type S3Required = 'ENDPOINT' | 'BUCKET';
 const S3_ANY = ['ENDPOINT', 'PUBLIC_ENDPOINT', 'BUCKET', 'ACCESS_KEY', 'SECRET_KEY', 'REGION', 'ADDRESSING_STYLE'] as const;
 const SERVER_ONLY = 'is required to run the server';
 const SETUP_ONLY = 'is required to run files-setup';
@@ -281,9 +281,11 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
     }, { path: ['GRIMOIRE_SAVE_TIMEOUT_MS'], when: always, error: () => `plus ${P}COLLAB_STORE_TIMEOUT_MS must be smaller than ${P}SHUTDOWN_SAVE_DEADLINE_MS` })
     .refine(() => !s3Any() || set('GRIMOIRE_S3_ENDPOINT'), s3Missing('ENDPOINT'))
     .refine(() => !s3Any() || set('GRIMOIRE_S3_BUCKET'), s3Missing('BUCKET'))
-    // files-setup uses the admin key and never the runtime key.
-    .refine(() => purpose === 'files-setup' || !s3Any() || set('GRIMOIRE_S3_ACCESS_KEY'), s3Missing('ACCESS_KEY'))
-    .refine(() => purpose === 'files-setup' || !s3Any() || set('GRIMOIRE_S3_SECRET_KEY'), s3Missing('SECRET_KEY'))
+    // The runtime key pair is both or neither. Neither: the AWS default credential chain (a task role on AWS). files-setup uses the admin key and never the runtime key.
+    .refine(() => purpose === 'files-setup' || set('GRIMOIRE_S3_ACCESS_KEY') === set('GRIMOIRE_S3_SECRET_KEY'), {
+      path: [set('GRIMOIRE_S3_ACCESS_KEY') ? 'GRIMOIRE_S3_SECRET_KEY' : 'GRIMOIRE_S3_ACCESS_KEY'], when: always,
+      error: () => `is required when the other ${P}S3_ACCESS_KEY or ${P}S3_SECRET_KEY is set (or unset both to use the AWS default credential chain)`,
+    })
     .refine(() => set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') === set('GRIMOIRE_S3_ADMIN_SECRET_KEY'), {
       path: [set('GRIMOIRE_S3_ADMIN_ACCESS_KEY') ? 'GRIMOIRE_S3_ADMIN_SECRET_KEY' : 'GRIMOIRE_S3_ADMIN_ACCESS_KEY'], when: always,
       error: () => `is required when the other ${P}S3_ADMIN_* key is set`,
@@ -307,15 +309,17 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
 const cleaned = (env: Readonly<Record<string, string | undefined>>): Raw =>
   Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === 'string' && e[1] !== ''));
 
-const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>): { readonly files?: FilesConfig } => {
+const filesConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose): { readonly files?: FilesConfig } => {
   const endpoint = v.GRIMOIRE_S3_ENDPOINT;
-  if (endpoint === undefined || v.GRIMOIRE_S3_BUCKET === undefined || v.GRIMOIRE_S3_ACCESS_KEY === undefined || v.GRIMOIRE_S3_SECRET_KEY === undefined) {
-    return {}; // all-or-nothing: the rules above guarantee all four or none
+  if (purpose === 'files-setup' || endpoint === undefined || v.GRIMOIRE_S3_BUCKET === undefined) {
+    return {}; // files-setup holds the admin identity (`filesSetup`) and never the server's `files`; // the endpoint and the bucket come together: the rules above guarantee both or neither (the key pair is separate, both or neither)
   }
   const publicEndpoint = v.GRIMOIRE_S3_PUBLIC_ENDPOINT ?? endpoint;
+  const { GRIMOIRE_S3_ACCESS_KEY: accessKey, GRIMOIRE_S3_SECRET_KEY: secretKey } = v;
   return { files: {
     endpoint, publicEndpoint, publicOrigin: new URL(publicEndpoint).origin,
-    bucket: v.GRIMOIRE_S3_BUCKET, accessKey: v.GRIMOIRE_S3_ACCESS_KEY, secretKey: v.GRIMOIRE_S3_SECRET_KEY,
+    bucket: v.GRIMOIRE_S3_BUCKET,
+    ...(accessKey !== undefined && secretKey !== undefined ? { accessKey, secretKey } : {}),
     region: v.GRIMOIRE_S3_REGION ?? 'us-east-1', addressing: v.GRIMOIRE_S3_ADDRESSING_STYLE ?? 'path',
     createOnlyHeader: v.GRIMOIRE_S3_CREATE_ONLY_HEADER, corsMode: v.GRIMOIRE_S3_CORS_MODE,
     maxBytes: v.GRIMOIRE_FILES_MAX_BYTES, allowedTypes: v.GRIMOIRE_FILES_ALLOWED_TYPES, pendingMaxPerUser: v.GRIMOIRE_FILES_PENDING_MAX_PER_USER,
@@ -351,7 +355,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
   ...(v.GRIMOIRE_DESCOPE_BASE_URL !== undefined ? { descopeBaseUrl: v.GRIMOIRE_DESCOPE_BASE_URL } : {}),
   ...(v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY !== undefined ? { descopeManagementKey: v.GRIMOIRE_DESCOPE_MANAGEMENT_KEY } : {}),
   firstAdminEmails: v.GRIMOIRE_FIRST_ADMIN_EMAILS,
-  ...filesConfig(v),
+  ...filesConfig(v, purpose),
   ...filesSetupConfig(v, purpose),
   descopeMaxTokenLifetimeSeconds: v.GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS,
   allowedEmailDomains: v.GRIMOIRE_ALLOWED_EMAIL_DOMAINS,

@@ -166,11 +166,20 @@ describe('purpose and required values', () => {
     expect(issues.join('\n')).toContain('GRIMOIRE_ALLOWED_ORIGINS');
   });
 
-  it('requires endpoint, bucket and keys once any S3 variable is set', () => {
+  it('requires endpoint and bucket once any S3 variable is set (the keys are optional: neither means the AWS default credential chain)', () => {
     const issues = issuesOf({ ...base, GRIMOIRE_S3_REGION: 'r' });
-    expect(issues.map((i) => i.split(':')[0])).toEqual([
-      'GRIMOIRE_S3_ENDPOINT', 'GRIMOIRE_S3_BUCKET', 'GRIMOIRE_S3_ACCESS_KEY', 'GRIMOIRE_S3_SECRET_KEY',
-    ]);
+    expect(issues.map((i) => i.split(':')[0])).toEqual(['GRIMOIRE_S3_ENDPOINT', 'GRIMOIRE_S3_BUCKET']);
+  });
+
+  it('takes the runtime key pair both or neither, and carries no key when there is none', () => {
+    const store = { ...base, GRIMOIRE_S3_ENDPOINT: 'https://s3.eu-west-1.amazonaws.test', GRIMOIRE_S3_BUCKET: 'b' };
+    const chain = loadConfig(store).files;
+    expect(chain).toBeDefined();
+    expect(chain).not.toHaveProperty('accessKey');
+    expect(chain).not.toHaveProperty('secretKey');
+    expect(loadConfig({ ...store, GRIMOIRE_S3_ACCESS_KEY: 'a', GRIMOIRE_S3_SECRET_KEY: 's' }).files).toMatchObject({ accessKey: 'a', secretKey: 's' });
+    expect(issuesOf({ ...store, GRIMOIRE_S3_ACCESS_KEY: 'a' }).map((i) => i.split(':')[0])).toEqual(['GRIMOIRE_S3_SECRET_KEY']);
+    expect(issuesOf({ ...store, GRIMOIRE_S3_SECRET_KEY: 's' }).map((i) => i.split(':')[0])).toEqual(['GRIMOIRE_S3_ACCESS_KEY']);
   });
 
   it('requires max debounce >= debounce', () => {
