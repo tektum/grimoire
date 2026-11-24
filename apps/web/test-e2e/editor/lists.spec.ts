@@ -42,7 +42,7 @@ test.describe('lists in the page text', () => {
       expect(await marker(bullets.nth(3))).toBe('"▪"');
       const numbered = editor.locator('li[data-list-type="ordered"]');
       // numbered by position, not from the stored label
-      expect(await marker(numbered.nth(0))).toBe('counter(list-item) "."'); // Chrome reports the counter expression, not its value
+      expect(await marker(numbered.nth(0))).toBe('counter(list-item) "."'); // the browser reports the counter expression, not its value
       expect(await marker(numbered.nth(1))).not.toContain('data-label');
       // ... from the list's own start: the editor writes `start` when a list does not start at 1, and the counter begins there (3, 4)
       await expect(editor.locator('ol').first()).toHaveAttribute('start', '3');
