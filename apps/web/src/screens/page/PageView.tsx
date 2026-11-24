@@ -244,7 +244,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
             </Button>
           ) : null}
         </header>
-        <StatusLine state={{ ...state, readOnly }} collab={collab} />
+        <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />
         {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}

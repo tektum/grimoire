@@ -60,6 +60,8 @@ export interface ScriptedCollabServerOptions {
   readonly onAuth?: 'accept' | { readonly deny: string } | { readonly close: number; readonly reason?: string };
   /** A stateless message sent to a client right after it authenticates. */
   readonly statelessOnAuth?: string;
+  /** The scope of the authenticated message (default `read-write`): `readonly` for a reader. */
+  readonly scope?: 'read-write' | 'readonly';
 }
 
 export interface ScriptedCollabServer {
@@ -120,7 +122,7 @@ export async function scriptedCollabServer(options: ScriptedCollabServerOptions 
         documentOf.set(socket, message.document);
         const action = options.onAuth ?? 'accept';
         if (action === 'accept') {
-          send(socket, 0x2, authenticatedMessage(message.document));
+          send(socket, 0x2, authenticatedMessage(message.document, options.scope));
           if (options.statelessOnAuth !== undefined) send(socket, 0x2, statelessMessage(message.document, options.statelessOnAuth));
         } else if ('deny' in action) send(socket, 0x2, permissionDeniedMessage(message.document, action.deny));
         else close(socket, action.close, action.reason);

@@ -15,6 +15,8 @@ export async function withScriptedPage(
   baseURL: string | undefined,
   options: ScriptedCollabServerOptions,
   body: (run: { page: Page; collab: ScriptedCollabServer }) => Promise<void>,
+  /** Runs before the page is opened: routes that change what the scripted API says. */
+  beforeOpen: (page: Page) => Promise<void> = async () => undefined,
 ): Promise<void> {
   const collab = await scriptedCollabServer(options);
   const api = await scriptedApi({ collabUrl: collab.url });
@@ -24,6 +26,7 @@ export async function withScriptedPage(
     const page = await context.newPage();
     await page.clock.install();
     await useScriptedApi(page, api);
+    await beforeOpen(page);
     await page.goto('/p/scripted-abc123');
     await body({ page, collab });
   } finally {

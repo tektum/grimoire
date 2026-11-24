@@ -27,6 +27,11 @@ for (const [name, text, state, collab] of [
   ['saved', 'Saved', { unsynced: 0 }, 'synced'],
   ['saving', 'Saving', { unsynced: 2 }, 'synced'],
   ['offline', 'Offline: changes kept in this tab', { text: 'Offline: changes kept in this tab', unsynced: 2 }, 'offline'],
+  ['busy', 'The server is busy. Trying again.', { text: 'The server is busy. Trying again.' }, 'connecting'],
+  ['page-full', 'This page already has 100 people editing. Try again in a moment.', { text: 'This page already has 100 people editing. Try again in a moment.' }, 'connecting'],
+  ['rate-limited', 'You are sending changes faster than the server accepts. Trying again.', { text: 'You are sending changes faster than the server accepts. Trying again.' }, 'connecting'],
+  ['cannot-open', "This page can't be opened right now. Try again", { text: "This page can't be opened right now. Trying again.", stopped: 'cannot-open' }, 'stopped'],
+  ['no-access', 'You no longer have access to this page', { text: 'You no longer have access to this page', stopped: 'no-access' }, 'stopped'],
 ] as const) {
   test(`the status line says ${text}, light and dark`, async ({ page }) => {
     const harness = await open(page);
@@ -39,3 +44,27 @@ for (const [name, text, state, collab] of [
     }
   });
 }
+
+test('the size-limit banner, light and dark', async ({ page }) => {
+  const harness = await open(page);
+  try {
+    await harness.show({ title: 'Planning the autumn release', collab: 'synced', state: { banner: 'This page is close to its size limit.' }, body: BODY });
+    await expect(page.getByText('This page is close to its size limit.')).toBeVisible();
+    await shots(page, TASK, 'size-limit-banner');
+  } finally {
+    await harness.stop();
+  }
+});
+
+test('the "too large" notice with the reset action for admins, light and dark', async ({ page }) => {
+  const harness = await open(page);
+  try {
+    const text = 'This page is too large to edit further. You can still read it.';
+    await harness.show({ title: 'Planning the autumn release', collab: 'synced', state: { text, readOnly: true }, admin: true, body: BODY });
+    await expect(page.getByRole('status')).toHaveText(text);
+    await expect(page.getByRole('button', { name: 'Reset saved state…' })).toBeVisible();
+    await shots(page, TASK, 'too-large-admin');
+  } finally {
+    await harness.stop();
+  }
+});

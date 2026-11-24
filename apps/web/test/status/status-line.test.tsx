@@ -17,7 +17,7 @@ describe('statusText: what the line says', () => {
     ['offline for more than ten seconds, with changes kept', { ...BASE, offline: true, unsynced: 2, text: TEXTS.offline }, 'offline', TEXTS.offline],
     ['a refusal text wins over Saved', { ...BASE, text: TEXTS.busy }, 'connecting', TEXTS.busy],
     ['a refusal text wins over Saving', { ...BASE, text: TEXTS.pageFull, unsynced: 1 }, 'synced', TEXTS.pageFull],
-    ['stopped with its text', { ...BASE, stopped: 'forbidden' as const, text: TEXTS.noAccess }, 'stopped', TEXTS.noAccess],
+    ['stopped with its text', { ...BASE, stopped: 'no-access' as const, text: TEXTS.noAccess }, 'stopped', TEXTS.noAccess],
     ['disconnected (a hidden tab)', { ...BASE }, 'disconnected', null],
   ] as const)('%s', (_name, state, collab, expected) => {
     expect(statusText(state, collab)).toBe(expected);
@@ -128,5 +128,26 @@ describe('the connection manager counts the changes the server has not acknowled
     h.last().provider.emit({ type: 'stateless', payload: JSON.stringify({ grimoire: 1, kind: 'refusal', code: 'stale-epoch' }) });
     await flush();
     expect(manager.state().unsynced).toBe(0);
+  });
+});
+
+describe('the actions of a stopped page', () => {
+  afterEach(cleanup);
+  const stopped = (reason: ConnectionState['stopped'], text: string) => ({ ...BASE, stopped: reason, text }) as ConnectionState;
+
+  it('a page that cannot be opened says so once, not "Trying again", and offers Try again, which asks for one attempt', () => {
+    const onRetry = vi.fn();
+    render(<StatusLine state={stopped('cannot-open', TEXTS.cannotOpen)} collab="stopped" onRetry={onRetry} />);
+    expect(screen.getByRole('status').textContent).toBe("This page can't be opened right now. Try again");
+    act(() => { screen.getByRole('button', { name: 'Try again' }).click(); });
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByRole('status')); // the button goes away with the attempt: the person's place is the line, not the page body
+  });
+
+  it('offers no button while the page is only retrying, or when stopped for another reason', () => {
+    const view = render(<StatusLine state={{ ...BASE, text: TEXTS.cannotOpen } as ConnectionState} collab="connecting" onRetry={() => undefined} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    view.rerender(<StatusLine state={stopped('no-access', TEXTS.noAccess)} collab="stopped" onRetry={() => undefined} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });
