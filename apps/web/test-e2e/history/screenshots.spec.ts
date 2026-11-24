@@ -4,9 +4,9 @@ import { signInAs } from '../support/sign-in';
 import { historyApi, SLUG, type MockRevision } from './mock-api';
 
 // Screenshots of the history screens, light and dark, 1280 by 800, from the built client with the stand-in API (test-results/shots/M6-T07/). This machine's default
-// sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text, as in the other shots.
+// sans-serif is a monospace face, so an installed sans (Liberation Sans) is named for the interface text only, as in the other shots; the text of a version keeps the reading font of the design.
 const TASK = 'M6-T07';
-const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; --font-page: 'Liberation Sans', Arial, sans-serif; }";
+const SANS = ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }"; // the page text keeps its own reading font (--font-page)
 const at = (day: number, hour: number, minute: number) => Date.UTC(2026, 10, day, hour, minute);
 const alice = { id: 'u1', name: 'Alice Example' };
 const bob = { id: 'u2', name: 'Bob Builder' };
