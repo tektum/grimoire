@@ -28,8 +28,23 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -eu
-          base=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.base.ref')
-          stack=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.stack // empty')
+          # Read the pull request once, retrying a transient API error. If it still cannot be
+          # read, fail (closed) with a message that says so, not one that blames the base branch.
+          pr=""
+          for attempt in 1 2 3 4; do
+            if pr=$(gh api "repos/$REPO/pulls/$PR_NUMBER") && [ -n "$(printf '%s' "$pr" | jq -r '.base.ref // empty' 2>/dev/null)" ]; then
+              break
+            fi
+            pr=""
+            echo "Attempt $attempt: could not read the pull request from the GitHub API."
+            [ "$attempt" -lt 4 ] && sleep $((attempt * 3))
+          done
+          if [ -z "$pr" ]; then
+            echo "::error::The GitHub API read of this pull request failed after 4 attempts, so the base branch could not be checked. This is not a verdict on the base: re-run this job."
+            exit 1
+          fi
+          base=$(printf '%s' "$pr" | jq -r '.base.ref')
+          stack=$(printf '%s' "$pr" | jq -r '.stack // empty')
           if [ "$base" = "main" ]; then
             echo "Base is main: nothing to check."
             exit 0
