@@ -18,7 +18,7 @@ describe('sniffType: the type the first bytes show', () => {
 
   it('shows nothing for text, and for HTML or SVG pretending to be an image', async () => {
     expect(await sniffType(new TextEncoder().encode('<html><script>alert(1)</script>'))).toBeUndefined();
-    expect(await sniffType(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).not.toBe('image/png');
+    expect(await sniffType(new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))).toBeUndefined();
     expect(await sniffType(new Uint8Array(0))).toBeUndefined();
   });
 });

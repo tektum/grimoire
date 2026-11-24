@@ -57,6 +57,20 @@ describe('purgeBatch', () => {
     expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
   });
 
+  it('tries the marker a second time when the first fails, and still reports the store failure when it keeps failing', async () => {
+    const flaky = build(() => Promise.reject(new PartialFileDeletion(['attachments/a/1/x.png'], new Error('store down'))));
+    const real = flaky.trash.markFilesRemoved.bind(flaky.trash);
+    let calls = 0;
+    flaky.trash.markFilesRemoved = (keys) => { calls += 1; return calls === 1 ? Promise.reject(new Error('db blip')) : real(keys); };
+    await expect(purgeBatch(flaky.deps, flaky.root, ADMIN)).rejects.toThrow('store down');
+    expect([calls, flaky.trash.keyDeleted('attachments/a/1/x.png')]).toEqual([2, true]);
+    const broken = build(() => Promise.reject(new PartialFileDeletion(['attachments/a/1/x.png'], new Error('store down'))));
+    let attempts = 0;
+    broken.trash.markFilesRemoved = () => { attempts += 1; return Promise.reject(new Error('db down')); };
+    await expect(purgeBatch(broken.deps, broken.root, ADMIN)).rejects.toThrow('store down');
+    expect(attempts).toBe(2);
+  });
+
   it('marks nothing when the store removed nothing, and passes any other failure on as it is', async () => {
     const none = build(() => Promise.reject(new PartialFileDeletion([], new Error('first key failed'))));
     await expect(purgeBatch(none.deps, none.root, ADMIN)).rejects.toThrow('first key failed');

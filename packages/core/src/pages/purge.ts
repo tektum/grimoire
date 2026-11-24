@@ -27,7 +27,15 @@ export async function purgeBatch(deps: PurgeDeps, batch: string, actorId: string
     } catch (error) {
       if (!(error instanceof PartialFileDeletion)) throw error;
       // Objects are gone whose rows stay (the purge did not complete): mark them, so a restore of the batch never shows an attachment without its object.
-      if (error.removed.length > 0) await deps.trash.markFilesRemoved(error.removed);
+      // The marker is tried twice; if it still fails, the store's failure is the one reported (a retry of the purge marks the rows of any page a restore brought back).
+      for (let attempt = 0; attempt < 2 && error.removed.length > 0; attempt += 1) {
+        try {
+          await deps.trash.markFilesRemoved(error.removed);
+          break;
+        } catch {
+          // try again, then give up
+        }
+      }
       throw error.cause;
     }
   }

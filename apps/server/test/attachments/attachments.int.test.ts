@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createFileStorage, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
 import { createAccessStore, createAttachments, createAudit, createCollections, createDatabase, createIdempotency, createPages, createTrash, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -13,7 +15,7 @@ import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { insertCollection, insertPage, insertUser } from '@tektum/grimoire-test-support/database';
 import { createApp } from '../../src/app.js';
 import { deleteObjects } from '../../src/attachments/deps.js';
-import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
+import { appUrl, createTestDatabase, dropTestDatabase, repoRoot, requireBuild, sqlAdmin } from '../server/support/harness.js';
 import { makeContext } from '../server/support/context.js';
 
 // The real database under the attachment routes, with the in-memory store: what the idempotency table keeps of a create, and that a purge removes the objects.
@@ -22,18 +24,29 @@ const FILES = {
   endpoint: 'http://s3.invalid', publicEndpoint: 'http://s3.invalid', publicOrigin: 'http://s3.invalid', bucket: 'b', accessKey: 'a', secretKey: 's', region: 'r',
   addressing: 'path' as const, createOnlyHeader: 'if-none-match' as const, corsMode: 'external' as const, maxBytes: 1000, allowedTypes: ['image/png'], pendingMaxPerUser: 5,
 };
-// The Compose store of `make db-up`, with the development identities of .env.example (the runtime one and the set-up one), as the store's own tests use it.
-const env = (name: string, fallback: string): string => process.env[name] ?? fallback;
+// The Compose store of `make db-up`, with the identities `make db-up` writes to .env (read from the environment, else from that file; nothing is written here).
+const dotEnv = ((): Record<string, string> => {
+  try {
+    return Object.fromEntries(readFileSync(path.join(repoRoot, '.env'), 'utf8').split('\n').flatMap((line) => { const m = /^([A-Z0-9_]+)=(.*)$/.exec(line); return m?.[1] !== undefined && m[2] !== undefined ? [[m[1], m[2]]] : []; }));
+  } catch {
+    return {};
+  }
+})();
+function env(name: string, fallback?: string): string {
+  const value = process.env[name] ?? dotEnv[name] ?? fallback;
+  if (value === undefined || value === '') throw new Error(`${name} is not set: run \`make db-up\` to write .env`);
+  return value;
+}
 const storeEndpoint = env('GRIMOIRE_S3_ENDPOINT', 'http://127.0.0.1:8333');
 const storeBucket = env('GRIMOIRE_S3_BUCKET', 'grimoire');
 const filesConfig = (over: Partial<FilesConfig> = {}): FilesConfig => ({
   endpoint: storeEndpoint, publicEndpoint: storeEndpoint.replace('127.0.0.1', 'localhost'), publicOrigin: new URL(storeEndpoint.replace('127.0.0.1', 'localhost')).origin, bucket: storeBucket,
-  accessKey: env('GRIMOIRE_S3_ACCESS_KEY', 'grimoire-app'), secretKey: env('GRIMOIRE_S3_SECRET_KEY', 'grimoire-app-dev-secret'), region: 'us-east-1', addressing: 'path',
+  accessKey: env('GRIMOIRE_S3_ACCESS_KEY'), secretKey: env('GRIMOIRE_S3_SECRET_KEY'), region: 'us-east-1', addressing: 'path',
   createOnlyHeader: 'if-none-match', corsMode: 'api', maxBytes: 26_214_400, allowedTypes: ['image/png'], pendingMaxPerUser: 20, ...over,
 });
 const adminOptions = () => ({
-  endpoint: storeEndpoint, bucket: storeBucket, region: 'us-east-1', addressing: 'path' as const, accessKey: env('GRIMOIRE_DEV_S3_ACCESS_KEY', 'grimoire-dev'),
-  secretKey: env('GRIMOIRE_DEV_S3_SECRET_KEY', 'grimoire-dev-secret'), allowedOrigins: env('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.0.1:8080,http://localhost:8080').split(','),
+  endpoint: storeEndpoint, bucket: storeBucket, region: 'us-east-1', addressing: 'path' as const, accessKey: env('GRIMOIRE_DEV_S3_ACCESS_KEY'),
+  secretKey: env('GRIMOIRE_DEV_S3_SECRET_KEY'), allowedOrigins: env('GRIMOIRE_ALLOWED_ORIGINS', 'http://127.0.0.1:8080,http://localhost:8080').split(','),
 });
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
 const run = (sql: string) => sqlAdmin(DB, sql);
@@ -147,6 +160,9 @@ describe('a purge that the store fails half-way', () => {
     expect((await call('member', 'DELETE', `/v1/pages/${page}`)).status).toBeLessThan(300);
     return { page, first: ids[0] as string, second: ids[1] as string };
   }
+  let undo: (() => void) | undefined;
+  afterEach(() => { undo?.(); undo = undefined; });
+
   /** The store deletes the first key it is asked for and fails on the second, while `on.failing` is set; `done` lists the keys it removed. */
   const failOnSecond = (on: { failing: boolean }) => {
     const original = files.delete.bind(files);
@@ -158,7 +174,8 @@ describe('a purge that the store fails half-way', () => {
       await original(key);
       done.push(key);
     };
-    return { done, undo: () => { files.delete = original; } };
+    undo = () => { files.delete = original; };
+    return { done };
   };
 
   it('hides the removed object from a restored page, keeps the other, and a retry of the purge completes', async () => {
@@ -175,18 +192,16 @@ describe('a purge that the store fails half-way', () => {
     expect((await call('admin', 'POST', `/v1/trash/${a.page}/restore`)).status).toBeLessThan(300);
     expect((await call('member', 'GET', `/v1/attachments/${kept}`)).status).toBe(200);
     expect((await call('member', 'GET', `/v1/attachments/${removed}`)).status).toBe(404);
-    store.undo();
   }, 60_000);
 
   it('can be run again: the retry removes the rest and the page', async () => {
     const b = await deletedPageWithTwoFiles();
     const on = { failing: true };
-    const store = failOnSecond(on);
+    failOnSecond(on);
     expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBe(503);
     on.failing = false;
     expect((await call('admin', 'DELETE', `/v1/trash/${b.page}`)).status).toBeLessThan(300);
     for (const id of [b.first, b.second]) await expect(files.head(`attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
     expect(Number(((await run(`select count(*) as n from attachments where page_id = '${b.page}'`)) as { n: string }[])[0]?.n)).toBe(0);
-    store.undo();
   }, 60_000);
 });
