@@ -12,6 +12,7 @@ const screens: Record<string, ReturnType<typeof lazy>> = {
   trash: lazy(() => import('../screens/trash')),
   import: lazy(() => import('../screens/import')),
   admin: lazy(() => import('../screens/admin')),
+  help: lazy(() => import('../screens/help')),
   notfound: lazy(() => import('../screens/notfound')),
 };
 

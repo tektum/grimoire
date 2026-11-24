@@ -5,6 +5,7 @@ import type { Ctx, MilkdownPlugin } from '@milkdown/ctx';
 import { BlockProvider, block, blockSpec } from '@milkdown/plugin-block';
 import { TextSelection } from '@milkdown/prose/state';
 import { editorViewCtx } from '@milkdown/core';
+import { allowBlockChange } from '../lock';
 import { BLOCK_KINDS, type BlockKind } from './blocks';
 import { BlockHandle, HANDLE_MENU_ID } from './BlockHandle';
 import { optionId } from './SlashMenu';
@@ -26,7 +27,7 @@ function turnBlockInto(ctx: Ctx, active: ActiveBlock | null, kind: BlockKind): v
   const after = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)).nodeAfter;
   if (after !== null && after.isAtom && after.isBlock) return; // a block-level atom only: a text block that starts with an image or a break has a place for the cursor
   view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)))));
-  kind.run(ctx);
+  if (allowBlockChange(ctx, kind, view.state.selection.from)) kind.run(ctx);
   view.focus();
 }
 

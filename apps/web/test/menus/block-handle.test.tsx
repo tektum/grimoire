@@ -17,11 +17,29 @@ describe('the block handle button and its menu', () => {
     expect(onToggle).toHaveBeenCalled();
   });
 
-  it('points the button at the item Enter would choose while the menu is open, and at nothing when it is closed', () => {
+  it('the list holds the focus while it is open and points at the item Enter would choose; the button points at nothing (the attribute is for a listbox, not a button)', () => {
     const { rerender } = render(<BlockHandle open kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
-    expect(screen.getByRole('button', { name: 'Block menu' }).getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-1');
-    rerender(<BlockHandle open={false} kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    const list = screen.getByRole('listbox');
+    expect(list.getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-1');
+    expect(document.activeElement).toBe(list);
     expect(screen.getByRole('button', { name: 'Block menu' }).hasAttribute('aria-activedescendant')).toBe(false);
+    rerender(<BlockHandle open kinds={BLOCK_KINDS} active={2} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.getByRole('listbox').getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-2');
+    rerender(<BlockHandle open={false} kinds={BLOCK_KINDS} active={1} onToggle={() => undefined} onPick={() => undefined} onHover={() => undefined} />);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Block menu' }).hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  it('takes the focus once, when it opens, and not again at each drawing', () => {
+    const props = { kinds: BLOCK_KINDS, onToggle: () => undefined, onPick: () => undefined, onHover: () => undefined };
+    const { rerender } = render(<BlockHandle open active={0} {...props} />);
+    expect(document.activeElement).toBe(screen.getByRole('listbox'));
+    const button = screen.getByRole('button', { name: 'Block menu' });
+    button.focus(); // the focus is moved away, as the person did
+    rerender(<BlockHandle open active={1} {...props} />);
+    rerender(<BlockHandle open active={2} {...props} />);
+    expect(document.activeElement).toBe(button); // a drawing did not take it back
+    expect(screen.getByRole('listbox').getAttribute('aria-activedescendant')).toBe('block-handle-menu-option-heading-2');
   });
 
   it('open, it shows the list of kinds, points the button at it, and a press on a kind chooses it', () => {

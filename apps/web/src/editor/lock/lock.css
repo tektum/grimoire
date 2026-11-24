@@ -1,0 +1,36 @@
+.lock-notice-host {
+  position: absolute;
+  z-index: 25;
+  max-width: 28rem;
+}
+.lock-notice-host:not([data-show='true']) {
+  display: none;
+}
+.lock-notice {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+}
+.lock-message {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+}
+.lock-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.lock-help p {
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+.lock-notice .lock-help p {
+  margin: var(--space-2) 0 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}

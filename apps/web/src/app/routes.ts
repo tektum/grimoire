@@ -17,6 +17,7 @@ export const ROUTES: readonly RouteSpec[] = [
   { path: '/admin/users', screen: 'admin', who: 'admin' },
   { path: '/admin/groups', screen: 'admin', who: 'admin' },
   { path: '/admin/collections/:id/access', screen: 'admin', who: 'admin' },
+  { path: '/help', screen: 'help', who: 'signed-in' },
   { path: '*', screen: 'notfound', who: 'anyone' },
 ];
 
