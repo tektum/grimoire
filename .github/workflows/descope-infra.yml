@@ -21,6 +21,9 @@ on:
 permissions:
   contents: read
 
+env:
+  MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
+
 concurrency:
   group: descope-infra
   cancel-in-progress: false

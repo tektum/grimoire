@@ -21,8 +21,11 @@ production project is never touched by this folder.
 
 ## State
 
-There is no state backend and no state file is committed (`.gitignore` blocks it),
-so state lives only inside one run and is lost when it ends. That is safe here
+There is no state backend and no state file is committed (`.gitignore` blocks it).
+On a CI runner state lives only inside one run and is lost when it ends. A local run
+uses the local backend and keeps `terraform.tfstate` in this folder, so delete
+`terraform.tfstate*` after a local run to get the same empty-state behaviour (or a
+resource removed from the files would plan a destroy). That is safe here
 because of what is managed:
 
 - The project already exists and is not managed, so a lost state can never orphan
