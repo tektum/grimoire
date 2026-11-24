@@ -239,4 +239,19 @@ export default defineConfig([
   // composition.ts and cli.ts (the migration command line, a second composition root; reported to the manager in
   // M1-T02c) construct adapters, so only the relative-path and computed-import rules apply to them.
   ...scope(["apps/server/src/composition.ts", "apps/server/src/cli.ts"], restrictedImports(), []),
+  // The specifications of the browser tests make a paste or a drop through the helper of `test-e2e/support/paste.ts` and through nothing else: an event made by a script has an empty
+  // clipboard in Firefox, so a check made through one passes with nothing pasted. (This block repeats the rules of the blocks of `apps/**` and `apps/web/**`: the last block that matches a file sets the options of a rule, so none of theirs may be left out here.)
+  {
+    files: ["apps/web/test-e2e/**"],
+    ignores: ["apps/web/test-e2e/support/paste.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...noAdaptersNoServerOnlySyntax(webMessage),
+        ...nonLiteralRules,
+        { selector: "NewExpression[callee.name=/^(ClipboardEvent|DragEvent)$/]", message: "Paste and drop through pasteIntoEditor and dropOnEditor of test-e2e/support/paste.ts: an event made by a script has an empty clipboard in Firefox, and a check made through it passes with nothing pasted." },
+        { selector: "NewExpression[callee.name='Event'][arguments.0.value=/^(paste|drop)$/]", message: "Paste and drop through pasteIntoEditor and dropOnEditor of test-e2e/support/paste.ts." },
+      ],
+    },
+  },
 ]);

@@ -18,6 +18,14 @@ function webPort(): number {
 const WEB_PORT = webPort();
 export const E2E_API_URL = process.env['E2E_API_URL'] ?? 'http://127.0.0.1:8080';
 
+/**
+ * What Firefox, as Playwright ships it, cannot run: axe, and locators that go by a label or a name, on a screen of the client. Firefox crashes the page ("Page crashed") when the
+ * ARIA tree of a page with an `aria-labelledby` region is read from two scripting worlds, and every screen is a section named by its title. Playwright issue 44135, Mozilla bug
+ * 2090055 (fixed in Firefox 163). So Firefox leaves out the accessibility folder (except the two files that use no page of the client) and every `axe.spec`: they run in Chromium
+ * and WebKit. `tools/ci/test/firefox-exclusion.test.mjs` fails once the Firefox of the installed Playwright is 163 or later, so that this cannot outlive the fix. Everything else runs.
+ */
+const FIREFOX_ARIA_CRASH_SPECS = [/\/test-e2e\/a11y\/(?!proof\.spec|support\.spec)/, /\/axe\.spec\.ts$/];
+
 export default defineConfig({
   testDir: './test-e2e',
   testMatch: '**/*.spec.ts',
@@ -36,7 +44,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 800 } }, testIgnore: FIREFOX_ARIA_CRASH_SPECS },
     { name: 'webkit', use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 800 } } },
   ],
   webServer: {

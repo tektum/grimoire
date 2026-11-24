@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import { bundleHarness } from '../collections/bundle';
 import { fixtureServer } from '../support/fixtures';
+import { pasteIntoEditor } from '../support/paste';
 
 /** A 1 by 1 PNG (a green pixel), enough for `naturalWidth` to be above 0. */
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/ZtqZ4wAAAABJRU5ErkJggg==', 'base64');
@@ -60,10 +61,25 @@ export async function scriptStore(page: Page, options: StoreOptions = {}) {
       const id = `00000000-0000-4000-8000-${String(created).padStart(12, '0')}`;
       const name = encodeURIComponent(body.fileName);
       made.set(id, { fileName: body.fileName, contentType: body.contentType });
-      return route.fulfill(json(201, { id, markdownPath: `attachments/${id}/${name}`, upload: { method: 'PUT', url: `${FILES}/put/${id}`, headers: { 'content-type': body.contentType, 'if-none-match': '*' }, expiresAt: Date.now() + 600_000 } }));
+      return route.fulfill(
+        json(201, {
+          id,
+          markdownPath: `attachments/${id}/${name}`,
+          upload: { method: 'PUT', url: `${FILES}/put/${id}`, headers: { 'content-type': body.contentType, 'if-none-match': '*' }, expiresAt: Date.now() + 600_000 },
+        }),
+      );
     }
     const complete = /^\/v1\/attachments\/([^/]+)\/complete$/.exec(path);
-    if (complete !== null) return route.fulfill(json(200, { id: complete[1], ...made.get(complete[1]!), size: 1, markdownPath: `attachments/${complete[1]}/${encodeURIComponent(made.get(complete[1]!)?.fileName ?? 'x')}`, pageId: '99999999-8888-4777-8666-555555555555' }));
+    if (complete !== null)
+      return route.fulfill(
+        json(200, {
+          id: complete[1],
+          ...made.get(complete[1]!),
+          size: 1,
+          markdownPath: `attachments/${complete[1]}/${encodeURIComponent(made.get(complete[1]!)?.fileName ?? 'x')}`,
+          pageId: '99999999-8888-4777-8666-555555555555',
+        }),
+      );
     if (/^\/v1\/attachments\/[^/]+$/.test(path)) return route.fulfill(json(200, { url: `${FILES}/download/${path.split('/').pop()}?sig=1`, expiresAt: Date.now() + 60_000 }));
     return route.fulfill(json(404, { error: { code: 'not_found', message: 'no' } }));
   });
@@ -96,16 +112,15 @@ export async function openPage(page: Page, markdown: string, options: { sans?: b
   // This machine's default sans-serif is a monospace face: an installed sans is named for the interface text only; the page text keeps its reading font.
   if (options.sans === true) await page.addStyleTag({ content: ":root { --font-ui: 'Liberation Sans', Arial, sans-serif; }" });
   await page.addScriptTag({ content: bundle.js });
-  await page.evaluate(([text, base, editable]) => (window as unknown as { harness: { mount: (m: string, a: string, e: boolean) => Promise<void> } }).harness.mount(text as string, base as string, editable as boolean), [markdown, API, options.editable === true]);
+  await page.evaluate(
+    ([text, base, editable]) => (window as unknown as { harness: { mount: (m: string, a: string, e: boolean) => Promise<void> } }).harness.mount(text as string, base as string, editable as boolean),
+    [markdown, API, options.editable === true],
+  );
   return { origin: new URL(server.url('/')).origin, markdown: (): Promise<string> => page.evaluate(() => (window as unknown as { harness: { markdown: () => string } }).harness.markdown()), stop: () => server.stop() };
 }
 
 /** Pastes a file into the editor, as the clipboard of a browser carries it. */
 export async function pasteFiles(page: Page, files: { name: string; type: string; bytes?: number }[]): Promise<void> {
   await page.locator('.ProseMirror').click();
-  await page.evaluate((list) => {
-    const data = new DataTransfer();
-    for (const file of list) data.items.add(new File([new Uint8Array(file.bytes ?? 3)], file.name, { type: file.type }));
-    document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-  }, files);
+  await pasteIntoEditor(page, { files });
 }

@@ -10,8 +10,7 @@ export const shotsDir = (task: string): string => path.join(process.env['E2E_SHO
 
 /** The file of one screenshot: `<name>-<light|dark>.png`. Names are plain words, so a name cannot leave the folder. */
 export function shotPath(task: string, name: string, theme: (typeof THEMES)[number]): string {
-  if (!/^[A-Za-z0-9._-]+$/.test(task) || !/^[A-Za-z0-9._-]+$/.test(name) || task.startsWith('.') || name.startsWith('.'))
-    throw new Error('A screenshot task and name are letters, digits, . _ and - only.');
+  if (!/^[A-Za-z0-9._-]+$/.test(task) || !/^[A-Za-z0-9._-]+$/.test(name) || task.startsWith('.') || name.startsWith('.')) throw new Error('A screenshot task and name are letters, digits, . _ and - only.');
   return path.join(shotsDir(task), `${name}-${theme}.png`);
 }
 
@@ -28,7 +27,7 @@ export async function shots(page: Page, task: string, name: string, options: { w
       const file = shotPath(task, name, theme);
       mkdirSync(path.dirname(file), { recursive: true });
       await page.emulateMedia({ colorScheme: theme });
-      await page.screenshot({ path: file, animations: 'disabled', mask: [page.locator('input[type="password"]')], maskColor: '#808080' });
+      await page.screenshot({ path: file, animations: 'disabled', scale: 'css', mask: [page.locator('input[type="password"]')], maskColor: '#808080' }); // scale css: 1280 by 800 pixels in every engine (WebKit's device draws at twice)
       written.push(file);
     }
   } finally {

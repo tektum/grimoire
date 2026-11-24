@@ -13,6 +13,7 @@ const PAGE = (body: string, style = ''): string => `<!doctype html><html lang="e
 test.beforeAll(async () => {
   server = await fixtureServer({
     '/buttons': PAGE('<h1>Buttons</h1><button id="a">First</button><button id="b">Second</button>'),
+    '/links': PAGE('<h1>Links</h1><a id="l" href="#x">A link</a><button id="s">A button</button>'),
     '/moving': PAGE('<h1>Moving</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}.spin{animation:s 2s infinite}@keyframes s{to{opacity:.5}}'),
     '/still': PAGE('<h1>Still</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}'),
     '/clean': PAGE('<h1>Clean</h1><button>Named</button>'),
@@ -65,6 +66,26 @@ test('the address of a page is matched by its id, whatever the slug', () => {
 test('a route that has no stop is found', () => {
   const stops = STOPS.filter((s) => s.route !== '/trash').map((s) => s.route);
   expect([...ROUTES.map((r) => r.path), '/'].filter((route) => !stops.includes(route))).toEqual(['/trash']);
+});
+
+test('Enter on a link counts for no pointer, in every engine (Firefox gives that click detail 1), nor does a click that a library makes by calling click()', async ({ page }) => {
+  await page.addInitScript(COUNT_POINTER_EVENTS);
+  await page.goto(server.url('/links'));
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter'); // the link
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter'); // the button
+  await page.evaluate(() => document.getElementById('s')!.click()); // what the menu of the interface library does for Enter on an item
+  expect(await pointerEvents(page), 'keys, and a call of click(), made those clicks').toBe(0);
+  await page.locator('#s').click();
+  expect(await pointerEvents(page), 'a mouse made this one').toBeGreaterThan(0);
+});
+
+test("a press that a script makes is not the browser's, and so is not a pointer", async ({ page }) => {
+  await page.addInitScript(COUNT_POINTER_EVENTS);
+  await page.goto(server.url('/links'));
+  await page.evaluate(() => document.getElementById('s')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  expect(await pointerEvents(page)).toBe(0);
 });
 
 test('the pointer count is zero for keys, even Enter on a button (a click made by a key), and grows with a mouse click', async ({ page }) => {

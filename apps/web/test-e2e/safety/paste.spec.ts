@@ -3,6 +3,7 @@ import { isSafeHref } from '../../src/safety';
 import { xssCorpus } from '../../test/corpus/xss';
 import { bundleHarness } from '../collections/bundle';
 import { fixtureServer } from '../support/fixtures';
+import { pasteIntoEditor } from '../support/paste';
 
 // HTML pasted into the editor goes through DOMPurify with an allow-list before the editor reads it (contracts section 8, rule 3). This runs in a real browser, because the
 // sanitiser's work is the browser's parser's; the unit tests check what it is told.
@@ -13,7 +14,10 @@ async function open(page: Page) {
   const server = await fixtureServer({ '/': '<!doctype html><meta charset="utf-8"><title>Grimoire</title><div id="host"></div>' });
   const dialogs: string[] = [];
   const requests: string[] = [];
-  page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+  page.on('dialog', (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
   page.on('request', (r) => requests.push(r.url()));
   await page.goto(server.url('/'));
   await page.addStyleTag({ content: bundle.css });
@@ -33,12 +37,7 @@ async function paste(page: Page, html: string): Promise<void> {
   await page.evaluate(() => (window as unknown as { harness: { forget: () => void } }).harness.forget());
   await page.keyboard.press('Control+End');
   await page.keyboard.press('Enter'); // a paragraph of its own: blocks pasted into the end of a line would be joined to it
-  await page.evaluate((value) => {
-    const data = new DataTransfer();
-    data.setData('text/html', value);
-    data.setData('text/plain', new DOMParser().parseFromString(value, 'text/html').body.textContent ?? '');
-    document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
-  }, html);
+  await pasteIntoEditor(page, { html, textOfHtml: true });
 }
 
 test.describe('HTML pasted into the editor', () => {
@@ -117,7 +116,9 @@ test.describe('HTML pasted into the editor', () => {
     try {
       const out = await page.evaluate(() => {
         const sanitize = (window as unknown as { harness: { sanitize: (h: string) => string } }).harness.sanitize;
-        const once = sanitize('<p class="page-editor" data-x="1" aria-label="x" id="y">t</p><pre data-language="ts evil"><code class="language-ts">c</code></pre><pre data-language="ts">d</pre><img src="data:image/png;base64,AAAA"><img src="https://a.test/i.png" alt="i">');
+        const once = sanitize(
+          '<p class="page-editor" data-x="1" aria-label="x" id="y">t</p><pre data-language="ts evil"><code class="language-ts">c</code></pre><pre data-language="ts">d</pre><img src="data:image/png;base64,AAAA"><img src="https://a.test/i.png" alt="i">',
+        );
         return { once, twice: sanitize(once) };
       });
       expect(out.once).toBe('<p>t</p><pre><code>c</code></pre><pre data-language="ts">d</pre><img><img src="https://a.test/i.png" alt="i">');
