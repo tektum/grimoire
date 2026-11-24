@@ -23,7 +23,13 @@ export default function staging() {
   const domain = setting('STAGING_DOMAIN');
   const url = `https://${domain}`;
   const region = aws.getRegionOutput().region;
-  const descope = descopeProject('staging', domain);
+  const identity = descopeProject('staging', domain);
+  // The server reads the profile (email, name) of a user it does not know yet from Descope: a key of this project that can only read users, access keys and tenants.
+  const runtimeKey = new descope.ManagementKey('RuntimeKey', {
+    name: 'Grimoire staging server',
+    description: 'Reads the profile of a user the server does not know yet (read only)',
+    rebac: { projectRoles: [{ projectIds: [identity.projectId], roles: ['project-asset-mgmt-read'] }] },
+  });
 
   const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
   const db = new sst.aws.Postgres('Db', { vpc, version: '17' });
@@ -71,7 +77,7 @@ export default function staging() {
           GRIMOIRE_PORT: String(PORT),
           GRIMOIRE_ALLOWED_ORIGINS: url,
           GRIMOIRE_TRUSTED_PROXY: VPC_CIDR,
-          GRIMOIRE_DESCOPE_PROJECT_ID: descope.projectId,
+          GRIMOIRE_DESCOPE_PROJECT_ID: identity.projectId,
           GRIMOIRE_ALLOWED_EMAIL_DOMAINS: setting('STAGING_ALLOWED_EMAIL_DOMAINS'),
           GRIMOIRE_FIRST_ADMIN_EMAILS: process.env.STAGING_FIRST_ADMIN_EMAILS ?? '',
           GRIMOIRE_PUBLIC_API_URL: url,
@@ -84,7 +90,10 @@ export default function staging() {
           GRIMOIRE_S3_CORS_MODE: 'external',
         },
         // Only the runtime role: the schema owner's credentials stay with the `migrate` step.
-        ssm: { GRIMOIRE_DATABASE_URL: secret('AppUrl', urlOf('grimoire_app', appPassword)) },
+        ssm: {
+          GRIMOIRE_DATABASE_URL: secret('AppUrl', urlOf('grimoire_app', appPassword)),
+          GRIMOIRE_DESCOPE_MANAGEMENT_KEY: secret('DescopeKey', runtimeKey.cleartext),
+        },
       },
     ],
     // No access keys: the task role is the identity of the file store client, with the least a bucket client needs (`ListBucket` so that a missing object is a 404 and not a 403).
@@ -107,5 +116,5 @@ export default function staging() {
     },
   });
 
-  return { url: service.url, projectId: descope.projectId };
+  return { url: service.url, projectId: identity.projectId };
 }
