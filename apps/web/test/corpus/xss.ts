@@ -38,7 +38,21 @@ export function nestedLists(bytes: number): string {
   return lines.join('\n');
 }
 
-const href = (id: string, value: string, expect: 'link-kept' | 'link-refused'): XssEntry => ({ id, href: value, markdown: `[link](${value})`, expect });
+/**
+ * The Markdown of a link to `value`, or undefined when no CommonMark link can hold that address. A bare destination has no space or control character and
+ * does not start with `<`; the angle-bracket form takes those but no line ending and no `<` or `>`. An entry whose address cannot be a Markdown destination keeps its `href` only,
+ * so a rendering test never "passes" on text that was never a link.
+ */
+export function markdownLink(value: string): string | undefined {
+  if (!/[\u0000-\u0020\u007f]/.test(value) && !value.startsWith('<')) return `[link](${value})`;
+  if (!/[\r\n<>]/.test(value)) return `[link](<${value}>)`;
+  return undefined;
+}
+
+const href = (id: string, value: string, expect: 'link-kept' | 'link-refused'): XssEntry => {
+  const markdown = markdownLink(value);
+  return markdown === undefined ? { id, href: value, expect } : { id, href: value, markdown, expect };
+};
 const html = (id: string, value: string, expect: Expectation = 'sanitised'): XssEntry => ({ id, html: value, expect });
 const markdown = (id: string, value: string, expect: Expectation = 'inert'): XssEntry => ({ id, markdown: value, expect });
 

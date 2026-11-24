@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { isSafeUrl } from '@tektum/grimoire-editor-schema';
 import { describe, expect, it } from 'vitest';
-import { type Expectation, nestedLists, xssCorpus } from '../corpus/xss';
+import { type Expectation, markdownLink, nestedLists, xssCorpus } from '../corpus/xss';
 
 describe('the XSS corpus', () => {
   it('has at least 40 entries with unique ids', () => {
@@ -52,6 +52,33 @@ describe('the XSS corpus', () => {
   it('agrees with the allow-list for images: only an http(s) or relative address passes, never data:', () => {
     expect(isSafeUrl('data:image/png;base64,iVBORw0KGgo=', 'image')).toBe(false);
     expect(isSafeUrl('./files/a.png', 'image')).toBe(true);
+  });
+
+  it('gives an address entry Markdown only when the address can be a link destination, and the destination is the address', () => {
+    for (const entry of xssCorpus) {
+      if (entry.href === undefined || entry.markdown === undefined) continue;
+      const destination = entry.markdown.slice('[link]('.length, -1);
+      const angled = destination.startsWith('<') && destination.endsWith('>');
+      expect([entry.id, angled ? destination.slice(1, -1) : destination]).toEqual([entry.id, entry.href]);
+      // A bare destination has no space or control character: otherwise a renderer shows the text, not a link.
+      if (!angled) expect([entry.id, /[\u0000-\u0020\u007f]/.test(destination)]).toEqual([entry.id, false]);
+      // The angle form has no line ending and no angle bracket inside.
+      if (angled) expect([entry.id, /[\r\n<>]/.test(entry.href)]).toEqual([entry.id, false]);
+    }
+  });
+
+  it('keeps the spellings a destination cannot hold as address-only entries, and the tab and control-character ones as angle links', () => {
+    const byId = (id: string) => xssCorpus.find((e) => e.id === id);
+    expect(byId('href-javascript-newline')?.markdown).toBeUndefined();
+    expect(byId('href-javascript-tab')?.markdown).toBe('[link](<java\tscript:alert(1)>)');
+    expect(byId('href-javascript-leading-control')?.markdown).toBe('[link](<\u0001javascript:alert(1)>)');
+    expect(byId('href-javascript-leading-space')?.markdown).toBe('[link](< javascript:alert(1)>)');
+    expect(byId('href-javascript')?.markdown).toBe('[link](javascript:alert(1))');
+    expect(byId('href-data-html')?.markdown).toBe('[link](data:text/html,<script>alert(1)</script>)');
+    expect(markdownLink('a\nb')).toBeUndefined();
+    expect(markdownLink('a<b')).toBe('[link](a<b)'); // a bare destination may hold < inside
+    expect(markdownLink('<a b>')).toBeUndefined(); // it may not start with one, and the angle form takes no brackets
+    expect(markdownLink('a b')).toBe('[link](<a b>)');
   });
 
   it('has a nested-list text of at least 1 MB', () => {
