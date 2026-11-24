@@ -28,7 +28,7 @@ describe('verify: valid token', () => {
   it('a valid token gives ok with userId = sub and expiresAt = exp * 1000', async () => {
     const t = nowSec();
     const r = await verifier().v.verify(await sign(pair, 'SK1', goodClaims({ iat: t, exp: t + 600 })));
-    expect(r).toEqual({ kind: 'ok', userId: 'U2user', expiresAt: (t + 600) * 1000 });
+    expect(r).toEqual({ kind: 'ok', userId: 'U2user', expiresAt: (t + 600) * 1000, tenant: { kind: 'none' } });
   });
   it('a token carrying aud is accepted when no audience is configured', async () => {
     expect((await verifier().v.verify(await sign(pair, 'SK1', goodClaims({ aud: 'anything' })))).kind).toBe('ok');

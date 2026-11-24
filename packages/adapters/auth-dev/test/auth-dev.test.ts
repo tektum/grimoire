@@ -14,7 +14,7 @@ describe('dev adapter valid tokens', () => {
     [`dev:${SECRET}:bob:member`, 'bob', 'member'],
     [`dev:${SECRET}:carol:viewer`, 'carol', 'viewer'],
   ])('%s', async (token, userId, role) => {
-    expect(await verifier.verify(token)).toEqual({ kind: 'ok', userId, expiresAt: 1_000_000 + 3_600_000 });
+    expect(await verifier.verify(token)).toEqual({ kind: 'ok', userId, expiresAt: 1_000_000 + 3_600_000, tenant: { kind: 'one', id: 'legacy' } });
     expect(roles.roleOf(token)).toBe(role);
     expect(roles.devOnly).toBe(true);
   });
@@ -22,7 +22,15 @@ describe('dev adapter valid tokens', () => {
     expect(await verifier.profile?.('alice')).toEqual({
       kind: 'ok', profile: { email: 'alice@dev.invalid', name: 'alice', emailVerified: true },
     });
-    expect(await verifier.verify(`dev:${SECRET}:alice:admin`)).toEqual({ kind: 'ok', userId: 'alice', expiresAt: 1_000_000 + 3_600_000 });
+    expect(await verifier.verify(`dev:${SECRET}:alice:admin`)).toMatchObject({ kind: 'ok', userId: 'alice', expiresAt: 1_000_000 + 3_600_000 });
+  });
+  it('names the tenant of the token: the part after the role, and the legacy tenant when there is none (docs/tenancy.md section 2.4)', async () => {
+    expect((await verifier.verify(`dev:${SECRET}:alice:admin:acme`))).toEqual({ kind: 'ok', userId: 'alice', expiresAt: 1_000_000 + 3_600_000, tenant: { kind: 'one', id: 'acme' } });
+    expect((await verifier.verify(`dev:${SECRET}:alice:admin`))).toMatchObject({ tenant: { kind: 'one', id: 'legacy' } });
+    expect(roles.roleOf(`dev:${SECRET}:alice:viewer:acme`)).toBe('viewer');
+  });
+  it.each(['', 'A', 'a b', 'a:b', 'x'.repeat(65)])('refuses the tenant part %j', async (part) => {
+    expect((await verifier.verify(`dev:${SECRET}:alice:admin:${part}`)).kind).toBe('invalid-token');
   });
   it('accepts a 64-character user id and rejects 65', async () => {
     expect((await verifier.verify(`dev:${SECRET}:${'a'.repeat(64)}:admin`)).kind).toBe('ok');
@@ -45,7 +53,7 @@ describe('dev adapter malformed tokens', () => {
     ['missing role', `dev:${SECRET}:a`],
     ['empty user', `dev:${SECRET}::admin`],
     ['empty role', `dev:${SECRET}:a:`],
-    ['extra part', `dev:${SECRET}:a:admin:x`],
+    ['two extra parts', `dev:${SECRET}:a:admin:x:y`],
     ['unknown role', `dev:${SECRET}:bob:owner`],
     ['role upper case', `dev:${SECRET}:bob:Admin`],
     ['prefix upper case', 'DEV:bob:admin'],

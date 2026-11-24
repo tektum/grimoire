@@ -5,7 +5,7 @@
 import DescopeClient from '@descope/node-sdk';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Logger } from '@tektum/grimoire-core/ports/logger';
-import { isDescopeProjectId, type AuthVerifier, type Profile, type ProfileResult, type VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
+import { isDescopeProjectId, type AuthVerifier, type Profile, type ProfileResult, type TenantClaim, type VerifyResult } from '@tektum/grimoire-core/ports/auth-verifier';
 
 export interface DescopeVerifierOptions {
   projectId: string;
@@ -110,6 +110,23 @@ function profileFromClaims(p: Record<string, unknown>): Profile | undefined {
   if (typeof name !== 'string' || name.length > 200 || typeof emailVerified !== 'boolean') return undefined;
   const avatar = typeof picture === 'string' && picture.length <= 2048 && picture.startsWith('https://') ? { avatarUrl: picture } : {};
   return { email, name: name === '' ? email : name, emailVerified, ...avatar };
+}
+
+const TENANT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * The tenant of a verified token (docs/tenancy.md section 2.1): more than one key in `tenants` is `many` whatever `dct` says; otherwise `dct` when it is a usable id that is a key
+ * of `tenants`, or, with no `dct`, the one key; anything else is `none`.
+ */
+function tenantFromClaims(p: Record<string, unknown>): TenantClaim {
+  const tenants = p['tenants'];
+  if (!isRecord(tenants)) return { kind: 'none' };
+  const keys = Object.keys(tenants);
+  if (keys.length > 1) return { kind: 'many' };
+  const dct = p['dct'];
+  if (dct !== undefined) return typeof dct === 'string' && TENANT_ID.test(dct) && keys.includes(dct) ? { kind: 'one', id: dct } : { kind: 'none' };
+  const only = keys[0];
+  return only !== undefined && TENANT_ID.test(only) ? { kind: 'one', id: only } : { kind: 'none' };
 }
 
 /** The decoded JSON of one compact-JWT segment (no verification: only used on a token the SDK has already verified, or to refuse early). */
@@ -245,7 +262,8 @@ export function createDescopeVerifier(o: DescopeVerifierOptions): DescopeVerifie
     if ((exp - iat) * 1000 > maxLifetimeMs || exp * 1000 - now > maxLifetimeMs) return INVALID;
     if (iat * 1000 > now + CLOCK_TOLERANCE_SECONDS * 1000) return INVALID;
     const profile = profileFromClaims(payload);
-    return profile === undefined ? { kind: 'ok', userId: sub, expiresAt: exp * 1000 } : { kind: 'ok', userId: sub, expiresAt: exp * 1000, profile };
+    const tenant = tenantFromClaims(payload);
+    return profile === undefined ? { kind: 'ok', userId: sub, expiresAt: exp * 1000, tenant } : { kind: 'ok', userId: sub, expiresAt: exp * 1000, profile, tenant };
   }
 
   const managementKey = o.managementKey;
