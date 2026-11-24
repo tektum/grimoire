@@ -191,14 +191,14 @@ describe('the menu in the editor', () => {
 });
 
 describe('the slash menu in an editor that cannot be edited', () => {
-  it('is never shown: the library sets no attribute on its host there, which the styles take as hidden', async () => {
+  it('is never shown', async () => {
     const t = await plainEditor('Some words', { editable: false });
     try {
       t.cursorAtEnd();
       typeText(t, '/');
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       expect(slashQuery(t.view())).toBeNull();
-      expect(host(t)?.dataset['show']).not.toBe('true');
+      // The library has looked at the update and decided to hide (that is what sets the attribute): only then is "not shown" a result and not just an early look.
+      await vi.waitFor(() => expect(host(t)?.getAttribute('data-show')).toBe('false'), { timeout: 3000 });
     } finally {
       await t.destroy();
     }
