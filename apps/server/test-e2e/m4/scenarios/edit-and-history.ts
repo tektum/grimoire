@@ -9,15 +9,15 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
   const ids = await signInAll();
   const bob = apiAs('bob');
   const collection = await openCollection('Exit M4 history');
-  const page = expectStatus(await bob.POST('/v1/pages', { body: { collectionId: collection, title: 'History', markdown: '# History\n\nOwna start.\n' } }), 201, 'bob creates the page from Markdown');
+  const page = expectStatus(await bob.POST('/v1/pages', { body: { collectionId: collection, title: 'History', markdown: '# History\n\nOwna start.\n\nOwnb start.\n' } }), 201, 'bob creates the page from Markdown');
 
   const live = new Set<string>();
-  const sit = async (): Promise<readonly string[]> => {
+  const sit = async (tag: string): Promise<readonly string[]> => { // each sitting has its own tag, so its tokens are new
     const before = new Set(live);
     const peer = docPeer(page.id, 'bob');
     try {
       await peerSynced(peer);
-      const editor = new EditorUser(peer, 'a', t.rng, live);
+      const editor = new EditorUser(peer, tag, t.rng, live);
       await editor.open();
       typeInOwnParagraph(editor, 3);
       editor.close();
@@ -29,7 +29,7 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
     }
   };
 
-  const first = await sit();
+  const first = await sit('a');
   const afterFirst = await eventually(async () => {
     const list = expectStatus(await bob.GET('/v1/pages/{id}/revisions', { params: { path: { id: page.id } } }), 200, 'the history after the first sitting');
     return list.items.length >= 1 ? list : undefined;
@@ -40,7 +40,7 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
   const oneBody = expectStatus(await bob.GET('/v1/pages/{id}/revisions/{rid}', { params: { path: { id: page.id, rid: revisionOne?.id ?? '' } } }), 200, 'the first revision with its Markdown');
   t.check(first.every((token) => oneBody.markdown.includes(token)), 'it holds the text bob typed');
 
-  const second = await sit();
+  const second = await sit('b');
   const afterSecond = await eventually(async () => {
     const list = expectStatus(await bob.GET('/v1/pages/{id}/revisions', { params: { path: { id: page.id } } }), 200, 'the history after the second sitting');
     return list.items.length >= 2 ? list : undefined;

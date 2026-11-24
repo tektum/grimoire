@@ -7,8 +7,8 @@ import { apiAs, closeDb, errorCode, expectStatus, openCollection, query, scenari
 // Markdown has fallen behind its state says so.
 const LIMIT_BYTES = 4096;
 
-/** Paragraphs of about 33 bytes each: `bytes` is the size to reach, well inside the line and marker limits. */
-const paragraphs = (bytes: number): string => Array.from({ length: Math.ceil(bytes / 33) }, (_, i) => `Paragraph number ${String(i).padStart(5, '0')}.`).join('\n\n');
+/** Paragraphs of 23 bytes each plus a 2-byte separator: at least `bytes` in all, well inside the line and marker limits. */
+const paragraphs = (bytes: number): string => Array.from({ length: Math.ceil((bytes + 2) / 25) }, (_, i) => `Paragraph number ${String(i).padStart(5, '0')}.`).join('\n\n');
 
 await scenario('markdown-limits', 240_000, async (t) => { // timeout: recreates the app twice and converts documents of up to 100 KB
   t.onDone(closeDb);
@@ -37,11 +37,13 @@ await scenario('markdown-limits', 240_000, async (t) => { // timeout: recreates 
   // One conversion per person at a time: two creations at once by one person, one is made and one is told to wait.
   await recreateApp({});
   const body = (title: string) => ({ collectionId: collection, title, markdown: paragraphs(100_000) });
-  const both = await Promise.all([bob.POST('/v1/pages', { body: body('Twin one') }), bob.POST('/v1/pages', { body: body('Twin two') })]);
-  const statuses = both.map((r) => r.response.status).sort();
-  t.equal(statuses, [201, 429], 'two simultaneous creations by one person give one 201 and one 429');
-  const waiting = both.find((r) => r.response.status === 429);
-  t.equal(errorCode(waiting ?? { error: undefined }), 'rate_limited', 'the second is told rate_limited');
+  // Several at once, so that at least two overlap whatever the timing: each is a 201 or a 429, at least one of each, and a 429 says rate_limited and when to retry.
+  const burst = await Promise.all(['one', 'two', 'three', 'four', 'five'].map((n) => bob.POST('/v1/pages', { body: body(`Burst ${n}`) })));
+  const statuses = burst.map((r) => r.response.status);
+  t.check(statuses.every((s) => s === 201 || s === 429), `every simultaneous creation is a 201 or a 429 (got ${statuses.join(', ')})`);
+  t.check(statuses.includes(201) && statuses.includes(429), 'one person converting several documents at once is served one and told to wait for the rest');
+  const waiting = burst.find((r) => r.response.status === 429);
+  t.equal(errorCode(waiting ?? { error: undefined }), 'rate_limited', 'the one told to wait gets rate_limited');
   t.check(waiting?.response.headers.get('retry-after') !== null, 'and when to try again (Retry-After)');
   // Another person is not held by the first one's conversion.
   const twoPeople = await Promise.all([apiAs('alice').POST('/v1/pages', { body: body('Other one') }), bob.POST('/v1/pages', { body: body('Other two') })]);

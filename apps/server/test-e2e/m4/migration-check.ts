@@ -8,6 +8,7 @@ async function main(): Promise<string | undefined> {
   if (!output.includes('migrate.nothing_pending')) return `a second migrate applied something or said nothing: ${output.slice(-300)}`;
   try {
     await query('create table m4_exit_probe (id integer)');
+    await query('drop table if exists m4_exit_probe'); // the stack keeps its volume: leave nothing behind for the next run
     return 'the runtime role created a table';
   } catch (error) {
     const code = (error as { code?: string }).code;
