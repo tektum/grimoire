@@ -110,3 +110,11 @@ describe('descope-signin: the element is told everything before it is part of th
     vi.unstubAllGlobals();
   });
 });
+
+describe('descope-signin: the card', () => {
+  it('is drawn once, by the wrapper of the sign-in screen: the element\'s own holder carries no card class, or the border and the padding would be doubled', async () => {
+    const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
+    const { container } = render(<DescopeSignIn projectId="P" onSuccess={() => {}} onError={() => {}} />);
+    expect(container.firstElementChild?.className).toBe('');
+  });
+});

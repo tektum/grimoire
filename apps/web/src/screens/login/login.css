@@ -52,7 +52,7 @@
   margin: 0;
 }
 
-/* The provider's flow sits in a card of the same make as the rest of the application's: the flow draws its own padding and takes the card's colour from the project's styles. */
+/* The wrapper of the provider's flow is a card of the same make as the rest of the application's: the flow draws its own padding and takes the card's colour from the project's styles. */
 .login-flow {
   border: 1px solid var(--border);
   border-radius: var(--radius-2);

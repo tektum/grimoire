@@ -43,5 +43,5 @@ export default function DescopeSignIn({
       node.remove();
     };
   }, [projectId, baseUrl, flowId, theme, onSuccess, onError]);
-  return createElement('div', { ref: host, className: 'login-flow' });
+  return createElement('div', { ref: host });
 }
