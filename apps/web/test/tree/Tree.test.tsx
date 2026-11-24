@@ -1,0 +1,62 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { describe, expect, it } from 'vitest';
+import { Tree } from '../../src/tree/Tree';
+import type { TreeItem } from '../../src/tree/model';
+import '../support/dom';
+
+const leaf = (id: string, name: string): TreeItem => ({ id, urlId: id, name, icon: null });
+const items: TreeItem[] = [
+  { id: 'welcome', urlId: 'welcome', name: 'Welcome', icon: '📘', children: [leaf('nested', 'Nested'), { id: 'deep', urlId: 'deep', name: 'Deep', icon: null, children: [leaf('deeper', 'Deeper')] }] },
+  leaf('plain', 'Plain page'),
+];
+const show = () => render(<MemoryRouter><Tree items={items} /></MemoryRouter>);
+const names = () => screen.getAllByRole('treeitem').map((row) => within(row).getByRole('link').textContent);
+
+describe('Tree', () => {
+  it('shows the top level with its first-level pages open and deeper ones closed', () => {
+    show();
+    expect(names()).toEqual(['📘Welcome', 'Nested', 'Deep', 'Plain page']);
+    const rows = screen.getAllByRole('treeitem');
+    expect(rows.map((r) => r.getAttribute('aria-level'))).toEqual(['1', '2', '2', '1']);
+    expect([rows[0], rows[2]].map((r) => r?.getAttribute('aria-expanded'))).toEqual(['true', 'false']); // the open and the closed branch
+  });
+
+  it('links every row to /p/<slug>-<urlId>', () => {
+    show();
+    expect(screen.getByRole('link', { name: 'Plain page' }).getAttribute('href')).toBe('/p/plain-page-plain');
+    expect(screen.getByRole('link', { name: /Welcome/ }).getAttribute('href')).toBe('/p/welcome-welcome');
+  });
+
+  it('opens and closes a branch with its toggle button, named after the page', async () => {
+    show();
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Deep' }));
+    expect(names()).toContain('Deeper');
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Welcome' }));
+    expect(names()).toEqual(['📘Welcome', 'Plain page']);
+  });
+
+  it('opens and closes a branch from the keyboard with the arrow keys', async () => {
+    show();
+    const deep = screen.getAllByRole('treeitem')[2] as HTMLElement;
+    await userEvent.click(deep);
+    expect(names()).not.toContain('Deeper'); // selecting the row does not open it
+    await userEvent.keyboard('{ArrowRight}');
+    expect(names()).toContain('Deeper');
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(names()).not.toContain('Deeper');
+  });
+
+  it('says so when the collection has no page', () => {
+    render(<MemoryRouter><Tree items={[]} /></MemoryRouter>);
+    expect(screen.getByText('No pages yet')).toBeTruthy();
+    expect(screen.queryByRole('tree')).toBeNull();
+  });
+
+  it('marks the page being read as the current page', () => {
+    render(<MemoryRouter><Tree items={items} currentUrlId="nested" /></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'Nested' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Plain page' }).getAttribute('aria-current')).toBeNull();
+  });
+});
