@@ -174,7 +174,7 @@ describe('the page screen', () => {
     for (const make of [() => mountPage({ page: page({ markdownStale: true }) }), () => mountPage({ staleHeader: true })]) {
       const t = make();
       await waitSaved();
-      expect(screen.getByText(STALE_TEXT)).toBeTruthy();
+      await screen.findByText(STALE_TEXT); // the label follows the saved text by a step
       await t.synced();
       await waitFor(() => expect(screen.queryByText(STALE_TEXT)).toBeNull());
       cleanup();
@@ -401,7 +401,7 @@ describe('the page screen', () => {
   it('the stale warning follows the page as it is read again: a document replaced after the page stopped being stale shows no warning', async () => {
     const t = mountPage({ page: page({ markdownStale: true }) });
     await waitSaved();
-    expect(screen.getByText(STALE_TEXT)).toBeTruthy();
+    await screen.findByText(STALE_TEXT); // the label follows the saved text by a step
     await t.synced();
     await waitFor(() => expect(t.lives).toHaveLength(1));
     await t.setPage(page({ markdownStale: false })); // the page read again

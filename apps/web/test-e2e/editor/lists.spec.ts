@@ -1,0 +1,78 @@
+import { expect, test, type Locator } from '@playwright/test';
+import { shots } from '../support/shots';
+import { waitForSynced } from '../support/sync';
+import { twoUsers } from '../support/two-users';
+import { makePage } from './pages';
+
+const MARKDOWN = [
+  '- first bullet',
+  '- second bullet',
+  '  - nested bullet',
+  '    - deeper bullet',
+  '',
+  '3. third',
+  '4. fourth',
+  '   1. nested step',
+  '',
+  'A longer list:',
+  '',
+  ...Array.from({ length: 12 }, (_, i) => `${i + 1}. step ${i + 1}`),
+  '',
+  '- [ ] an open task',
+  '- [x] a done task',
+  '',
+].join('\n');
+
+const marker = (item: Locator) => item.evaluate((li) => getComputedStyle(li, '::before').content);
+const style = (item: Locator, property: string, pseudo = '::before') => item.evaluate((li, [p, q]) => getComputedStyle(li, q).getPropertyValue(p as string), [property, pseudo] as const);
+
+test.describe('lists in the page text', () => {
+  test('bullets step through three shapes, numbers come from position, and task items draw a box that is filled when done', async ({ browser, baseURL }) => {
+    const made = await makePage(MARKDOWN);
+    const users = await twoUsers(browser, baseURL);
+    try {
+      const { page } = users.a;
+      await page.goto(made.path);
+      await waitForSynced(page);
+      const editor = page.locator('.ProseMirror');
+      await expect(editor.locator('ul').first()).toHaveCSS('list-style-type', 'none');
+      const bullets = editor.locator('li[data-list-type="bullet"]:not([data-item-type])');
+      expect(await marker(bullets.nth(0))).toBe('"•"');
+      expect(await marker(bullets.nth(2))).toBe('"◦"');
+      expect(await marker(bullets.nth(3))).toBe('"▪"');
+      const numbered = editor.locator('li[data-list-type="ordered"]');
+      // numbered by position, not from the stored label
+      expect(await marker(numbered.nth(0))).toBe('counter(list-item) "."'); // the browser reports the counter expression, not its value
+      expect(await marker(numbered.nth(1))).not.toContain('data-label');
+      // ... from the list's own start: the editor writes `start` when a list does not start at 1, and the counter begins there (3, 4)
+      await expect(editor.locator('ol').first()).toHaveAttribute('start', '3');
+      // A wide number runs into nothing: the text starts after the whole label.
+      const long = editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ });
+      expect(await marker(long)).toBe('counter(list-item) "."');
+      await expect(editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ })).toHaveCount(1);
+      const gap = await long.evaluate((li) => li.firstElementChild!.getBoundingClientRect().left - li.getBoundingClientRect().left);
+      const labelWidth = await long.evaluate((li) => {
+        const probe = document.createElement('span');
+        probe.textContent = '12.'; // the number the counter draws for this item
+        probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums';
+        li.append(probe);
+        const width = probe.getBoundingClientRect().width;
+        probe.remove();
+        return width;
+      });
+      expect(gap).toBeGreaterThanOrEqual(labelWidth);
+      const tasks = editor.locator('li[data-item-type="task"]');
+      expect(await marker(tasks.nth(0))).toBe('""'); // a box, not a bullet
+      expect(await style(tasks.nth(0), 'border-top-style')).toBe('solid');
+      expect(await style(tasks.nth(0), 'background-color')).toBe('rgba(0, 0, 0, 0)');
+      expect(await style(tasks.nth(1), 'background-color')).not.toBe('rgba(0, 0, 0, 0)');
+      expect(await style(tasks.nth(0), 'content', '::after')).toBe('none'); // no tick on an open task
+      expect(await style(tasks.nth(1), 'content', '::after')).toBe('""'); // a tick on a done one
+      await expect(tasks.nth(1).locator('> p')).toHaveCSS('text-decoration-line', 'line-through');
+      await expect(tasks.nth(0).locator('> p')).toHaveCSS('text-decoration-line', 'none');
+      await shots(page, 'm6-t04', 'lists');
+    } finally {
+      await users.close();
+    }
+  });
+});

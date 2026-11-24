@@ -8,6 +8,7 @@ import { useSession } from '../../auth/session';
 import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
 import { realEngine, type Engine } from './engine';
+import '../../editor/core/lists.css';
 import './page.css';
 
 export type PageMeta = components['schemas']['Page'];
