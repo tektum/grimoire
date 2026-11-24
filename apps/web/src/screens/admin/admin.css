@@ -71,7 +71,12 @@
   width: 100%;
   margin-top: var(--space-1);
   padding: var(--space-2);
-
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-code);
+}
 .admin-table {
   width: 100%;
   margin-bottom: var(--space-4);
