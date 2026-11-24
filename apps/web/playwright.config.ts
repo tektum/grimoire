@@ -4,7 +4,10 @@ import { defineConfig, devices } from '@playwright/test';
 // Compose stack (`make up`). 127.0.0.1, not localhost: a CI runner may resolve localhost to ::1, where nothing listens.
 // Run: `bunx playwright test -c apps/web/playwright.config.ts --project=chromium` (`E2E_WEB_PORT` changes the port; a server already on the port is an error, never reused). Install the browsers once:
 // `bunx playwright install --with-deps chromium firefox webkit` (test-e2e/support/run-check.ts says whether they are there).
-/** The port of the client's server: 4173, or `E2E_WEB_PORT` (two checkouts can run their specs side by side). */
+/**
+ * The port of the client's server: 4173, or `E2E_WEB_PORT` (two checkouts can run their specs side by side). The API must allow the page's origin:
+ * start the stack with `M6_WEB_PORT` set to the same number (compose.m6.yaml), or the specs that call the API from the page are refused by its origin check.
+ */
 function webPort(): number {
   const asked = process.env['E2E_WEB_PORT'];
   if (asked === undefined) return 4173;
