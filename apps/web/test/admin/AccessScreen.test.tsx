@@ -86,6 +86,24 @@ describe('the collection access screen', () => {
     expect(of('PUT', '/v1/collections/{id}/access')[0]?.body).toEqual({ principalType: 'group', principalId: 'g2', permission: 'read_write' });
   });
 
+  it('clears the group chosen once it has been given access, so a second click cannot send it again', async () => {
+    let entries: typeof ENTRIES = [];
+    const { api, of } = fakeApi({
+      ...base,
+      'GET /v1/collections/{id}/access': () => access(null, entries),
+      'GET /v1/groups': ok({ items: [{ id: 'g1', name: 'Team', memberCount: 2 }, { id: 'g2', name: 'Ops', memberCount: 0 }] }),
+      'PUT /v1/collections/{id}/access': () => { entries = [ENTRIES[0] as (typeof ENTRIES)[number]]; return ok(ENTRIES[0]); },
+    });
+    show(api);
+    await userEvent.selectOptions(await screen.findByLabelText('Give access to'), 'group');
+    await userEvent.selectOptions(await screen.findByLabelText('Group'), 'g1');
+    await userEvent.click(screen.getByRole('button', { name: 'Give access' }));
+    await waitFor(() => { expect((screen.getByLabelText('Group') as HTMLSelectElement).value).toBe(''); });
+    expect((screen.getByRole('button', { name: 'Give access' }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Give access' }));
+    expect(of('PUT', '/v1/collections/{id}/access')).toHaveLength(1);
+  });
+
   it('gives access to a person found by search', async () => {
     const { api, of } = fakeApi({
       ...base,

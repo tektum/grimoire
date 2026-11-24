@@ -154,7 +154,7 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
                   ))}
                 </select>
               </label>
-              <Button disabled={group === ''} onClick={() => void grant('group', group, permission)}>Give access</Button>
+              <Button disabled={group === '' || taken.has(group)} onClick={() => { const chosen = group; setGroup(''); void grant('group', chosen, permission); }}>Give access</Button>
             </div>
           )}
         </>

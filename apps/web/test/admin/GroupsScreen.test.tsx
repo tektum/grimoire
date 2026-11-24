@@ -142,6 +142,30 @@ describe('the groups screen', () => {
     expect(of('PUT', '/v1/groups/{id}/members/{userId}')[0]?.params.path).toEqual({ id: 'g1', userId: 'u3' });
   });
 
+  it('keeps looking past people already in the group: Show more reaches the next page of matches', async () => {
+    const { api, of } = fakeApi({
+      'GET /v1/groups': groups([TEAM]),
+      'GET /v1/groups/{id}/members': ok({ items: [BOB] }),
+      'GET /v1/users': (r) => ((r.params.query as { cursor?: string } | undefined)?.cursor === undefined ? ok({ items: [BOB], nextCursor: 'c2' }) : ok({ items: [CAROL], nextCursor: null })),
+    });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'dev');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(screen.queryByText('No one to add')).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: 'Add Carol to Team' })).toBeTruthy();
+    expect(of('GET', '/v1/users')[1]?.params.query).toMatchObject({ q: 'dev', cursor: 'c2' });
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
+  it('says No one to add only when the last page has been read and no one is left', async () => {
+    const { api } = fakeApi({ 'GET /v1/groups': groups([TEAM]), 'GET /v1/groups/{id}/members': ok({ items: [BOB] }), 'GET /v1/users': ok({ items: [BOB], nextCursor: null }) });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'bob');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByText('No one to add')).toBeTruthy();
+  });
+
   it('says so when the group has no member', async () => {
     const { api } = fakeApi({ 'GET /v1/groups': groups([OPS]), 'GET /v1/groups/{id}/members': ok({ items: [] }) });
     show(api, '/admin/groups?group=g2');

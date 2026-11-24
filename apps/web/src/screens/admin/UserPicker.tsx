@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { type InfiniteData, useInfiniteQuery } from '@tanstack/react-query';
 import type { components } from '@tektum/grimoire-api-client';
 import { type FormEvent, useState } from 'react';
 import { type ApiLike, queryKey } from '../../api/query';
@@ -6,6 +6,7 @@ import { HttpError } from '../../tree/useTree';
 import { Button } from '../../ui/primitives';
 
 type AdminUser = Readonly<components['schemas']['AdminUser']>;
+type UserList = Readonly<components['schemas']['AdminUserList']>;
 const PAGE = 10;
 
 /**
@@ -21,16 +22,19 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
 }) {
   const [draft, setDraft] = useState('');
   const [q, setQ] = useState('');
-  const found = useQuery<readonly AdminUser[], HttpError>({
+  const found = useInfiniteQuery<UserList, HttpError, InfiniteData<UserList, string | null>, readonly unknown[], string | null>({
     enabled: q !== '',
     queryKey: queryKey('GET', '/v1/users', { params: { query: { q, limit: PAGE } } }),
-    queryFn: async ({ signal }) => {
-      const { data, response } = await api.GET('/v1/users' as never, { params: { query: { q, limit: PAGE } }, signal } as never);
+    initialPageParam: null,
+    queryFn: async ({ pageParam, signal }) => {
+      const query = { q, limit: PAGE, ...(pageParam === null ? {} : { cursor: pageParam }) };
+      const { data, response } = await api.GET('/v1/users' as never, { params: { query }, signal } as never);
       if (!response.ok) throw new HttpError(response.status);
-      return (data as { items: readonly AdminUser[] }).items;
+      return data as UserList;
     },
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
-  const offered = (found.data ?? []).filter((u) => !exclude.has(u.id));
+  const offered = (found.data?.pages.flatMap((p) => p.items) ?? []).filter((u) => !exclude.has(u.id));
   const search = (event: FormEvent): void => {
     event.preventDefault();
     setQ(draft.trim());
@@ -43,10 +47,10 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
       </form>
       {found.isError ? (
         <p role="alert">Couldn&apos;t search. Try again.</p>
-      ) : q !== '' && found.data !== undefined && offered.length === 0 ? (
-        <p>No one to add</p>
       ) : (
-        <ul className="admin-list">
+        <>
+          {q !== '' && found.data !== undefined && offered.length === 0 && !found.hasNextPage && <p>No one to add</p>}
+          <ul className="admin-list">
           {offered.map((u) => (
             <li key={u.id}>
               <div className="admin-main">
@@ -56,7 +60,9 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
               <Button aria-label={actionLabel(u.name)} onClick={() => { onPick(u); }}>Add</Button>
             </li>
           ))}
-        </ul>
+          </ul>
+          {found.hasNextPage && <Button disabled={found.isFetchingNextPage} onClick={() => void found.fetchNextPage()}>Show more</Button>}
+        </>
       )}
     </div>
   );
