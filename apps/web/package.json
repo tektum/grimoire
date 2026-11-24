@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "node scripts/serve.mjs",
-    "check:build": "node scripts/check-build.mjs"
+    "check:build": "node scripts/check-build.mjs",
+    "render-headers": "node scripts/render-headers.mjs"
   },
   "dependencies": {
     "@descope/web-component": "4.7.5",
