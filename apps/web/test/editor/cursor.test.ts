@@ -107,15 +107,33 @@ describe('the remote cursor', () => {
     expect(caret.querySelector('.cursor-label--shown')).not.toBeNull();
   });
 
-  it('lets go of the labels of carets that were replaced: following does not grow with every move of a remote cursor', () => {
+  it('lets go of the labels of carets that were replaced, once the render is done: following does not grow with every move of a remote cursor', async () => {
     const { builders } = make({ [ID]: 'Ada' });
     for (let move = 0; move < 200; move++) {
       const caret = builders.cursorBuilder({ id: ID });
       document.body.append(caret);
       document.querySelectorAll('.ProseMirror-yjs-cursor').forEach((old) => old !== caret && old.remove()); // the plugin drops the old caret
+      await Promise.resolve();
     }
+    await Promise.resolve();
     expect(builders.tracked()).toBeLessThanOrEqual(2);
     document.querySelectorAll('.ProseMirror-yjs-cursor').forEach((el) => el.remove());
+  });
+
+  it('keeps following carets that are built in one render before any is put into the page: both labels get the name when it arrives', async () => {
+    const OTHER = '00000000-0000-4000-8000-000000000002';
+    const { builders, arrive } = make();
+    const first = builders.cursorBuilder({ id: ID });
+    const second = builders.cursorBuilder({ id: OTHER }); // built before the first is in the page
+    document.body.append(first, second); // the render puts them in
+    await Promise.resolve();
+    expect(builders.tracked()).toBe(2);
+    arrive(ID, 'Ada');
+    arrive(OTHER, 'Bob');
+    expect(first.querySelector('.cursor-label')!.textContent).toBe('Ada');
+    expect(second.querySelector('.cursor-label')!.textContent).toBe('Bob');
+    first.remove();
+    second.remove();
   });
 
   it('stops following the directory when it is disposed of: the editor is gone and the session directory keeps nothing of it', () => {

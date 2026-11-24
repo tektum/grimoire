@@ -22,6 +22,7 @@ export interface CursorTimers {
  */
 export function cursorBuilders(directory: Directory, timers: CursorTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms) }) {
   const labels = new Set<{ id: string; label: HTMLElement }>();
+  let pruning = false;
   const unsubscribe = directory.subscribe(() => {
     for (const entry of labels) {
       if (!entry.label.isConnected) labels.delete(entry);
@@ -37,8 +38,15 @@ export function cursorBuilders(directory: Directory, timers: CursorTimers = { se
       labels.clear();
     },
     cursorBuilder(user: unknown): HTMLElement {
-      // The plugin builds a new caret on every move of a remote cursor and drops the old one: the dropped labels are let go here.
-      for (const entry of labels) if (!entry.label.isConnected) labels.delete(entry);
+      // The plugin builds a new caret on every move of a remote cursor and drops the old one. The dropped labels are let go once the render is done:
+      // a caret is built before it is put into the page, so a label that is not in the page yet must not be let go while the same render builds the next.
+      if (!pruning) {
+        pruning = true;
+        queueMicrotask(() => {
+          pruning = false;
+          for (const entry of labels) if (!entry.label.isConnected) labels.delete(entry);
+        });
+      }
       const id = idOf(user);
       const colour = colourOf(id);
       const caret = document.createElement('span');
