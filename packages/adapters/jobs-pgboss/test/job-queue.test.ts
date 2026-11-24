@@ -11,7 +11,8 @@ function stub() {
     schedule: vi.fn(async () => {}),
     createQueue: vi.fn(async () => {}),
     getQueue: vi.fn(async () => null),
-    findJobs: vi.fn<(...args: unknown[]) => Promise<{ id: string; state: string }[]>>(async () => []),
+    findJobs: vi.fn<(...args: unknown[]) => Promise<{ id: string }[]>>(async () => []),
+    getDb: vi.fn(() => ({ executeSql: vi.fn<(...args: unknown[]) => Promise<{ rows: unknown[] }>>(async () => ({ rows: [] })) })),
     isInstalled: vi.fn(async () => true),
     on: vi.fn(() => boss),
   };
@@ -40,12 +41,21 @@ describe('PgBossJobQueue', () => {
     const boss = stub();
     const q = new PgBossJobQueue(boss);
     boss.send.mockResolvedValue(null as never);
-    boss.findJobs.mockResolvedValueOnce([{ id: 'held', state: 'created' }]);
+    boss.findJobs.mockResolvedValueOnce([{ id: 'held' }]);
     expect(await q.enqueue('n', {}, { singletonKey: 'k' })).toBe('held');
     expect(boss.findJobs).toHaveBeenCalledWith('n', { key: 'k', queued: true, limit: 1 });
     expect(await q.enqueue('n', {}, { singletonKey: 'k' })).toBeNull();
     expect(await q.enqueue('n', {})).toBeNull();
     expect(boss.findJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it('looks the holder of a taken key up in the caller\'s transaction when there is one', async () => {
+    const boss = stub();
+    boss.send.mockResolvedValue(null as never);
+    const query = vi.fn(async () => [{ id: 'mine' }]);
+    boss.findJobs.mockImplementationOnce((async (_n: string, o: { db: { executeSql(t: string, v?: unknown[]): Promise<{ rows: unknown[] }> } }) => (await o.db.executeSql('select 1')).rows) as never);
+    expect(await new PgBossJobQueue(boss).enqueue('n', {}, { singletonKey: 'k' }, { query: query as never })).toBe('mine');
+    expect(query).toHaveBeenCalledWith('select 1', undefined);
   });
 
   it('runs a transactional enqueue on the given transaction', async () => {
@@ -123,17 +133,15 @@ describe('PgBossJobQueue', () => {
     ]);
   });
 
-  it('isLive is true while a job with the key is queued, waiting for a retry or running', async () => {
+  it('isLive asks whether a job with the key is queued, waiting for a retry or running', async () => {
     const boss = stub();
+    const executeSql = vi.fn<(...args: unknown[]) => Promise<{ rows: unknown[] }>>(async () => ({ rows: [] }));
+    boss.getDb.mockReturnValue({ executeSql } as never);
     const q = new PgBossJobQueue(boss);
     expect(await q.isLive('n', 'k')).toBe(false);
-    boss.findJobs.mockResolvedValueOnce([{ id: '1', state: 'completed' }, { id: '2', state: 'failed' }, { id: '3', state: 'cancelled' }]);
-    expect(await q.isLive('n', 'k')).toBe(false);
-    for (const state of ['created', 'retry', 'active']) {
-      boss.findJobs.mockResolvedValueOnce([{ id: '1', state: 'completed' }, { id: '2', state }]);
-      expect(await q.isLive('n', 'k')).toBe(true);
-    }
-    expect(boss.findJobs).toHaveBeenCalledWith('n', { key: 'k', limit: 100_000 });
+    executeSql.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+    expect(await q.isLive('n', 'k')).toBe(true);
+    expect(executeSql).toHaveBeenCalledWith(expect.stringMatching(/from pgboss\.job where name = \$1 and singleton_key = \$2 and state <= 'active' limit 1/), ['n', 'k']);
   });
 
   it('isReady is false when pg-boss cannot answer', async () => {

@@ -104,7 +104,7 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
   },
   {
     name: 'singleton-queued-returns-existing',
-    async run({ queue, advance }) {
+    async run({ queue, database, advance }) {
       await queue.ensureQueue(def('c-single', { policy: 'stately' }));
       let runs = 0;
       await queue.work('c-single', async () => { runs++; });
@@ -114,9 +114,15 @@ export const jobQueueConformance: readonly JobQueueCase[] = [
       assert.equal(second, first, 'a queued job with the key already exists');
       const other = await queue.enqueue('c-single', { tenantId: TENANT }, { singletonKey: 'other', delaySeconds: 5 });
       assert.notEqual(other, first);
-      await advance(30, () => runs === 2);
+      const [inTx, inTxAgain] = await database.transaction(async (tx) => [
+        await queue.enqueue('c-single', { tenantId: TENANT }, { singletonKey: 'tx' }, tx),
+        await queue.enqueue('c-single', { tenantId: TENANT }, { singletonKey: 'tx' }, tx),
+      ]);
+      assert.equal(typeof inTx, 'string');
+      assert.equal(inTxAgain, inTx, 'the job of the same uncommitted transaction holds the key');
+      await advance(30, () => runs === 3);
       await advance(3); // nothing else was queued
-      assert.equal(runs, 2);
+      assert.equal(runs, 3);
     },
   },
   {

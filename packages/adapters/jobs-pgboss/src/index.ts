@@ -9,7 +9,7 @@ export const PGBOSS_SCHEMA = 'pgboss';
 export const DEFAULT_STOP_GRACE_MS = 1500;
 
 /** The part of pg-boss the adapter uses; tests pass a stand-in. */
-export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'findJobs' | 'isInstalled' | 'on'>;
+export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'findJobs' | 'getDb' | 'isInstalled' | 'on'>;
 
 /** The database object pg-boss accepts for one call (`db` option). */
 interface PgBossDatabase { executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> }
@@ -52,13 +52,15 @@ export class PgBossJobQueue implements JobQueue {
     });
     if (id !== null || options.singletonKey === undefined) return id;
     // pg-boss answers null when the key is taken; the port answers with the job that holds it.
-    const [existing] = await this.boss.findJobs(name, { key: options.singletonKey, queued: true, limit: 1 });
+    // Inside the caller's transaction its own uncommitted job is the one that holds the key.
+    const [existing] = await this.boss.findJobs(name, { key: options.singletonKey, queued: true, limit: 1, ...(tx ? { db: asDatabase(tx) } : {}) });
     return existing?.id ?? null;
   }
 
   async isLive(name: string, singletonKey: string): Promise<boolean> {
-    const jobs = await this.boss.findJobs(name, { key: singletonKey, limit: 100_000 });
-    return jobs.some((j) => j.state === 'created' || j.state === 'retry' || j.state === 'active');
+    // States are ordered created, retry, active, completed, cancelled, failed; the first three are live.
+    const { rows } = await this.boss.getDb().executeSql(`select 1 from ${PGBOSS_SCHEMA}.job where name = $1 and singleton_key = $2 and state <= 'active' limit 1`, [name, singletonKey]);
+    return rows.length > 0;
   }
 
   async work<Payload>(name: string, handler: JobHandler<Payload>): Promise<void> {
