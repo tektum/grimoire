@@ -40,31 +40,40 @@ test.describe('an administrator changes access under an open page', () => {
     }
   });
 
-  test('a person who is suspended: the page stops with "You no longer have access to this page", and the server refuses them with forbidden', async ({ browser, baseURL }) => {
+  test('a person who is suspended: the account is signed out ("Your account is suspended"), and the server refuses their sockets with forbidden', async ({ browser, baseURL }) => {
     test.slow();
     const made = await makePage('# Suspended\n\nA page open in the tab of a person who is then suspended.\n');
     await recreateApp({ M6_RECHECK_SECONDS: '2' });
-    const users = await twoUsers(browser, baseURL);
-    const bob = await whoIs(users.b.userId);
     try {
-      const { page } = users.b;
-      await page.goto(made.path);
-      await waitForSynced(page);
-      await setSuspended(bob.id, true);
-      await expect(page.getByText('You no longer have access to this page')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'stopped');
+      const users = await twoUsers(browser, baseURL);
+      try {
+        const bob = await whoIs(users.b.userId);
+        try {
+          const { page } = users.b;
+          await page.goto(made.path);
+          await waitForSynced(page);
+          await setSuspended(bob.id, true);
+          // The re-check closes the socket, the page asks the API again, and the API refuses every request of a suspended account: the client signs it out. (That the editor stops
+          // with "You no longer have access to this page" on a `forbidden` is driven in `signal-rows.spec.ts`; here the sign-out comes first.)
+          await expect(page).toHaveURL(/\/login\?.*reason=suspended/, { timeout: 30_000 });
+          await expect(page.getByText('Your account is suspended')).toBeVisible();
 
-      const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
-      const seen = await probe(page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
-      console.log(`forbidden observed ${JSON.stringify(seen)}`);
-      expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
-      expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NO_ACCESS' });
-      expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
-      expect(seen.close!.reason).toBe('forbidden');
-      expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'forbidden' }));
+          // The server's answer to the same person asking again, from the other person's page (the suspended one is signed out).
+          const config = (await (await fetch(`${apiUrl()}/v1/config`)).json()) as { collabUrl: string };
+          const seen = await probe(users.a.page, { collabUrl: config.collabUrl, documentName: made.id, handshake: token(buildDevToken(devSecret(), users.b.userId, 'member')) });
+          console.log(`forbidden observed ${JSON.stringify(seen)}`);
+          expect(seen.denied, 'the reason of the refusal').toBe('forbidden');
+          expect(mapSignal({ type: 'authenticationFailed', reason: seen.denied! })).toMatchObject({ behaviour: 'NO_ACCESS' });
+          expect(seen.close, 'the socket is closed after the refusal').not.toBeNull();
+          expect(seen.close!.reason).toBe('forbidden');
+          expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason })).toEqual(mapSignal({ type: 'authenticationFailed', reason: 'forbidden' }));
+        } finally {
+          await setSuspended(bob.id, false); // the other specs sign in as this person
+        }
+      } finally {
+        await users.close();
+      }
     } finally {
-      await setSuspended(bob.id, false); // the other specs sign in as this person
-      await users.close();
       await recreateApp();
     }
   });
