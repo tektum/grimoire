@@ -20,6 +20,35 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
 
+describe('the PostgreSQL CollectionRepo while a collection changes tenant (tenant-adopt, docs/tenancy.md section 5)', () => {
+  it('never lists the entries of a collection under the tenant it moved to: the entries are read under the tenant asked for', async () => {
+    await addTenant(t.app, 'T-c');
+    const repo = createCollections(t.app);
+    const walker = await addUser(t.app, 'walker-a', 'member', 'T-a');
+    const mine = await repo.append('T-a', { name: 'Moving', createdBy: a.boss }, after);
+    await repo.upsertAccess('T-a', mine.id, { principalType: 'user', principalId: walker, permission: 'read' }, a.boss);
+    let moved = false;
+    // The move commits between the check of the collection and the read of its entries.
+    const racing = new Proxy(t.app, {
+      get(target, prop) {
+        if (prop !== 'query') { const v = Reflect.get(target, prop) as unknown; return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v; }
+        return async (sql: string, params?: unknown[]) => {
+          const rows = await target.query(sql, params);
+          if (!moved && sql.includes('select default_permission')) {
+            moved = true;
+            await t.admin.query(`begin; update users set tenant_id = 'T-c' where id = '${walker}'; update collections set tenant_id = 'T-c' where id = '${mine.id}'; update collection_access set tenant_id = 'T-c' where collection_id = '${mine.id}'; commit`);
+          }
+          return rows;
+        };
+      },
+    });
+    const listed = await createCollections(racing).listAccess('T-a', mine.id);
+    expect(moved).toBe(true);
+    expect(listed?.entries ?? []).toEqual([]);
+    expect((await repo.listAccess('T-c', mine.id))?.entries).toHaveLength(1);
+  });
+});
+
 describe('the PostgreSQL CollectionRepo across tenants', () => {
   it('writes every audit row of a collection change under the tenant it happened in', async () => {
     const repo = createCollections(t.app);

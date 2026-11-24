@@ -87,7 +87,7 @@ export function createCollections(db: KyselyDatabase): CollectionRepo {
     async listAccess(tenantId, collectionId) {
       const found = (await db.query<{ default_permission: StoredPermission | null }>(`select default_permission from collections where id = $1 and tenant_id = $2 and deleted_at is null`, [collectionId, tenantId]))[0];
       if (found === undefined) return undefined;
-      const rows = await db.query<EntryRow>(`${ENTRY_SELECT} where a.collection_id = $1 order by a.created_at, a.id`, [collectionId]);
+      const rows = await db.query<EntryRow>(`${ENTRY_SELECT} where a.collection_id = $1 and a.tenant_id = $2 order by a.created_at, a.id`, [collectionId, tenantId]);
       return { defaultPermission: found.default_permission, entries: rows.map(entry) };
     },
     async upsertAccess(tenantId, collectionId, grant, actorId) {
