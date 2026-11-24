@@ -156,6 +156,8 @@ describe('the soft lock', () => {
     expect(paragraphs).toEqual([SOFT_LOCK_HELP, LIMIT_TEXT]);
     expect(LIMIT_TEXT).toContain('splitting it, joining it with the one above, or turning it into a list');
     expect(LIMIT_TEXT).toContain('planned after the first version');
+    expect(LIMIT_TEXT).toContain('Holding back Enter, Backspace and list changes while someone else is in the paragraph, and offering to keep a copy automatically, are planned after the first version.');
+    expect(LIMIT_TEXT).not.toContain('structure lock'); // the owner's answer (Q86): said plainly
     expect(LIMIT_TEXT).toContain('their letters can end up mixed together');
     [...notice(t)!.querySelectorAll('button')].find((b) => b.textContent === 'Close')!.click();
     await vi.waitFor(() => expect(t.element.querySelector<HTMLElement>('.lock-notice-host')?.dataset['show']).toBe('false'));
