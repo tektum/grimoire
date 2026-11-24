@@ -26,10 +26,14 @@ test.describe('the live region', () => {
       await page.goto(made.path);
       await waitForSynced(page);
       await page.evaluate(() => {
+        // The whole body is watched, and the line looked up each time: the line may be a new element after a render.
         const seen: string[] = [];
         (window as unknown as { seen: string[] }).seen = seen;
-        const line = document.querySelector('p.page-status');
-        if (line !== null) new MutationObserver(() => seen.push(line.textContent ?? '')).observe(line, { childList: true, characterData: true, subtree: true });
+        const note = () => {
+          const text = document.querySelector('p.page-status')?.textContent ?? '';
+          if (seen[seen.length - 1] !== text) seen.push(text);
+        };
+        new MutationObserver(note).observe(document.body, { childList: true, characterData: true, subtree: true });
       });
       await page.locator('.ProseMirror').click();
       await page.keyboard.press('Control+End');
