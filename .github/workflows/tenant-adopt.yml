@@ -120,8 +120,13 @@ jobs:
           task=$(aws ecs run-task --cluster "${cluster}" --task-definition "${taskdef}" --launch-type FARGATE --network-configuration "${network}" --overrides "${overrides}" --query 'tasks[0].taskArn' --output text)
           [ -n "${task}" ] && [ "${task}" != "None" ] || { echo "::error::the task did not start"; exit 1; }
           echo "task ${task##*/}"
-          # The waiter gives up after about 10 minutes and the task may run longer (it starts, sets up, then adopts): wait again, the job's own timeout bounds it.
-          until aws ecs wait tasks-stopped --cluster "${cluster}" --tasks "${task}"; do :; done
+          # Poll the task's own status: the waiter gives up after about ten minutes, and the task may run longer (it starts, sets up, then adopts). A failing call (a bad role, no access) stops the
+          # step at once (`set -e`); only a task that is not stopped yet is waited for, a pause at a time, and the job's own timeout bounds it.
+          while :; do
+            status=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0].lastStatus' --output text)
+            [ "${status}" != "STOPPED" ] || break
+            sleep 15
+          done
           described=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0]' --output json)
           printf '%s' "${described}" | jq -r '.containers[] | "\(.name): exit \(.exitCode // "none") \(.reason // "")"'
           # What the command said (log events, no personal data), from the container's log stream.

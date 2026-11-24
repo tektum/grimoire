@@ -34,7 +34,9 @@ test('exactly one database and one cluster of the stage, in the same network, or
   assert.match(runs, /expected one database of the stage/);
   assert.equal((runs.match(/expected one cluster of the stage/g) ?? []).length, 2, 'the snapshot step and the task step');
   assert.match(runs, /is not in the network of the service/);
-  assert.match(runs, /until aws ecs wait tasks-stopped/);
+  assert.match(runs, /while :; do\n\s+status=\$\(aws ecs describe-tasks/, 'it polls the task, not the waiter that gives up after ten minutes');
+  assert.match(runs, /\[ "\$\{status\}" != "STOPPED" \] \|\| break\n\s+sleep 15/, 'a pause between polls, and the loop ends when the task has stopped');
+  assert.doesNotMatch(runs, /ecs wait/, 'a waiter retried without a pause spins on an immediate error until the job times out');
   assert.ok(workflow.indexOf('is not in the network of the service') < workflow.indexOf('create-db-snapshot'));
 });
 
@@ -47,7 +49,7 @@ test('the command is the one of the migration step\'s container, from legacy, an
   assert.match(runs, /"tenant-adopt","--from","legacy","--to"/);
   assert.match(runs, /name: "migrate", command: \$args/);
   assert.match(runs, /name: "app", command: \["-e", "0"\]/);
-  assert.match(runs, /wait tasks-stopped/);
+  assert.match(runs, /lastStatus/);
   assert.match(runs, /exitCode/);
 });
 
