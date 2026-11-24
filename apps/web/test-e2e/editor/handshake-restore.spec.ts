@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
-import { makePage, readMarkdown, readPage, removePageForGood, resetPageState } from './pages';
+import { makePage, pageStatus, readMarkdown, readPage, removePageForGood, resetPageState } from './pages';
 import { compose, psqlAdmin, waitReady } from './stack';
 
 test.describe('a server that was restored', () => {
@@ -51,8 +51,7 @@ test.describe('a server that was restored', () => {
 
       await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible({ timeout: 120_000 });
       await expect(page.getByTestId('editor-root')).toHaveCount(0);
-      const response = await fetch(`${new URL('/v1/pages/' + made.id, process.env['E2E_API_URL'] ?? 'http://127.0.0.1:8080')}`);
-      expect([401, 403, 404]).toContain(response.status); // nothing was written back to bring it to life
+      expect(await pageStatus(made.id)).toBe(404); // an administrator can see it: nothing was written back to bring it to life
     } finally {
       await users.close();
     }

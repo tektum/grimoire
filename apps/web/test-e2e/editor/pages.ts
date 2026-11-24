@@ -79,3 +79,8 @@ export async function whoIs(userId: string): Promise<{ id: string; name: string 
   if (!response.ok) throw new Error(`GET /v1/me answered ${response.status}`);
   return (await response.json()) as { id: string; name: string };
 }
+
+/** The status the API gives an administrator for the page: 404 for an id the server no longer knows. */
+export async function pageStatus(pageId: string): Promise<number> {
+  return (await fetch(`${apiUrl()}/v1/pages/${pageId}`, { headers: admin() })).status;
+}
