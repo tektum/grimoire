@@ -39,7 +39,7 @@ export function createServer({ dist = path.join(webRoot, 'dist'), headersDir } =
     },
   });
   return http.createServer((req, res) => {
-    // The sign-in screen is its own document: `/login` is served as login.html (the redirects file of render-headers.mjs says the same).
+    // The sign-in screen is its own document: `/login` is served as login.html.
     const url = new URL(req.url ?? '/', 'http://x');
     if (url.pathname === '/login') req.url = `/login.html${url.search}`;
     files(req, res);

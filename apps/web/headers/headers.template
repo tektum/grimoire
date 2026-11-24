@@ -1,5 +1,5 @@
-# Response headers of the web client. render-headers.mjs fills the {{PLACEHOLDERS}} from the origins it is given and writes `headers` (the format of a `_headers` file),
-# `headers.json` and `redirects` beside the build. Two documents are built: `index.html` (the app) and `login.html` (the sign-in screen). By default the app has the
+# Response headers of the web client. render-headers.mjs fills the {{PLACEHOLDERS}} from the origins it is given and writes `headers.json` beside the build: the lines each
+# document is served with. There is no `_headers` file (see docs/web-security.md). Two documents are built: `index.html` (the app) and `login.html` (the sign-in screen). By default the app has the
 # narrow policy and the sign-in document the full one; `--signin=app-wide` gives both the full one. {{FINGERPRINT_CONNECT}} is empty until the manual sign-in check lists the vendor's connect hosts.
 # base-uri is 'self', not 'none': both documents have <base href="/"> so that a deep link such as /p/page-x loads its assets from /assets/.
 
