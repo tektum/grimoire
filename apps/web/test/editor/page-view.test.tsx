@@ -659,7 +659,15 @@ describe('the page screen', () => {
     await act(async () => void t.sessions[1]!.provider.refuse('not-found'));
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
     expect(screen.queryByTestId('editor-root')).toBeNull();
-    await waitFor(() => expect(t.sessions).toHaveLength(2)); // nothing opens again
+    // Nothing opens again: ten minutes of the page's time go by (any retry, at any backoff, would have fired in them), and the connection was asked for once.
+    vi.useFakeTimers();
+    try {
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(t.sessions).toHaveLength(2);
+    expect(t.sessions[1]!.provider.connects).toBe(1);
   });
 
   it('shows it for a page that is not there when the screen is opened, too', async () => {

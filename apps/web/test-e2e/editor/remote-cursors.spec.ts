@@ -104,7 +104,8 @@ test.describe('remote cursors', () => {
       await expect(labels).toHaveCount(2);
       await expect(labels.first()).toHaveClass(/cursor-label--shown/);
       await expect(labels.nth(1)).toHaveClass(/cursor-label--shown/);
-      expect((await labels.allTextContents()).sort()).toEqual([meB.name, meC.name].sort());
+      // The names come from the directory a moment after the carets appear ("Someone" until then): wait for them.
+      await expect.poll(async () => (await labels.allTextContents()).sort(), { timeout: 15_000 }).toEqual([meB.name, meC.name].sort());
       if (colourIndex(meB.id) !== colourIndex(meC.id)) {
         const colours = await cursors.evaluateAll((els) => els.map((el) => (el as HTMLElement).style.getPropertyValue('--cursor')));
         expect(new Set(colours).size).toBe(2); // different colours, as their ids hash apart
