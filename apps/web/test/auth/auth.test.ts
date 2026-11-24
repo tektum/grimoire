@@ -364,6 +364,23 @@ describe('a second sign-out', () => {
     expect(t.sdkStorage.map.size).toBe(0);
   });
 
+  it('hands out no token to a request that was waiting for the SDK to load when a sign-out started', async () => {
+    const { storage } = fakeStorage();
+    const sdkStorage = fakeSdkStorage({ [DESCOPE_REFRESH_KEY]: 'r' });
+    const sdk = fakeSdk(jwt(secs(NOW) + 600), false, () => [...sdkStorage.map.keys()]);
+    let loaded: () => void = () => {};
+    const loading = new Promise<void>((resolve) => (loaded = resolve));
+    const auth = createAuth({ config: config({ providerProjectId: 'P' }), storage, devSignIn: null, sdkStorage, now: () => NOW, loadDescope: async () => (await loading, { create: () => sdk }) });
+    const waiting = auth.getToken(); // the first call after a page load: the SDK is still loading
+    const out = auth.signOut('manual'); // waits for the same load
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    loaded();
+    expect(await waiting).toBeNull();
+    await out;
+    expect(auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+    expect(sdk.logouts).toBe(1);
+  });
+
   it('does the same for a development session: no token while the sign-out is under way', async () => {
     const t = setup();
     storeDevToken(t);

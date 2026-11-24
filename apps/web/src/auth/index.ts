@@ -152,7 +152,8 @@ export function createAuth(o: CreateAuthOptions): Auth {
           if (current.status !== 'signed-in') return null;
           token = client.getSessionToken();
         }
-        return token === '' ? null : token;
+        // The SDK may have taken a while to load, and a sign-out may have started meanwhile: look again before a token leaves.
+        return token === '' || ending !== null || current.status !== 'signed-in' ? null : token;
       } catch {
         log('warn', 'web.auth_error', { stage: 'token' });
         return null;
