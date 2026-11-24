@@ -50,6 +50,11 @@ describe('Config.files', () => {
     const virtual = { GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual', GRIMOIRE_S3_ENDPOINT: 'https://s3.eu-west-1.amazonaws.com', GRIMOIRE_S3_BUCKET: 'my-bucket' };
     expect(load(virtual).files?.publicOrigin).toBe('https://my-bucket.s3.eu-west-1.amazonaws.com');
     expect(load({ ...virtual, GRIMOIRE_S3_ADDRESSING_STYLE: 'path' }).files?.publicOrigin).toBe('https://s3.eu-west-1.amazonaws.com');
+    // Where the SDK falls back to path style (a dotted bucket, an uppercase name, an IP address) the origin stays the endpoint's.
+    expect(load({ ...virtual, GRIMOIRE_S3_BUCKET: 'my.bucket' }).files?.publicOrigin).toBe('https://s3.eu-west-1.amazonaws.com');
+    expect(load({ ...virtual, GRIMOIRE_S3_BUCKET: 'My_Bucket' }).files?.publicOrigin).toBe('https://s3.eu-west-1.amazonaws.com');
+    expect(load({ ...virtual, GRIMOIRE_S3_ENDPOINT: 'https://10.0.0.5:9000' }).files?.publicOrigin).toBe('https://10.0.0.5:9000');
+    expect(load({ ...virtual, GRIMOIRE_S3_ENDPOINT: 'http://store.test:9000', GRIMOIRE_S3_BUCKET: 'my.bucket' }).files?.publicOrigin).toBe('http://store.test:9000');
   });
 
   it('reads explicit values', () => {
@@ -177,5 +182,11 @@ describe('the files-setup purpose', () => {
 
   it('does not build Config.filesSetup for the server purpose', () => {
     expect(load({ GRIMOIRE_S3_ADMIN_ACCESS_KEY: key(), GRIMOIRE_S3_ADMIN_SECRET_KEY: key() }).filesSetup).toBeUndefined();
+  });
+
+  it('refuses an allowed app origin equal to the file origin the browsers will use, in virtual style the one with the bucket in the host', () => {
+    const virtual = { GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual', GRIMOIRE_S3_ENDPOINT: 'https://s3.example.test', GRIMOIRE_S3_BUCKET: 'app', GRIMOIRE_ALLOWED_ORIGINS: 'https://app.s3.example.test' };
+    expect(issuesOf(virtual).join('\n')).toContain('different from every origin');
+    expect(issuesOf({ ...virtual, GRIMOIRE_S3_ADDRESSING_STYLE: 'path' })).toEqual([]); // path style: the file origin is s3.example.test, another one
   });
 });
