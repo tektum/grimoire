@@ -9,8 +9,9 @@ FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d18
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
 # Amazon's certificate authorities for the managed database (RDS): the connection to it is verified (sslmode=verify-full) against this bundle, which the server finds through
-# NODE_EXTRA_CA_CERTS, set by the deployment that uses RDS. Fetched with a pinned checksum: when Amazon publishes a new bundle the build fails here until the checksum is updated.
-ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /rds/global-bundle.pem
+# NODE_EXTRA_CA_CERTS, set by the deployment that uses RDS. Readable by everyone (--chmod=644): ADD writes a fetched file as 0600 and the server runs as 65532, which
+# would then load no authorities at all. Fetched with a pinned checksum: when Amazon publishes a new bundle the build fails here until the checksum is updated.
+ADD --chmod=644 --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /rds/global-bundle.pem
 COPY . .
 # bun runs a dependency's install script only if it is trusted: the root package.json sets "trustedDependencies": [] (which also switches off bun's built-in default list), so no install script runs, as with npm's --ignore-scripts.
 RUN bun install --frozen-lockfile

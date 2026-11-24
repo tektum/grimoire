@@ -19,10 +19,10 @@ test('the parts survive: user, password with reserved characters, host, port and
   assert.deepEqual([config.user, config.password, config.host, config.port, config.database], ['grimoire_app', 'p@ss/word:1', 'db.cluster-x.eu-west-1.rds.amazonaws.com', '5432', 'grimoire']);
 });
 
-test('the image holds the bundle where the deployment says (the Dockerfile fetches it with a pinned checksum into /app/certs)', async () => {
+test('the image holds the bundle where the deployment says (the Dockerfile fetches it with a pinned checksum into /app/certs, readable by the non-root user the server runs as)', async () => {
   const { readFileSync } = await import('node:fs');
   const dockerfile = readFileSync(new URL('../../../Dockerfile', import.meta.url), 'utf8');
-  assert.match(dockerfile, /ADD --checksum=sha256:[0-9a-f]{64} https:\/\/truststore\.pki\.rds\.amazonaws\.com\/global\/global-bundle\.pem \/rds\/global-bundle\.pem/);
+  assert.match(dockerfile, /ADD --chmod=644 --checksum=sha256:[0-9a-f]{64} https:\/\/truststore\.pki\.rds\.amazonaws\.com\/global\/global-bundle\.pem \/rds\/global-bundle\.pem/);
   assert.match(dockerfile, /mkdir \/out\/certs; cp \/rds\/global-bundle\.pem \/out\/certs\//);
   assert.equal(RDS_CA_BUNDLE, '/app/certs/global-bundle.pem');
 });
