@@ -1,30 +1,25 @@
 import { descopeProject } from './descope/project.ts';
-import { databaseUrl, RDS_CA_BUNDLE } from './staging/database-url.ts';
-import { inStartOrder } from './staging/init-order.ts';
+import type { StageConfig, StageSettings } from './stages.ts';
+import { databaseUrl, RDS_CA_BUNDLE } from './stack/database-url.ts';
+import { inStartOrder } from './stack/init-order.ts';
 
-/** The Route 53 zone of the staging domain: it exists already (the parent delegates to it), so it is looked up and never made here. */
+/** The Route 53 zone of the sites' domain (every stage's address is in it): it exists already (the parent delegates to it), so it is looked up and never made here. */
 const ZONE_ID = 'Z09474701DSI18DNI458V';
 const PORT = 8080;
 /** The VPC's address range (SST's default): the load balancer's addresses are inside it, and they are the proxy the server trusts for client addresses. */
 const VPC_CIDR = '10.0.0.0/16';
 const IMAGE = { context: '.', dockerfile: 'Dockerfile' };
 
-const setting = (name: string): string => {
-  const value = process.env[name];
-  if (value === undefined || value === '') throw new Error(`${name} must be set (a variable of the environment "staging").`);
-  return value;
-};
-
 /**
- * The staging stage: the product on one Fargate task behind a load balancer, with its own database, file bucket and Descope project. One task on purpose: the
- * migrations run under a database lock, so a second task would only wait, but staging needs no more (a deploy replaces the task, the old one serving until the new one is ready).
+ * The product on one Fargate task behind a load balancer, with its own database, file bucket and Descope project: the same for every stage, from the row of `stages.ts` and the settings of
+ * the stage's environment. A deploy replaces the task, the old one serving until the new one is ready.
  */
-export default function staging() {
-  const domain = setting('STAGING_DOMAIN');
+export default function grimoireStage(config: StageConfig, settings: StageSettings) {
+  const { domain } = settings;
   const url = `https://${domain}`;
   const region = aws.getRegionOutput().region;
-  const identity = descopeProject('staging', domain);
-  const vpc = new sst.aws.Vpc('Vpc', { nat: 'ec2' });
+  const identity = descopeProject(config, domain);
+  const vpc = new sst.aws.Vpc('Vpc', { nat: config.nat });
   const db = new sst.aws.Postgres('Db', { vpc, version: '17' });
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
@@ -45,8 +40,8 @@ export default function staging() {
   const cluster = new sst.aws.Cluster('Cluster', { vpc });
   const service = new sst.aws.Service('Server', { // not 'App': SST reserves that name for a linkable component
     cluster,
-    cpu: '0.5 vCPU',
-    memory: '2 GB', // above the collaboration memory guard (1 GiB by default, with Node, socket buffers and the Markdown worker on top of it), so the guard refuses work before the task is killed
+    cpu: config.service.cpu,
+    memory: config.service.memory, // above the collaboration memory guard (see stages.ts)
     scaling: { min: 1, max: 1 },
     containers: [
       {
@@ -71,8 +66,9 @@ export default function staging() {
           GRIMOIRE_ALLOWED_ORIGINS: url,
           GRIMOIRE_TRUSTED_PROXY: VPC_CIDR,
           GRIMOIRE_DESCOPE_PROJECT_ID: identity.projectId,
-          GRIMOIRE_ALLOWED_EMAIL_DOMAINS: setting('STAGING_ALLOWED_EMAIL_DOMAINS'),
-          GRIMOIRE_FIRST_ADMIN_EMAILS: process.env.STAGING_FIRST_ADMIN_EMAILS ?? '',
+          GRIMOIRE_ALLOWED_EMAIL_DOMAINS: settings.allowedEmailDomains.join(','),
+          ...(settings.refusedEmailDomains.length === 0 ? {} : { GRIMOIRE_REFUSED_EMAIL_DOMAINS: settings.refusedEmailDomains.join(',') }),
+          GRIMOIRE_FIRST_ADMIN_EMAILS: settings.firstAdminEmails.join(','),
           GRIMOIRE_PUBLIC_API_URL: url,
           GRIMOIRE_PUBLIC_COLLAB_URL: `wss://${domain}/collab`,
           GRIMOIRE_WEB_ROOT: '/app/web',

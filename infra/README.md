@@ -2,10 +2,14 @@
 
 One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository root, the resources in this folder), one stage for each environment. SST keeps its state in the AWS account it is deployed to (its "home"), not in the repository. The Descope provider is `@descope/pulumi-descope` (Apache-2.0), which wraps the Descope Terraform provider.
 
-| Stage | File | What it makes |
-|---|---|---|
-| `descope-dev` | `descope-dev.ts` | the Descope project "Grimoire development", for local runs |
-| `staging` | `staging.ts` | the hosted staging site (below) and its own Descope project "Grimoire staging" |
+Every stage is the same stack, built by one function (`stage.ts`) from its row in `stages.json` and the variables of its GitHub environment: one Fargate task behind an HTTPS load balancer, its own PostgreSQL database and file bucket, and its own Descope project. The stages differ in that data and in nothing else; nothing in `infra/` or `sst.config.ts` looks at a stage's name (`tools/ci/test/stage-parity.test.mjs` checks it, and records the resources of `dev` and `staging` to show they match). What is tested on `dev` is what is promoted to `staging`, the same commit deployed to each in turn.
+
+| Stage | Address | Size of the task | Descope project | Protected |
+|---|---|---|---|---|
+| `dev` | its own, `GRIMOIRE_DOMAIN` of the environment `dev` | 0.25 vCPU, 2 GB | "Grimoire development" (also approves `127.0.0.1` and `localhost`, so that a local run signs in against it) | no |
+| `staging` | `GRIMOIRE_DOMAIN` of the environment `staging` | 0.5 vCPU, 2 GB | "Grimoire staging" | yes |
+
+A new stage is a row in `stages.json` and a GitHub environment with the variables below. Local runs (`make up`) stay in Compose and take the project id of `dev` (`GRIMOIRE_DESCOPE_PROJECT_ID`).
 
 ## One Descope project for each stage, all of it code
 
@@ -14,7 +18,7 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 | In the project | Resource | Setting |
 |---|---|---|
 | the project | `Project` | named for the stage, protected from deletion, no `environment` (it is set to `production` for a production project) |
-| address | `ProjectSettings` | app URL and approved domains: `http://127.0.0.1:4173` with `127.0.0.1` and `localhost` for development, `https://<STAGING_DOMAIN>` for staging (hosts only; the provider takes no port) |
+| address | `ProjectSettings` | app URL and approved domains: `https://<GRIMOIRE_DOMAIN>`, with `127.0.0.1` and `localhost` besides for a stage whose row lists them, for staging (hosts only; the provider takes no port) |
 | sign-in | `OtpSettings` and the flow `sign-up-or-in` (`descope/flows/sign-up-or-in.json`) | a one-time code by email, and nothing else |
 | other methods | password, magic link, enchanted link, embedded link, TOTP, passkeys, OAuth | all off |
 | sessions | `SessionSettings` | session token 10 minutes (the server accepts up to a day), refresh token 3 weeks, rotating |
@@ -22,9 +26,9 @@ One [SST](https://sst.dev) app, `grimoire` (`sst.config.ts` at the repository ro
 
 The flow is the Descope template "Sign up or in - OTP or sniper email link" (one-time code by email, with a shortcut to the reader's mail inbox), checked with the management API's `ValidateFlow` and kept as a file so a change to it is a pull request. The id of each stage's project is the stack's output (and an SST link), so the application takes it from there, not from a variable set by hand.
 
-## The staging site (`staging.ts`)
+## The site (`stage.ts`)
 
-One Fargate task (the image of the `Dockerfile`, which serves the web client and the API on port 8080) behind an HTTPS load balancer at `STAGING_DOMAIN`, with the Route 53 zone of that domain looked up (never made), a certificate validated through it, and an HTTP to HTTPS redirect. The load balancer checks `/readyz`.
+One Fargate task (the image of the `Dockerfile`, which serves the web client and the API on port 8080) behind an HTTPS load balancer at `GRIMOIRE_DOMAIN`, with the Route 53 zone of that domain looked up (never made), a certificate validated through it, and an HTTP to HTTPS redirect. The load balancer checks `/readyz`.
 
 | Part | Resource | Notes |
 |---|---|---|
@@ -37,7 +41,7 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 | secrets | Parameter Store `SecureString`, as ECS secrets | the database passwords and the three connection strings reach the containers by ARN, not as plain environment values; the `app` container gets only the runtime role's string, the schema owner's stays with `migrate` |
 | file access | the task role, `GetObject`, `PutObject` and `DeleteObject` on the bucket's objects and `ListBucket` on the bucket | no access keys anywhere |
 
-Settings are variables of the environment `staging`: `STAGING_DOMAIN`, `STAGING_ALLOWED_EMAIL_DOMAINS` (comma separated) and `STAGING_FIRST_ADMIN_EMAILS` (optional). Run `diff` for `staging` first.
+Settings are variables of the stage's environment, named for no stage: `GRIMOIRE_DOMAIN`, `GRIMOIRE_ALLOWED_EMAIL_DOMAINS` (comma separated), and optionally `GRIMOIRE_FIRST_ADMIN_EMAILS` and `GRIMOIRE_REFUSED_EMAIL_DOMAINS`. They are the application's own setting names, which the stage passes on to the task. Run `diff` first.
 
 Stated plainly: one task only (`scaling` is 1 to 1); the migration lock would make a second task wait, but staging needs no more. When Amazon publishes a new CA bundle, the image build fails at its checksum until the checksum in the `Dockerfile` is updated. The images are built three times from one Dockerfile (one for each container: SST names its build and its cache by container and has no way to share one, and the layers are the same, so the second and third builds are cache hits and push nothing new). Not run against a real account yet: the first `diff` and deploy are the proof of the load balancer rule, the container order, and the browser uploads against the bucket's rule.
 
@@ -62,10 +66,10 @@ What the first deploy of the development stage showed: the company key made the 
 
 ## No stored secret
 
-The workflow `.github/workflows/descope-infra.yml` holds no secret. Its job runs in the environment `descope-dev` (deploys from `main` only) with `id-token: write`, and asks GitHub for an OIDC token twice:
+The workflow `.github/workflows/descope-infra.yml` holds no secret. Its job runs in the environment of the stage it is given (each deploys from `main` only) with `id-token: write`, and asks GitHub for an OIDC token twice:
 
 1. For AWS: `aws-actions/configure-aws-credentials` assumes the role in the variable `AWS_ROLE_ARN` (region in `AWS_REGION`). It is the shared `GithubActions` role (below).
-2. For Descope: a token with the audience `https://api.descope.com/<key id>` (the variable `DESCOPE_MANAGEMENT_KEY_ID`) is used as `DESCOPE_MANAGEMENT_KEY`. The key is a *federated* management key with company scope and the role Full Management, because the stack creates projects: it holds no secret and trusts only the GitHub issuer, the subjects of the two environments (`descope-dev` and `staging`), and a token lifetime of at most 15 minutes (so a run must finish within that). A company key can create and change every project of the company, not only ours: the projects made here are protected from deletion, and the key is used by these two environments only. The provider's own guide says the management key attribute accepts such a token.
+2. For Descope: a token with the audience `https://api.descope.com/<key id>` (the variable `DESCOPE_MANAGEMENT_KEY_ID`) is used as `DESCOPE_MANAGEMENT_KEY`. The key is a *federated* management key with company scope and the role Full Management, because the stack creates projects: it holds no secret and trusts only the GitHub issuer, the subjects of the environments of the stages (`dev` and `staging`), and a token lifetime of at most 15 minutes (so a run must finish within that). A company key can create and change every project of the company, not only ours: the projects made here are protected from deletion, and the key is used by these two environments only. The provider's own guide says the management key attribute accepts such a token.
 
 **The subject is the immutable form.** This repository uses GitHub's immutable OIDC subject (a repository setting): the `sub` claim of a token carries the numeric ids of the organisation and the repository, `repo:tektum@271704328/grimoire@1466314324:environment:<environment>`, not their names. Both the AWS role's trust policy and the Descope key's allowed subject must use that form; the name form `repo:tektum/grimoire:environment:...` is refused (the first AWS run failed with `Not authorized to perform sts:AssumeRoleWithWebIdentity` until the trust was changed).
 
@@ -73,7 +77,7 @@ Until the three variables exist the job stops at its first step with a notice, a
 
 ## The AWS role
 
-Both environments (`descope-dev`, `staging`) assume one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum@271704328/grimoire@1466314324:environment:descope-dev` and `repo:tektum@271704328/grimoire@1466314324:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
+Every environment (`dev`, `staging`) assumes one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum@271704328/grimoire@1466314324:environment:dev` and `repo:tektum@271704328/grimoire@1466314324:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
 
 ## The provider plugins
 
@@ -82,5 +86,5 @@ Provider plugins are binaries that run with the AWS role and the Descope token i
 ## Running it
 
 - On a pull request that touches `sst.config.ts` or `infra/`: only `bun run check:infra` (installs the providers and typechecks the config). No credentials, no environment.
-- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `descope-dev` or `staging`. Read the `diff` first.
-- Locally with your own credentials: `bunx sst diff --stage descope-dev` with AWS credentials in the environment and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).
+- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `dev` or `staging`. Read the `diff` first.
+- Locally with your own credentials: `bunx sst diff --stage dev` with AWS credentials, the `GRIMOIRE_*` variables of the stage in the environment, and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).

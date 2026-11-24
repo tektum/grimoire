@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { requiredGracePeriodMs } from '../../../apps/server/src/lifecycle/budget.ts';
-import { APP_STOP_TIMEOUT_SECONDS, inStartOrder } from '../../../infra/staging/init-order.ts';
+import { APP_STOP_TIMEOUT_SECONDS, inStartOrder } from '../../../infra/stack/init-order.ts';
 
 const task = (...names) => names.map((name) => ({ name, image: `${name}:1`, essential: true, environment: [{ name: 'X', value: name }] }));
 const by = (definitions) => Object.fromEntries(definitions.map((d) => [d.name, d]));
@@ -46,14 +46,14 @@ test('the app alone gets a stop timeout, and it covers what the server needs to 
 });
 
 test('no component of the staging stack is named "App": SST refuses that name for a linkable component and the whole diff fails with it', () => {
-  const source = readFileSync(new URL('../../../infra/staging.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../../infra/stage.ts', import.meta.url), 'utf8');
   const names = [...source.matchAll(/new (?:sst|aws|random|descope)\.[\w.]+\(\s*'([^']+)'/g)].map((m) => m[1]);
   assert.ok(names.includes("Server"), names.join());
   assert.equal(names.some((name) => name.toLowerCase() === 'app'), false, names.join());
 });
 
 test('every load balancer rule of the staging service names its container: SST refuses a rule without one when the task has more than one container (app, migrate, db-setup), a check that only a deploy ran before', () => {
-  const source = readFileSync(new URL('../../../infra/staging.ts', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../../infra/stage.ts', import.meta.url), 'utf8');
   const rules = [...source.matchAll(/\{ listen: '[^']+'[^\n]*\},?$/gm)].map((m) => m[0]);
   assert.equal(rules.length, 2, rules.join());
   for (const rule of rules) assert.match(rule, /container: '(app)'/, rule);

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { databaseUrl, RDS_CA_BUNDLE } from '../../../infra/staging/database-url.ts';
+import { databaseUrl, RDS_CA_BUNDLE } from '../../../infra/stack/database-url.ts';
 
 const { parse } = createRequire(import.meta.url)('pg-connection-string');
 const url = databaseUrl('grimoire_app', 'p@ss/word:1', 'db.cluster-x.eu-west-1.rds.amazonaws.com', 5432, 'grimoire');

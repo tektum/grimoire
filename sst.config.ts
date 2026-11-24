@@ -1,14 +1,15 @@
 /**
- * The one SST app of the project. The resources live in `infra/`, one file per concern, and are loaded by stage:
- * `descope-dev` manages settings of the development identity-provider project (no cloud resources), and `staging`
- * the hosting. SST keeps its state in the AWS account it is deployed to (its "home"), not in the repository.
+ * The one SST app of the project. Every stage is built by the same function (`infra/stage.ts`) from its row in `infra/stages.json` and the variables of its environment: the stages differ
+ * in that data and nothing else, so what is tested on `dev` is what is promoted to `staging`. SST keeps its state in the AWS account it is deployed to (its "home"), not in the repository.
  */
 export default $config({
   app(input) {
+    // `protect` is read here, before any module can be imported (a config may not import), so it is read from the data file by hand; the rows are checked where they are used (`infra/stages.ts`).
+    const rows = JSON.parse(process.getBuiltinModule('node:fs').readFileSync('infra/stages.json', 'utf8')) as Record<string, { protect?: boolean } | undefined>;
     return {
       name: 'grimoire',
       removal: 'retain', // a removed stage keeps its resources: nothing here is deleted by accident
-      protect: input?.stage === 'staging',
+      protect: rows[input?.stage ?? '']?.protect === true, // there is no stage while SST installs its providers
       home: 'aws',
       providers: {
         aws: { version: '7.55.0' },
@@ -18,8 +19,8 @@ export default $config({
     };
   },
   async run() {
-    if ($app.stage === 'descope-dev') return await import('./infra/descope-dev').then((m) => m.default());
-    if ($app.stage === 'staging') return await import('./infra/staging').then((m) => m.default());
-    throw new Error(`Unknown stage "${$app.stage}". The stages are: descope-dev, staging.`);
+    const { stageConfig, stageSettings } = await import('./infra/stages.ts');
+    const { default: grimoireStage } = await import('./infra/stage.ts');
+    return grimoireStage(stageConfig($app.stage), stageSettings($app.stage, process.env));
   },
 });

@@ -5,11 +5,15 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { projectConfig, readFlows } from '../../../infra/descope/config.ts';
+import { stageConfig } from '../../../infra/stages.ts';
 import { buildStyles, contrastOn, contrastRatio, mix, parseTokens, readTokens } from '../../../infra/descope/theme.ts';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const read = (path) => readFileSync(`${root}${path}`, 'utf8');
 const tokens = readTokens(root);
+const dev = stageConfig('dev');
+const staging = stageConfig('staging');
+const DEV_HOST = 'dev.grimoire.descope.io';
 
 test('the styles of a project are the web client\'s design tokens: accent, paper, ink, fonts and radius, light and dark', () => {
   const { styles } = buildStyles(tokens);
@@ -68,26 +72,26 @@ test('every flow file of the folder is a flow of the project, and an empty folde
   }
 });
 
-test('the development project is made and named by code, for local runs', () => {
-  const c = projectConfig('descope-dev', { tokens });
+test('the development project is made and named by code, signs in at the address of its stage and, for local runs, at the loopback names', () => {
+  const c = projectConfig(dev, { domain: DEV_HOST, tokens });
   assert.equal(c.name, 'Grimoire development');
-  assert.equal(c.appUrl, 'http://127.0.0.1:4173');
-  assert.deepEqual(c.approvedDomains, ['127.0.0.1', 'localhost']);
+  assert.equal(c.appUrl, `https://${DEV_HOST}`);
+  assert.deepEqual(c.approvedDomains, [DEV_HOST, '127.0.0.1', 'localhost']);
   assert.equal(c.environment, undefined);
 });
 
 test('the staging project takes its address from the domain it is given, and refuses anything that is not a host name', () => {
-  const c = projectConfig('staging', { stagingDomain: 'grimoire.descope.io', tokens });
+  const c = projectConfig(staging, { domain: 'grimoire.descope.io', tokens });
   assert.equal(c.name, 'Grimoire staging');
   assert.equal(c.appUrl, 'https://grimoire.descope.io');
   assert.deepEqual(c.approvedDomains, ['grimoire.descope.io']);
   for (const bad of [undefined, '', 'localhost', 'https://grimoire.descope.io', 'grimoire.descope.io:8443', 'a b.test', 'grimoire.descope.io/x']) {
-    assert.throws(() => projectConfig('staging', { stagingDomain: bad, tokens }), /STAGING_DOMAIN/, String(bad));
+    assert.throws(() => projectConfig(staging, { domain: bad, tokens }), /GRIMOIRE_DOMAIN/, String(bad));
   }
 });
 
 test('sign-in is a one-time code by email and nothing else: every other method is off, and the flow says the same', () => {
-  const c = projectConfig('descope-dev', { tokens });
+  const c = projectConfig(dev, { domain: DEV_HOST, tokens });
   assert.deepEqual([...c.disabledMethods].sort(), ['embeddedlink', 'enchantedlink', 'magiclink', 'oauth', 'passkey', 'password', 'totp']);
   const flow = JSON.parse(c.flows['sign-up-or-in']);
   const text = JSON.stringify(flow.contents);
@@ -103,7 +107,7 @@ test('the flows are the files of infra/descope/flows, read as JSON, one per flow
 });
 
 test('the session tokens are shorter than the server accepts (a day by default), and the refresh token rotates', () => {
-  const { session } = projectConfig('descope-dev', { tokens });
+  const { session } = projectConfig(dev, { domain: DEV_HOST, tokens });
   assert.equal(session.sessionTokenExpiration, '10 minutes');
   assert.equal(session.refreshTokenRotation, true);
   const minutes = Number(/^(\d+) minutes$/.exec(session.sessionTokenExpiration)?.[1]);
@@ -118,7 +122,7 @@ test('no Descope role, permission or tenant is created: the product authorizes w
 test('the project is protected from deletion and nothing adopts the hand-made project', () => {
   const source = read('infra/descope/project.ts');
   assert.match(source, /deletionProtection: true/);
-  assert.doesNotMatch(read('infra/descope-dev.ts') + source, /P3MKkY4NTeugh4LndRLzgCZJtoPS|import:/);
+  assert.doesNotMatch(read('infra/stage.ts') + source, /P3MKkY4NTeugh4LndRLzgCZJtoPS|import:/);
 });
 
 test('every resource of the project takes its project id from the project, never a literal', () => {
@@ -132,7 +136,7 @@ test('every resource of the project takes its project id from the project, never
 test('the styles name no components version: Descope refuses a version that is not the project\'s own, and that version moves with its releases', () => {
   const data = buildStyles(tokens);
   assert.deepEqual(Object.keys(data).sort(), ['references', 'styles']);
-  assert.equal(JSON.parse(projectConfig('descope-dev', { flows: {} }).styles).componentsVersion, undefined);
+  assert.equal(JSON.parse(projectConfig(dev, { domain: DEV_HOST, flows: {} }).styles).componentsVersion, undefined);
 });
 
 // The sign-in flow makes or joins the tenant of the email domain (docs/tenancy.md), and the user token carries the tenant and the profile. Both were run on a throwaway project.
@@ -187,7 +191,7 @@ test('every task of the flow is reachable from its start, and every step it name
 });
 
 test('the user token carries the profile under the names the server reads, and the tenant is made the current one by the template', () => {
-  const { userToken } = projectConfig('staging', { stagingDomain: 'app.example.test', flows: {} });
+  const { userToken } = projectConfig(staging, { domain: 'app.example.test', flows: {} });
   assert.equal(userToken.name, 'grimoire-user');
   assert.deepEqual(Object.keys(userToken.claims).sort(), ['email', 'emailVerified', 'name']);
   assert.deepEqual(userToken.claims, { email: '{{user.email}}', name: '{{user.name}}', emailVerified: '{{user.verifiedEmail}}' });
