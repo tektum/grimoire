@@ -143,7 +143,7 @@ that receives the state (1.1 MB under the former cap, 0.77 MB now) applies it in
 
 After an epoch change (a page's row is rewritten so that the loaded state is no longer valid), the server closes the page's connections with the
 ordinary close code 1000. A client cannot tell that code from a normal drop, so it does not know it must reload. A client that reconnects with a bare
-token merges its pre-change edits back, and they are saved at the new epoch: the epoch does not stop a stale tab.  A planned change closes this with the dedicated close code 4409 and a refusal of the old epoch; the planned web client reloads on that code. `known-limit.test.mjs` fails when this
+token merges its pre-change edits back, and they are saved at the new epoch: the epoch does not stop a stale tab.  Later work closes this. A reconnect with an old epoch is refused with the reason `stale-epoch`. A moment later the socket is closed with 4409, unless another document on it is open. The save refusal and the first-frame check also close with 4409. The planned web client reloads on the reason or on the code. `known-limit.test.mjs` fails when this
 section or the names `1000` and `4409` are missing from it.
 
 ## Known limits of the test itself

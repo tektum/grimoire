@@ -130,18 +130,20 @@ test-m3-live:
 
 # The milestone 4 exit test: the whole of milestone 4 against the Compose app in local mode with development tokens (alice administrator, bob member, carol viewer).
 # It checks the generated API surface and the compile time, runs the unit tests and the conformance tests, checks the source rules of the scenarios, then runs the
-# scenarios of apps/server/test-e2e/m4 one after another (each prints `PASS <name>` or `FAIL <name>: <reason>` and writes test-results/m4/<name>.json).
+# migration check (a second migrate applies nothing, the runtime role cannot create a table) and the scenarios of apps/server/test-e2e/m4 one after another (each prints `PASS <name>` or `FAIL <name>: <reason>` and writes test-results/m4/<name>.json).
 # Covered requirements: R13.8 (the API through the generated client, its limits and its configuration route), R13.27 (the exit test of the milestone).
 test-m4: dev-secret
 	bun install --frozen-lockfile
 	bun run build
 	bun run tsc -b
 	bun run openapi:check
+	node apps/server/test-e2e/m4/surface-check.ts
 	bun run typecheck
 	bun run check:tsc-time
 	bun run test
 	node --test apps/server/test-e2e/m4/guards.test.mjs
 	$(MAKE) up
 	bun run test:conformance
+	node apps/server/test-e2e/m4/migration-check.ts
 	rm -f test-results/m4/*.json
 	node apps/server/test-e2e/m4/run.ts
