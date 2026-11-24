@@ -1,6 +1,7 @@
 # Response headers of the web client. render-headers.mjs fills the {{PLACEHOLDERS}} from the origins it is given and writes `headers` (the format of a `_headers` file),
 # `headers.json` and `redirects` beside the build. Two documents are built: `index.html` (the app) and `login.html` (the sign-in screen). By default the app has the
 # narrow policy and the sign-in document the full one; `--signin=app-wide` gives both the full one. {{FINGERPRINT_CONNECT}} is empty until the manual sign-in check lists the vendor's connect hosts.
+# base-uri is 'self', not 'none': both documents have <base href="/"> so that a deep link such as /p/page-x loads its assets from /assets/.
 
 [headers]
 Referrer-Policy: no-referrer
@@ -8,7 +9,7 @@ X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 
 [policy app]
-default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self'; connect-src 'self' {{API_ORIGIN}} {{COLLAB_ORIGIN}} {{STORE_ORIGIN}} https://api.descope.com; img-src 'self' {{STORE_ORIGIN}}; style-src 'self'; font-src 'self'
+default-src 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self'; connect-src 'self' {{API_ORIGIN}} {{COLLAB_ORIGIN}} {{STORE_ORIGIN}} {{DESCOPE_ORIGIN}}; img-src 'self' {{STORE_ORIGIN}}; style-src 'self'; font-src 'self'
 
 [policy full]
-default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self' https://descopecdn.com https://static.descope.com https://cdn.jsdelivr.net https://fpnpmcdn.net https://accounts.google.com; connect-src 'self' {{API_ORIGIN}} {{COLLAB_ORIGIN}} {{STORE_ORIGIN}} https://api.descope.com https://static.descope.com https://static2.descope.com https://cdn.jsdelivr.net {{FINGERPRINT_CONNECT}}; img-src 'self' {{STORE_ORIGIN}} https://static.descope.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://descopecdn.com data:; frame-src https://accounts.google.com
+default-src 'none'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; script-src 'self' https://descopecdn.com https://static.descope.com https://cdn.jsdelivr.net https://fpnpmcdn.net https://accounts.google.com; connect-src 'self' {{API_ORIGIN}} {{COLLAB_ORIGIN}} {{STORE_ORIGIN}} {{DESCOPE_ORIGIN}} https://static.descope.com https://static2.descope.com https://cdn.jsdelivr.net {{FINGERPRINT_CONNECT}}; img-src 'self' {{STORE_ORIGIN}} https://static.descope.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://descopecdn.com data:; frame-src https://accounts.google.com

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -46,6 +46,20 @@ describe('scripts/serve.mjs with rendered headers', () => {
     expect(login).not.toBe(app);
     const plain = await headersOf(base, '/login');
     expect([plain.get('referrer-policy'), plain.get('x-content-type-options'), plain.get('x-frame-options')]).toEqual(['no-referrer', 'nosniff', 'DENY']);
+  });
+
+  it.each([
+    ['a missing document', (json: Record<string, string[]>) => { delete json['/login.html']; }],
+    ['an empty document', (json: Record<string, string[]>) => { json['/index.html'] = []; }],
+    ['a document without a policy', (json: Record<string, string[]>) => { json['/index.html'] = ['Referrer-Policy: no-referrer']; }],
+    ['a line that is not a header', (json: Record<string, string[]>) => { json['/login.html'] = ['Content-Security-Policy: x', 'garbage']; }],
+  ])('refuses to start from a headers.json with %s, instead of serving a document with no policy', (_name, damage) => {
+    const partial = path.join(root, `partial-${String(servers.length)}-${_name.replaceAll(' ', '-')}`);
+    mkdirSync(partial, { recursive: true });
+    const json = JSON.parse(readFileSync(path.join(rendered, 'headers.json'), 'utf8')) as Record<string, string[]>;
+    damage(json);
+    writeFileSync(path.join(partial, 'headers.json'), JSON.stringify(json));
+    expect(() => createServer({ dist, headersDir: partial })).toThrow(/no usable header lines, with a content security policy/);
   });
 
   it('without a headers directory sets only the plain headers, and says so when the directory has no headers.json', async () => {

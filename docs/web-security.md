@@ -4,14 +4,16 @@ What the browser is told about the web client, what it still trusts, and where e
 
 ## Response headers
 
-`apps/web/scripts/render-headers.mjs` renders `apps/web/headers/headers.template` for a deployment: `node scripts/render-headers.mjs --api-origin <https origin> --collab-origin <wss origin> --store-origin <https origin>`. It writes three files beside the build. `headers` has the format of a `_headers` file, with one block for each built document. `headers.json` holds the same lines for a server that sets them itself. `redirects` sends `/login` to the sign-in document and every other path to the app. The origins are checked: a missing one, a path, or the wrong scheme (the collaboration origin is `wss:` or `ws:`, written out) stops the command with one plain line.
+`apps/web/scripts/render-headers.mjs` renders `apps/web/headers/headers.template` for a deployment: `node scripts/render-headers.mjs --api-origin <origin> --collab-origin <origin> --store-origin <origin>`. It writes `headers.json` beside the build: for each of the two built documents, `/index.html` (the app) and `/login.html` (the sign-in screen), the header lines it is served with. The origins are checked strictly, because they go into a policy: each must be exactly an origin. It uses `https:` (the collaboration socket `wss:`, written out), or the plain scheme (`http:`, `ws:`) for `localhost`, `127.0.0.1` or `[::1]` only, in local development; an explicit default port is accepted; a user, path, query, fragment, space or semicolon is refused. `--descope-origin` is the identity provider's API (default `https://api.descope.com`; a regional project uses its own). `--fingerprint-connect` takes the vendor's connect hosts, each checked the same way. A missing or malformed value stops the command with one plain line.
 
-Every document gets `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and a `Content-Security-Policy` that starts from `default-src 'none'`, with `frame-ancestors 'none'`, `base-uri 'none'`, `object-src 'none'` and `form-action 'self'`. No policy allows `'unsafe-inline'` or `'unsafe-eval'` for scripts.
+The server of the product is to do the same at start, from its own settings (the next change; see Hosting requirement). There is no `_headers` file for a static host: such a host matches its rules against the requested path, not the document it serves, so it cannot give `/login` the sign-in policy and every other route the app's without sending both policies to `/login`.
+
+Every document gets `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and a `Content-Security-Policy` that starts from `default-src 'none'`, with `frame-ancestors 'none'`, `base-uri 'self'`, `object-src 'none'` and `form-action 'self'`. `base-uri` is `'self'` and not `'none'` because both documents have `<base href="/">`, which a deep link such as `/p/page-x` needs to load its assets from `/assets/`. No policy allows `'unsafe-inline'` or `'unsafe-eval'` for scripts.
 
 | Directive | App (`index.html`) | Sign-in screen (`login.html`) |
 |---|---|---|
 | `script-src` | `'self'` | `'self'` and the sign-in origins below |
-| `connect-src` | `'self'`, the API, the collaboration socket, the file store, `https://api.descope.com` | the same, and the sign-in origins below |
+| `connect-src` | `'self'`, the API, the collaboration socket, the file store, the identity provider's API | the same, and the sign-in origins below |
 | `img-src` | `'self'` and the file store | the same, `https://static.descope.com` and `data:` |
 | `style-src` | `'self'` | `'self'`, `'unsafe-inline'` and `https://fonts.googleapis.com` |
 | `font-src` | `'self'` | `'self'`, `https://fonts.gstatic.com`, `https://descopecdn.com` and `data:` |
@@ -31,7 +33,7 @@ The sign-in library keeps the session token (`DS`) and the refresh token (`DSR`)
 
 ### Hosting requirement
 
-`frame-ancestors` cannot be set in a `<meta>` element, so the client must be served with real response headers. A static host that cannot set headers cannot run it. A host that applies a `_headers` file by the requested path, not by the document it serves, would give the app's deep links no policy: set the headers from `headers.json` instead. `apps/web/scripts/serve.mjs` does that: with `GRIMOIRE_WEB_HEADERS_DIR` set to the output of the renderer it gives `login.html` and every other path the lines of their own block.
+`frame-ancestors` cannot be set in a `<meta>` element, so the client must be served with real response headers, and each document with the lines of its own block of `headers.json`. Two servers do that, one now and one in the next change. The product's server is to serve the built client when `GRIMOIRE_WEB_ROOT` names the folder that holds it: it will need `GRIMOIRE_PUBLIC_API_URL`, `GRIMOIRE_PUBLIC_COLLAB_URL` and the file store settings, render the headers at start, serve `/config.json` from the public API address, `/login` as the sign-in document and any other extension-less path as the app, and never answer the API's paths. `apps/web/scripts/serve.mjs`, for tests, does it now for documents with `GRIMOIRE_WEB_HEADERS_DIR` set to the renderer's output, and refuses a `headers.json` that lacks a document or its policy. A static host that sets headers by requested path cannot run the client.
 
 ## Rendering rules
 

@@ -18,6 +18,13 @@ export function createServer({ dist = path.join(webRoot, 'dist'), headersDir } =
   const plain = Object.entries(parseTemplate(readFileSync(path.join(webRoot, 'headers/headers.template'), 'utf8')).headers).map(([name, value]) => `${name}: ${value}`);
   const rendered = headersDir !== undefined && existsSync(path.join(headersDir, 'headers.json')) ? JSON.parse(readFileSync(path.join(headersDir, 'headers.json'), 'utf8')) : undefined;
   if (headersDir !== undefined && rendered === undefined) throw new Error(`no headers.json in ${headersDir}: run scripts/render-headers.mjs first`);
+  for (const document of rendered === undefined ? [] : ['/index.html', '/login.html']) {
+    const lines = rendered[document];
+    // A partial file would serve a document with no policy while the headers are reported as configured.
+    if (!Array.isArray(lines) || lines.length === 0 || !lines.every((l) => typeof l === 'string' && l.includes(':')) || !lines.some((l) => l.startsWith('Content-Security-Policy:'))) {
+      throw new Error(`headers.json in ${headersDir} has no usable header lines, with a content security policy, for ${document}`);
+    }
+  }
   const set = (res, document) => {
     for (const line of rendered?.[document] ?? plain) {
       const colon = line.indexOf(':');
