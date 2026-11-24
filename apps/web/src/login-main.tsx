@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Gate } from './gate/Gate';
 import { loadWebConfig } from './config';
 import { LoginScreen } from './screens/login/LoginScreen';
+import { appTarget } from './screens/login/target';
 import { createClientStorage } from './storage';
 import './ui/global.css';
 
@@ -22,7 +23,7 @@ void loadWebConfig().then(({ apiUrl }) => {
             search={window.location.search}
             devBuild={devBuild}
             storage={storage}
-            go={(path) => window.location.assign(path)}
+            go={(path) => window.location.assign(appTarget(path, window.location.origin))}
             loadDevForm={loadDevForm}
             loadDescopeFlow={() => import('./auth/descope-signin')}
           />
