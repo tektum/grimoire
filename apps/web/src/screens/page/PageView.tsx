@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
 import type { MountedEditor } from '../../editor/core/mount';
 import { log } from '../../logging';
@@ -205,6 +206,9 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         <header className="page-head">
           <h1 id="screen-title">{page.title === '' ? 'Untitled' : page.title}</h1>
           {readOnly ? <span className="page-readonly">Read only</span> : null}
+          <Link className="page-history-link" to={`${pagePath(page.title, page.urlId)}/history`}>
+            History
+          </Link>
           {me.data?.role === 'admin' && session !== null ? (
             <Button className="page-admin-action" onClick={() => setResetOpen(true)}>
               Reset saved state…

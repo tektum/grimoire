@@ -503,4 +503,13 @@ describe('the page screen', () => {
     await waitFor(() => expect(member.lives).toHaveLength(1));
     expect(screen.queryByRole('button', { name: /Reset saved state/ })).toBeNull();
   });
+
+  it('links to the history of the page, for everyone, at /p/<slug>/history with the same slug the tree links with', async () => {
+    mountPage({ page: page({ title: 'Release plan', urlId: 'ab12cd' }) });
+    const link = await screen.findByRole('link', { name: 'History' });
+    expect(link.getAttribute('href')).toBe('/p/release-plan-ab12cd/history');
+    cleanup();
+    mountPage({ page: page({ title: '', urlId: 'zz99' }), meRole: 'member' });
+    expect((await screen.findByRole('link', { name: 'History' })).getAttribute('href')).toBe('/p/page-zz99/history');
+  });
 });
