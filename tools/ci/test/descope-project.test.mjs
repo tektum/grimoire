@@ -128,3 +128,9 @@ test('every resource of the project takes its project id from the project, never
   assert.equal([...source.matchAll(/projectId,/g)].length >= resources.length - 1, true);
   assert.doesNotMatch(source, /projectId: ['"]/);
 });
+
+test('the styles name no components version: Descope refuses a version that is not the project\'s own, and that version moves with its releases', () => {
+  const data = buildStyles(tokens);
+  assert.deepEqual(Object.keys(data).sort(), ['references', 'styles']);
+  assert.equal(JSON.parse(projectConfig('descope-dev', { flows: {} }).styles).componentsVersion, undefined);
+});
