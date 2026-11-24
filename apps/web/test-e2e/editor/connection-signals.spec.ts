@@ -89,16 +89,17 @@ test.describe('connection signals of the real server', () => {
         'not-found': await probe(page, { collabUrl: config.collabUrl, documentName: randomUUID(), handshake: token(good) }),
         'bad-document-name': await probe(page, { collabUrl: config.collabUrl, documentName: 'not-a-page-id', handshake: token(good) }),
       };
+      console.log(`observed-signals ${JSON.stringify(observed)}`); // in the job log of a passing run too: the attachment is only kept for a failing one
       await test.info().attach('observed-signals.json', { body: JSON.stringify(observed, null, 2), contentType: 'application/json' });
 
       for (const [expected, seen] of Object.entries(observed)) {
         expect(seen.denied, `${expected}: the reason of the refusal`).toBe(expected);
         const mapping = mapSignal({ type: 'authenticationFailed', reason: seen.denied! });
         expect(mapping.behaviour, `${expected}: the client has a row for it`).not.toBe('IGNORE');
-        if (seen.close !== null) {
-          // The close that follows is mapped by the same reason, never by the code alone.
-          expect(mapSignal({ type: 'close', code: seen.close.code, reason: seen.close.reason }).behaviour).not.toBe('IGNORE');
-        }
+        // The close that follows says the same: a close carrying the refusal's reason, whose code the client maps to the same row as the refusal.
+        expect(seen.close, `${expected}: the socket is closed after the refusal`).not.toBeNull();
+        expect(seen.close!.reason, `${expected}: the reason of the close`).toBe(expected);
+        expect(mapSignal({ type: 'close', code: seen.close!.code, reason: seen.close!.reason }), `${expected}: the close and the refusal are handled alike`).toEqual(mapping);
       }
     } finally {
       await context.close();
