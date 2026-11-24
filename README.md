@@ -156,6 +156,10 @@ On a wide window, the headings of the page are listed in the right margin, with 
 
 On a window narrower than 1,200 pixels the outline is left out.
 
+![A table with its controls](docs/screenshots/m6-t05a/table-controls-light.png)
+
+In a table, the controls to add or delete a row or a column sit right under it, and the cell you are in is marked.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
