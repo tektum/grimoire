@@ -213,6 +213,8 @@ files, so these are rules for you:
   checklist.
 - Visuals: a feature attaches screenshots; a bug fix attaches a before and an
   after shot; tooling-only changes say "not applicable" and why.
+- A pull request that adds or changes a screen's screenshots under
+  `docs/screenshots/` also updates the "What it looks like" section of README.md.
 - Review comments: read all of them, through the API. Answer every thread with
   a fix (name the commit) or a reason. Resolve the thread you answered. Never
   dismiss a security finding without checking it against the code.

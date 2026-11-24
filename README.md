@@ -32,6 +32,50 @@ This repository is being opened step by step. The code arrives through small pul
 - Dependencies must have permissive licences.
 - The first version is for one company. It has no external guests and no public pages.
 
+## What it looks like
+
+Screenshots of the web client, in the light theme (it follows your system setting).
+
+![The sign-in page](docs/screenshots/m6-t02/login-dev-form-light.png)
+
+The sign-in page (the local development form).
+
+![The list of collections](docs/screenshots/m6-t03/collection-list-light.png)
+
+The collections you can open.
+
+![A collection with its contents tree](docs/screenshots/m6-t03/contents-tree-light.png)
+
+A collection and the contents tree beside it.
+
+![A page with the contents tree beside it](docs/screenshots/m6-t03/page-with-contents-light.png)
+
+A page with the tree beside it.
+
+![The live editor open on a page](docs/screenshots/m6-t04/live-editor-light.png)
+
+The live editor.
+
+![A page opened read-only](docs/screenshots/m6-t04/read-only-page-light.png)
+
+A page opened read-only.
+
+![The Move to dialog](docs/screenshots/m6-t03/move-to-dialog-light.png)
+
+Moving a page with Move to.
+
+![The trash](docs/screenshots/m6-t03/trash-light.png)
+
+The trash.
+
+![The not-found screen](docs/screenshots/m6-t03/not-found-light.png)
+
+A page that does not exist.
+
+The same page in the dark theme:
+
+![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
+
 ## How it is built
 
 - TypeScript on Node.
