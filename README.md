@@ -220,6 +220,12 @@ In the dark theme:
 
 ![A page that was reset while you had unsent changes, dark theme](docs/screenshots/m6-t04/reset-notice-dark.png)
 
+![The contents tree with the keyboard focus on a row, dark theme](docs/screenshots/m6-t10/tree-focus-dark.png)
+
+The contents tree and a dialog, reached with the keyboard: the focused row and the focused choice have a ring.
+
+![The Move to dialog with the keyboard focus on a choice, dark theme](docs/screenshots/m6-t10/dialog-focus-dark.png)
+
 ## How it is built
 
 - TypeScript on Node.
