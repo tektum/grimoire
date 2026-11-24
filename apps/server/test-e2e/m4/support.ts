@@ -121,3 +121,13 @@ export async function openCollection(name: string): Promise<string> {
 export async function savedMarkdown(person: Person, pageId: string): Promise<string> {
   return expectStatus(await apiAs(person).GET('/v1/pages/{id}/markdown', { params: { path: { id: pageId } }, parseAs: 'text' }), 200, 'the saved Markdown');
 }
+
+/** For `eventually`, which polls every 25 ms: calls `fn` at most once per `everyMs`, so a wait on the API stays far below the per-user request limit. */
+export function throttled<T>(fn: () => Promise<T | undefined>, everyMs = 500): () => Promise<T | undefined> {
+  let last = 0;
+  return async () => {
+    if (Date.now() - last < everyMs) return undefined;
+    last = Date.now();
+    return fn();
+  };
+}

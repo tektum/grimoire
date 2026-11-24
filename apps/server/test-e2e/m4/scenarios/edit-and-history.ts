@@ -1,5 +1,5 @@
 import { docPeer, EditorUser, peerSynced, typeInOwnParagraph } from '../../m2/support.ts';
-import { apiAs, closeDb, eventually, expectStatus, openCollection, savedMarkdown, scenario, signInAll } from '../support.ts';
+import { apiAs, closeDb, eventually, expectStatus, openCollection, savedMarkdown, scenario, signInAll, throttled } from '../support.ts';
 
 // Live editing leaves a history (R9.2): a person edits through an editor bound to the page's document, the page is saved, and when the last editor leaves a
 // revision appears with that person as its author and the saved text as its content; a second sitting makes a second revision; restoring the first returns its
@@ -22,7 +22,7 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
       typeInOwnParagraph(editor, 3);
       editor.close();
       const typed = [...live].filter((token) => !before.has(token));
-      await eventually(async () => ((await savedMarkdown('bob', page.id)).includes(typed[typed.length - 1] ?? '\0') ? true : undefined), 90_000, 'the edit to be saved');
+      await eventually(throttled(async () => ((await savedMarkdown('bob', page.id)).includes(typed[typed.length - 1] ?? '\0') ? true : undefined)), 90_000, 'the edit to be saved');
       return typed;
     } finally {
       peer.destroy(); // the last editor leaves
@@ -30,10 +30,10 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
   };
 
   const first = await sit('a');
-  const afterFirst = await eventually(async () => {
+  const afterFirst = await eventually(throttled(async () => {
     const list = expectStatus(await bob.GET('/v1/pages/{id}/revisions', { params: { path: { id: page.id } } }), 200, 'the history after the first sitting');
     return list.items.length >= 1 ? list : undefined;
-  }, 90_000, 'a revision after the last editor left');
+  }), 90_000, 'a revision after the last editor left');
   const revisionOne = afterFirst.items[0];
   t.equal(revisionOne?.reason, 'last_editor_left', 'the first revision is made when the last editor leaves');
   t.check(revisionOne?.authors.some((a) => a.id === ids.bob) === true && revisionOne.lastAuthor?.id === ids.bob, 'bob is among its authors and its last author');
@@ -41,10 +41,10 @@ await scenario('edit-and-history', 300_000, async (t) => { // timeout: two editi
   t.check(first.every((token) => oneBody.markdown.includes(token)), 'it holds the text bob typed');
 
   const second = await sit('b');
-  const afterSecond = await eventually(async () => {
+  const afterSecond = await eventually(throttled(async () => {
     const list = expectStatus(await bob.GET('/v1/pages/{id}/revisions', { params: { path: { id: page.id } } }), 200, 'the history after the second sitting');
     return list.items.length >= 2 ? list : undefined;
-  }, 90_000, 'a second revision after the second sitting');
+  }), 90_000, 'a second revision after the second sitting');
   const revisionTwo = afterSecond.items[0];
   t.equal(afterSecond.items[1]?.id, revisionOne?.id, 'the newest revision is listed first');
   const twoBody = expectStatus(await bob.GET('/v1/pages/{id}/revisions/{rid}', { params: { path: { id: page.id, rid: revisionTwo?.id ?? '' } } }), 200, 'the second revision with its Markdown');

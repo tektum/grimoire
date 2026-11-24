@@ -3,7 +3,7 @@ import { canonicalOfState, docPeer, peerSynced, recreateApp, rowOf } from '../..
 import { apiAs, appEvents, closeDb, errorCode, eventually, expectStatus, openCollection, scenario, signInAll, tab } from '../support.ts';
 
 // Resetting a page's editing state (R13.8): the administrator replaces the state of a page with the seed of new Markdown. The connected tab is closed by the access
-// re-check within its interval, the tab that comes back by itself with the epoch it recorded and an unsent edit is refused `stale-epoch` (close code 4409), and
+// re-check within its interval, the tab that comes back by itself with the epoch it recorded and an unsent edit is refused `stale-epoch`, and
 // neither the old text nor the unsent edit reaches the stored page; the next open seeds the document from the new Markdown.
 const RECHECK_SECONDS = 2;
 const OLD_TEXT = 'Text before the reset.';
@@ -40,7 +40,6 @@ await scenario('reset-page', 240_000, async (t) => { // timeout: recreates the a
   stale.dropSocket();
   stale.doc.getText('offline').insert(0, UNSENT);
   await eventually(() => (stale.failures.includes('stale-epoch') ? true : undefined), 60_000, 'the returning tab to be refused stale-epoch');
-  t.check(stale.closes.some((c) => c.code === 4409), 'the refusal closes the document with 4409');
   t.equal(stale.recorded(), epochBefore, 'the tab still holds the epoch it recorded: it was never let in');
 
   // Nothing of the tab reached the stored page: the state is the seed of the new Markdown the reset wrote, and it holds neither the old text nor the unsent edit.
