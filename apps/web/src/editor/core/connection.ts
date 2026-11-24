@@ -9,6 +9,8 @@ export type ProviderEvent =
   | { readonly type: 'status'; readonly status: 'connecting' | 'connected' | 'disconnected' }
   | { readonly type: 'authenticated'; readonly scope: 'read-write' | 'readonly' }
   | { readonly type: 'synced' }
+  /** How many of this tab's changes the server has not acknowledged yet (the provider's `unsyncedChanges`): 0 when it has them all. */
+  | { readonly type: 'unsynced'; readonly count: number }
   | { readonly type: 'authenticationFailed'; readonly reason: string }
   | { readonly type: 'close'; readonly code: number; readonly reason?: string }
   | { readonly type: 'stateless'; readonly payload: string };
@@ -71,6 +73,10 @@ export interface ConnectionState {
   readonly readOnly: boolean;
   /** Offline for more than ten seconds: "Offline: changes kept in this tab". */
   readonly offline: boolean;
+  /** Changes made in this tab that the server has not acknowledged yet (the line says Saving while there are some). */
+  readonly unsynced: number;
+  /** How many times a change of this tab was reported unacknowledged: lets a screen know a change came even if it was acknowledged before the screen drew. */
+  readonly changes: number;
   /** The Markdown copy of a tab that was reset, offered to the user; null otherwise. */
   readonly copy: string | null;
   /** Counts the documents of this page created so far: the screen re-mounts the editor when it changes. */
@@ -128,6 +134,8 @@ export class ConnectionManager {
     banner: null,
     readOnly: false,
     offline: false,
+    unsynced: 0,
+    changes: 0,
     copy: null,
     generation: 0,
     suspended: false,
@@ -267,7 +275,7 @@ export class ConnectionManager {
     this.clearOffline();
     this.large = false;
     const carried = this.current.text;
-    this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, suspended: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
+    this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, unsynced: 0, suspended: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
     this.connectSession();
   }
 
@@ -327,6 +335,10 @@ export class ConnectionManager {
           return;
         }
         this.act(mapSignal({ type: 'scope', readOnly: true }));
+        return;
+      case 'unsynced':
+        // A change counts once the page is open: the provider also reports 1 and then 0 around each connect and sync, which are not changes of the person's.
+        this.set(event.count > this.current.unsynced && this.current.phase === 'synced' ? { unsynced: event.count, changes: this.current.changes + 1 } : { unsynced: event.count });
         return;
       case 'synced':
         this.onSynced();
