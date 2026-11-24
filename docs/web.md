@@ -26,7 +26,7 @@ The documents set `<base href="/">`, so the app is served from the root of its o
 
 ## Headers
 
-`headers/headers.template` lists the response headers in the format of a `_headers` file, for a static host that reads a `_headers` file. `Referrer-Policy: no-referrer` appears once, so page addresses never leave the browser. `scripts/serve.mjs` applies the same file when it serves the build for tests.
+`headers/headers.template` holds the response headers and the two content security policies of the client. `scripts/render-headers.mjs` fills in a deployment's origins and writes `headers` (the format of a `_headers` file), `headers.json` and `redirects` beside the build; see `docs/web-security.md`. `Referrer-Policy: no-referrer` appears once, so page addresses never leave the browser. `scripts/serve.mjs` applies the plain headers when it serves the build for tests, and the rendered ones when `GRIMOIRE_WEB_HEADERS_DIR` names the renderer's output.
 
 ## Source layout
 
