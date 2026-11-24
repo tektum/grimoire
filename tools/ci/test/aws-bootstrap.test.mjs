@@ -31,7 +31,7 @@ test('the Descope role can bootstrap SST state and nothing else: no wildcard dep
   const permissions = Object.fromEntries(documents().filter(([name]) => name.endsWith('permissions')));
   const dev = permissions['role grimoire-deploy-descope-dev: permissions'].Statement;
   assert.ok(dev.every((s) => !s.Action.includes('*') && !s.Resource.includes('*')), 'no statement of the Descope role is a wildcard');
-  assert.deepEqual(dev.map((s) => s.Sid).sort(), ['ManageBootstrapAssetBucket', 'ManageBootstrapECRRepo', 'ManageBootstrapSSMParameter', 'ManageBootstrapStateBucket', 'ManageSecrets']);
+  assert.deepEqual(dev.map((s) => s.Sid).sort(), ['ManageBootstrapAssetBucket', 'ManageBootstrapECRRepo', 'ManageBootstrapSSMParameter', 'ManageBootstrapStateBucket', 'ManageSecrets', 'StateOfThisStageOnly']);
   assert.ok(permissions['role grimoire-deploy-staging: permissions'].Statement.some((s) => s.Sid === 'Deployments'), 'the staging role has the deploy statement');
 });
 
@@ -40,6 +40,23 @@ test('the Descope role reaches only its own stage in SSM: not the passphrase or 
   const resources = dev.flatMap((s) => s.Resource).filter((r) => r.includes(':parameter/'));
   assert.ok(resources.length >= 3);
   for (const r of resources) assert.match(r, /parameter\/sst\/(bootstrap$|passphrase\/grimoire\/descope-dev$|grimoire\/descope-dev\/\*$)/, r);
+});
+
+test('the Descope role reaches only the state objects of its own stage: no object access to the state of staging, whatever the key', () => {
+  const dev = documents().find(([name]) => name === 'role grimoire-deploy-descope-dev: permissions')[1].Statement;
+  const objectActions = /^s3:(Get|Put|Delete)Object/;
+  const grants = dev.filter((s) => s.Action.some((a) => objectActions.test(a)) && s.Resource.some((r) => r.includes('sst-state-')));
+  assert.deepEqual(grants.map((s) => s.Sid), ['StateOfThisStageOnly']);
+  // SST's keys (checked in its source at the pinned version): <kind>/<app>/<stage>.json for app, lock and secret, and <kind>/<app>/<stage>/<id>.json for update, summary, eventlog and snapshot.
+  assert.deepEqual(grants[0].Resource.map((r) => r.replace('arn:aws:s3:::sst-state-*/', '')).sort(), [
+    'app/grimoire/descope-dev.json', 'eventlog/grimoire/descope-dev/*', 'lock/grimoire/descope-dev.json', 'secret/grimoire/descope-dev.json', 'snapshot/grimoire/descope-dev/*', 'summary/grimoire/descope-dev/*', 'update/grimoire/descope-dev/*',
+  ]);
+  // The bucket-level statement has no object action, so the `*` of the bucket name cannot reach into the objects of another stage.
+  const bucket = dev.find((s) => s.Sid === 'ManageBootstrapStateBucket');
+  assert.ok(bucket.Action.every((a) => !objectActions.test(a)), bucket.Action.join());
+  // The staging role is the broad one and does keep its own, whole-bucket access.
+  const staging = documents().find(([name]) => name === 'role grimoire-deploy-staging: permissions')[1].Statement;
+  assert.ok(staging.some((s) => s.Action.includes('s3:GetObject') && s.Resource.includes('arn:aws:s3:::sst-state-*')));
 });
 
 test('the JSON the README shows for an administrator is the JSON of the files the script uses', () => {

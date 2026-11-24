@@ -33,7 +33,7 @@ infra/bootstrap/aws-github-oidc.sh <account-id> <region> --print   # shows every
 infra/bootstrap/aws-github-oidc.sh <account-id> <region>           # needs the aws CLI and administrator credentials
 ```
 
-It checks that the credentials belong to that account, creates the provider for `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if it is missing, then creates or updates two roles and prints their ARNs. Put each ARN in the variable `AWS_ROLE_ARN` of its GitHub environment (`descope-dev`, `staging`) and the region in `AWS_REGION`. The roles are separate on purpose: the Descope job can never create infrastructure, and its SSM access is limited to the `descope-dev` stage (its passphrase and secrets, and SST's shared bootstrap parameter), so it cannot read the staging passphrase or secrets. Both stages share one SST home, so the state bucket (`sst-state-*`) is shared too: a `descope-dev` run can read and write the state objects of every stage in it. For a hard boundary, give each stage its own account or region and run the bootstrap script there.
+It checks that the credentials belong to that account, creates the provider for `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if it is missing, then creates or updates two roles and prints their ARNs. Put each ARN in the variable `AWS_ROLE_ARN` of its GitHub environment (`descope-dev`, `staging`) and the region in `AWS_REGION`. The roles are separate on purpose: the Descope job can never create infrastructure, and its SSM access is limited to the `descope-dev` stage (its passphrase and secrets, and SST's shared bootstrap parameter), so it cannot read the staging passphrase or secrets. Both stages share one SST home, so the state bucket (`sst-state-*`) is one bucket, but SST keeps each stage's state under keys that name the stage (`app/grimoire/<stage>.json`, `lock/`, `secret/`, and `update/`, `summary/`, `eventlog/`, `snapshot/` folders; checked in SST's source at the pinned version), and the Descope role may read and write only the `descope-dev` keys. It can list the bucket (it sees the names of the stages) and cannot read or change the state or secrets of staging. The asset bucket (`sst-asset-*`) is shared and not scoped by stage: it holds build assets, which the Descope stage does not create.
 
 | Role | Trusts only | Permissions |
 |---|---|---|
@@ -77,15 +77,30 @@ Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-desco
         "s3:PutBucketVersioning",
         "s3:PutBucketNotification",
         "s3:PutBucketPolicy",
-        "s3:DeleteObject",
-        "s3:DeleteObjectVersion",
-        "s3:GetObject",
         "s3:ListBucket",
-        "s3:ListBucketVersions",
-        "s3:PutObject"
+        "s3:ListBucketVersions"
       ],
       "Resource": [
         "arn:aws:s3:::sst-state-*"
+      ]
+    },
+    {
+      "Sid": "StateOfThisStageOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sst-state-*/app/grimoire/descope-dev.json",
+        "arn:aws:s3:::sst-state-*/lock/grimoire/descope-dev.json",
+        "arn:aws:s3:::sst-state-*/secret/grimoire/descope-dev.json",
+        "arn:aws:s3:::sst-state-*/update/grimoire/descope-dev/*",
+        "arn:aws:s3:::sst-state-*/summary/grimoire/descope-dev/*",
+        "arn:aws:s3:::sst-state-*/eventlog/grimoire/descope-dev/*",
+        "arn:aws:s3:::sst-state-*/snapshot/grimoire/descope-dev/*"
       ]
     },
     {
