@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { repoRoot } from '../support/env';
 import { fileDisagreements, reportProblems, rowsOf } from './exit-proof';
+import { FIREFOX_LEAVES_OUT, NOT_IN_FIREFOX } from './firefox-rule';
 import { handshakeProblem } from './handshake-check';
 import { headerArgs } from './headers';
 import { SCENARIOS, listProblems, runLines, scenarioIdsOfReport, specFiles } from './scenarios';
@@ -138,4 +139,22 @@ test('the check of the list also checks the report: a proved row of a file that 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the report and the run say where Firefox does not run a proof: the rule is the config's, the run line says so, and a row that rests only on files Firefox leaves out must say so", () => {
+  const config = readFileSync(path.join(repoRoot, 'apps/web/playwright.config.ts'), 'utf8');
+  expect(config, 'the rule of this folder is the one of the Firefox project').toContain(`FIREFOX_ARIA_CRASH_SPECS = [${FIREFOX_LEAVES_OUT.map(String).join(', ')}]`);
+  const lines = runLines(SCENARIOS);
+  expect(lines.find((l) => l.startsWith('scenario axe:'))).toContain('NOT run in firefox');
+  expect(lines.find((l) => l.startsWith('scenario co-edit:')) ?? '').not.toContain('NOT run in firefox');
+  const rows = rowsOf(report).filter((r) => r.files.length > 0 && r.files.every((f) => FIREFOX_LEAVES_OUT.some((re) => re.test(`/${f}`))));
+  expect(rows.length, 'there are such rows').toBeGreaterThan(5);
+  for (const row of rows) expect(row.text, row.label).toContain(NOT_IN_FIREFOX);
+  const unmarked = report.replaceAll(` (${NOT_IN_FIREFOX}: Chromium and WebKit only)`, '');
+  const problems = reportProblems(unmarked);
+  expect(
+    problems.some((p) => p.includes('does not say so')),
+    'a report that does not say it is refused',
+  ).toBe(true);
+  expect(reportProblems(report)).toEqual([]);
 });

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { repoRoot } from '../support/env.ts';
+import { NOT_IN_FIREFOX, firefoxLeavesOut } from './firefox-rule.ts';
 import type { Scenario } from './scenarios.ts';
 
 const TASK = /^M\d+-T\d+[a-z]?$/;
@@ -12,6 +13,8 @@ export interface Row {
   readonly label: string;
   readonly files: readonly string[];
   readonly state: string;
+  /** The whole line of the row, as written. */
+  readonly text: string;
 }
 
 const isFile = (text: string): boolean => /^[\w.@-]+(\/[\w.@-]+)+$/.test(text);
@@ -26,7 +29,7 @@ export function rowsOf(markdown: string): Row[] {
     if (cells.length < 4) continue;
     const state = cells[cells.length - 1]!.trim();
     const files = [...(cells[cells.length - 2] ?? '').matchAll(PATH)].map((m) => m[1]!).filter(isFile);
-    rows.push({ table, label: table === 'scenario' ? (/^`([^`]+)`/.exec(cells[0]!)?.[1] ?? cells[0]!) : (cells[1] ?? cells[0]!).slice(0, 70), files, state });
+    rows.push({ table, label: table === 'scenario' ? (/^`([^`]+)`/.exec(cells[0]!)?.[1] ?? cells[0]!) : (cells[1] ?? cells[0]!).slice(0, 70), files, state, text: line });
   }
   return rows;
 }
@@ -39,6 +42,8 @@ export function reportProblems(markdown: string, exists: (file: string) => boole
   if (rows.filter((r) => r.table === 'behaviour').length < 20) problems.push('the report has no table of behaviours (or very few rows)');
   for (const row of rows) {
     const where = `${row.table} "${row.label}"`;
+    if (row.files.length > 0 && row.files.every(firefoxLeavesOut) && !row.text.includes(NOT_IN_FIREFOX))
+      problems.push(`${where} rests only on files that the Firefox project does not run, and does not say so ("${NOT_IN_FIREFOX}")`);
     if (row.files.length === 0 && row.state !== 'pending' && !row.state.startsWith('pending ')) problems.push(`${where} names no file`);
     const pending = /^pending (\S+)$/.exec(row.state);
     if (row.state === 'proved') {

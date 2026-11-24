@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { BROWSERS } from '../support/browsers.ts';
+import { firefoxLeavesOut } from './firefox-rule.ts';
 import { repoRoot } from '../support/env.ts';
 import { fileDisagreements, reportProblems } from './exit-proof.ts';
 
@@ -83,7 +84,14 @@ export function listProblems(scenarios: readonly Scenario[], report: string, exi
 
 /** The lines the run prints: the three browsers, then each scenario with the state it is in. */
 export function runLines(scenarios: readonly Scenario[]): string[] {
-  return [`browsers: ${BROWSERS.join(', ')}`, ...scenarios.map((s) => `scenario ${s.id}: ${s.pending === undefined ? `${s.specs.length} specification file(s)` : `pending ${s.pending}`}`)];
+  return [`browsers: ${BROWSERS.join(', ')}`, ...scenarios.map((s) => `scenario ${s.id}: ${s.pending === undefined ? `${s.specs.length} specification file(s)${firefoxNote(s.specs)}` : `pending ${s.pending}`}`)];
+}
+
+/** What the line of a scenario says about Firefox: nothing when it runs all the files, else that it leaves out all of them or how many (the Firefox project ignores them: see `firefox-rule.ts`). */
+function firefoxNote(specs: readonly string[]): string {
+  const out = specs.filter(firefoxLeavesOut).length;
+  if (out === 0) return '';
+  return out === specs.length ? '; NOT run in firefox (only chromium and webkit)' : `; ${String(out)} of them NOT run in firefox`;
 }
 
 /** The specification files to run, once each, in the order of the list: those of the scenarios that are not pending. */
