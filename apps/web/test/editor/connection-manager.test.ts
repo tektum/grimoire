@@ -456,3 +456,70 @@ describe('what the first review found', () => {
     expect(p.connects).toBe(2);
   });
 });
+
+describe('a hidden tab', () => {
+  it('suspend disconnects the provider and stays quiet: no retry, no offline text, whatever the provider reports afterwards', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(1);
+    manager.suspend();
+    expect(p.disconnects).toBe(1);
+    expect(manager.state().suspended).toBe(true);
+    p.disconnected();
+    p.close(1006); // what disconnect() looks like from the provider
+    await h.clock.advance(10 * 60_000);
+    expect(p.connects).toBe(1);
+    expect(manager.state()).toMatchObject({ suspended: true, offline: false, text: null });
+    expect(h.clock.pendingCount()).toBe(0);
+  });
+
+  it('resume within a minute connects again with the recorded epoch, on the same document', async () => {
+    const { h, manager } = start();
+    await flush();
+    const p = h.last().provider;
+    p.succeed(4);
+    h.last().doc.text = 'what the tab holds';
+    manager.suspend();
+    await h.clock.advance(59_000);
+    manager.resume();
+    expect(manager.state().suspended).toBe(false);
+    expect(p.connects).toBe(2);
+    await flush();
+    expect(decodeHandshake(p.tokens.at(-1)!).e).toBe(4);
+    expect(h.sessions).toHaveLength(1);
+  });
+
+  it('resume after more than a minute starts a new document (the page may have been reset meanwhile) and holds the copy', async () => {
+    const { h, manager } = start();
+    await flush();
+    h.last().provider.succeed(4);
+    h.last().doc.text = 'what the tab holds';
+    manager.suspend();
+    await h.clock.advance(61_000);
+    manager.resume();
+    await flush();
+    expect(h.sessions).toHaveLength(2);
+    expect(h.sessions[0]!.doc.destroyed).toBe(true);
+    expect(manager.state()).toMatchObject({ suspended: false, generation: 2 });
+    expect(h.last().provider.connects).toBe(1);
+  });
+
+  it('does nothing for a manager that is stopped, not started, already suspended, or not suspended', async () => {
+    const idle = new ConnectionManager(harness().options);
+    idle.suspend();
+    idle.resume();
+    expect(idle.state().suspended).toBe(false);
+    const { h, manager } = start();
+    await flush();
+    manager.resume(); // not suspended
+    expect(h.last().provider.connects).toBe(1);
+    manager.suspend();
+    manager.suspend(); // already suspended: one disconnect
+    expect(h.last().provider.disconnects).toBe(1);
+    manager.resume();
+    h.last().provider.refuse('forbidden');
+    manager.suspend(); // stopped: nothing
+    expect(manager.state().suspended).toBe(false);
+  });
+});

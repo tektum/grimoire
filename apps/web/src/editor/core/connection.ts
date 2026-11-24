@@ -75,6 +75,8 @@ export interface ConnectionState {
   readonly copy: string | null;
   /** Counts the documents of this page created so far: the screen re-mounts the editor when it changes. */
   readonly generation: number;
+  /** A hidden tab let go of its connection: the editor and what it holds stay, and showing the tab connects again. */
+  readonly suspended: boolean;
 }
 
 const RETRY_MIN_MS = 1000;
@@ -85,6 +87,7 @@ const ERROR_RETRY_MS = 30_000;
 const ERROR_TRIES = 3;
 const TOKEN_RETRY_MS = 5000;
 const REFRESH_WINDOW_MS = 60_000;
+const RESUME_FRESH_AFTER_MS = 60_000;
 const REFUSAL_CLOSE_WINDOW_MS = 2000;
 const LONG_OFFLINE_MS = 60_000;
 
@@ -104,6 +107,7 @@ export class ConnectionManager {
   /** When the connection was lost, until it is made again. */
   private lostAt: number | null = null;
   private refreshingFor: Session | null = null;
+  private suspendedAt = 0;
   /** The page is too large to edit (a fact about the page, not about this person): only a new document ends it. */
   private large = false;
   /** True after the manager disconnected the provider itself (a stop, or a wait before an error retry): the close that follows is its own doing and says nothing new. */
@@ -120,6 +124,7 @@ export class ConnectionManager {
     offline: false,
     copy: null,
     generation: 0,
+    suspended: false,
   };
   private readonly listeners = new Set<(state: ConnectionState) => void>();
 
@@ -164,6 +169,30 @@ export class ConnectionManager {
   }
 
   /** Ends the page: no more attempts, the document and the provider are destroyed. */
+  /** The tab has been hidden long enough: disconnect and stay quiet (no retries) until `resume`. Nothing happens to a manager that has stopped or not started. */
+  suspend(): void {
+    if (this.session === null || this.current.phase === 'stopped' || this.current.phase === 'idle' || this.current.suspended) return;
+    this.clearTimers();
+    this.clearOffline();
+    this.quiet = true;
+    this.suspendedAt = this.timers.now();
+    this.session.provider.disconnect();
+    this.set({ suspended: true, phase: 'retrying', offline: false, text: null });
+  }
+
+  /** The tab is shown again: connect, or, after more than 60 s away (the page may have been reset meanwhile), start a new document. */
+  resume(): void {
+    if (!this.current.suspended || this.session === null) return;
+    const away = this.timers.now() - this.suspendedAt;
+    this.set({ suspended: false, phase: 'connecting' });
+    if (away > RESUME_FRESH_AFTER_MS) {
+      this.fresh({ capture: true });
+      return;
+    }
+    this.attempts = 0;
+    this.connectSession();
+  }
+
   stop(): void {
     this.clearTimers();
     this.teardown();
@@ -189,7 +218,7 @@ export class ConnectionManager {
     this.clearOffline();
     this.large = false;
     const carried = this.current.text;
-    this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
+    this.set({ generation: this.current.generation + 1, phase: 'connecting', readOnly: false, banner: null, offline: false, suspended: false, ...(carried === TEXTS.readOnly || carried === TEXTS.tooLarge || carried === TEXTS.offline ? { text: null } : {}) });
     this.connectSession();
   }
 
@@ -268,6 +297,7 @@ export class ConnectionManager {
   }
 
   private onStatus(status: 'connecting' | 'connected' | 'disconnected'): void {
+    if (this.current.suspended) return; // the disconnect of a hidden tab is not an outage
     if (status === 'disconnected' && this.lostAt === null) this.lostAt = this.timers.now();
     if (status === 'disconnected') {
       if (this.offlineTimer === null && this.current.phase !== 'stopped') this.offlineTimer = this.timers.setTimeout(() => this.set({ offline: true, text: TEXTS.offline }), OFFLINE_AFTER_MS);

@@ -21,7 +21,7 @@ import '../../safety/raw-html.css';
 import './page.css';
 
 export type PageMeta = components['schemas']['Page'];
-export type CollabState = 'connecting' | 'synced' | 'offline' | 'stopped';
+export type CollabState = 'connecting' | 'synced' | 'offline' | 'stopped' | 'disconnected';
 
 export const STALE_TEXT = 'This text may be a few seconds behind the live page.';
 const tails = new WeakMap<HTMLElement, Promise<unknown>>();
@@ -35,7 +35,10 @@ const queue = (element: HTMLElement, step: () => Promise<void>): Promise<void> =
   return next;
 };
 
-const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, copy: null, generation: 0 };
+/** The default of `hiddenDisconnectMs` (10 minutes), when the session carries none. */
+const DEFAULT_HIDDEN_DISCONNECT_MS = 600_000;
+
+const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, copy: null, generation: 0, suspended: false };
 
 export function PageView({ page, engine = realEngine, onReplaced }: { page: PageMeta; engine?: Engine; onReplaced?: () => void }) {
   const session = useSession();
@@ -181,9 +184,20 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     });
     managerRef.current = manager;
     manager.start();
+    // A hidden tab lets go of its connection after a while (the server's budget is per connection) and takes it up again when it is shown.
+    let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
+    const onVisibility = (): void => {
+      if (hiddenTimer !== null) clearTimeout(hiddenTimer);
+      hiddenTimer = null;
+      if (document.visibilityState === 'hidden') hiddenTimer = setTimeout(() => manager.suspend(), session.hiddenDisconnectMs ?? DEFAULT_HIDDEN_DISCONNECT_MS);
+      else manager.resume();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     showSaved();
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (hiddenTimer !== null) clearTimeout(hiddenTimer);
       managerRef.current = null;
       cancelled = true;
       unsubscribe();
@@ -199,7 +213,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     // The session and the page are what an editor belongs to; the read-only flag is applied by the effect above.
   }, [page.id, session, engine]);
 
-  const collab: CollabState = state.stopped !== null ? 'stopped' : state.offline ? 'offline' : liveReady && state.phase === 'synced' ? 'synced' : 'connecting';
+  const collab: CollabState = state.stopped !== null ? 'stopped' : state.suspended ? 'disconnected' : state.offline ? 'offline' : liveReady && state.phase === 'synced' ? 'synced' : 'connecting';
   // The 'Read only' text of the scope is the label beside the title, not a second line of status.
   const status = (state.text === 'Read only' ? null : state.text) ?? (collab === 'synced' ? 'Live' : collab === 'connecting' ? 'Connecting…' : null);
 

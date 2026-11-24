@@ -84,6 +84,7 @@ function mountPage(
     staleHeader?: boolean;
     markdownStatus?: number;
     markdownGate?: Promise<void>;
+    hiddenMs?: number;
     meRole?: string;
     onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
@@ -102,7 +103,11 @@ function mountPage(
       };
     }),
   } as unknown as AppSession['api'];
+<<<<<<< HEAD
   const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', apiUrl: 'http://api.test' };
+=======
+  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', ...(options.hiddenMs === undefined ? {} : { hiddenDisconnectMs: options.hiddenMs }) };
+>>>>>>> 987e615 (feat(web): a hidden tab lets go of its connection; the hidden-tab, offline, stale-epoch and connection-signals specs (M6-T04))
   const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
   const engine = { ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) };
   const Host = () => {
@@ -543,6 +548,7 @@ describe('the page screen', () => {
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
   });
 
+<<<<<<< HEAD
   it('checks the minimum client version again when the connection is made again after more than a minute, with a plain request, and shows nothing else when the server wants a newer client', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); // only the clock of the page moves: the waits of the test are real
     const asked: string[] = [];
@@ -569,5 +575,36 @@ describe('the page screen', () => {
       vi.unstubAllGlobals();
       vi.useRealTimers();
     }
+=======
+  it('lets go of the connection after the tab has been hidden for the configured time, says so on the root, and connects again when it is shown', async () => {
+    const setVisibility = (state: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const t = mountPage({ hiddenMs: 20 });
+    await t.synced();
+    await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
+    await act(async () => setVisibility('hidden'));
+    await waitFor(() => expect(t.sessions[0]!.provider.disconnects).toBe(1));
+    await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('disconnected'));
+    await act(async () => setVisibility('visible'));
+    await waitFor(() => expect(t.sessions[0]!.provider.connects).toBe(2));
+    expect(t.root().getAttribute('data-collab-state')).not.toBe('disconnected');
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('keeps the connection when the tab is shown again before the time is up', async () => {
+    const setVisibility = (state: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    const t = mountPage({ hiddenMs: 60_000 });
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => setVisibility('hidden'));
+    await act(async () => setVisibility('visible'));
+    expect(t.sessions[0]!.provider.disconnects).toBe(0);
+    Reflect.deleteProperty(document, 'visibilityState');
+>>>>>>> 987e615 (feat(web): a hidden tab lets go of its connection; the hidden-tab, offline, stale-epoch and connection-signals specs (M6-T04))
   });
 });
