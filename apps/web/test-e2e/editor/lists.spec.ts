@@ -14,11 +14,9 @@ const MARKDOWN = [
   '4. fourth',
   '   1. nested step',
   '',
-  'A list that starts high:',
+  'A longer list:',
   '',
-  '998. almost a thousand',
-  '999. nearly',
-  '1000. a thousand',
+  ...Array.from({ length: 12 }, (_, i) => `${i + 1}. step ${i + 1}`),
   '',
   '- [ ] an open task',
   '- [x] a done task',
@@ -29,7 +27,7 @@ const marker = (item: Locator) => item.evaluate((li) => getComputedStyle(li, '::
 const style = (item: Locator, property: string, pseudo = '::before') => item.evaluate((li, [p, q]) => getComputedStyle(li, q).getPropertyValue(p as string), [property, pseudo] as const);
 
 test.describe('lists in the page text', () => {
-  test('bullets step through three shapes, numbers show as written, and task items draw a box that is filled when done', async ({ browser, baseURL }) => {
+  test('bullets step through three shapes, numbers come from position, and task items draw a box that is filled when done', async ({ browser, baseURL }) => {
     const made = await makePage(MARKDOWN);
     const users = await twoUsers(browser, baseURL);
     try {
@@ -43,15 +41,17 @@ test.describe('lists in the page text', () => {
       expect(await marker(bullets.nth(2))).toBe('"◦"');
       expect(await marker(bullets.nth(3))).toBe('"▪"');
       const numbered = editor.locator('li[data-list-type="ordered"]');
-      expect(await marker(numbered.nth(0))).toBe('"3."');
-      expect(await marker(numbered.nth(1))).toBe('"4."');
-      // A long number runs into nothing: the text starts after the whole label.
-      const long = editor.locator('li[data-label="1000."]');
-      expect(await marker(long)).toBe('"1000."');
+      // numbered by position, not from the stored label: a list that starts at 3 in the Markdown reads 1, 2
+      expect(await marker(numbered.nth(0))).toBe('counter(item-position) "."'); // Chrome reports the counter expression, not its value
+      expect(await marker(numbered.nth(1))).not.toContain('data-label');
+      // A wide number runs into nothing: the text starts after the whole label.
+      const long = editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ });
+      expect(await marker(long)).toBe('counter(item-position) "."');
+      await expect(editor.locator('li[data-list-type="ordered"]').filter({ hasText: /^step 12$/ })).toHaveCount(1);
       const gap = await long.evaluate((li) => li.firstElementChild!.getBoundingClientRect().left - li.getBoundingClientRect().left);
       const labelWidth = await long.evaluate((li) => {
         const probe = document.createElement('span');
-        probe.textContent = getComputedStyle(li, '::before').content.replaceAll('"', '');
+        probe.textContent = '12.'; // the number the counter draws for this item
         probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums';
         li.append(probe);
         const width = probe.getBoundingClientRect().width;

@@ -17,17 +17,20 @@ describe('the list styles use the design tokens only', () => {
     for (const line of colours) expect(line).toMatch(/var\(--[a-z-]+\)|transparent|none|solid/);
   });
 
-  it('draws the markers it needs: bullets in three shapes, the number as written, a task box and a tick', () => {
-    expect(css).toContain('attr(data-label)');
+  it('draws the markers it needs: bullets in three shapes, the number from position, a task box and a tick', () => {
+    expect(css).toContain('attr(data-label)'); // bullets only: an ordered item's own rule below overrides it
+    expect(css).toContain('counter-increment: item-position');
+    expect(css).toContain("content: counter(item-position) '.'");
     expect(css).toContain("'\\25E6'");
     expect(css).toContain("'\\25AA'");
     expect(css).toContain("li[data-item-type='task']::before");
     expect(css).toContain("[data-checked='true']::after");
   });
 
-  it('gives the number of an ordered item a column that grows with it, so a long number never runs into the text', () => {
+  it('numbers ordered items by position, never from the stored label, in a column that grows with the number', () => {
     expect(css).toMatch(/ol > li \{[^}]*display: grid[^}]*max-content/);
     expect(css).toMatch(/ol > li::before \{[^}]*position: static/);
+    expect(css.match(/ol > li::before \{[^}]*\}/)![0]).not.toContain('data-label'); // the stored label is not used for numbers
   });
 
   it('applies to the editor only: every selector starts at the editor root, so the plain lists of other pages in the reading column keep their markers', () => {
