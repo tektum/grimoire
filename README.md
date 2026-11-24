@@ -108,6 +108,18 @@ Administrators: a group and its members.
 
 Administrators: who may read and write a collection.
 
+![The versions of a page](docs/screenshots/m6-t07/list-light.png)
+
+The versions of a page, with when each was kept, why, and who edited.
+
+![One version of a page](docs/screenshots/m6-t07/revision-light.png)
+
+One version, drawn as the page would show it.
+
+![The changes between a version and the page](docs/screenshots/m6-t07/diff-light.png)
+
+The line diff between a version and the page as it is now.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
