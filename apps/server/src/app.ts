@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { bodyLimit } from 'hono/body-limit';
+import { bodyLimit } from './http/body-limit.js';
 import { secureHeaders } from 'hono/secure-headers';
 import { routePath } from 'hono/route';
 import { timeout } from 'hono/timeout';
@@ -75,7 +75,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use('/v1/*', corsMiddleware(ctx.config.allowedOrigins));
   // Before the body limit, which answers an oversized request without calling `next()`: every request counts against the address limits.
   app.use(addressLimiter(ctx.config.http, ctx.config.trustedProxies, ctx.log));
-  app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES, onError: () => errorResponse('too_large') }));
+  app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES }));
   app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration() }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
   app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http, ctx.auth.roles));
