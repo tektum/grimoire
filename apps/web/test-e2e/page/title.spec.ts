@@ -70,6 +70,7 @@ test('a new page opens with its title field focused and empty, and what is typed
   const field = page.getByRole('textbox', { name: 'Page title' });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('');
+  await expect.poll(() => page.evaluate(() => (history.state as { usr?: unknown } | null)?.usr ?? null)).toBeNull(); // the sign of a new page is used up once the field is open
   await page.keyboard.type('Roadmap');
   await page.keyboard.press('Enter');
   await expect(heading(page)).toHaveText('Roadmap');

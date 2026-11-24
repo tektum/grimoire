@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PageTitle, TITLE_MAX } from '../../src/screens/page/PageTitle';
+import { type PageResult, titled } from '../../src/screens/page/usePage';
 import '../support/dom';
 
 afterEach(cleanup);
@@ -129,5 +130,54 @@ describe('the title of a page, in place', () => {
     setup({ title: '', editable: false, startEditing: true });
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Untitled' })).toBeTruthy();
+  });
+
+  it('does not take the focus back when the person leaves the field for somewhere else (it saves, and the focus stays where they went)', async () => {
+    const onSave = vi.fn(async () => true);
+    render(
+      <>
+        <PageTitle title="Welcome" editable startEditing={false} onSave={onSave} />
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Welcome' }));
+    await userEvent.keyboard('Moved on');
+    await userEvent.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith('Moved on'));
+    await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Elsewhere' }));
+  });
+
+  it('does not take the focus back for a new page whose empty field is left by a click elsewhere', async () => {
+    render(
+      <>
+        <PageTitle title="" editable startEditing onSave={async () => true} />
+        <button type="button">Into the text</button>
+      </>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Into the text' }));
+    await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Into the text' }));
+  });
+
+  it('saves nothing for a stored title that has spaces around it and is left unchanged', async () => {
+    const onSave = setup({ title: '  Padded  ' });
+    await userEvent.click(screen.getByRole('button'));
+    await userEvent.keyboard('{Enter}');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('the cached page after a rename', () => {
+  const found = (over: object = {}): PageResult => ({ kind: 'found', page: { id: 'p', title: 'Old', urlId: 'u', myPermission: 'read-write', markdownStale: false, ...over } as never });
+
+  it('changes only the title of the answer the cache has now, whatever a re-read brought in meanwhile', () => {
+    const now = found({ myPermission: 'read-only', markdownStale: true });
+    expect(titled(now, 'New')).toEqual(found({ title: 'New', myPermission: 'read-only', markdownStale: true }));
+  });
+
+  it('leaves a missing page and an empty cache as they are', () => {
+    expect(titled({ kind: 'missing' }, 'New')).toEqual({ kind: 'missing' });
+    expect(titled(undefined, 'New')).toBeUndefined();
   });
 });

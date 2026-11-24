@@ -50,19 +50,20 @@ export function PageTitle({ title, editable, startEditing, onSave }: { title: st
     );
   }
 
-  const finish = async (value: string, save: boolean) => {
+  /** Ends the editing: saves `value` (or not), and gives the focus back to the button only when the person ended it with a key (`refocus`), never when they left the field for somewhere else. */
+  const finish = async (value: string, { save, refocus }: { save: boolean; refocus: boolean }) => {
     if (finished.current) return;
     finished.current = true;
     const next = value.trim();
-    if (!save || next === '' || next === title) {
-      returnFocus.current = save || value === '' ? true : returnFocus.current;
+    if (!save || next === '' || next === title.trim()) {
+      returnFocus.current = refocus;
       setEditing(false);
       return;
     }
     setSaving(true);
     await onSave(next);
     setSaving(false);
-    returnFocus.current = true;
+    returnFocus.current = refocus;
     setEditing(false);
   };
 
@@ -77,16 +78,14 @@ export function PageTitle({ title, editable, startEditing, onSave }: { title: st
         disabled={saving}
         autoFocus
         onFocus={(e) => e.currentTarget.select()}
-        onBlur={(e) => void finish(e.currentTarget.value, true)}
+        onBlur={(e) => void finish(e.currentTarget.value, { save: true, refocus: false })}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
-            returnFocus.current = true;
-            void finish(e.currentTarget.value, false);
+            void finish(e.currentTarget.value, { save: false, refocus: true });
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            returnFocus.current = true;
-            void finish(e.currentTarget.value, true);
+            void finish(e.currentTarget.value, { save: true, refocus: true });
           }
         }}
       />

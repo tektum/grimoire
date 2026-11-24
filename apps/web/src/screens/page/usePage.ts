@@ -5,6 +5,9 @@ import type { PageMeta } from './PageView';
 
 export type PageResult = { kind: 'found'; page: PageMeta } | { kind: 'missing' };
 
+/** The cached answer with only the title changed: whatever else a re-read has brought in since (the permission, the stale flag) is kept. A missing page, or none, stays as it is. */
+export const titled = (cached: PageResult | undefined, title: string): PageResult | undefined => (cached?.kind === 'found' ? { kind: 'found', page: { ...cached.page, title } } : cached);
+
 /** The page by the id in its address. A page that is not there and a page the person may not read look the same. */
 export function usePage(urlId: string) {
   const session = useSession();

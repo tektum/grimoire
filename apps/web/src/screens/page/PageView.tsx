@@ -19,6 +19,7 @@ import { Button, notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
 import { PageTitle } from './PageTitle';
+import { type PageResult, titled } from './usePage';
 import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
@@ -73,6 +74,12 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const readOnly = permissionReadOnly || state.readOnly;
   const restore = (location.state as { restoreMarkdown?: unknown } | null)?.restoreMarkdown;
   const restoreRef = useRef(typeof restore === 'string' ? restore : null);
+  // A page just made opens with its title field (the sign is in the navigation state). It is read once, here, and taken out of the state at once: a return to this page from another screen
+  // (the history, the back button) is not the opening of a new page, and must not put the cursor in the title again.
+  const newPageRef = useRef(page.title === '' && (location.state as { newPage?: boolean } | null)?.newPage === true);
+  useEffect(() => {
+    if ((location.state as { newPage?: boolean } | null)?.newPage === true) navigate('.', { replace: true, state: null });
+  }, []);
   const client = useQueryClient();
   const treeActions = useTreeActions(session?.api ?? (null as never), page.collectionId);
   /**
@@ -82,7 +89,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const saveTitle = async (title: string): Promise<boolean> => {
     const outcome = await treeActions.rename(page.id, title);
     if (!outcome.ok) return false;
-    client.setQueryData(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), { kind: 'found', page: { ...page, title } });
+    // The page as the cache has it now (a re-read may have come in while the rename was on its way), with only the title changed.
+    client.setQueryData<PageResult>(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), (cached) => titled(cached, title));
     return true;
   };
 
@@ -251,7 +259,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     <div className="page-layout">
       <article className="page">
         <header className="page-head">
-          <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={page.title === '' && (location.state as { newPage?: boolean } | null)?.newPage === true} onSave={saveTitle} />
+          <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={newPageRef.current} onSave={saveTitle} />
           {readOnly ? <span className="page-readonly">Read only</span> : null}
           <Link className="page-history-link" to={`${pagePath(page.title, page.urlId)}/history`}>
             History
