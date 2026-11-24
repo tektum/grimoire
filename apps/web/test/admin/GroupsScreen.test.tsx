@@ -199,12 +199,52 @@ describe('the groups screen', () => {
     expect(await screen.findByRole('heading', { level: 3, name: 'Bob' })).toBeTruthy();
   });
 
+  it('retries a failed search with Try again, and keeps the people already found when a later page fails', async () => {
+    let calls = 0;
+    const { api, of } = fakeApi({
+      'GET /v1/groups': groups([TEAM]),
+      'GET /v1/groups/{id}/members': ok({ items: [] }),
+      'GET /v1/users': (r) => {
+        calls++;
+        const cursor = (r.params.query as { cursor?: string } | undefined)?.cursor;
+        if (cursor === undefined) return ok({ items: [CAROL], nextCursor: 'c2' });
+        return calls === 2 ? { status: 503 } : ok({ items: [user('u5', 'Erin')], nextCursor: null });
+      },
+    });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'a');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain("Couldn't search");
+    expect(screen.getByRole('button', { name: 'Add Carol to Team' })).toBeTruthy();
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Add Erin to Team' })).toBeTruthy();
+    expect(of('GET', '/v1/users').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('starts the member search afresh when another group is opened', async () => {
+    const { api } = fakeApi({
+      'GET /v1/groups': groups([TEAM, OPS]),
+      'GET /v1/groups/{id}/members': ok({ items: [] }),
+      'GET /v1/users': ok({ items: [CAROL], nextCursor: null }),
+    });
+    show(api, '/admin/groups?group=g1');
+    await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'ca');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    await screen.findByRole('button', { name: 'Add Carol to Team' });
+    await userEvent.click(screen.getByRole('link', { name: 'Ops' }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Members of Ops' })).toBeTruthy();
+    expect((screen.getByRole('searchbox', { name: 'Find a person to add' }) as HTMLInputElement).value).toBe('');
+    expect(screen.queryByRole('button', { name: /^Add Carol/ })).toBeNull();
+  });
+
   it('says the search failed, in words, when the users cannot be searched', async () => {
     const { api } = fakeApi({ 'GET /v1/groups': groups([TEAM]), 'GET /v1/groups/{id}/members': ok({ items: [] }), 'GET /v1/users': { status: 400 } });
     show(api, '/admin/groups?group=g1');
     await userEvent.type(await screen.findByRole('searchbox', { name: 'Find a person to add' }), 'x');
     await userEvent.click(screen.getByRole('button', { name: 'Find' }));
-    expect(await screen.findByText("Couldn't search. Try again.")).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain("Couldn't search.");
   });
 
   it('offers to try again when the groups cannot be read', async () => {

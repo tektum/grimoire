@@ -108,7 +108,7 @@ export async function adminApi(page: Page, state: AdminState): Promise<AdminApi>
     const access = (state.access ??= { defaultPermission: null, entries: [] });
     if (pathname === '/v1/collections/c1' && request.method() === 'PATCH') {
       access.defaultPermission = (body()['defaultPermission'] as 'read' | 'read_write' | null | undefined) ?? null;
-      return route.fallback();
+      return json(route, 200, { id: 'c1', name: 'Dev', description: null, icon: null, color: null, position: 'p1', defaultPermission: access.defaultPermission, myPermission: 'read-write' }, cors);
     }
     if (pathname === '/v1/collections/c1/access' && request.method() === 'GET') {
       return json(route, 200, { defaultPermission: access.defaultPermission, entries: access.entries.map((e) => ({ ...e, name: nameOf(e.principalType, e.principalId) })) }, cors);

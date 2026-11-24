@@ -45,25 +45,24 @@ export function UserPicker({ api, label, exclude, actionLabel, onPick }: {
         <input type="search" aria-label={label} placeholder="Name or email" maxLength={200} value={draft} onChange={(e) => { setDraft(e.target.value); }} />
         <Button type="submit">Find</Button>
       </form>
-      {found.isError ? (
-        <p role="alert">Couldn&apos;t search. Try again.</p>
-      ) : (
-        <>
-          {q !== '' && found.data !== undefined && offered.length === 0 && !found.hasNextPage && <p>No one to add</p>}
-          <ul className="admin-list">
-          {offered.map((u) => (
-            <li key={u.id}>
-              <div className="admin-main">
-                <h3>{u.name}</h3>
-                <span className="admin-meta">{u.email}</span>
-              </div>
-              <Button aria-label={actionLabel(u.name)} onClick={() => { onPick(u); }}>Add</Button>
-            </li>
-          ))}
-          </ul>
-          {found.hasNextPage && <Button disabled={found.isFetchingNextPage} onClick={() => void found.fetchNextPage()}>Show more</Button>}
-        </>
+      {found.isError && (
+        <p role="alert">
+          Couldn&apos;t search. <Button onClick={() => void (found.data === undefined ? found.refetch() : found.fetchNextPage())}>Try again</Button>
+        </p>
       )}
+      {q !== '' && found.data !== undefined && offered.length === 0 && !found.hasNextPage && !found.isError && <p>No one to add</p>}
+      <ul className="admin-list">
+        {offered.map((u) => (
+          <li key={u.id}>
+            <div className="admin-main">
+              <h3>{u.name}</h3>
+              <span className="admin-meta">{u.email}</span>
+            </div>
+            <Button aria-label={actionLabel(u.name)} onClick={() => { onPick(u); }}>Add</Button>
+          </li>
+        ))}
+      </ul>
+      {found.hasNextPage && !found.isError && <Button disabled={found.isFetchingNextPage} onClick={() => void found.fetchNextPage()}>Show more</Button>}
     </div>
   );
 }

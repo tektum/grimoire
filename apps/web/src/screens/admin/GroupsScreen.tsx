@@ -99,7 +99,7 @@ export function GroupsScreen({ api }: { readonly api: ApiLike }) {
           ))}
         </ul>
       )}
-      {chosen !== undefined && <GroupMembers api={api} group={chosen} />}
+      {chosen !== undefined && <GroupMembers key={chosen.id} api={api} group={chosen} />}
       {deleting !== null && (
         <Confirm
           title={`Delete the group ${deleting.name}?`}
