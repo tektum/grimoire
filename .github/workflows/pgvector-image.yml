@@ -46,14 +46,14 @@ jobs:
         run: |
           mkdir -p proof
           # The image under audit is the one compose.yaml names (the baseline is the image it replaced, kept here as the point of comparison).
-          NEW_IMAGE="$(docker compose -f compose.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
+          NEW_IMAGE="$(docker compose --env-file .env.example -f compose.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
           status=0
           node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$NEW_IMAGE" --out proof/m7-pgvector-image.md || status=$?
           cat proof/m7-pgvector-image.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: The same audit for the second image of the semantic tests (compose.pgvector087.yaml)
         run: |
-          IMAGE="$(docker compose -f compose.yaml -f compose.pgvector087.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
+          IMAGE="$(docker compose --env-file .env.example -f compose.yaml -f compose.pgvector087.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
           status=0
           node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$IMAGE" --out proof/m7-pgvector-image-087.md || status=$?
           cat proof/m7-pgvector-image-087.md >> "$GITHUB_STEP_SUMMARY"
