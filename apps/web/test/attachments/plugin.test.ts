@@ -163,7 +163,7 @@ describe('opening an attachment link', () => {
     expect(event.defaultPrevented).toBe(true);
     await vi.waitFor(() => expect(open).toHaveBeenCalledWith('https://files.test/signed?download'));
     expect(GET).toHaveBeenCalledTimes(1);
-    expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id: ID }, query: { download: true } } });
+    expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id: ID }, query: { download: 'true' } } });
   });
 
   describe('with no opener of the host (the real browser path)', () => {

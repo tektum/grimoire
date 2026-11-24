@@ -53,7 +53,7 @@ describe('the text of a version', () => {
     expect(opener).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(tab.location.replace).toHaveBeenCalledWith('https://files.test/signed?download'));
     expect(GET).toHaveBeenCalledTimes(1);
-    expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id }, query: { download: true } } });
+    expect(GET).toHaveBeenCalledWith('/v1/attachments/{id}', { params: { path: { id }, query: { download: 'true' } } });
     // A file that is gone: the tab is closed and the person is told (the toast of the page).
     GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status: 404 }) } as never);
     act(() => { link.click(); });

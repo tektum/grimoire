@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSession } from '../../auth/session';
-import { provideAttachments, signedUrlsFrom } from '../../editor/attachments';
+import { clientOf, provideAttachments, signedUrlsFrom } from '../../editor/attachments';
 import '../../editor/core/lists.css';
 import { notify } from '../../ui/primitives';
 import type { MountedEditor } from '../../editor/core/mount';
@@ -20,7 +20,7 @@ export function RevisionBody({ markdown, mount }: { readonly markdown: string; r
     const host = document.createElement('div');
     parent.append(host);
     // The uploaded images of an old version are shown as in the page: through the signed links of the session.
-    const takeBack = session === null ? () => undefined : provideAttachments(host, { fetchUrls: signedUrlsFrom(session.api), api: session.api, notify });
+    const takeBack = session === null ? () => undefined : provideAttachments(host, { fetchUrls: signedUrlsFrom(clientOf(session)), api: clientOf(session), notify });
     let cancelled = false;
     let mounted: MountedEditor | null = null;
     void mount(host, markdown).then(

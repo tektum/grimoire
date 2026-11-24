@@ -101,14 +101,14 @@ async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>[
   // leaves to the screen; so the notice here is for those two (but not a 403 that signs the person out), and for an answer with no link in it.
   let clientTold = false;
   try {
-    const { data, error, response } = await host.api.GET('/v1/attachments/{id}' as never, { params: { path: { id }, query: { download: true } } } as never);
-    const url = (data as { url?: string } | undefined)?.url;
+    const { data, error, response } = await host.api.GET('/v1/attachments/{id}', { params: { path: { id }, query: { download: 'true' } } });
+    const url = data?.url;
     if (response.ok && url !== undefined) {
       if (host.open !== undefined) host.open(url);
       else tab?.location.replace(url);
       return;
     }
-    const code = (error as { error?: { code?: string } } | undefined)?.error?.code;
+    const code = error?.error?.code;
     // A 403 that signs the person out (a suspended account, no longer allowed) is the client's: the sign-in screen says why, so nothing is added to it.
     const signsOut = response.status === 403 && (code === 'account_suspended' || code === 'not_allowed');
     clientTold = !response.ok && ((response.status !== 404 && response.status !== 403) || signsOut);

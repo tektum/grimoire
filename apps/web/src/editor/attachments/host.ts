@@ -1,4 +1,4 @@
-import type { ApiLike } from '../../api/query';
+import type { ApiClient } from '@tektum/grimoire-api-client';
 import { createUrlBatcher, type FetchUrls, type UrlBatcher } from './urls';
 
 /** What the page gives the editor of one page for attachments. */
@@ -8,9 +8,9 @@ export interface AttachmentHost {
   /** The page the files are uploaded to. Absent: the editor has no page, and nothing can be uploaded. */
   readonly pageId?: string;
   /** The client of the session, for the signed link of a file the person opens. */
-  readonly api?: ApiLike;
+  readonly api?: ApiClient;
   /** A client that tells nothing to the person by itself (no toast): upload refusals are told once, in the words of the upload. */
-  readonly uploadApi?: ApiLike | undefined;
+  readonly uploadApi?: ApiClient | undefined;
   /** `fetch` for the one request to the file store. */
   readonly put?: typeof fetch;
   /** Tells the person something (a toast). */
