@@ -73,3 +73,31 @@
   font-size: 0.85rem;
   color: var(--muted);
 }
+/* The title: a button that looks like the heading (a dashed line shows on hover and focus), and the field it becomes. */
+.page-title-button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-1);
+  padding: 0 var(--space-2);
+  margin-inline: calc(var(--space-2) * -1);
+  text-align: start;
+  cursor: text;
+}
+.page-title-button:hover,
+.page-title-button:focus-visible {
+  border-color: var(--muted);
+}
+.page-title-button[data-untitled='true'] {
+  color: var(--muted);
+}
+.page-title-input {
+  font: inherit;
+  color: inherit;
+  background: var(--paper-raised);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-1);
+  padding: 0 var(--space-2);
+  inline-size: min(100%, 40ch);
+}

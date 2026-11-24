@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
 import { createClientStorage } from '../../src/storage';
@@ -21,11 +21,15 @@ const show = (api: ApiLike, path: string, storage = memoryStorage()) =>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="*" element={<ContentsPanel api={api} storage={storage} />} />
+          <Route path="*" element={<><ContentsPanel api={api} storage={storage} /><Where /></>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
+const Where = () => {
+  const { pathname, state } = useLocation();
+  return <output data-testid="where">{JSON.stringify({ pathname, state })}</output>;
+};
 const titles = () => screen.getAllByRole('treeitem').map((r) => within(r).getByRole('link').textContent);
 
 describe('the contents panel', () => {
@@ -103,16 +107,23 @@ describe('the contents panel', () => {
   });
 
   it('offers New page and the row menus in a collection the caller can write in, and neither in one they can only read', async () => {
-    const { api, bodies } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n', null, 'p9', '') } });
+    const { api, bodies } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
     const writable = show(api, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
     await waitFor(() => { expect(bodies).toEqual([{ method: 'POST', path: '/v1/pages', body: { collectionId: 'c1', parentId: null } }]); });
-    expect(screen.getAllByRole('button', { name: /Actions for/ }).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('button', { name: /Actions for/ })).length).toBeGreaterThan(0); // the new page is open now: the panel finds its collection again first
     writable.unmount();
     show(api, '/c/c2');
     await waitFor(() => { expect(titles()).toHaveLength(2); });
     expect(screen.queryByRole('button', { name: 'New page' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
+  });
+
+  it('opens a page it has made, with the sign that it is new (the page screen puts the cursor in its title)', async () => {
+    const { api } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n1', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
+    show(api, '/c/c1');
+    await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
+    await waitFor(() => { expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/p/page-n1', state: { newPage: true } }); });
   });
 
   it('says there is no page yet in an empty collection, and still offers New page', async () => {

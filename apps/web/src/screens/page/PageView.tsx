@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
@@ -11,11 +12,13 @@ import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
 import { clientOf, lazyLimits, provideAttachments, quietApiOf, signedUrlsFrom } from '../../editor/attachments';
 import { sessionDirectory } from '../../editor/core/directory';
-import { useApiQuery } from '../../api/query';
+import { queryKey, useApiQuery } from '../../api/query';
+import { useTreeActions } from '../../tree/actions';
 import { recheckMinClientVersion } from '../../gate/recheck';
 import { Button, notify } from '../../ui/primitives';
 import { ResetPageDialog } from '../admin/ResetPageDialog';
 import { PageNotFound } from './PageNotFound';
+import { PageTitle } from './PageTitle';
 import { ResetNotice } from './ResetNotice';
 import { realEngine, type Engine } from './engine';
 import '../../editor/core/cursors.css';
@@ -70,6 +73,18 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const readOnly = permissionReadOnly || state.readOnly;
   const restore = (location.state as { restoreMarkdown?: unknown } | null)?.restoreMarkdown;
   const restoreRef = useRef(typeof restore === 'string' ? restore : null);
+  const client = useQueryClient();
+  const treeActions = useTreeActions(session?.api ?? (null as never), page.collectionId);
+  /**
+   * Saves the title through the rename the tree uses (the tree shows it at once), then shows it here; false when the server refused it. The address keeps the slug it has (the id at its end is what
+   * finds the page): a new address would remount the page, and with it the editor and its connection, for a name.
+   */
+  const saveTitle = async (title: string): Promise<boolean> => {
+    const outcome = await treeActions.rename(page.id, title);
+    if (!outcome.ok) return false;
+    client.setQueryData(queryKey('GET', '/v1/pages/by-url-id/{urlId}', { urlId: page.urlId }), { kind: 'found', page: { ...page, title } });
+    return true;
+  };
 
   useEffect(() => editableRef.current(!readOnly && state.stopped === null), [readOnly, state.stopped]);
 
@@ -236,7 +251,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     <div className="page-layout">
       <article className="page">
         <header className="page-head">
-          <h1 id="screen-title">{page.title === '' ? 'Untitled' : page.title}</h1>
+          <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={page.title === '' && (location.state as { newPage?: boolean } | null)?.newPage === true} onSave={saveTitle} />
           {readOnly ? <span className="page-readonly">Read only</span> : null}
           <Link className="page-history-link" to={`${pagePath(page.title, page.urlId)}/history`}>
             History

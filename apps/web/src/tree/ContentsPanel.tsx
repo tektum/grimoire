@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Link, useMatch } from 'react-router';
+import { Link, useMatch, useNavigate } from 'react-router';
 import { urlIdOf } from '../app/routes';
 import { type ApiLike, queryKey } from '../api/query';
 import { LAST_COLLECTION_KEY, useCollections } from '../screens/collections/useCollections';
 import { type ClientStorage, createClientStorage } from '../storage';
 import { Button } from '../ui/primitives';
-import { useTreeActions } from './actions';
-import { buildTree } from './model';
+import { type TreeActions, useTreeActions } from './actions';
+import { buildTree, type FlatPage, pagePath } from './model';
 import { Tree } from './Tree';
 import { HttpError, useCollectionTree } from './useTree';
 import './tree.css';
@@ -31,7 +31,23 @@ function usePageCollection(api: ApiLike, urlId: string | undefined): string | un
 function CollectionContents({ api, collectionId, currentUrlId }: { readonly api: ApiLike; readonly collectionId: string; readonly currentUrlId: string | undefined }) {
   const collections = useCollections(api);
   const tree = useCollectionTree(api, collectionId);
-  const actions = useTreeActions(api, collectionId);
+  const navigate = useNavigate();
+  const plain = useTreeActions(api, collectionId);
+  // A new page is opened, with its title field ready and empty (the page screen reads `newPage`): a title is what a person gives a page first.
+  const actions = useMemo<TreeActions>(
+    () => ({
+      ...plain,
+      create: async (parentId) => {
+        const outcome = await plain.create(parentId);
+        if (outcome.ok) {
+          const page = outcome.data as FlatPage;
+          navigate(pagePath(page.title, page.urlId), { state: { newPage: true } });
+        }
+        return outcome;
+      },
+    }),
+    [plain, navigate],
+  );
   const items = useMemo(() => buildTree(tree.data ?? []), [tree.data]);
   const current = collections.data?.find((c) => c.id === collectionId);
   const writable = current?.myPermission === 'read-write';
