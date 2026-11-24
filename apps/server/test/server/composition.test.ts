@@ -38,6 +38,29 @@ describe('composition root', () => {
     expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'page-store-pool', 'auth-pool', 'database-pool']);
   });
 
+  describe('the sign-in provider endpoint that GET /v1/config reports to browsers', () => {
+    const regional = `Peu1${'a'.repeat(27)}`; // the region is what stands between the leading P and the last 27 characters
+    const hosted = { ...base, GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test' };
+    it.each([
+      ['a project id of a region with no setting: the endpoint the verifier derives', { GRIMOIRE_DESCOPE_PROJECT_ID: regional }, 'https://api.eu1.descope.com'],
+      ['a project id of the default region with no setting', { GRIMOIRE_DESCOPE_PROJECT_ID: 'P123' }, 'https://api.descope.com'],
+      ['a setting with a trailing slash: the slash is stripped, as the verifier strips it', { GRIMOIRE_DESCOPE_PROJECT_ID: regional, GRIMOIRE_DESCOPE_BASE_URL: 'https://api.use1.example.test/' }, 'https://api.use1.example.test'],
+      ['a setting with a path: kept without its trailing slashes', { GRIMOIRE_DESCOPE_PROJECT_ID: regional, GRIMOIRE_DESCOPE_BASE_URL: 'https://proxy.example.test/descope//' }, 'https://proxy.example.test/descope'],
+    ])('%s', (_name, extra, expected) => {
+      expect(ctxOf({ ...hosted, ...extra }).http.providerBaseUrl).toBe(expected);
+    });
+    it('is null when no project is configured (local mode without one)', () => {
+      expect(ctxOf({ ...base, GRIMOIRE_LOCAL: '1' }).http.providerBaseUrl).toBeNull();
+    });
+    it('is the same endpoint the verifier is built with, for the same inputs', async () => {
+      const { descopeBaseUrl } = await import('@tektum/grimoire-adapter-auth-descope');
+      for (const [id, url] of [[regional, undefined], ['P123', undefined], [regional, 'https://api.use1.example.test/']] as const) {
+        const ctx = ctxOf({ ...hosted, GRIMOIRE_DESCOPE_PROJECT_ID: id, ...(url === undefined ? {} : { GRIMOIRE_DESCOPE_BASE_URL: url }) });
+        expect(ctx.http.providerBaseUrl).toBe(descopeBaseUrl(id, url));
+      }
+    });
+  });
+
   it.each([['1', true], ['0', false]] as const)('GRIMOIRE_LOCAL=%s: the provisioner policy has allowDevRole = config.local (%s)', (local, expected) => {
     const env = local === '1' ? { ...base, GRIMOIRE_LOCAL: '1' } : { ...base, GRIMOIRE_DESCOPE_PROJECT_ID: 'P123', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test', GRIMOIRE_FIRST_ADMIN_EMAILS: 'boss@example.test' };
     const ctx = ctxOf(env);

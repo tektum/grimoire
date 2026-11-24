@@ -8,7 +8,7 @@ export const ClientConfigSchema = z
     minClientVersion: z.string().describe('Oldest client version the server accepts'),
     local: z.boolean().describe('True only in local (development) mode'),
     providerProjectId: z.string().nullable().describe('Sign-in provider project id; null when none is configured'),
-    providerBaseUrl: z.string().nullable().describe('Base URL of the sign-in provider for a regional project; null for the default region'),
+    providerBaseUrl: z.string().nullable().describe('The endpoint of the sign-in provider that browsers use, the same one the server calls (a regional project has its own); null when no project is configured'),
     fileStoreOrigin: z.string().nullable().describe('Public origin of the file store; null when no store is configured'),
   })
   .openapi('ClientConfig');
@@ -32,7 +32,8 @@ function browserHost(host: string): string {
 const router = createRouter();
 
 router.openapi(getConfig, (c) => {
-  const { config, log } = c.get('deps');
+  const deps = c.get('deps');
+  const { config, log } = deps;
   // Local mode may derive the address from where the server listens; any other mode must be told.
   const collabUrl = config.publicCollabUrl ?? (config.local ? `ws://${browserHost(config.host)}:${String(config.collabPort ?? config.port)}/collab` : undefined);
   if (collabUrl === undefined) {
@@ -45,7 +46,7 @@ router.openapi(getConfig, (c) => {
       minClientVersion: config.minClientVersion,
       local: config.local,
       providerProjectId: config.descopeProjectId ?? null,
-      providerBaseUrl: config.descopeBaseUrl ?? null,
+      providerBaseUrl: deps.providerBaseUrl ?? null,
       fileStoreOrigin: config.files?.publicOrigin ?? null,
     },
     200,

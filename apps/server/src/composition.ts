@@ -13,7 +13,7 @@ import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import type { SignInPolicy } from '@tektum/grimoire-core/users/provisioner';
 import { createCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import { createDevAuth } from '@tektum/grimoire-adapter-auth-dev';
-import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
+import { createDescopeVerifier, descopeBaseUrl } from '@tektum/grimoire-adapter-auth-descope';
 import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
@@ -113,6 +113,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const files = config.files === undefined ? undefined : createFileStorage(config.files);
   const http: HttpDeps = {
     config, log, clock: systemClock, users: httpUsers,
+    providerBaseUrl: config.descopeProjectId === undefined ? null : descopeBaseUrl(config.descopeProjectId, config.descopeBaseUrl),
     access: overrides.access ?? createPageAccess(createAccessStore(db)),
     authorizer: createAuthorizer(createAccessStore(db)),
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
