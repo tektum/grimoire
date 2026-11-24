@@ -29,7 +29,7 @@ test('pasting a PNG makes the requests in order (create, PUT to the store, compl
     expect(seen).toEqual(['POST /v1/attachments', 'PUT store', 'POST /v1/attachments/{id}/complete']);
     expect(putHeaders['content-type']).toBe('image/png');
     expect(putHeaders['if-none-match']).toBe('*');
-    expect(await img.getAttribute('src')).toMatch(new RegExp(`^${storeOrigin().replace(/[.]/g, '\\.')}/`));
+    expect((await img.getAttribute('src'))?.startsWith(`${storeOrigin()}/`), 'the image comes from the store').toBe(true);
   } finally {
     await context.close();
   }
