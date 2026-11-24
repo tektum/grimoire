@@ -58,4 +58,4 @@ tofu plan
 
 - Pull requests touching this folder run only `init -backend=false`, `validate` and `fmt -check`, with no secret and no environment, because a secret must not reach pull-request code.
 - `plan` and `apply` run only on a manual dispatch of `main`, with the environment `descope-dev` and its secret `DESCOPE_DEV_MANAGEMENT_KEY`. Both skip with a notice while the secret is not set.
-- The owner should also set the environment's deployment branch to `main` and add required reviewers. Run `plan` first and read it, then dispatch `apply`.
+- The `descope-dev` environment deploys from `main` only (a custom deployment-branch policy), so no pull-request or other branch job can read the secret, whatever its workflow file says. Run `plan` first and read it, then dispatch `apply`. Required reviewers on the environment are optional and would add a second check.
