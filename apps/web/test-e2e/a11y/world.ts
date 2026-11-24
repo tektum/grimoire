@@ -60,7 +60,16 @@ export async function buildWorld(): Promise<World> {
   const me = await api<{ id: string; name: string }>(colleagueId, 'member', 'GET', '/v1/me');
   const group = await api<{ id: string }>(ADMIN, 'admin', 'POST', '/v1/groups', { name: `Tour group ${tag}` });
   await api(ADMIN, 'admin', 'PUT', `/v1/groups/${group.id}/members/${me.id}`);
+  // The access screen with rows in it: a group and a person, by name, with a choice and a Remove each.
+  await api(ADMIN, 'admin', 'PUT', `/v1/collections/${collection.id}/access`, { principalType: 'group', principalId: group.id, permission: 'read_write' });
+  await api(ADMIN, 'admin', 'PUT', `/v1/collections/${collection.id}/access`, { principalType: 'user', principalId: me.id, permission: 'read' });
   return { collectionId: collection.id, alpha, beta, colleague: { id: me.id, name: me.name }, groupId: group.id, revisionId: '' };
+}
+
+/** A collection of its own (everyone may edit in it), for a walk that changes who can do what: it must not change the collection of the world, whose pages the other walks open. */
+export async function makeCollection(name: string): Promise<string> {
+  const collection = await api<{ id: string }>(ADMIN, 'admin', 'POST', '/v1/collections', { name: `${name} ${randomUUID().slice(0, 8)}`, defaultPermission: 'read_write' });
+  return collection.id;
 }
 
 /** Gives Alpha a saved version: a person sits at the page, adds a line and leaves, and the server records it. */

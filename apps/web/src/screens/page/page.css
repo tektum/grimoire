@@ -33,6 +33,12 @@
   font-size: 0.9rem;
   color: var(--muted);
 }
+/* Reached by Tab (src/ui/input-modality.ts): a ring around the text, with room before it; a click keeps the plain look. */
+[data-input='keyboard'] .page-editor .ProseMirror:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 8px;
+  border-radius: var(--radius-1);
+}
 .page-editor .ProseMirror {
   outline: none;
   min-height: 12rem;

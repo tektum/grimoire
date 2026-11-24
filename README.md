@@ -234,6 +234,10 @@ The contents tree and a dialog, reached with the keyboard: the focused row and t
 
 ![The Move to dialog with the keyboard focus on a choice, dark theme](docs/screenshots/m6-t10/dialog-focus-dark.png)
 
+![The editor reached with Tab: a ring around the text, dark theme](docs/screenshots/m6-t10/editor-focus-dark.png)
+
+![The contents in a window 320 pixels wide (a page at 400% zoom)](docs/screenshots/m6-t10/narrow-320-light.png)
+
 ## How it is built
 
 - TypeScript on Node.

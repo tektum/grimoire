@@ -83,60 +83,91 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
             <select
               aria-label="Everyone with an account can"
               value={access.data.defaultPermission ?? 'none'}
-              onChange={(e) => void change(() => api.PATCH('/v1/collections/{id}' as never, { params: { path: { id: collectionId } }, body: { defaultPermission: e.target.value === 'none' ? null : e.target.value } } as never))}
+              onChange={(e) =>
+                void change(() => api.PATCH('/v1/collections/{id}' as never, { params: { path: { id: collectionId } }, body: { defaultPermission: e.target.value === 'none' ? null : e.target.value } } as never))
+              }
             >
               <option value="none">do nothing here</option>
               {PERMISSIONS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
               ))}
             </select>
           </label>
           {entries.length === 0 ? (
             <p>No one has been given access one by one</p>
           ) : (
-            <table aria-label="Who has access" className="admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Can</th>
-                  <th scope="col"><span className="admin-hidden">Remove</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((e) => (
-                  <tr key={e.id}>
-                    <td>{e.name}</td>
-                    <td>{e.principalType === 'group' ? 'Group' : 'User'}</td>
-                    <td>
-                      <select aria-label={`What ${e.name} can do`} value={e.permission} onChange={(ev) => void grant(e.principalType, e.principalId, ev.target.value as Permission)}>
-                        {PERMISSIONS.map((p) => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <Button aria-label={`Remove ${e.name}`} onClick={() => { setRemoving(e); }}>Remove</Button>
-                    </td>
+            <div className="admin-scroll" role="region" aria-label="Access list" tabIndex={0}>
+              <table aria-label="Who has access" className="admin-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Can</th>
+                    <th scope="col">
+                      <span className="admin-hidden">Remove</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {entries.map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.name}</td>
+                      <td>{e.principalType === 'group' ? 'Group' : 'User'}</td>
+                      <td>
+                        <select aria-label={`What ${e.name} can do`} value={e.permission} onChange={(ev) => void grant(e.principalType, e.principalId, ev.target.value as Permission)}>
+                          {PERMISSIONS.map((p) => (
+                            <option key={p.value} value={p.value}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <Button
+                          aria-label={`Remove ${e.name}`}
+                          onClick={() => {
+                            setRemoving(e);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           <h2>Give access</h2>
           <div className="admin-form">
             <label className="admin-field">
               <span>Give access to</span>
-              <select aria-label="Give access to" value={kind} onChange={(e) => { setKind(e.target.value as 'user' | 'group'); }}>
+              <select
+                aria-label="Give access to"
+                value={kind}
+                onChange={(e) => {
+                  setKind(e.target.value as 'user' | 'group');
+                }}
+              >
                 <option value="user">a person</option>
                 <option value="group">a group</option>
               </select>
             </label>
             <label className="admin-field">
               <span>Permission</span>
-              <select aria-label="Permission" value={permission} onChange={(e) => { setPermission(e.target.value as Permission); }}>
+              <select
+                aria-label="Permission"
+                value={permission}
+                onChange={(e) => {
+                  setPermission(e.target.value as Permission);
+                }}
+              >
                 {PERMISSIONS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
                 ))}
               </select>
             </label>
@@ -153,14 +184,33 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
             <div className="admin-form">
               <label className="admin-field">
                 <span>Group</span>
-                <select aria-label="Group" value={group} onChange={(e) => { setGroup(e.target.value); }}>
+                <select
+                  aria-label="Group"
+                  value={group}
+                  onChange={(e) => {
+                    setGroup(e.target.value);
+                  }}
+                >
                   <option value="">choose a group</option>
-                  {(groups.data ?? []).filter((g) => !taken.has(g.id)).map((g) => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
+                  {(groups.data ?? [])
+                    .filter((g) => !taken.has(g.id))
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
                 </select>
               </label>
-              <Button disabled={group === '' || taken.has(group)} onClick={() => { const chosen = group; setGroup(''); void grant('group', chosen, permission); }}>Give access</Button>
+              <Button
+                disabled={group === '' || taken.has(group)}
+                onClick={() => {
+                  const chosen = group;
+                  setGroup('');
+                  void grant('group', chosen, permission);
+                }}
+              >
+                Give access
+              </Button>
             </div>
           )}
         </>
@@ -171,8 +221,14 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
           description={`${removing.name} keeps no access to ${name} through this entry.`}
           confirmLabel="Remove"
           open
-          onOpenChange={(open) => { if (!open) setRemoving(null); }}
-          onConfirm={() => { const entry = removing; setRemoving(null); void change(() => api.DELETE('/v1/collections/{id}/access/{entryId}' as never, { params: { path: { id: collectionId, entryId: entry.id } } } as never)); }}
+          onOpenChange={(open) => {
+            if (!open) setRemoving(null);
+          }}
+          onConfirm={() => {
+            const entry = removing;
+            setRemoving(null);
+            void change(() => api.DELETE('/v1/collections/{id}/access/{entryId}' as never, { params: { path: { id: collectionId, entryId: entry.id } } } as never));
+          }}
         />
       )}
     </section>
