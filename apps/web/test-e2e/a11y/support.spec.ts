@@ -3,7 +3,7 @@ import { ROUTES } from '../../src/app/routes';
 import { fixtureServer, type FixtureServer } from '../support/fixtures';
 import { STOPS } from './routes';
 import { addressOf } from './world';
-import { COUNT_POINTER_EVENTS, axeBothSchemes, blockingText, focusWithoutIndicator, horizontalOverflow, lastingMotion, pointerEvents, summaryLine, tabTo } from './support';
+import { COUNT_POINTER_EVENTS, axeBothSchemes, expectEditable, blockingText, focusWithoutIndicator, horizontalOverflow, lastingMotion, pointerEvents, summaryLine, tabTo } from './support';
 
 // What the tour, the keyboard walk and the motion check stand on, tried on small pages: no stack is needed.
 let server: FixtureServer;
@@ -29,6 +29,8 @@ test.beforeAll(async () => {
     '/rings': PAGE(
       '<h1>Rings</h1><a href="#" id="ring">With a ring</a><a href="#" id="bare" style="outline:none">Without</a><div tabindex="0" id="row" style="outline:none"><span data-focused style="outline:2px solid red">inner</span></div>',
     ),
+    '/readonly': PAGE('<h1>Read</h1><p role="status">Read only</p><div data-collab-state="synced"><div class="ProseMirror" contenteditable="false">text</div></div>'),
+    '/editable': PAGE('<h1>Edit</h1><p role="status">Saved</p><div data-collab-state="synced"><div class="ProseMirror" contenteditable="true">text</div></div>'),
     '/broken': PAGE('<h1>Broken</h1><button></button>'),
   });
 });
@@ -45,6 +47,13 @@ test('the tour has a stop for every route of the route table, and none twice', (
 
 test('the routes whose screens are not built are named, with the task that builds them', () => {
   expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/search pending M6-T09', '/import pending M6-T12a']);
+});
+
+test('an editor that is not editable is reported with the connection state and the status line', async ({ page }) => {
+  await page.goto(server.url('/readonly'));
+  await expect(expectEditable(page, 300)).rejects.toThrow(/contenteditable="false", connection state "synced", status line "Read only"/);
+  await page.goto(server.url('/editable'));
+  await expectEditable(page, 300);
 });
 
 test('the address of a page is matched by its id, whatever the slug', () => {

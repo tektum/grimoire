@@ -2,8 +2,8 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import { devSecret } from '../support/env';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
-import { api, prepareWorld, type World } from './world';
-import { COUNT_POINTER_EVENTS, focusedLabel, pointerEvents, tabTo } from './support';
+import { api, makeCollection, prepareWorld, type World } from './world';
+import { COUNT_POINTER_EVENTS, expectEditable, focusedLabel, pointerEvents, tabTo } from './support';
 
 // The primary action of every screen, reached and used with the keyboard alone (needs the whole stack). Every page counts its pointer events (support.ts) and a walk ends
 // by expecting none: a mouse press, a release, or a click that a pointer made. The pages are opened with a URL, which is not an action of the person.
@@ -146,6 +146,7 @@ test('the trash: a page is restored', async ({ browser, baseURL }) => {
 });
 
 test('the admin screens: a role is changed, a group is made, the default access is changed', async ({ browser, baseURL }) => {
+  const own = await makeCollection('Access walk'); // its own collection: lowering the access of the world's would make its pages read-only for the walks after this one
   await walk(browser, baseURL, { userId: 'e2e-admin', role: 'admin' }, async (page) => {
     await page.goto('/admin/users');
     await expect(page.getByRole('searchbox', { name: 'Search users' }), 'the screen is drawn (the page asks who is signed in first)').toBeVisible();
@@ -165,7 +166,7 @@ test('the admin screens: a role is changed, a group is made, the default access 
     await page.keyboard.press('Enter');
     await expect(page.getByText(group, { exact: true })).toBeVisible();
 
-    await page.goto(`/admin/collections/${world.collectionId}/access`);
+    await page.goto(`/admin/collections/${own}/access`);
     await expect(page.getByLabel('Everyone with an account can')).toBeVisible();
     await tabTo(page, page.getByLabel('Everyone with an account can'));
     const before = await page.getByLabel('Everyone with an account can').inputValue();
@@ -194,7 +195,7 @@ test('the editor has no ring for a click, and has one for a Tab', async ({ brows
     await page.goto(world.alpha.path);
     await waitForSynced(page);
     const editor = page.locator('.ProseMirror');
-    await expect(editor, 'the editor can be edited (a page that is still being opened is not)').toHaveAttribute('contenteditable', 'true');
+    await expectEditable(page);
     await editor.locator('p', { hasText: 'A second paragraph.' }).click();
     await expect(editor).toBeFocused();
     await expect(editor, 'the plain look after a click').toHaveCSS('outline-style', 'none');

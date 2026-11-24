@@ -66,6 +66,12 @@ export async function buildWorld(): Promise<World> {
   return { collectionId: collection.id, alpha, beta, colleague: { id: me.id, name: me.name }, groupId: group.id, revisionId: '' };
 }
 
+/** A collection of its own (everyone may edit in it), for a walk that changes who can do what: it must not change the collection of the world, whose pages the other walks open. */
+export async function makeCollection(name: string): Promise<string> {
+  const collection = await api<{ id: string }>(ADMIN, 'admin', 'POST', '/v1/collections', { name: `${name} ${randomUUID().slice(0, 8)}`, defaultPermission: 'read_write' });
+  return collection.id;
+}
+
 /** Gives Alpha a saved version: a person sits at the page, adds a line and leaves, and the server records it. */
 export async function recordRevision(browser: Browser, baseURL: string | undefined, world: World): Promise<void> {
   const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }), viewport: { width: 1280, height: 800 } });

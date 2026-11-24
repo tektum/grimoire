@@ -140,3 +140,31 @@ export async function focusWithoutIndicator(page: Page, limit = 30): Promise<str
   }
   return bare;
 }
+
+/**
+ * Waits for the editor of the page to be editable. When it is not, the error says why it might not be: the state of the connection and the line under the title (a page that is
+ * read-only for the person, one that is not synced, one that is offline), not only that an attribute has the wrong value.
+ */
+export async function expectEditable(page: Page, timeout = 10_000): Promise<void> {
+  try {
+    await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'true', { timeout });
+  } catch {
+    const editable = await page
+      .locator('.ProseMirror')
+      .getAttribute('contenteditable')
+      .catch(() => null);
+    const state = await page
+      .locator('[data-collab-state]')
+      .first()
+      .getAttribute('data-collab-state')
+      .catch(() => null);
+    const status = (
+      await page
+        .getByRole('status')
+        .first()
+        .textContent()
+        .catch(() => null)
+    )?.trim();
+    throw new Error(`the editor is not editable after ${timeout} ms: contenteditable="${String(editable)}", connection state "${String(state)}", status line "${String(status)}"`);
+  }
+}
