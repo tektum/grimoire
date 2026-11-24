@@ -1,4 +1,4 @@
-import { type ComponentType, lazy, Suspense, useMemo } from 'react';
+import { type ComponentType, lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { safeReturn } from '../../app/routes';
 import { SIGN_OUT_NOTICES } from '../../auth';
 import type { DevSignInOptions } from '../../auth/dev-signin';
@@ -9,6 +9,7 @@ export const LOGIN_TEXTS = {
   localInProduction: 'This server is in local development mode; sign-in is unavailable in this build',
   noProject: 'Sign-in is not set up on this server: no sign-in project is configured.',
   failed: 'Sign-in did not finish. Try again.',
+  configFailed: 'Sign-in could not start: the settings of this page could not be read. Reload the page, or tell whoever runs this server.',
 } as const;
 
 type DevFormProps = { options: DevSignInOptions; onSignedIn: () => void };
@@ -36,6 +37,12 @@ function noticeFor(search: string): string | null {
 }
 
 export function LoginScreen(props: LoginScreenProps) {
+  const [failed, setFailed] = useState(false);
+  const onFlowError = useCallback(() => setFailed(true), []);
+  const onFlowSuccess = useCallback(() => {
+    setFailed(false);
+    props.go(safeReturn(new URLSearchParams(props.search).get('return')));
+  }, [props]);
   const params = new URLSearchParams(props.search);
   const target = safeReturn(params.get('return'));
   const notice = noticeFor(props.search);
@@ -60,8 +67,8 @@ export function LoginScreen(props: LoginScreenProps) {
         <Descope
           projectId={props.config.providerProjectId}
           {...(props.config.providerBaseUrl == null ? {} : { baseUrl: props.config.providerBaseUrl })}
-          onSuccess={() => props.go(target)}
-          onError={() => undefined}
+          onSuccess={onFlowSuccess}
+          onError={onFlowError}
         />
       </Suspense>
     );
@@ -72,6 +79,11 @@ export function LoginScreen(props: LoginScreenProps) {
       {notice !== null && (
         <p className="login-notice" role="status">
           {notice}
+        </p>
+      )}
+      {failed && (
+        <p className="login-error" role="alert">
+          {LOGIN_TEXTS.failed}
         </p>
       )}
       {body}
