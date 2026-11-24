@@ -198,7 +198,16 @@ describe('opening an attachment link', () => {
       click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
       await vi.waitFor(() => expect(tab2.close).toHaveBeenCalledTimes(1));
       expect(tab.location.replace).not.toHaveBeenCalled();
-      expect(told).toHaveBeenCalledTimes(2); // each time the person is told
+      expect(told).toHaveBeenCalledTimes(1); // once: the failed request was told by the session client, the 404 is ours
+    });
+
+    it.each([[503], [500]])('adds no notice of its own for a %i: the session client has told the person, and the tab is closed', async (status) => {
+      const tab = fakeTab();
+      vi.spyOn(window, 'open').mockReturnValue(tab as never);
+      GET.mockResolvedValueOnce({ error: {}, response: new Response('{}', { status }) } as never);
+      click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+      await vi.waitFor(() => expect(tab.close).toHaveBeenCalledTimes(1)); // the answer has been handled
+      expect(told).not.toHaveBeenCalled();
     });
 
     it('does nothing more when the browser refused the new tab', async () => {
@@ -215,7 +224,14 @@ describe('opening an attachment link', () => {
     click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('web.attachment_open_failed'))); // the failure has been handled
     expect(open).not.toHaveBeenCalled();
-    expect(told).toHaveBeenCalledWith("That file isn't available");
+    expect(told).not.toHaveBeenCalled(); // the session client has already told the person about the failed request: one notice
+  });
+
+  it('tells the person once for an answer that has no link in it', async () => {
+    GET.mockResolvedValueOnce({ data: {}, response: new Response('{}', { status: 200 }) } as never);
+    click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
+    await vi.waitFor(() => expect(told).toHaveBeenCalledTimes(1));
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('leaves other links alone', () => {

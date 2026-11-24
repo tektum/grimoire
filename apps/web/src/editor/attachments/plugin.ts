@@ -97,6 +97,9 @@ async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>[
     if (tab === null) return; // the browser refused it: nothing to send anywhere
     tab.opener = null;
   }
+  // One notice for each failure: the session client already tells the person about a request that failed or was refused for any reason but a 404 or 403 of a read, which it
+  // leaves to the screen; so the notice here is for those two, and for an answer with no link in it.
+  let clientTold = false;
   try {
     const { data, response } = await host.api.GET('/v1/attachments/{id}' as never, { params: { path: { id }, query: { download: true } } } as never);
     const url = (data as { url?: string } | undefined)?.url;
@@ -105,11 +108,13 @@ async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>[
       else tab?.location.replace(url);
       return;
     }
+    clientTold = !response.ok && response.status !== 404 && response.status !== 403;
   } catch {
     log('warn', 'web.attachment_open_failed');
+    clientTold = true; // the client's notice for a network failure
   }
   tab?.close();
-  host.notify?.("That file isn't available");
+  if (!clientTold) host.notify?.("That file isn't available");
 }
 
 /** Images, the upload of files by paste and drop, and the opening of attachment links. */
