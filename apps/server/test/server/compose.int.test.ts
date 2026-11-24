@@ -58,9 +58,9 @@ describe('compose.yaml (R2.12, R13.1): the local stack', () => {
     expect(Object.keys(local.services['app']?.depends_on ?? {}).sort()).toEqual(['postgres', 'seaweedfs']);
   });
 
-  it('runs PostgreSQL 17 pinned by digest with the empty grimoire database on loopback port 55432', () => {
+  it('runs PostgreSQL 17 with pgvector 0.8.5 pinned by digest, with the empty grimoire database on loopback port 55432', () => {
     const postgres = local.services['postgres'];
-    expect(postgres?.image).toMatch(/^postgres:17@sha256:[0-9a-f]{64}$/);
+    expect(postgres?.image).toBe('pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0');
     expect(postgres?.environment?.['POSTGRES_DB']).toBe('grimoire');
     expect(published(postgres ?? {} as never)).toEqual(['127.0.0.1:55432->5432']);
   });

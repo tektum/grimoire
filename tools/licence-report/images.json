@@ -1,10 +1,11 @@
 {
-  "postgres": {
+  "pgvector/pgvector": {
     "licence": "PostgreSQL",
-    "source": "https://www.postgresql.org/about/licence/",
+    "source": "https://github.com/pgvector/pgvector/blob/master/LICENSE",
     "tags": [
-      "17"
-    ]
+      "0.8.5-pg17-bookworm"
+    ],
+    "note": "pgvector 0.8.5, PostgreSQL licence; on PostgreSQL 17, Debian 12"
   },
   "chrislusf/seaweedfs": {
     "licence": "Apache-2.0",

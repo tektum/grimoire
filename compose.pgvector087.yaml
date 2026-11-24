@@ -1,0 +1,5 @@
+# The second database image of the semantic tests (M7-T10, Q60 = A): pgvector 0.8.7, which the facts of the plan were measured on, beside the default 0.8.5 of compose.yaml.
+# Used only by `make test-pgvector-087`, in its own Compose project, so the development database and its volume are not touched (stop the stack first: both use port 55432).
+services:
+  postgres:
+    image: ${GRIMOIRE_TEST_PGVECTOR_IMAGE:?set by make test-pgvector-087}

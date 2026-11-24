@@ -118,11 +118,11 @@ test("an unused exception is a warning, not a failure", () => {
 });
 
 test("a changed image tag that is not pinned in images.json fails", () => {
-  const dir = fixture({ pkgs: {}, compose: "services:\n  x:\n    image: postgres:18\n" });
+  const dir = fixture({ pkgs: {}, compose: "services:\n  x:\n    image: pgvector/pgvector:0.9.0-pg17\n" });
   try {
     const r = run(dir, "--check-images");
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /tag "18" of image "postgres" is not pinned/);
+    assert.match(r.stderr, /tag "0.9.0-pg17" of image "pgvector\/pgvector" is not pinned/);
   } finally {
     rmSync(dir, { recursive: true });
   }
