@@ -3,7 +3,7 @@ import { ROUTES } from '../../src/app/routes';
 import { fixtureServer, type FixtureServer } from '../support/fixtures';
 import { STOPS } from './routes';
 import { addressOf } from './world';
-import { COUNT_POINTER_EVENTS, axeBothSchemes, blockingText, lastingMotion, pointerEvents, summaryLine, tabTo } from './support';
+import { COUNT_POINTER_EVENTS, axeBothSchemes, blockingText, focusWithoutIndicator, horizontalOverflow, lastingMotion, pointerEvents, summaryLine, tabTo } from './support';
 
 // What the tour, the keyboard walk and the motion check stand on, tried on small pages: no stack is needed.
 let server: FixtureServer;
@@ -24,6 +24,11 @@ test.beforeAll(async () => {
       '<h1>Late</h1><button>Early</button><script>setTimeout(() => { const b = document.createElement("button"); b.id = "late"; b.textContent = "Late"; document.querySelector("main").append(b); }, 600);</script>',
     ),
     '/skipped': PAGE('<h1>Skipped</h1><button id="a">First</button><button>Second</button><div id="skipped" tabindex="-1">Not in the Tab order</div><button id="off" disabled>Off</button>'),
+    '/wide': PAGE('<h1>Wide</h1><div style="width:900px">wide</div>'),
+    '/wraps': PAGE('<h1>Wraps</h1><div style="display:flex;flex-wrap:wrap"><span style="width:200px">a</span><span style="width:200px">b</span></div>'),
+    '/rings': PAGE(
+      '<h1>Rings</h1><a href="#" id="ring">With a ring</a><a href="#" id="bare" style="outline:none">Without</a><div tabindex="0" id="row" style="outline:none"><span data-focused style="outline:2px solid red">inner</span></div>',
+    ),
     '/broken': PAGE('<h1>Broken</h1><button></button>'),
   });
 });
@@ -118,4 +123,17 @@ test('axe is run in both schemes: a clean page reports nothing serious, a button
   expect(blockingText(broken)).toMatch(/broken \(light\):\n {2}critical button-name/);
   expect(summaryLine(broken[0]!)).toMatch(/^broken \(light\): 1 serious or critical, \d+ moderate or minor$/);
   expect(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(false);
+});
+
+test('a page that scrolls sideways is found, and one that wraps is not', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto(server.url('/wide'));
+  expect(await horizontalOverflow(page)).toBeGreaterThan(500);
+  await page.goto(server.url('/wraps'));
+  expect(await horizontalOverflow(page)).toBe(0);
+});
+
+test('an element that takes the focus and shows none is named; a ring on the element or on its marked descendant counts', async ({ page }) => {
+  await page.goto(server.url('/rings'));
+  expect(await focusWithoutIndicator(page, 6)).toEqual(['a "Without"']);
 });

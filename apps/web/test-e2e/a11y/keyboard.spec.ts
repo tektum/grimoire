@@ -98,6 +98,7 @@ test('the page: text is typed, and a heading is made from the slash menu', async
     await page.goto(world.alpha.path);
     await waitForSynced(page);
     await tabTo(page, page.locator('.ProseMirror'));
+    await expect(page.locator('.ProseMirror'), 'a ring around the text when the focus came by Tab').toHaveCSS('outline-style', 'solid');
     await page.keyboard.press('Control+End');
     await page.keyboard.press('Enter');
     await page.keyboard.type('/');
@@ -183,4 +184,25 @@ test('the screens with nothing to do but read, and the way out of the not-found 
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/c\//);
   });
+});
+
+test('the editor has no ring for a click, and has one for a Tab', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ ...(baseURL === undefined ? {} : { baseURL }), viewport: { width: 1280, height: 800 } });
+  try {
+    await signInAs(context, 'e2e-keys', 'member');
+    const page = await context.newPage();
+    await page.goto(world.alpha.path);
+    await waitForSynced(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.locator('p', { hasText: 'A second paragraph.' }).click();
+    await expect(editor).toBeFocused();
+    await expect(editor, 'the plain look after a click').toHaveCSS('outline-style', 'none');
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(editor).toBeFocused();
+    await expect(editor, 'the ring after a Tab').toHaveCSS('outline-style', 'solid');
+    await expect(editor).toHaveCSS('outline-width', '2px');
+  } finally {
+    await context.close();
+  }
 });

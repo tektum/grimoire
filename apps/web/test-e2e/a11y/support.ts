@@ -114,3 +114,29 @@ export async function lastingMotion(page: Page): Promise<string[]> {
     return found.slice(0, 20);
   });
 }
+
+/** How far the page is wider than the window, in CSS pixels (0: it does not scroll sideways). */
+export const horizontalOverflow = (page: Page): Promise<number> => page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
+
+/**
+ * Presses Tab up to `limit` times and names every element that takes the focus and shows none: no outline of its own, and none on a descendant that marks itself focused
+ * (`data-focused`, the row of the contents tree). The editor's ring comes with a Tab, so it counts too.
+ */
+export async function focusWithoutIndicator(page: Page, limit = 30): Promise<string[]> {
+  const bare: string[] = [];
+  for (let i = 0; i < limit; i += 1) {
+    await page.keyboard.press('Tab');
+    const found = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      if (element === null || element === document.body) return null;
+      const shows = (e: Element): boolean => {
+        const style = getComputedStyle(e);
+        return style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0;
+      };
+      if (shows(element) || [...element.querySelectorAll('[data-focused]')].some(shows)) return '';
+      return `${element.tagName.toLowerCase()}${element.getAttribute('role') === null ? '' : `[${element.getAttribute('role')}]`} "${(element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 30)}"`;
+    });
+    if (found !== null && found !== '' && !bare.includes(found)) bare.push(found);
+  }
+  return bare;
+}

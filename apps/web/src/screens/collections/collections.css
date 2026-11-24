@@ -28,3 +28,13 @@
   flex: 1;
   min-width: 0;
 }
+/* A narrow window: the list of collections above the tree, not beside it. */
+@media (max-width: 40rem) {
+  .collections {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .collections-list {
+    width: auto;
+  }
+}
