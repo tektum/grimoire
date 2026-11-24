@@ -34,6 +34,8 @@ export function decideCollection(f: CollectionFacts, opts?: AccessOptions): Coll
   if (!f.user) return { access: 'none', reason: 'no-user' };
   if (f.user.suspended !== false) return { access: 'none', reason: 'suspended' };
   if (!f.collection) return { access: 'none', reason: 'no-collection' };
+  // A collection of another tenant is a collection that is not there (docs/tenancy.md, 3.3), as for a page: equal when neither says one, and one without the other denies.
+  if (f.user.tenantId !== f.collection.tenantId) return { access: 'none', reason: 'no-collection' };
   if (f.collection.deleted !== false && opts?.includeDeleted !== true) return { access: 'none', reason: 'deleted' };
   const access = grant(f.user, f.collection);
   return access ? { access } : { access: 'none', reason: 'no-access' };

@@ -9,8 +9,8 @@ export interface AccessFacts {
     readonly collection: { readonly deleted: boolean; readonly defaultPermission: Permission | null; readonly entries: readonly Permission[] } };  // entries: the user's own entry plus the entries of the user's groups
 }
 export interface CollectionAccessRequest { readonly userId: string; readonly collectionId: string }
-export interface CollectionFacts { readonly request: CollectionAccessRequest; readonly user?: { readonly role: Role; readonly suspended: boolean };
-  readonly collection?: { readonly deleted: boolean; readonly defaultPermission: Permission | null; readonly entries: readonly Permission[] } }
+export interface CollectionFacts { readonly request: CollectionAccessRequest; readonly user?: { readonly role: Role; readonly suspended: boolean; /** As in `AccessFacts`: the user row's `tenant_id`, or absent on both. */ readonly tenantId?: string };
+  readonly collection?: { readonly deleted: boolean; /** The collection row's `tenant_id`; must equal the user's. */ readonly tenantId?: string; readonly defaultPermission: Permission | null; readonly entries: readonly Permission[] } }
 export interface AccessOptions { readonly includeDeleted?: boolean } // trash routes (HTTP routes, planned): deleted pages and collections still decide
 export interface AccessStore {
   facts(requests: readonly AccessRequest[]): Promise<readonly AccessFacts[]>;                       // ONE database round trip for all requests, same order, rejects if the database is unreachable
