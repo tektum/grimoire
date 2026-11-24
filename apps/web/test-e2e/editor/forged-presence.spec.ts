@@ -44,6 +44,28 @@ async function publishForged(page: import('@playwright/test').Page, options: { c
     uint(frame, 1); // an awareness message
     uint(frame, update.length);
     frame.push(...update);
+    // A second socket that only listens: the server sends it every awareness update of the page, so it sees the forged frame come back.
+    const contains = (data: ArrayBuffer, needle: number[]) => {
+      const view = new Uint8Array(data);
+      for (let i = 0; i + needle.length <= view.length; i++) if (needle.every((byte, k) => view[i + k] === byte)) return true;
+      return false;
+    };
+    const clientBytes: number[] = [];
+    uint(clientBytes, 4_000_000_000);
+    const listener = new WebSocket(collabUrl);
+    listener.binaryType = 'arraybuffer';
+    const relayed = new Promise<void>((resolve) => {
+      listener.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer && contains(event.data, clientBytes)) resolve();
+      };
+    });
+    await new Promise<void>((resolve, reject) => {
+      listener.onerror = () => reject(new Error('the listening socket failed'));
+      listener.onopen = () => {
+        listener.send(new Uint8Array(auth));
+        resolve();
+      };
+    });
     const socket = new WebSocket(collabUrl);
     socket.binaryType = 'arraybuffer';
     await new Promise<void>((resolve, reject) => {
@@ -55,6 +77,7 @@ async function publishForged(page: import('@playwright/test').Page, options: { c
         resolve();
       };
     });
+    await relayed; // the server has taken the frame and sent it on to everyone on the page
     (window as unknown as { forgedSocket: WebSocket }).forgedSocket = socket; // stays open for the rest of the test
   }, options);
 }
@@ -83,6 +106,13 @@ test.describe('forged presence', () => {
       const forger = await users.b.context.newPage();
       await forger.goto('/');
       await publishForged(forger, { collabUrl: config.collabUrl, documentName: made.id, token: buildDevToken(devSecret(), users.b.userId, 'member'), id: meB.id });
+
+      // The frame was relayed to everyone on the page before this point. A's socket delivers in order, so once A shows a change that B makes now,
+      // the forged frame has reached A and been applied (or ignored) first: the checks below look at a page that has seen it.
+      await users.b.page.locator('.ProseMirror p', { hasText: 'Someone writes here.' }).click();
+      await users.b.page.keyboard.press('End');
+      await users.b.page.keyboard.type(' Ping.');
+      await expect(users.a.page.locator('.ProseMirror')).toContainText('Ping.');
 
       // A still reads the directory name, in the colour of the id; nothing of the forged frame is in the DOM.
       await expect(label).toHaveText(meB.name);

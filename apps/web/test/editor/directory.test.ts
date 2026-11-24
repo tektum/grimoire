@@ -68,7 +68,7 @@ describe('the presence directory', () => {
     expect(directory.nameOf('not-an-id')).toBe(UNKNOWN_NAME);
   });
 
-  it('after a failed request shows "Someone", and asks again, but not before a pause (the lookup has a rate limit)', async () => {
+  it('after a failed request shows "Someone", and tries again by itself after a pause (a cursor that sits still never asks again), and the name appears', async () => {
     let fail = true;
     const calls: string[][] = [];
     const { clock, directory } = make(async (ids) => {
@@ -81,12 +81,26 @@ describe('the presence directory', () => {
     expect(directory.nameOf(id(1))).toBe(UNKNOWN_NAME);
     directory.request([id(1)]);
     await clock.advance(1000);
-    expect(calls).toHaveLength(1); // too soon
+    expect(calls).toHaveLength(1); // too soon: the lookup has a rate limit
+    fail = false; // the lookup recovers; nobody asks again
     await clock.advance(5000);
-    fail = false;
+    expect(calls).toHaveLength(2);
+    expect(directory.nameOf(id(1))).toBe('Ada');
+  });
+
+  it('gives up retrying by itself after three tries, and asks again when a cursor asks again after the pause', async () => {
+    const calls: string[][] = [];
+    const { clock, directory } = make(async (ids) => {
+      calls.push(ids);
+      throw new Error('429');
+    });
     directory.request([id(1)]);
     await clock.advance(30);
-    expect(directory.nameOf(id(1))).toBe('Ada');
+    await clock.advance(5000 * 5);
+    expect(calls).toHaveLength(4); // the first, and three retries
+    directory.request([id(1)]);
+    await clock.advance(30);
+    expect(calls).toHaveLength(5); // asked again by a cursor, after the pause
   });
 
   it('stops telling a listener that unsubscribed', async () => {

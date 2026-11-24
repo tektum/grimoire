@@ -5,6 +5,8 @@ export const UNKNOWN_NAME = 'Someone';
 const MAX_IDS_PER_REQUEST = 50;
 const BATCH_MS = 30;
 const RETRY_AFTER_MS = 5000;
+/** Failed lookups are tried again by themselves this many times; after that a name is asked for again when a cursor asks. */
+const RETRIES = 3;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface Directory {
@@ -28,6 +30,7 @@ export function createDirectory(options: DirectoryOptions): Directory {
   const names = new Map<string, string>(); // for the session of the app
   const asked = new Set<string>();
   const failedAt = new Map<string, number>();
+  const retries = new Map<string, number>();
   const queue = new Set<string>();
   const listeners = new Set<() => void>();
   let scheduled = false;
@@ -43,6 +46,7 @@ export function createDirectory(options: DirectoryOptions): Directory {
         (items) => {
           const found = new Map(items.map((item) => [item.id.toLowerCase(), item.name]));
           for (const id of chunk) names.set(id, found.get(id.toLowerCase()) ?? UNKNOWN_NAME);
+          for (const id of chunk) retries.delete(id);
           listeners.forEach((listener) => listener());
         },
         () => {
@@ -51,12 +55,16 @@ export function createDirectory(options: DirectoryOptions): Directory {
             asked.delete(id);
             failedAt.set(id, now());
           }
+          // The pause ends in a real retry (a cursor that sits still never asks again by itself), a few times at most.
+          const again = chunk.filter((id) => (retries.get(id) ?? 0) < RETRIES);
+          for (const id of again) retries.set(id, (retries.get(id) ?? 0) + 1);
+          if (again.length > 0) schedule(() => api.request(again), RETRY_AFTER_MS);
         },
       );
     }
   };
 
-  return {
+  const api: Directory = {
     nameOf: (id) => names.get(id) ?? UNKNOWN_NAME,
     request(ids) {
       for (const id of ids) {
@@ -79,6 +87,7 @@ export function createDirectory(options: DirectoryOptions): Directory {
       return () => void listeners.delete(listener);
     },
   };
+  return api;
 }
 
 const perSession = new WeakMap<object, Directory>();
