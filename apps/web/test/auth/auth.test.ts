@@ -331,6 +331,27 @@ describe('a sign-out that overlaps other work', () => {
   });
 });
 
+describe('a second sign-out', () => {
+  it('keeps the reason the session ended with, and tells subscribers once', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    const seen: AuthState[] = [];
+    t.auth.subscribe((s) => seen.push(s));
+    await t.auth.signOut('manual');
+    await t.auth.signOut('expired');
+    await t.auth.signOut('suspended');
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+    expect(seen).toEqual([{ status: 'signed-out', reason: 'manual' }]);
+    expect(t.sdk.logouts).toBeLessThanOrEqual(1);
+  });
+
+  it('still records a reason for a start that was signed out without one', async () => {
+    const t = setup();
+    expect(t.auth.state()).toEqual({ status: 'signed-out' });
+    await t.auth.signOut('suspended');
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'suspended' });
+  });
+});
+
 describe('browser storage that throws on access', () => {
   it('builds a signed-out auth when reading localStorage itself throws', () => {
     const real = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

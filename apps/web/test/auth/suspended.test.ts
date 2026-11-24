@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createWebApi } from '../../src/api/client';
 import { createAuth, SIGN_OUT_NOTICES, type SignOutReason } from '../../src/auth';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
-import { config, fakeSdkStorage, fakeStorage } from './support';
+import { config, fakeSdk, fakeSdkStorage, fakeStorage, jwt } from './support';
 
 const NOW = 2_000_000;
 const err = (status: number, code: string) => new Response(JSON.stringify({ error: { code } }), { status, headers: { 'content-type': 'application/json' } });
@@ -62,6 +62,35 @@ describe('a session that the server ends', () => {
     const t = session(err(403, 'forbidden'));
     await t.client.GET('/v1/me' as never);
     expect(t.auth.state()).toEqual({ status: 'signed-in', method: 'dev' });
+  });
+
+  it('keeps the manual reason when the user signs out while a 401 is being refreshed, although the middleware then signs out as expired', async () => {
+    const { storage } = fakeStorage();
+    const sdkStorage = fakeSdkStorage({ DSR: 'r' });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const sdk = fakeSdk(jwt(Math.floor(NOW / 1000) + 600));
+    sdk.refresh = async () => {
+      await gate;
+      return { ok: true };
+    };
+    const auth = createAuth({ config: config({ providerProjectId: 'P' }), storage, devSignIn: null, sdkStorage, now: () => NOW, loadDescope: async () => ({ create: () => sdk }) });
+    const client = createWebApi({
+      baseUrl: 'https://api.test',
+      getToken: () => auth.getToken(),
+      refresh: () => auth.refresh(),
+      signOut: (reason) => auth.signOut(reason as SignOutReason),
+      notify: vi.fn(),
+      reload: () => {},
+      sleep: async () => {},
+      fetch: async () => err(401, 'unauthenticated'),
+    });
+    const call = client.GET('/v1/me' as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await auth.signOut('manual');
+    release();
+    await call;
+    expect(auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
   });
 
   it('has one notice for every reason except a manual sign-out', () => {

@@ -170,6 +170,12 @@ export function createAuth(o: CreateAuthOptions): Auth {
       return refreshing;
     },
     async signOut(reason = 'manual') {
+      // A session that has already ended keeps the reason it ended with: a late "expired" (the API middleware reacting to a refresh that was cut short)
+      // must not replace the user's own sign-out. The keys are removed again, which costs nothing.
+      if (current.status === 'signed-out' && current.reason !== undefined) {
+        o.devSignIn?.clear();
+        return;
+      }
       epoch += 1;
       o.devSignIn?.clear();
       // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
