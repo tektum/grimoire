@@ -118,3 +118,18 @@ describe('descope-signin: the card', () => {
     expect(container.firstElementChild?.className).toBe('');
   });
 });
+
+describe('descope-signin: the element survives a render of its parent', () => {
+  it('is the same node after the parent renders again with new callbacks, and the events reach the newest ones (a new element would start the flow over: the typed address and the code step would be lost)', async () => {
+    const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
+    const first = vi.fn();
+    const second = vi.fn();
+    const { container, rerender } = render(<DescopeSignIn projectId="P" onSuccess={first} onError={() => {}} />);
+    const element = container.querySelector('descope-wc');
+    rerender(<DescopeSignIn projectId="P" onSuccess={second} onError={() => {}} />);
+    expect(container.querySelector('descope-wc')).toBe(element);
+    element?.dispatchEvent(new CustomEvent('success'));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+});
