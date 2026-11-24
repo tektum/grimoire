@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useState } from 'react';
 import { RouterProvider, createMemoryRouter } from 'react-router';
@@ -7,6 +8,7 @@ import { SessionContext, type Session as AppSession } from '../../src/auth/sessi
 import type { MountedEditor } from '../../src/editor/core/mount';
 import { PageView, STALE_TEXT, type PageMeta } from '../../src/screens/page/PageView';
 import type { Engine } from '../../src/screens/page/engine';
+import { sessionDirectory } from '../../src/editor/core/directory';
 import { FakeClock, FakeDoc, FakeProvider } from './support';
 
 afterEach(cleanup);
@@ -89,7 +91,8 @@ function mountPage(
   const fake = fakeEngine();
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
-    GET: vi.fn(async () => {
+    GET: vi.fn(async (path: string) => {
+      if (path === '/v1/me') return { data: { id: '22222222-2222-4222-8222-222222222222' }, response: new Response('', { status: 200 }) };
       if (options.markdownGate) await options.markdownGate;
       return {
         data: options.markdown ?? 'Saved text',
@@ -107,9 +110,11 @@ function mountPage(
   };
   const router = createMemoryRouter([{ path: '/', element: <Host /> }], { initialEntries: [{ pathname: '/', state: options.state }] });
   const tree = (
-    <SessionContext.Provider value={value}>
-      <RouterProvider router={router} />
-    </SessionContext.Provider>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <SessionContext.Provider value={value}>
+        <RouterProvider router={router} />
+      </SessionContext.Provider>
+    </QueryClientProvider>
   );
   const view = render(options.strict ? <StrictMode>{tree}</StrictMode> : tree);
   const root = () => screen.getByTestId('editor-root');
@@ -234,7 +239,7 @@ describe('the page screen', () => {
 
   it('shows no saved text when it cannot be fetched, and still goes live', async () => {
     const t = mountPage({ markdownStatus: 500 });
-    await waitFor(() => expect(t.api.GET).toHaveBeenCalled());
+    await waitFor(() => expect(t.api.GET).toHaveBeenCalledWith('/v1/pages/{id}/markdown', expect.anything()));
     await t.synced();
     await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
     expect(t.root().textContent).toBe('live');
@@ -248,7 +253,7 @@ describe('the page screen', () => {
       },
     });
     await t.synced();
-    await waitFor(() => expect(t.api.GET).toHaveBeenCalled());
+    await waitFor(() => expect(t.api.GET).toHaveBeenCalledWith('/v1/pages/{id}/markdown', expect.anything()));
     expect(t.root().getAttribute('data-collab-state')).toBe('connecting'); // never claims synced without an editor
     expect(screen.getByRole('status').textContent).toBe('Connecting…');
   });
@@ -386,12 +391,14 @@ describe('the page screen', () => {
     let arrive: () => void = () => undefined;
     const markdownGate = new Promise<void>((resolve) => void (arrive = resolve));
     const t = mountPage({ markdownGate, markdown: 'Late saved text' });
-    await waitFor(() => expect(t.api.GET).toHaveBeenCalled());
+    await waitFor(() => expect(t.api.GET).toHaveBeenCalledWith('/v1/pages/{id}/markdown', expect.anything()));
     await t.synced();
     await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
     expect(t.root().textContent).toBe('live');
     arrive(); // the saved text arrives after the live editor is up
-    await (t.api.GET as unknown as { mock: { results: { value: Promise<unknown> }[] } }).mock.results[0]!.value; // the request has settled: that is the signal
+    await (t.api.GET as unknown as { mock: { calls: [string][]; results: { value: Promise<unknown> }[] } }).mock.results[
+      (t.api.GET as unknown as { mock: { calls: [string][] } }).mock.calls.findIndex(([path]) => path === '/v1/pages/{id}/markdown')
+    ]!.value; // the request has settled: that is the signal
     await act(async () => undefined); // and the few steps that follow it have run
     expect(t.root().textContent).toBe('live');
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
@@ -445,5 +452,14 @@ describe('the page screen', () => {
     await act(async () => undefined);
     expect(calls).toBe(1);
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+  });
+
+  it('gives the live editor the signed-in id (read when it is needed) and the directory of the session for names', async () => {
+    let seen: { userId: () => string | null; directory: unknown } | null = null;
+    const t = mountPage({ engine: (base) => ({ mountLive: async (o) => ((seen = o.presence), base.mountLive(o)) }) });
+    await t.synced();
+    await waitFor(() => expect(seen).not.toBeNull());
+    await waitFor(() => expect(seen!.userId()).toBe('22222222-2222-4222-8222-222222222222'));
+    expect(seen!.directory).toBe(sessionDirectory(t.api as never));
   });
 });

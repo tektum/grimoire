@@ -1,0 +1,10 @@
+/*
+ * Remote cursors: the caret is the 2px border of `.cursor` (ui/global.css) in the person's colour. The name label shows on arrival and after each move
+ * (`cursor-label--shown`, removed after a few seconds), and when the caret is hovered. Cursors on the same character stack their labels.
+ */
+.page-editor .ProseMirror-yjs-cursor .cursor-label { opacity: 0; pointer-events: none; transition: opacity var(--transition); }
+.page-editor .ProseMirror-yjs-cursor .cursor-label--shown,
+.page-editor .ProseMirror-yjs-cursor:hover .cursor-label { opacity: 1; }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 1.6em); }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 3.2em); }
+.page-editor .ProseMirror-yjs-selection { border-radius: var(--radius-1); }

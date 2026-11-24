@@ -4,6 +4,9 @@ import { grimoireEditorPlugins } from '@tektum/grimoire-editor-schema';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
 import { applyMarkdown, markdownOf } from './api';
+import { presenceAwareness } from './awareness';
+import { cursorBuilders } from './cursor';
+import type { Directory } from './directory';
 import { uiPlugins } from './plugins';
 
 export interface MountedEditor {
@@ -52,7 +55,14 @@ export async function mountReadOnly(element: HTMLElement, markdown: string): Pro
  * The live editor on a Yjs document. When `isCancelled()` turns true while it is being built (React strict mode runs an
  * effect twice) it is destroyed at once without ever being bound to the document, and null is returned.
  */
-export async function mountLive(options: { element: HTMLElement; doc: Y.Doc; awareness: NonNullable<HocuspocusProvider['awareness']>; editable: boolean; isCancelled: () => boolean }): Promise<MountedEditor | null> {
+export async function mountLive(options: {
+  element: HTMLElement;
+  doc: Y.Doc;
+  awareness: NonNullable<HocuspocusProvider['awareness']>;
+  editable: boolean;
+  isCancelled: () => boolean;
+  /** Who is who: the signed-in id (the `user.id` that is published) and the directory the remote cursors take names from. */ presence: { userId: () => string | null; directory: Directory };
+}): Promise<MountedEditor | null> {
   const flag = { editable: options.editable };
   const editor = base(options.element, flag).use(collab);
   await editor.create();
@@ -61,7 +71,10 @@ export async function mountLive(options: { element: HTMLElement; doc: Y.Doc; awa
     return null;
   }
   editor.action((ctx) => {
-    ctx.get(collabServiceCtx).bindDoc(options.doc).setAwareness(options.awareness).connect();
+    const { cursorBuilder, selectionBuilder } = cursorBuilders(options.presence.directory);
+    // Only `user.id`, `cursor` and `blockId` go out, at most four times a second; remote cursors show the directory name and the colour derived from the id.
+    const awareness = presenceAwareness(options.awareness, { userId: options.presence.userId });
+    ctx.get(collabServiceCtx).setOptions({ yCursorOpts: { cursorBuilder, selectionBuilder } }).bindDoc(options.doc).setAwareness(awareness).connect();
   });
   return wrap(editor, flag);
 }
