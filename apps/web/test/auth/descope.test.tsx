@@ -73,3 +73,40 @@ describe('descope-signin (the flow as a custom element)', () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 });
+
+describe('descope-signin: the scheme of the page', () => {
+  const system = (dark: boolean) => vi.stubGlobal('matchMedia', (query: string) => ({ matches: dark && query.includes('dark'), addEventListener: () => {}, removeEventListener: () => {} }));
+  afterEach(() => { vi.unstubAllGlobals(); delete document.documentElement.dataset['theme']; });
+
+  it('tells the flow the scheme the page is showing: the page\'s own choice first, else the system\'s, so a dark page never holds a light card', async () => {
+    const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
+    const attribute = () => document.querySelector('descope-wc')?.getAttribute('theme');
+    system(true);
+    render(<DescopeSignIn projectId="P" onSuccess={() => {}} onError={() => {}} />);
+    expect(attribute()).toBe('dark');
+    cleanup();
+    system(false);
+    render(<DescopeSignIn projectId="P" onSuccess={() => {}} onError={() => {}} />);
+    expect(attribute()).toBe('light');
+    cleanup();
+    document.documentElement.dataset['theme'] = 'dark';
+    render(<DescopeSignIn projectId="P" onSuccess={() => {}} onError={() => {}} />);
+    expect(attribute()).toBe('dark');
+  });
+});
+
+describe('descope-signin: the element is told everything before it is part of the page', () => {
+  it('has its scheme, project and flow when it connects: the component reads them once, at that moment', async () => {
+    const seen: string[] = [];
+    if (customElements.get('descope-wc') === undefined) {
+      customElements.define('descope-wc', class extends HTMLElement {
+        override connectedCallback() { seen.push(`${this.getAttribute('theme') ?? '-'}|${this.getAttribute('project-id') ?? '-'}|${this.getAttribute('flow-id') ?? '-'}`); }
+      });
+    }
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    const { default: DescopeSignIn } = await import('../../src/auth/descope-signin');
+    render(<DescopeSignIn projectId="P-late" onSuccess={() => {}} onError={() => {}} />);
+    expect(seen).toEqual(['dark|P-late|sign-up-or-in']);
+    vi.unstubAllGlobals();
+  });
+});

@@ -15,12 +15,12 @@ test('the styles of a project are the web client\'s design tokens: accent, paper
   const { styles } = buildStyles(tokens);
   assert.equal(styles.light.globals.colors.primary.main, tokens.light['--accent']);
   assert.equal(styles.dark.globals.colors.primary.main, tokens.dark['--accent']);
-  assert.equal(styles.light.globals.colors.surface.main, tokens.light['--paper']);
-  assert.equal(styles.dark.globals.colors.surface.main, tokens.dark['--paper']);
+  assert.equal(styles.light.globals.colors.surface.main, tokens.light['--paper-raised']); // the card of the flow is the raised surface of the application's own cards
+  assert.equal(styles.dark.globals.colors.surface.main, tokens.dark['--paper-raised']);
   assert.equal(styles.light.globals.colors.surface.contrast, tokens.light['--ink']);
   assert.notEqual(tokens.light['--accent'], tokens.dark['--accent']);
-  assert.deepEqual(styles.light.globals.fonts.font1.family.slice(0, 2), ['ui-serif', 'Georgia']);
-  assert.equal(styles.light.globals.fonts.font2.family[0], 'system-ui');
+  assert.equal(styles.light.globals.fonts.font1.family[0], 'system-ui'); // every component is in the interface font unless told otherwise, as the application's controls are
+  assert.deepEqual(styles.light.globals.fonts.font2.family.slice(0, 2), ['ui-serif', 'Georgia']);
   assert.deepEqual(styles.light.globals.radius, { sm: tokens.light['--radius-1'], md: tokens.light['--radius-2'] });
 });
 
@@ -194,4 +194,30 @@ test('the user token carries the profile under the names the server reads, and t
   const project = read('infra/descope/project.ts');
   assert.match(project, /autoTenantClaim: true/);
   assert.match(project, /userJwtTemplate: userToken\.id/);
+});
+
+test('the secondary text and the borders of the controls can be read on the card, in both modes: 4.5 to 1 for text, 3 to 1 for borders', () => {
+  const { styles } = buildStyles(tokens);
+  for (const mode of ['light', 'dark']) {
+    const { surface } = styles[mode].globals.colors;
+    assert.ok(contrastRatio(surface.dark, surface.main) >= 4.5, `${mode}: labels and hints (${surface.dark}) on the card (${surface.main})`);
+    assert.ok(contrastRatio(surface.light, surface.main) >= 3, `${mode}: the border of a control (${surface.light}) on the card (${surface.main})`);
+    assert.ok(contrastRatio(surface.contrast, surface.main) >= 4.5, `${mode}: the main text on the card`);
+  }
+});
+
+test('the first screen of the flow is titled Grimoire, says in one line what it is for, asks for the address as a required field with its own messages, and has one full-width button', () => {
+  const login = JSON.parse(read('infra/descope/flows/sign-up-or-in.json')).screens.find((screen) => screen.screenId === 'new-1');
+  const components = Object.values(login.contents);
+  const texts = components.filter((c) => c.displayName === 'Text' || c.displayName === 'Subtitle').map((c) => c.props.children.trim());
+  assert.deepEqual(texts, ['Grimoire', 'Sign in or create an account with your email']);
+  const email = components.find((c) => c.displayName === 'Email Input').props;
+  assert.equal(email.required, true, 'an empty address is stopped by the field, not sent to the provider (which answers "Failed to sign up or in")');
+  assert.equal(email['data-errormessage-value-missing'], 'Enter your email address');
+  assert.equal(email['data-errormessage-pattern-mismatch'], 'Enter a valid email address, like name@company.com');
+  const buttons = components.filter((c) => c.displayName === 'Button');
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].props['full-width'], true);
+  assert.equal(buttons[0].props.children, 'Continue');
+  assert.equal(login.interactions[0].label, 'Continue');
 });

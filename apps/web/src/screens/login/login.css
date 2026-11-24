@@ -51,3 +51,11 @@
 .login-form .login-error {
   margin: 0;
 }
+
+/* The provider's flow sits in a card of the same make as the rest of the application's: the flow draws its own padding and takes the card's colour from the project's styles. */
+.login-flow {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--paper-raised);
+  overflow: hidden;
+}
