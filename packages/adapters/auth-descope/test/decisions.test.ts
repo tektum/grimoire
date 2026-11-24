@@ -136,7 +136,7 @@ describe('construction options', () => {
 
 describe('token claims and sizes', () => {
   it('expiresAt is exp in milliseconds with and without a profile', async () => {
-    expect(await verify({})).toEqual({ kind: 'ok', userId: 'U2user', expiresAt: (T0 + 600) * 1000 });
+    expect(await verify({})).toEqual({ kind: 'ok', userId: 'U2user', expiresAt: (T0 + 600) * 1000, tenant: { kind: 'none' } });
     expect(await verify({ email: 'a@example.com', name: 'Ann', emailVerified: true })).toMatchObject({ kind: 'ok', expiresAt: (T0 + 600) * 1000, profile: { email: 'a@example.com' } });
   });
   it.each([

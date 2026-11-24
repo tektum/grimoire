@@ -5,9 +5,15 @@ export interface Profile {
   readonly avatarUrl?: string;
 }
 
-/** userId is the signed subject; expiresAt is milliseconds. A token profile comes from trusted signed claims. */
+/**
+ * What a verified token says about the person's tenant (docs/tenancy.md): `one` with its id, `none` (no usable tenant), or `many` (more than one, which the first version refuses).
+ * A verifier that knows nothing of tenants leaves it out.
+ */
+export type TenantClaim = { readonly kind: 'one'; readonly id: string } | { readonly kind: 'none' } | { readonly kind: 'many' };
+
+/** userId is the signed subject; expiresAt is milliseconds. A token profile and tenant come from trusted signed claims. */
 export type VerifyResult =
-  | { kind: 'ok'; userId: string; expiresAt: number; profile?: Profile }
+  | { kind: 'ok'; userId: string; expiresAt: number; profile?: Profile; tenant?: TenantClaim }
   | { kind: 'invalid-token' }
   | { kind: 'service-unavailable' };
 
