@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadServerConfig } from '../../src/gate/config';
 import { Gate } from '../../src/gate/Gate';
 import { GATE_MESSAGES, GATE_RETRY_MS } from '../../src/gate/messages';
-import { resetClientOutdated } from '../../src/gate/outdated';
+import { markClientOutdated, resetClientOutdated } from '../../src/gate/outdated';
 import { config } from './support';
 
 afterEach(() => {
@@ -89,6 +89,40 @@ describe('the configuration gate', () => {
     expect(init.headers).toEqual({ 'X-Grimoire-Client-Version': '1.2.3' });
     expect(states).toEqual(['unreachable']);
     expect(sleep).toHaveBeenCalledWith(5000);
+  });
+
+  it.each([['providerProjectId'], ['fileStoreOrigin']])('treats an answer without %s as one it does not understand (not as "no project"), and asks again', async (missing) => {
+    const body: Record<string, unknown> = { ...config() };
+    delete body[missing];
+    const states: string[] = [];
+    const sleep = vi.fn(async () => Promise.reject(new Error('stop')));
+    await expect(loadServerConfig({ apiUrl: 'http://api', fetch: scripted([answer(body)]) as never, sleep }, (s) => states.push(s.kind))).rejects.toThrow('stop');
+    expect(states).toEqual(['unreachable']);
+  });
+
+  it('accepts null for both nullable fields, and a text for each', async () => {
+    const withNulls = await loadServerConfig({ apiUrl: 'http://api', fetch: scripted([answer(config({ providerProjectId: null, fileStoreOrigin: null }))]) as never });
+    expect(withNulls.kind).toBe('ready');
+    const withText = await loadServerConfig({ apiUrl: 'http://api', fetch: scripted([answer(config({ providerProjectId: 'P1', fileStoreOrigin: 'https://files.test' }))]) as never });
+    expect(withText.kind).toBe('ready');
+    const wrongType = scripted([answer({ ...config(), providerProjectId: 5 })]);
+    await expect(loadServerConfig({ apiUrl: 'http://api', fetch: wrongType as never, sleep: async () => Promise.reject(new Error('stop')) })).rejects.toThrow('stop');
+  });
+
+  it('accepts only 200: another 2xx (an intermediary changed the status) is retried, not used', async () => {
+    const states: string[] = [];
+    const fetchFn = scripted([answer(config(), 203)]);
+    await expect(loadServerConfig({ apiUrl: 'http://api', fetch: fetchFn as never, sleep: async () => Promise.reject(new Error('stop')) }, (s) => states.push(s.kind))).rejects.toThrow('stop');
+    expect(states).toEqual(['unreachable']);
+  });
+
+  it('sends nothing once the client is marked outdated: the gate shows the reload text without a request', async () => {
+    markClientOutdated();
+    const fetchFn = scripted([answer(config())]);
+    expect((await loadServerConfig({ apiUrl: 'http://api', fetch: fetchFn as never })).kind).toBe('outdated');
+    render(<Gate options={{ apiUrl: 'http://api', fetch: fetchFn as never }}>{app}</Gate>);
+    expect(await screen.findByText(GATE_MESSAGES.outdated)).toBeTruthy();
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('treats a 426 answer to the configuration request as an outdated client', async () => {

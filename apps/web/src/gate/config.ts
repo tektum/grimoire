@@ -1,6 +1,7 @@
 import type { components } from '@tektum/grimoire-api-client';
 import { CLIENT_VERSION } from '../version';
 import { GATE_RETRY_MS } from './messages';
+import { isClientOutdated } from './outdated';
 import { isClientTooOld } from './version';
 
 export type ServerConfig = components['schemas']['ClientConfig'];
@@ -20,7 +21,9 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 function isConfig(value: unknown): value is ServerConfig {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v['collabUrl'] === 'string' && typeof v['minClientVersion'] === 'string' && typeof v['local'] === 'boolean';
+  // Both nullable fields must be present: a missing providerProjectId is not "no project", it is an answer this client does not understand.
+  const nullableText = (key: string) => key in v && (v[key] === null || typeof v[key] === 'string');
+  return typeof v['collabUrl'] === 'string' && typeof v['minClientVersion'] === 'string' && typeof v['local'] === 'boolean' && nullableText('providerProjectId') && nullableText('fileStoreOrigin');
 }
 
 /**
@@ -38,6 +41,8 @@ export async function loadServerConfig(options: GateOptions, onState: (state: Ga
   };
   for (;;) {
     if (options.signal?.aborted) return { kind: 'loading' };
+    // A client already told it is too old sends nothing more, this request included.
+    if (isClientOutdated()) return report({ kind: 'outdated' });
     let failure: GateState | null = null;
     try {
       const response = await doFetch(`${options.apiUrl}/v1/config`, {
@@ -45,7 +50,7 @@ export async function loadServerConfig(options: GateOptions, onState: (state: Ga
         headers: { 'X-Grimoire-Client-Version': clientVersion },
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
-      if (response.ok) {
+      if (response.status === 200) {
         const body: unknown = await response.json();
         if (isConfig(body)) return report(isClientTooOld(body.minClientVersion, clientVersion) ? { kind: 'outdated' } : { kind: 'ready', config: body });
         failure = { kind: 'unreachable' };

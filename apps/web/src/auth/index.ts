@@ -43,17 +43,30 @@ export interface CreateAuthOptions {
   /** The development sign-in: null in a production build, or when the server is not in local mode. */
   readonly devSignIn: DevSignIn | null;
   readonly now?: () => number;
+  /** How long a manual sign-out waits for the provider to end the session before it goes on (ms). */
+  readonly logoutTimeoutMs?: number;
   /** The local storage the identity provider's SDK writes to (a test passes a fake). */
   readonly sdkStorage?: Pick<Storage, 'getItem' | 'removeItem'>;
 }
 
 export function createAuth(o: CreateAuthOptions): Auth {
   const now = o.now ?? Date.now;
-  const sdkStorage = o.sdkStorage ?? (typeof localStorage === 'undefined' ? null : localStorage);
+  // Reading `localStorage` itself can throw (site data blocked): then there is no SDK storage, and the client is simply signed out.
+  const sdkStorage =
+    o.sdkStorage ??
+    ((): Pick<Storage, 'getItem' | 'removeItem'> | null => {
+      try {
+        return typeof localStorage === 'undefined' ? null : localStorage;
+      } catch {
+        return null;
+      }
+    })();
   const listeners = new Set<(state: AuthState) => void>();
   let sdk: Promise<DescopeSdk> | null = null;
   // One refresh at a time: a burst of requests that all see an ending token shares it (the refresh token may rotate, and a second use would fail).
   let refreshing: Promise<boolean> | null = null;
+  // Counts sign-outs: a refresh that was started before one must not bring the session back, or sign out a second time.
+  let epoch = 0;
 
   const hasDescopeSession = (): boolean => {
     try {
@@ -83,6 +96,27 @@ export function createAuth(o: CreateAuthOptions): Auth {
     return sdk;
   };
 
+  // The provider's logout, but never longer than `logoutTimeoutMs`: a stalled connection or an SDK that never loads must not hold the sign-out.
+  const boundedLogout = async (): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const giveUp = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, o.logoutTimeoutMs ?? 5000);
+    });
+    try {
+      await Promise.race([
+        descope()
+          .then((client) => client.logout())
+          .then(
+            () => undefined,
+            () => undefined,
+          ),
+        giveUp,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const auth: Auth = {
     state: () => current,
     subscribe(fn) {
@@ -105,6 +139,7 @@ export function createAuth(o: CreateAuthOptions): Auth {
         const ends = token === '' ? null : jwtExpiresAt(token);
         if (token === '' || client.isJwtExpired(token) || (ends !== null && ends - now() < REFRESH_WITHIN_MS)) {
           if (!(await auth.refresh())) return null;
+          if (current.status !== 'signed-in') return null;
           token = client.getSessionToken();
         }
         return token === '' ? null : token;
@@ -118,11 +153,15 @@ export function createAuth(o: CreateAuthOptions): Auth {
         return current.status === 'signed-in' ? auth.signOut('expired').then(() => false) : Promise.resolve(false);
       }
       refreshing ??= (async () => {
+        const started = epoch;
+        let refreshed = false;
         try {
-          if ((await (await descope()).refresh()).ok) return true;
+          refreshed = (await (await descope()).refresh()).ok;
         } catch {
           log('warn', 'web.auth_error', { stage: 'refresh' });
         }
+        if (epoch !== started) return false; // signed out meanwhile: stays signed out, and no second sign-out
+        if (refreshed) return true;
         await auth.signOut('expired');
         return false;
       })().finally(() => {
@@ -131,13 +170,11 @@ export function createAuth(o: CreateAuthOptions): Auth {
       return refreshing;
     },
     async signOut(reason = 'manual') {
+      epoch += 1;
       o.devSignIn?.clear();
       // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
       // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
-      if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession()))
-        await descope()
-          .then((client) => client.logout())
-          .catch(() => undefined);
+      if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
       try {
         for (const key of [DESCOPE_SESSION_KEY, DESCOPE_REFRESH_KEY, DESCOPE_DEVICE_KEY]) sdkStorage?.removeItem(key);
       } catch {

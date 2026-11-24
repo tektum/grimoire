@@ -16,6 +16,7 @@ export const DEV_FORM_TEXTS = {
   secret: 'The secret is 16 to 128 letters, digits, - or _ (GRIMOIRE_DEV_TOKEN_SECRET of the .env file).',
   rejected: 'The server did not accept that user id and secret.',
   unreachable: "The server can't be reached.",
+  notKept: 'This browser would not keep the sign-in. Allow site data for this page and try again.',
   notLocal: 'The server is not in local development mode.',
 } as const;
 
@@ -59,7 +60,7 @@ export function createDevSignIn(options: DevSignInOptions): DevSignIn {
   const now = options.now ?? Date.now;
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const { storage } = options;
-  return {
+  const signInApi: DevSignIn = {
     read() {
       const token = storage.get(DEV_TOKEN_KEY);
       const expiresAt = Number(storage.get(DEV_TOKEN_EXPIRES_KEY));
@@ -82,7 +83,13 @@ export function createDevSignIn(options: DevSignInOptions): DevSignIn {
       if (status !== 200) return { ok: false, message: DEV_FORM_TEXTS.rejected };
       storage.set(DEV_TOKEN_KEY, token);
       storage.set(DEV_TOKEN_EXPIRES_KEY, String(now() + DEV_TOKEN_LIFE_MS));
+      // Storage that is blocked or full ignores a write without saying so: read it back, so the screen never reports a sign-in that did not happen.
+      if (signInApi.read()?.token !== token) {
+        signInApi.clear();
+        return { ok: false, message: DEV_FORM_TEXTS.notKept };
+      }
       return { ok: true };
     },
   };
+  return signInApi;
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '../../src/auth';
 import { createDevSignIn, DEV_FORM_TEXTS, DEV_TOKEN_KEY, DEV_TOKEN_LIFE_MS, validateDevForm } from '../../src/auth/dev-signin';
+import { createClientStorage } from '../../src/storage';
 import { config, fakeSdkStorage, fakeStorage, spyConsole } from './support';
 
 const SECRET = 'ab12'.repeat(8);
@@ -83,6 +84,24 @@ describe('the development sign-in form', () => {
     ];
     for (const r of results) expect(JSON.stringify(r)).not.toContain(SECRET);
     expect(consoleSpy.calls().join('\n')).not.toContain(SECRET);
+  });
+});
+
+describe('storage that ignores the write', () => {
+  it('reports a failure, not a sign-in, when the token cannot be kept (blocked or full storage), and leaves nothing behind', async () => {
+    const stored = new Map<string, string>();
+    const blocked = createClientStorage({ getItem: (k) => stored.get(k) ?? null, setItem: () => {}, removeItem: (k) => void stored.delete(k) });
+    const devSignIn = createDevSignIn({ apiUrl: 'http://api.test', storage: blocked, fetch: ok() as never });
+    expect(await devSignIn.signIn({ userId: 'alice', role: 'member', secret: SECRET })).toEqual({ ok: false, message: DEV_FORM_TEXTS.notKept });
+    expect(devSignIn.read()).toBeNull();
+    expect(stored.size).toBe(0);
+  });
+  it('reports a failure too when only one of the two writes is kept', async () => {
+    const stored = new Map<string, string>();
+    const half = createClientStorage({ getItem: (k) => stored.get(k) ?? null, setItem: (k, v) => void (k.endsWith('dev-token') && stored.set(k, v)), removeItem: (k) => void stored.delete(k) });
+    const devSignIn = createDevSignIn({ apiUrl: 'http://api.test', storage: half, fetch: ok() as never });
+    expect((await devSignIn.signIn({ userId: 'alice', role: 'member', secret: SECRET })).ok).toBe(false);
+    expect(stored.size).toBe(0);
   });
 });
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuth, DESCOPE_DEVICE_KEY, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY, type AuthState } from '../../src/auth';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
 import { config, fakeSdk, fakeSdkStorage, fakeStorage, jwt, moduleOf, spyConsole } from './support';
@@ -255,6 +255,98 @@ describe('concurrent token requests', () => {
     expect(await Promise.all([t.auth.getToken(), t.auth.getToken(), t.auth.refresh()])).toEqual([null, null, false]);
     expect(t.sdk.refreshes).toBe(1);
     expect(seen).toEqual([{ status: 'signed-out', reason: 'expired' }]);
+  });
+});
+
+describe('a sign-out that overlaps other work', () => {
+  it('does not wait for a provider that never answers: the session ends after the time limit, with the keys cleared', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r', [DESCOPE_DEVICE_KEY]: 'd' } });
+      t.sdk.logout = () => new Promise(() => {}); // never settles
+      let done = false;
+      const out = t.auth.signOut().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(done).toBe(false);
+      expect(t.auth.state().status).toBe('signed-in');
+      await vi.advanceTimersByTimeAsync(1);
+      await out;
+      expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+      expect(t.sdkStorage.map.size).toBe(0);
+      expect(await t.auth.getToken()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not wait for an SDK that never loads either', async () => {
+    vi.useFakeTimers();
+    try {
+      const { storage } = fakeStorage();
+      const sdkStorage = fakeSdkStorage({ [DESCOPE_REFRESH_KEY]: 'r' });
+      const auth = createAuth({ config: config({ providerProjectId: 'P' }), storage, devSignIn: null, sdkStorage, logoutTimeoutMs: 100, loadDescope: () => new Promise(() => {}) });
+      const out = auth.signOut();
+      await vi.advanceTimersByTimeAsync(100);
+      await out;
+      expect(auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+      expect(sdkStorage.map.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the session ended when a refresh that was in flight succeeds late: the token request gets null, the state is not brought back', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 20) });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    t.sdk.refresh = async () => {
+      await gate;
+      t.sdk.token = jwt(secs(NOW) + 3600);
+      return { ok: true };
+    };
+    const pending = t.auth.getToken();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await t.auth.signOut('manual');
+    release();
+    expect(await pending).toBeNull();
+    expect(t.auth.state()).toEqual({ status: 'signed-out', reason: 'manual' });
+  });
+
+  it('does not sign out a second time, nor change the reason, when a refresh that was in flight fails late', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 20) });
+    let fail: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (fail = resolve));
+    t.sdk.refresh = async () => {
+      await gate;
+      return { ok: false };
+    };
+    const seen: AuthState[] = [];
+    t.auth.subscribe((s) => seen.push(s));
+    const pending = t.auth.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await t.auth.signOut('suspended');
+    fail();
+    expect(await pending).toBe(false);
+    expect(seen).toEqual([{ status: 'signed-out', reason: 'suspended' }]);
+  });
+});
+
+describe('browser storage that throws on access', () => {
+  it('builds a signed-out auth when reading localStorage itself throws', () => {
+    const real = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('blocked', 'SecurityError');
+      },
+    });
+    try {
+      const { storage } = fakeStorage();
+      const auth = createAuth({ config: config({ providerProjectId: 'P' }), storage, devSignIn: null, loadDescope: async () => Promise.reject(new Error('unused')) });
+      expect(auth.state()).toEqual({ status: 'signed-out' });
+    } finally {
+      if (real) Object.defineProperty(globalThis, 'localStorage', real);
+    }
   });
 });
 
