@@ -75,6 +75,8 @@ export interface ConnectionState {
   readonly offline: boolean;
   /** Changes made in this tab that the server has not acknowledged yet (the line says Saving while there are some). */
   readonly unsynced: number;
+  /** How many times a change of this tab was reported unacknowledged: lets a screen know a change came even if it was acknowledged before the screen drew. */
+  readonly changes: number;
   /** The Markdown copy of a tab that was reset, offered to the user; null otherwise. */
   readonly copy: string | null;
   /** Counts the documents of this page created so far: the screen re-mounts the editor when it changes. */
@@ -133,6 +135,7 @@ export class ConnectionManager {
     readOnly: false,
     offline: false,
     unsynced: 0,
+    changes: 0,
     copy: null,
     generation: 0,
     suspended: false,
@@ -334,7 +337,7 @@ export class ConnectionManager {
         this.act(mapSignal({ type: 'scope', readOnly: true }));
         return;
       case 'unsynced':
-        this.set({ unsynced: event.count });
+        this.set(event.count > this.current.unsynced ? { unsynced: event.count, changes: this.current.changes + 1 } : { unsynced: event.count });
         return;
       case 'synced':
         this.onSynced();

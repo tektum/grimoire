@@ -40,7 +40,7 @@ const queue = (element: HTMLElement, step: () => Promise<void>): Promise<void> =
 /** The default of `hiddenDisconnectMs` (10 minutes), when the session carries none. */
 const DEFAULT_HIDDEN_DISCONNECT_MS = 600_000;
 
-const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, unsynced: 0, copy: null, generation: 0, suspended: false };
+const IDLE: ConnectionState = { phase: 'idle', stopped: null, text: null, notice: null, banner: null, readOnly: false, offline: false, unsynced: 0, changes: 0, copy: null, generation: 0, suspended: false };
 
 export function PageView({ page, engine = realEngine, onReplaced }: { page: PageMeta; engine?: Engine; onReplaced?: () => void }) {
   const session = useSession();

@@ -5,7 +5,8 @@ import { waitForSynced } from '../support/sync';
 import { statusLine, withScriptedPage } from './support';
 
 // The one polite live region (`role="status"`, `aria-live="polite"`) receives Saved, the connection-loss text and each refusal text, and the focus does not move.
-const active = (page: Page): Promise<string> => page.evaluate(() => `${document.activeElement?.tagName ?? ''}.${document.activeElement?.className ?? ''}.${document.activeElement?.textContent?.slice(0, 20) ?? ''}`);
+// The focused element by its tag and class, not its text: the text of the editor changes as the person types.
+const active = (page: Page): Promise<string> => page.evaluate(() => `${document.activeElement?.tagName ?? ''}.${document.activeElement?.className ?? ''}`);
 
 test.describe('the live region', () => {
   test('is the only role=status / aria-live element of the page screen, polite', async ({ browser, baseURL }) => {
@@ -26,23 +27,25 @@ test.describe('the live region', () => {
       await page.goto(made.path);
       await waitForSynced(page);
       await page.evaluate(() => {
-        // The whole body is watched, and the line looked up each time: the line may be a new element after a render.
-        const seen: string[] = [];
-        (window as unknown as { seen: string[] }).seen = seen;
-        const note = () => {
-          const text = document.querySelector('p.page-status')?.textContent ?? '';
-          if (seen[seen.length - 1] !== text) seen.push(text);
-        };
-        new MutationObserver(note).observe(document.body, { childList: true, characterData: true, subtree: true });
+        // The live region node is kept: screen readers announce changes inside a node that stays in the page. It is noted now and watched; it must be the same node after.
+        const line = document.querySelector('p.page-status');
+        if (line === null) throw new Error('no status line');
+        const w = window as unknown as { line: Element; seen: string[] };
+        w.line = line;
+        w.seen = [];
+        new MutationObserver(() => w.seen.push(line.textContent ?? '')).observe(line, { childList: true, characterData: true, subtree: true });
       });
       await page.locator('.ProseMirror').click();
       await page.keyboard.press('Control+End');
       const before = await active(page);
       await page.keyboard.type(' More.');
+      await expect(statusLine(page)).toHaveText('Saving', { timeout: 1000 }); // held for a moment, however fast the server answers
       await expect(statusLine(page)).toHaveText('Saved', { timeout: 15_000 });
       const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
-      expect(seen).toContain('Saving');
-      expect(seen).toContain('Saved');
+      const saving = seen.indexOf('Saving');
+      expect(saving, 'Saving was received').toBeGreaterThanOrEqual(0);
+      expect(seen.indexOf('Saved', saving + 1), 'Saved came after Saving').toBeGreaterThan(saving);
+      expect(await page.evaluate(() => (window as unknown as { line: Element }).line === document.querySelector('p.page-status') && (window as unknown as { line: Element }).line.isConnected), 'the same live region node').toBe(true);
       expect(await active(page)).toBe(before);
     } finally {
       await context.close();

@@ -7,7 +7,7 @@ import '../../src/ui/global.css';
 interface Show {
   readonly title: string;
   readonly collab: StatusScope;
-  readonly state: Partial<Pick<ConnectionState, 'text' | 'unsynced' | 'readOnly' | 'banner'>>;
+  readonly state: Partial<Pick<ConnectionState, 'text' | 'unsynced' | 'changes' | 'readOnly' | 'banner'>>;
   readonly readOnly?: boolean;
   readonly body?: string[];
 }
@@ -29,7 +29,7 @@ let root: Root | null = null;
           <h1 id="screen-title">{title}</h1>
           {readOnly === true ? <span className="page-readonly">Read only</span> : null}
         </header>
-        <StatusLine state={{ text: null, unsynced: 0, readOnly: false, ...state }} collab={collab} />
+        <StatusLine state={{ text: null, unsynced: 0, changes: 0, readOnly: false, ...state }} collab={collab} />
         {state.banner === undefined || state.banner === null ? null : <p className="page-banner">{state.banner}</p>}
         <div className="page-editor page-text">
           {body.map((paragraph) => (
