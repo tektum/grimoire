@@ -23,7 +23,7 @@ describe('CollectionsScreen', () => {
     const { api, calls } = fakeApi({ 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}/tree': ok(TREE) });
     renderAt(<CollectionsScreen api={api} collectionId="c1" />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Dev' })).toBeTruthy();
-    await waitFor(() => { expect(screen.getAllByRole('treeitem').map((r) => r.textContent)).toEqual(['Welcome', 'Nested']); });
+    await waitFor(() => { expect(screen.getAllByRole('treeitem').map((r) => within(r).getByRole('link').textContent)).toEqual(['Welcome', 'Nested']); });
     expect(calls).toContain('GET /v1/collections/{id}/tree c1');
   });
 
@@ -66,5 +66,22 @@ describe('CollectionsScreen', () => {
     await waitFor(() => { expect(reads).toBe(2); });
     await expect(screen.findByRole('alert', {}, { timeout: 200 })).rejects.toThrow(); // no error replaces the tree
     expect(screen.getAllByRole('treeitem')).toHaveLength(2);
+  });
+
+  it('offers New page and the row menus in a collection the caller can write in, and neither in one they can only read', async () => {
+    const { api, bodies } = fakeApi({
+      'GET /v1/collections': ok({ items: COLLECTIONS }),
+      'GET /v1/collections/{id}/tree': ok(TREE),
+      'POST /v1/pages': { status: 201, body: page('n', null, 'p9', '') },
+    });
+    const writable = renderAt(<CollectionsScreen api={api} collectionId="c1" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
+    await waitFor(() => { expect(bodies).toEqual([{ method: 'POST', path: '/v1/pages', body: { collectionId: 'c1', parentId: null } }]); });
+    expect(screen.getAllByRole('button', { name: /Actions for/ }).length).toBeGreaterThan(0);
+    writable.unmount();
+    renderAt(<CollectionsScreen api={api} collectionId="c2" />);
+    await waitFor(() => { expect(screen.getAllByRole('treeitem')).toHaveLength(2); });
+    expect(screen.queryByRole('button', { name: 'New page' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
   });
 });

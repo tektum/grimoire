@@ -17,6 +17,8 @@ export interface MockApi {
   readonly state: MockState;
   /** How many times the tree of `collectionId` has been read. */
   treeReads(collectionId: string): number;
+  /** The requests that changed something, as `METHOD /path`, in order. */
+  writes(): string[];
 }
 
 const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -28,6 +30,8 @@ const json = (route: Route, status: number, body: unknown, headers: Record<strin
  */
 export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
   const reads = new Map<string, number>();
+  const written: string[] = [];
+  let created = 0;
   await page.route('**/config.json', (route) => json(route, 200, { apiUrl: API }));
   await page.route(`${API}/**`, async (route) => {
     const request = route.request();
@@ -48,7 +52,52 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
       if (!state.collections.some((c) => c.id === id)) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
       return json(route, 200, { pages: state.pages }, cors);
     }
+    const body = (request.postData() ?? '') === '' ? {} : (JSON.parse(request.postData() ?? '{}') as Record<string, unknown>);
+    const meta = (p: FlatPage) => ({ ...p, collectionId: state.collections[0]?.id ?? '', createdBy: 'u1' });
+    const siblings = (parentId: string | null) => state.pages.filter((p) => p.parentId === parentId).sort((x, y) => (x.position < y.position ? -1 : 1));
+    /** Gives the siblings of one parent keys in the order given, as the server's own ordering would leave them. */
+    const renumber = (order: FlatPage[]) => order.forEach((p, i) => { state.pages = state.pages.map((q) => (q.id === p.id ? { ...q, position: `p${String(i).padStart(4, '0')}` } : q)); });
+    if (pathname === '/v1/pages' && request.method() === 'POST') {
+      written.push('POST /v1/pages');
+      created += 1;
+      const id = `new${String(created)}`;
+      const parentId = (body['parentId'] as string | null | undefined) ?? null;
+      const page: FlatPage = { id, urlId: id.padEnd(8, '0'), parentId, position: 'p9999', title: (body['title'] as string | undefined) ?? '', icon: null };
+      state.pages = [...state.pages, page];
+      renumber(siblings(parentId));
+      return json(route, 201, meta(state.pages.find((p) => p.id === id) ?? page), cors);
+    }
+    const one = /^\/v1\/pages\/([^/]+)(\/move)?$/.exec(pathname);
+    const found = one?.[1] === undefined ? undefined : state.pages.find((p) => p.id === one[1]);
+    if (one !== null && found === undefined) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
+    if (found !== undefined && one?.[2] === undefined && request.method() === 'PATCH') {
+      written.push(`PATCH ${pathname}`);
+      state.pages = state.pages.map((p) => (p.id === found.id ? { ...p, title: String(body['title'] ?? p.title) } : p));
+      return json(route, 200, meta({ ...found, title: String(body['title'] ?? found.title) }), cors);
+    }
+    if (found !== undefined && one?.[2] === undefined && request.method() === 'DELETE') {
+      written.push(`DELETE ${pathname}`);
+      const gone = new Set([found.id]);
+      for (let grew = true; grew;) { grew = false; for (const p of state.pages) if (p.parentId !== null && gone.has(p.parentId) && !gone.has(p.id)) { gone.add(p.id); grew = true; } }
+      state.pages = state.pages.filter((p) => !gone.has(p.id));
+      return route.fulfill({ status: 204, headers: cors });
+    }
+    if (found !== undefined && one?.[2] === '/move' && request.method() === 'POST') {
+      written.push(`POST ${pathname}`);
+      const parentId = (body['parentId'] as string | null) ?? null;
+      for (let up = parentId; up !== null; up = state.pages.find((p) => p.id === up)?.parentId ?? null) {
+        if (up === found.id) return json(route, 409, { error: { code: 'would_create_cycle', message: 'cycle' } }, cors);
+      }
+      const others = siblings(parentId).filter((p) => p.id !== found.id);
+      const after = body['afterId'] as string | null | undefined;
+      const before = body['beforeId'] as string | undefined;
+      const at = before !== undefined ? others.findIndex((p) => p.id === before) : after === undefined || after === null ? others.length : others.findIndex((p) => p.id === after) + 1;
+      state.pages = state.pages.map((p) => (p.id === found.id ? { ...p, parentId } : p));
+      const moved = state.pages.find((p) => p.id === found.id) ?? found;
+      renumber([...others.slice(0, at), moved, ...others.slice(at)]);
+      return json(route, 200, meta(state.pages.find((p) => p.id === found.id) ?? moved), cors);
+    }
     return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
   });
-  return { state, treeReads: (id) => reads.get(id) ?? 0 };
+  return { state, treeReads: (id) => reads.get(id) ?? 0, writes: () => written };
 }

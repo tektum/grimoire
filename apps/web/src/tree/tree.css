@@ -58,3 +58,35 @@
 .tree-empty {
   color: var(--muted);
 }
+
+.tree-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.tree-targets {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+.tree-targets li {
+  padding-block: var(--space-1);
+}
+.tree-menu {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tree-menu:hover {
+  background: var(--paper-raised);
+  color: var(--ink);
+}
