@@ -58,7 +58,7 @@ export function devWorld(pages: readonly string[] = KNOWN_PAGES): World {
 }
 
 export const userRow = (id: string, descopeUserId: string, role: Role, suspended = false): UserRecord =>
-  ({ id, descopeUserId, email: `${descopeUserId}@example.test`, name: descopeUserId, role, suspended });
+  ({ id, descopeUserId, email: `${descopeUserId}@example.test`, name: descopeUserId, role, suspended, tenantId: 'legacy' });
 
 /**
  * Fake host deps. `role` set: the user `SUBJECT` exists with that role (database id `U1`); unset: no user row, so connections are
@@ -88,7 +88,7 @@ export function makeDeps(role?: Role) {
     log: createCollabLog(logger), guard: createUpgradeGuard(),
     /** Local-mode resolution: the provisioner creates a row for each verified subject with `devRole`. */
     provisionAs(devRole: Role): void {
-      const provisioner = createProvisioner({ users, verifier, policy: { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true } });
+      const provisioner = createProvisioner({ users, verifier, policy: { firstAdminEmails: [], allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true } });
       t.deps = {
         ...t.deps,
         resolveUser: async (_token, identity) => {

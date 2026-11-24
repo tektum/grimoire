@@ -48,11 +48,11 @@ export async function buildWorld() {
     verify: (token) => Promise.resolve(NAMES.includes(token as never) ? { kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 } : { kind: 'invalid-token' }),
   };
   const rows: UserRecord[] = NAMES.map((name) => ({
-    id: USER_ID[name], descopeUserId: `d-${name}`, email: name === 'former' ? 'former@gone.example.org' : `${name}@example.com`, name, role: ROLE[name], suspended: name === 'suspended',
+    id: USER_ID[name], descopeUserId: `d-${name}`, email: name === 'former' ? 'former@gone.example.org' : `${name}@example.com`, name, role: ROLE[name], suspended: name === 'suspended', tenantId: 'legacy',
   }));
   for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: r.suspended });
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const collections = new FakeCollectionRepo(world);
   const open = collections.seed({ name: 'Open', description: null, icon: null, color: null, position: 'a1', defaultPermission: 'read_write' });
   const closed = collections.seed({ name: 'Closed', description: null, icon: null, color: null, position: 'a2', defaultPermission: null });

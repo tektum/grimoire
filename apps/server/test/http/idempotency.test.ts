@@ -20,9 +20,9 @@ const responses = { 201: { description: 'created', content: { 'application/json'
 function build(opts: AppOptions = {}) {
   const t = makeContext();
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d${token}`, expiresAt: 9e12 }) };
-  const rows: UserRecord[] = ['1', '2'].map((n) => ({ id: `id${n}`, descopeUserId: `d${n}`, email: `p${n}@example.com`, name: 'P', role: 'member' as const, suspended: false }));
+  const rows: UserRecord[] = ['1', '2'].map((n) => ({ id: `id${n}`, descopeUserId: `d${n}`, email: `p${n}@example.com`, name: 'P', role: 'member' as const, suspended: false, tenantId: 'legacy' }));
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
   const store = new FakeIdempotencyStore(t.clock);
   const app = createApp({ ...t.ctx, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, users, provisioner, idempotency: store } }, opts);

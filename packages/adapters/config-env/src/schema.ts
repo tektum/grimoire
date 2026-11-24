@@ -183,6 +183,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_WEB_ROOT: field(z.string(msg('must be an absolute path')).refine((v) => v.startsWith('/') || /^[A-Za-z]:[\\/]/.test(v), msg('must be an absolute path'))),
   GRIMOIRE_PUBLIC_COLLAB_URL: field(z.url({ protocol: /^(?:https?|wss?)$/, ...msg('must be an http(s):// or ws(s):// URL') })),
   GRIMOIRE_FIRST_ADMIN_EMAILS: field(list(email.transform((v) => v.toLowerCase()), emailRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
+  GRIMOIRE_REFUSED_EMAIL_DOMAINS: field(list(domain, domainRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
   GRIMOIRE_ALLOWED_EMAIL_DOMAINS: field(list(domain, domainRule), undefined, true).transform((v) => [...new Set(v ?? [])]).default([]),
 });
 
@@ -397,6 +398,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
   ...filesSetupConfig(v, purpose),
   descopeMaxTokenLifetimeSeconds: v.GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS,
   allowedEmailDomains: v.GRIMOIRE_ALLOWED_EMAIL_DOMAINS,
+  refusedEmailDomains: v.GRIMOIRE_REFUSED_EMAIL_DOMAINS,
   allowedOrigins: v.GRIMOIRE_ALLOWED_ORIGINS ?? [],
   trustedProxies: v.GRIMOIRE_TRUSTED_PROXY,
   shutdownSaveDeadlineMs: v.GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS,

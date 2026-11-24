@@ -46,6 +46,7 @@ export function makeFakeConfig(
     database: {},
     firstAdminEmails: [],
     allowedEmailDomains: [],
+    refusedEmailDomains: [],
     allowedOrigins: ['http://127.0.0.1:8080'],
     trustedProxies: [],
     localAllowNonLoopback: false,

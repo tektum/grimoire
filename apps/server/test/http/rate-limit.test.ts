@@ -23,10 +23,10 @@ function build(opts: { http?: Partial<HttpConfig>; trustedProxies?: string[]; mi
       return Promise.resolve({ kind: 'invalid-token' });
     },
   };
-  const rows: UserRecord[] = [1, 2, 3].map((n) => ({ id: `id${n}`, descopeUserId: `d${n}`, email: `p${n}@example.com`, name: 'P', role: 'member' as const, suspended: false }));
-  rows.push({ id: 'idS', descopeUserId: 'dS', email: 'pS@example.com', name: 'P', role: 'member', suspended: true });
+  const rows: UserRecord[] = [1, 2, 3].map((n) => ({ id: `id${n}`, descopeUserId: `d${n}`, email: `p${n}@example.com`, name: 'P', role: 'member' as const, suspended: false, tenantId: 'legacy' }));
+  rows.push({ id: 'idS', descopeUserId: 'dS', email: 'pS@example.com', name: 'P', role: 'member', suspended: true, tenantId: 'legacy' });
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const provisioner = createProvisioner({ users, verifier, policy: signInPolicy });
   const config = makeFakeConfig({ ...(opts.minClientVersion === undefined ? {} : { minClientVersion: opts.minClientVersion }), ...(opts.trustedProxies === undefined ? {} : { trustedProxies: opts.trustedProxies }), ...(opts.http === undefined ? {} : { http: opts.http }) });
   const app = createApp({ ...t.ctx, config, auth: { verifier }, signInPolicy, http: { ...t.ctx.http, config, users, provisioner } });

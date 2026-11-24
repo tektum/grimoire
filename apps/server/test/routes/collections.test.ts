@@ -22,11 +22,11 @@ function build() {
   const world = emptyWorld();
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
   const rows: UserRecord[] = Object.entries(ROLES).map(([name, role], i) => ({
-    id: `00000000-0000-4000-8000-00000000010${String(i)}`, descopeUserId: `d-${name}`, email: `${name}@example.com`, name, role, suspended: false,
+    id: `00000000-0000-4000-8000-00000000010${String(i)}`, descopeUserId: `d-${name}`, email: `${name}@example.com`, name, role, suspended: false, tenantId: 'legacy',
   }));
   for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: false });
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const collections = new FakeCollectionRepo(world);
   const open = collections.seed({ name: 'Open', description: null, icon: null, color: null, position: 'a1', defaultPermission: 'read' });
   const closed = collections.seed({ name: 'Closed', description: 'private', icon: null, color: null, position: 'a2', defaultPermission: null });

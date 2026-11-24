@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { FakeAuthVerifier } from '@tektum/grimoire-adapter-auth-fake';
-import type { AuthVerifier, Profile } from '../../src/ports/auth-verifier.js';
+import type { AuthVerifier, Profile, TenantClaim } from '../../src/ports/auth-verifier.js';
 import type { Role, UserRecord, UserStore } from '../../src/ports/user-store.js';
 import { FakeClock } from '../../src/testing/fake-clock.js';
 import { FakeLogger } from '../../src/testing/fake-logger.js';
 import { FakeUserStore } from '../../src/testing/fake-user-store.js';
+import { PUBLIC_EMAIL_DOMAINS } from '../../src/users/public-email-domains.js';
 import { createProvisioner, type SignInPolicy } from '../../src/users/provisioner.js';
 
-const LOCAL: SignInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], allowDevRole: true };
-const PRODUCTION: SignInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.test'], allowDevRole: false };
+const LOCAL: SignInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true };
+const PRODUCTION: SignInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false };
 const profile = (email = 'person@example.test', emailVerified = true): Profile => ({ email, name: 'Private Person', emailVerified });
 
 function fixture(policy: Partial<SignInPolicy> = {}, users = new FakeUserStore(), logger = new FakeLogger()) {
@@ -46,7 +47,7 @@ describe('FakeUserStore', () => {
   });
 
   it('updateRole and suspend change their independent attributes and an unknown id has no update', async () => {
-    const initial: UserRecord = { id: 'suspended-id', descopeUserId: 'subject', email: 's@example.test', name: 'Suspended', role: 'member', suspended: true };
+    const initial: UserRecord = { id: 'suspended-id', descopeUserId: 'subject', email: 's@example.test', name: 'Suspended', role: 'member', suspended: true, tenantId: 'legacy' };
     const users = new FakeUserStore([initial]);
     expect(users.suspend('subject')).toBe(true);
     expect(users.suspend('unknown')).toBe(false);
@@ -215,7 +216,7 @@ describe('sign-in provisioning', () => {
   });
 
   it('an existing user whose stored address merely ends in the current allowed suffix is refused', async () => {
-    const previous: UserRecord = { id: 'lookalike-existing', descopeUserId: 'lookalike-existing', email: 'subject@notallowed.com', name: 'Previous', role: 'admin', suspended: false };
+    const previous: UserRecord = { id: 'lookalike-existing', descopeUserId: 'lookalike-existing', email: 'subject@notallowed.com', name: 'Previous', role: 'admin', suspended: false, tenantId: 'legacy' };
     const { provisioner } = fixture({ allowedEmailDomains: ['allowed.com'] }, new FakeUserStore([previous]));
     expect(await provisioner.signIn({ identity: { userId: previous.descopeUserId } })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
   });
@@ -286,13 +287,13 @@ describe('sign-in provisioning', () => {
   });
 
   it('suspended existing user is returned without lifting suspension', async () => {
-    const existing: UserRecord = { id: 'suspended-id', descopeUserId: 'suspended', email: 's@example.test', name: 'Suspended', role: 'admin', suspended: true };
+    const existing: UserRecord = { id: 'suspended-id', descopeUserId: 'suspended', email: 's@example.test', name: 'Suspended', role: 'admin', suspended: true, tenantId: 'legacy' };
     const { provisioner } = fixture(PRODUCTION, new FakeUserStore([existing]));
     expect(await provisioner.signIn({ identity: { userId: 'suspended' } })).toEqual({ kind: 'ok', created: false, user: existing });
   });
 
   it('a same-subject winner row accepts the losing request devRole only in local mode', async () => {
-    const winner: UserRecord = { id: 'winner-id', descopeUserId: 'same-sub', email: 'dev@example.test', name: 'Dev', role: 'member', suspended: true };
+    const winner: UserRecord = { id: 'winner-id', descopeUserId: 'same-sub', email: 'dev@example.test', name: 'Dev', role: 'member', suspended: true, tenantId: 'legacy' };
     const updates: Role[] = [];
     const store: UserStore = {
       findByDescopeId: () => Promise.resolve(undefined),
@@ -303,7 +304,7 @@ describe('sign-in provisioning', () => {
     const local = createProvisioner({ users: store, verifier: new FakeAuthVerifier(new FakeClock()), policy: LOCAL });
     expect(await local.signIn(request)).toMatchObject({ kind: 'ok', created: false, user: { role: 'admin', suspended: true } });
     expect(updates).toEqual(['admin']);
-    const production = createProvisioner({ users: store, verifier: new FakeAuthVerifier(new FakeClock()), policy: { ...LOCAL, allowedEmailDomains: ['example.test'], allowDevRole: false } });
+    const production = createProvisioner({ users: store, verifier: new FakeAuthVerifier(new FakeClock()), policy: { ...LOCAL, allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false } });
     expect(await production.signIn(request)).toMatchObject({ kind: 'ok', created: false, user: { role: 'member' } });
   });
 
@@ -326,7 +327,7 @@ describe('sign-in provisioning', () => {
   });
 
   it('SignInResult suspended ok requires the caller to refuse a session before any authorization is granted', async () => {
-    const { users } = fixture(PRODUCTION, new FakeUserStore([{ id: 'suspended-id', descopeUserId: 'suspended', email: 's@example.test', name: 'S', role: 'admin', suspended: true }]));
+    const { users } = fixture(PRODUCTION, new FakeUserStore([{ id: 'suspended-id', descopeUserId: 'suspended', email: 's@example.test', name: 'S', role: 'admin', suspended: true, tenantId: 'legacy' }]));
     const verifier = new FakeAuthVerifier(new FakeClock());
     const provisioner = createProvisioner({ users, verifier, policy: PRODUCTION });
     const result = await provisioner.signIn({ identity: { userId: 'suspended' } });
@@ -338,7 +339,7 @@ describe('sign-in provisioning', () => {
   });
 
   it('system:migration is never signed in with claims or a development role', async () => {
-    const system: UserRecord = { id: '00000000-0000-4000-8000-000000000001', descopeUserId: 'system:migration', email: 'system@dev.invalid', name: 'System', role: 'viewer', suspended: true };
+    const system: UserRecord = { id: '00000000-0000-4000-8000-000000000001', descopeUserId: 'system:migration', email: 'system@dev.invalid', name: 'System', role: 'viewer', suspended: true, tenantId: 'legacy' };
     const { users, provisioner } = fixture(LOCAL, new FakeUserStore([system]));
     expect(await provisioner.signIn({ identity: { userId: 'system:migration', profile: profile('system@grimoire.invalid') }, devRole: 'admin' })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
     expect(users.all()).toEqual([system]);
@@ -360,7 +361,7 @@ describe('sign-in provisioning', () => {
 });
 
 describe('recheck (the returning-user rule on a row already read)', () => {
-  const stored = (email: string): UserRecord => ({ id: 'u1', descopeUserId: 's1', email, name: 'Person', role: 'member', suspended: false });
+  const stored = (email: string): UserRecord => ({ id: 'u1', descopeUserId: 's1', email, name: 'Person', role: 'member', suspended: false, tenantId: 'legacy' });
 
   it('accepts a stored address in an allowed domain, whatever its case, and changes nothing', async () => {
     const users = new FakeUserStore();
@@ -390,7 +391,66 @@ describe('recheck (the returning-user rule on a row already read)', () => {
   });
 
   it('follows the local-mode rule when no domains are listed', () => {
-    expect(fixture({ allowedEmailDomains: [], allowDevRole: true }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('ok');
-    expect(fixture({ allowedEmailDomains: [], allowDevRole: false }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('refused');
+    expect(fixture({ allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('ok');
+    expect(fixture({ allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: false }).provisioner.recheck({ identity: identity(), user: stored('a@anywhere.test') }).kind).toBe('refused');
+  });
+});
+
+describe('the tenant of a sign-in (docs/tenancy.md sections 2 and 6)', () => {
+  const one = (id: string) => ({ kind: 'one', id }) as const;
+  const withTenant = (tenant: TenantClaim, value = profile()) => ({ ...identity(value), tenant });
+
+  it('makes the person a member of the tenant the token names, and the tenant is named after the domain of the address', async () => {
+    const { provisioner, users } = fixture();
+    const result = await provisioner.signIn({ identity: withTenant(one('T-acme')) });
+    expect(result).toMatchObject({ kind: 'ok', created: true, user: { tenantId: 'T-acme' } });
+    expect(users.tenants()).toEqual([{ id: 'T-acme', name: 'example.test' }]);
+  });
+
+  it('puts a token that names no tenant in the legacy tenant: only a verifier that knows nothing of tenants leaves it out', async () => {
+    const { provisioner } = fixture();
+    expect(await provisioner.signIn({ identity: identity(profile()) })).toMatchObject({ kind: 'ok', user: { tenantId: 'legacy' } });
+  });
+
+  it.each([
+    ['none', { kind: 'none' }, 'no-tenant'],
+    ['many', { kind: 'many' }, 'tenant-ambiguous'],
+  ] as const)('refuses a token with %s tenants and creates nothing', async (_name, claim, reason) => {
+    const { provisioner, users } = fixture();
+    expect(await provisioner.signIn({ identity: withTenant(claim) })).toEqual({ kind: 'refused', reason });
+    expect(users.all()).toEqual([]);
+    expect(users.tenants()).toEqual([]);
+  });
+
+  it('refuses a returning person whose token names another tenant than their row, and one with no or several tenants, before any session', async () => {
+    const { provisioner } = fixture();
+    const first = identity(profile());
+    const created = await provisioner.signIn({ identity: { ...first, tenant: one('T-acme') } });
+    if (created.kind !== 'ok') throw new Error('creation should succeed');
+    const recheck = (tenant: TenantClaim) => provisioner.recheck({ identity: { ...first, tenant }, user: created.user });
+    expect(recheck(one('T-acme'))).toMatchObject({ kind: 'ok' });
+    expect(recheck(one('T-other'))).toEqual({ kind: 'refused', reason: 'tenant-mismatch' });
+    expect(recheck({ kind: 'none' })).toEqual({ kind: 'refused', reason: 'no-tenant' });
+    expect(recheck({ kind: 'many' })).toEqual({ kind: 'refused', reason: 'tenant-ambiguous' });
+    expect(await provisioner.signIn({ identity: { ...first, tenant: one('T-other') } })).toEqual({ kind: 'refused', reason: 'tenant-mismatch' });
+  });
+
+  it('refuses the public mailbox providers and the extra domains of the setting, for a new and for a returning person', async () => {
+    const { provisioner } = fixture({ allowedEmailDomains: ['gmail.com', 'example.test', 'extra.test'], refusedEmailDomains: ['Extra.test'] });
+    for (const address of ['someone@gmail.com', 'someone@GMAIL.com', 'someone@extra.test']) {
+      expect(await provisioner.signIn({ identity: withTenant(one('T-x'), profile(address)) })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+    }
+    const stored: UserRecord = { id: 'u1', descopeUserId: 's1', email: 'someone@gmail.com', name: 'x', role: 'member', suspended: false, tenantId: 'T-x' };
+    expect(provisioner.recheck({ identity: { userId: 's1', tenant: one('T-x') }, user: stored })).toEqual({ kind: 'refused', reason: 'domain-not-allowed' });
+    expect(await provisioner.signIn({ identity: withTenant(one('T-ok'), profile('someone@example.test')) })).toMatchObject({ kind: 'ok' });
+  });
+});
+
+describe('the list of public mailbox providers', () => {
+  it('is lowercase, unique, plain domains, and names the providers everybody knows', () => {
+    expect(new Set(PUBLIC_EMAIL_DOMAINS).size).toBe(PUBLIC_EMAIL_DOMAINS.length);
+    for (const domain of PUBLIC_EMAIL_DOMAINS) expect(domain).toMatch(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/);
+    for (const known of ['gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'proton.me', 'aol.com']) expect(PUBLIC_EMAIL_DOMAINS).toContain(known);
+    expect(PUBLIC_EMAIL_DOMAINS.length).toBeGreaterThan(40);
   });
 });

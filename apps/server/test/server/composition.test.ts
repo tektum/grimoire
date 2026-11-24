@@ -67,7 +67,7 @@ describe('composition root', () => {
     const ctx = ctxOf(env);
     expect(ctx.signInPolicy.allowDevRole).toBe(expected);
     expect(ctx.config.local).toBe(expected);
-    if (!expected) expect(ctx.signInPolicy).toEqual({ allowDevRole: false, allowedEmailDomains: ['example.test'], firstAdminEmails: ['boss@example.test'] });
+    if (!expected) expect(ctx.signInPolicy).toEqual({ allowDevRole: false, allowedEmailDomains: ['example.test'], refusedEmailDomains: [], firstAdminEmails: ['boss@example.test'] });
   });
 
   it('the token lifetime setting reaches the verifier: a token living longer than GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS is invalid-token', async () => {

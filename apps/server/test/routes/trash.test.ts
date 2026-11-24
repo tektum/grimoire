@@ -28,11 +28,11 @@ function build(deleteFiles: (keys: readonly string[]) => Promise<void> = () => P
     email: `${name}@example.com`,
     name,
     role,
-    suspended: false,
+    suspended: false, tenantId: 'legacy',
   }));
   for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: false });
   const users = new FakeUserStore(rows);
-  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], allowDevRole: false };
+  const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const collections = new FakeCollectionRepo(world);
   const shared = collections.seed({ name: 'Shared', description: null, icon: null, color: null, position: 'a1', defaultPermission: 'read_write' });
   const open = collections.seed({ name: 'Open', description: null, icon: null, color: null, position: 'a2', defaultPermission: 'read' });

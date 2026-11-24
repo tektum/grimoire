@@ -103,7 +103,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   if (builtVerifier === undefined) return { ok: false, issues: ['GRIMOIRE_DESCOPE_PROJECT_ID: is required'], problems: [{ setting: 'GRIMOIRE_DESCOPE_PROJECT_ID', rule: 'is required' }], log };
   const verifier = overrides.verifier ?? builtVerifier;
   const auth: AppContext['auth'] = { verifier, ...(dev ? { roles: dev.roles } : {}) };
-  const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, allowDevRole: config.local };
+  const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, refusedEmailDomains: config.refusedEmailDomains, allowDevRole: config.local };
   const db = createDatabase(url);
   const collabRole = config.role !== 'api';
   const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs, connectionTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
