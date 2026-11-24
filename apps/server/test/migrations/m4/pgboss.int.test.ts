@@ -83,7 +83,8 @@ describe('grimoire migrate installs pg-boss', () => {
     const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: (e) => errors.push(e) });
     try {
       expect(await queue.enqueue('m4-grants', { hello: 'world' })).toEqual(expect.any(String));
-      expect(await queue.isLive()).toBe(true);
+      expect(await queue.isReady()).toBe(true);
+      expect(await queue.isLive('m4-grants', 'no-such-key')).toBe(false); // the runtime role may read the job table
     } finally {
       await queue.stop({ graceMs: 0 });
     }
@@ -99,7 +100,7 @@ describe('grimoire migrate installs pg-boss', () => {
     const queue = await createJobQueue({ connectionString: appUrl(DB), max: 2, onError: (e) => reported.push(e) });
     let rejection: unknown;
     try {
-      await queue.ensureQueue('m4-runtime-made');
+      await queue.ensureQueue({ name: 'm4-runtime-made', policy: 'standard', retryLimit: 0, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 3600 });
     } catch (e) {
       rejection = e;
     } finally {

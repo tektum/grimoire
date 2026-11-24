@@ -22,7 +22,8 @@ describe('enqueue in the caller\'s transaction', () => {
   beforeAll(async () => {
     await createTestDatabase(DB);
     await installPgBoss(databaseUrl(DB));
-    queue = await startQueue(databaseUrl(DB), ['x-tx']);
+    queue = await startQueue(databaseUrl(DB));
+    await queue.ensureQueue({ name: 'x-tx', policy: 'standard', retryLimit: 0, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 3600 });
   }, 60_000);
   afterAll(async () => {
     await queue.stop({ graceMs: 0 });

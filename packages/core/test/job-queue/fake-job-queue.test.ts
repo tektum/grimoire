@@ -55,7 +55,7 @@ describe('FakeJobQueue extras', () => {
     await expect(q.enqueue('a', 1, {}, new FakeDatabase())).rejects.toThrow(/needs the committed database/);
   });
 
-  it('gives transactional enqueues unique ids and null for a duplicate singleton', async () => {
+  it('gives transactional enqueues unique ids and the first id for a duplicate singleton', async () => {
     const db = new FakeDatabase();
     const q = new FakeJobQueue(db);
     const ids = await db.transaction(async (tx) => [
@@ -64,7 +64,7 @@ describe('FakeJobQueue extras', () => {
       await q.enqueue('a', 3, { singletonKey: 'k' }, tx),
       await q.enqueue('a', 4, { singletonKey: 'k' }, tx),
     ]);
-    expect(ids[3]).toBeNull();
+    expect(ids[3]).toBe(ids[2]);
     expect(new Set(ids.slice(0, 3)).size).toBe(3);
     const seen: number[] = [];
     await q.work<number>('a', async (p) => { seen.push(p); });
@@ -88,11 +88,33 @@ describe('FakeJobQueue extras', () => {
     const q = new FakeJobQueue(db);
     const first = await db.transaction((tx) => q.enqueue('a', 1, { singletonKey: 'k' }, tx));
     expect(first).toEqual(expect.any(String));
-    expect(await q.enqueue('a', 2, { singletonKey: 'k' })).toBeNull();
+    expect(await q.enqueue('a', 2, { singletonKey: 'k' })).toBe(first);
     const seen: number[] = [];
     await q.work<number>('a', async (v) => { seen.push(v); });
     await q.advance(0);
     expect(seen).toEqual([1]);
     expect(q.all.map((j) => j.id)).toEqual([first]);
+  });
+
+  it('does not dedupe a singleton key on a standard queue', async () => {
+    const q = new FakeJobQueue();
+    await q.ensureQueue({ name: 'a', policy: 'standard', retryLimit: 0, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 900, retentionSeconds: 60 });
+    const first = await q.enqueue('a', 1, { singletonKey: 'k' });
+    expect(await q.enqueue('a', 2, { singletonKey: 'k' })).not.toBe(first);
+  });
+
+  it('counts handlers that ignore their signal as in flight and starts nothing after stop', async () => {
+    const q = new FakeJobQueue();
+    let release = (): void => {};
+    let started = 0;
+    await q.work('stuck', async () => { started++; await new Promise<void>((resolve) => { release = resolve; }); });
+    await q.work('later', async () => { started++; });
+    await q.enqueue('stuck', 1);
+    await q.advance(1, () => started === 1);
+    expect(await q.stop({ graceMs: 0 })).toEqual({ inFlight: 1 });
+    await q.enqueue('later', 1);
+    await q.advance(1);
+    expect(started).toBe(1);
+    release();
   });
 });

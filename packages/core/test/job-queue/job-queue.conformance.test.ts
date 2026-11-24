@@ -6,13 +6,16 @@ import { jobQueueCaseNames, jobQueueConformance, type JobQueueHarness } from '..
 function harness(): JobQueueHarness {
   const database = new FakeDatabase();
   const queue = new FakeJobQueue(database);
-  return { queue, database, advance: (s) => queue.advance(s), crashWorkers: async () => { queue.crashWorkers(); return queue; } };
+  return { queue, database, advance: (s, until) => queue.advance(s, until), crashWorkers: async () => { queue.crashWorkers(); return queue; } };
 }
 
 describe('FakeJobQueue conformance (same cases as the pg-boss adapter)', () => {
-  it('lists the seven cases, in order', () => {
+  it('lists the cases, in order', () => {
     expect(jobQueueConformance.map((c) => c.name)).toEqual([...jobQueueCaseNames]);
-    expect([...jobQueueCaseNames]).toEqual(['enqueue', 'delay', 'retry', 'singleton', 'schedule', 'crash-rerun', 'rolled-back-enqueue']);
+    expect([...jobQueueCaseNames]).toEqual([
+      'enqueue', 'delay', 'retry', 'crash-rerun', 'singleton-queued-returns-existing', 'singleton-active-visible-to-isLive',
+      'handler-gets-attempt-and-signal', 'expiry-aborts-signal', 'stop-waits-then-aborts', 'enqueue-in-rolled-back-tx-creates-no-job', 'schedule-fires-with-data',
+    ]);
   });
-  for (const c of jobQueueConformance) it(c.name, () => c.run(harness()), 5000);
+  for (const c of jobQueueConformance) it(c.name, () => c.run(harness()), 10_000);
 });
