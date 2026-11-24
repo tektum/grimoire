@@ -66,8 +66,6 @@ In each the close reason repeats the refusal reason. A server that requires the 
 
 `session-expired` is not in this table: a development token lives one hour, longer than a spec can wait, so the client's answer to it is driven by a scripted server (`signal-rows.spec.ts`) and the connection manager's unit tests.
 
-The other signals (`forbidden`, `access-changed`, `session-expired`, `page-full`) are not in this table: the probe does not produce them, so nothing is recorded for them here.
-
 ## The status line: Saved, Saving, Offline
 
 The line under the page title (`src/status`) is the page's one polite live region (`role="status"`, `aria-live="polite"`); it never takes the focus. It says, most important first:
