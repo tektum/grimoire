@@ -1,0 +1,97 @@
+name: Adopt a tenant
+# A one-off, by hand, on `main`, in the environment of the chosen stage: runs `grimoire tenant-adopt --from legacy --to <tenant id>` (docs/operations/database-setup.md) as a task of the stage's own
+# service, with the same image, network and credentials as the migration step, so the command runs where the database is and nothing new can reach it. It moves the whole `legacy` workspace of
+# the stage into the tenant given, in one transaction, and refuses (changing nothing) when the target holds data or `legacy` holds none. It is not part of a deploy: an operator starts it once,
+# after the deploy that carries the command, and the stage's owner is told first. No stored secret: AWS trusts the job's OIDC token (the role in the variable AWS_ROLE_ARN).
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "the stage whose legacy workspace is adopted"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+      to:
+        description: "the tenant id to move the workspace into (the id of the identity provider's tenant of the people who sign in)"
+        required: true
+        type: string
+      name:
+        description: "the name of the tenant, only when it does not exist yet (made at a first sign-in otherwise)"
+        required: false
+        type: string
+      domain:
+        description: "the email domain of the tenant, only when it does not exist yet"
+        required: false
+        type: string
+      confirm:
+        description: "type the stage name again to confirm: this changes the data of the stage"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: descope-infra # a deploy and an adoption of one stage never run together
+  cancel-in-progress: false
+
+jobs:
+  adopt:
+    name: Adopt into ${{ inputs.to }} (${{ inputs.stage }})
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.stage }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check the inputs before anything is assumed
+        env:
+          STAGE: ${{ inputs.stage }}
+          CONFIRM: ${{ inputs.confirm }}
+          TO: ${{ inputs.to }}
+          NAME: ${{ inputs.name }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          [ "${CONFIRM}" = "${STAGE}" ] || { echo "::error::confirm must be the stage name (${STAGE})"; exit 1; }
+          printf '%s' "${TO}" | grep -Eq '^[A-Za-z0-9_-]{1,128}$' || { echo "::error::to is not a tenant id"; exit 1; }
+          [ -z "${NAME}" ] || printf '%s' "${NAME}" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9 ._-]{0,119}$' || { echo "::error::name has characters this job does not pass on"; exit 1; }
+          [ -z "${DOMAIN}" ] || printf '%s' "${DOMAIN}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || { echo "::error::domain is not a host name"; exit 1; }
+          [ -n "${DOMAIN}${NAME}" ] && { [ -n "${DOMAIN}" ] && [ -n "${NAME}" ] || { echo "::error::name and domain go together"; exit 1; }; }
+          exit 0
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Run the command as a task of the stage's service
+        env:
+          STAGE: ${{ inputs.stage }}
+          TO: ${{ inputs.to }}
+          NAME: ${{ inputs.name }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          cluster=$(aws ecs list-clusters --query "clusterArns[?contains(@, 'grimoire-${STAGE}-')] | [0]" --output text)
+          [ -n "${cluster}" ] && [ "${cluster}" != "None" ] || { echo "::error::no cluster of the stage ${STAGE}"; exit 1; }
+          service=$(aws ecs describe-services --cluster "${cluster}" --services Server --query 'services[0]' --output json)
+          taskdef=$(printf '%s' "${service}" | jq -r '.taskDefinition')
+          network=$(printf '%s' "${service}" | jq -c '{awsvpcConfiguration: .networkConfiguration.awsvpcConfiguration}')
+          # The command goes to the migration container (the one that holds the migrator's connection string). The app container is made to exit at once: it must not serve without a load balancer.
+          args=$(jq -nc --arg to "${TO}" --arg name "${NAME}" --arg domain "${DOMAIN}" '["apps/server/dist/cli.js","tenant-adopt","--from","legacy","--to",$to] + (if $name != "" then ["--name",$name,"--domain",$domain] else [] end)')
+          overrides=$(jq -nc --argjson args "${args}" '{containerOverrides: [{name: "migrate", command: $args}, {name: "app", command: ["-e", "0"]}]}')
+          task=$(aws ecs run-task --cluster "${cluster}" --task-definition "${taskdef}" --launch-type FARGATE --network-configuration "${network}" --overrides "${overrides}" --query 'tasks[0].taskArn' --output text)
+          [ -n "${task}" ] && [ "${task}" != "None" ] || { echo "::error::the task did not start"; exit 1; }
+          echo "task ${task##*/}"
+          aws ecs wait tasks-stopped --cluster "${cluster}" --tasks "${task}"
+          described=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query 'tasks[0]' --output json)
+          printf '%s' "${described}" | jq -r '.containers[] | "\(.name): exit \(.exitCode // "none") \(.reason // "")"'
+          # What the command said (log events, no personal data), from the container's log stream.
+          group=$(aws ecs describe-task-definition --task-definition "${taskdef}" --query "taskDefinition.containerDefinitions[?name=='migrate'] | [0].logConfiguration.options.\"awslogs-group\"" --output text)
+          prefix=$(aws ecs describe-task-definition --task-definition "${taskdef}" --query "taskDefinition.containerDefinitions[?name=='migrate'] | [0].logConfiguration.options.\"awslogs-stream-prefix\"" --output text)
+          stream="${prefix}/migrate/${task##*/}"
+          aws logs get-log-events --log-group-name "${group}" --log-stream-name "${stream}" --query 'events[].message' --output text | tr '\t' '\n' | grep -E 'tenant_adopt|migrate\.' || true
+          code=$(printf '%s' "${described}" | jq -r '.containers[] | select(.name == "migrate") | .exitCode // 1')
+          [ "${code}" = "0" ] || { echo "::error::tenant-adopt did not finish (exit ${code}); it changed nothing unless it printed tenant_adopt.done"; exit 1; }
