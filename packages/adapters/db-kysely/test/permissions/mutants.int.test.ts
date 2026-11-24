@@ -11,7 +11,7 @@ import type { AccessStore } from '@tektum/grimoire-core/ports/access-store';
 import { createDatabase } from '../../src/index.js';
 import type { KyselyDatabase } from '../../src/index.js';
 import { createAccessStore } from '../../src/permissions.js';
-import { createMigratedDatabase, dropDatabase, loadWorld, urlFor } from './support.js';
+import { createMigratedDatabase, dropDatabase, loadTenantWorld, loadWorld, tenantFailures, urlFor } from './support.js';
 
 // Mutation check of the SQL form: the real source with one change, loaded from a scratch copy, must fail the shared table (or the list form).
 const UNFILED = '00000000-0000-4000-8000-000000000002';
@@ -57,6 +57,7 @@ function mutant(name: string, edits: readonly (readonly [string, string])[]): Ac
 beforeAll(async () => {
   await createMigratedDatabase(DB);
   await loadWorld(DB, world);
+  await loadTenantWorld(DB);
   db = createDatabase(urlFor('grimoire_app', DB));
 }, 180_000);
 afterAll(async () => {
@@ -78,6 +79,25 @@ describe('SQL mutants', () => {
   it('the collection deleted flag ignored in collectionFacts fails the table', async () => {
     const store = mutant('deleted', [['collection: { deleted: row.collection_deleted_at !== null', 'collection: { deleted: false']]);
     expect(await failures(store)).toBeGreaterThan(0);
+  });
+  it('the unmutated SQL passes the two-tenant check', async () => {
+    expect(await tenantFailures(createAccessStore(db))).toBe(0);
+  });
+  it('the tenant condition removed from visibleCollections fails the two-tenant check (an admin would list another tenant\'s collections)', async () => {
+    const store = mutant('tenant-list', [["          .whereRef('c.tenant_id', '=', 'u.tenant_id') // a collection of another tenant is not there (docs/tenancy.md, 3.3)\n", '']]);
+    expect(await tenantFailures(store)).toBeGreaterThan(0);
+  });
+  it('the page\'s tenant left out of facts fails the two-tenant check', async () => {
+    const store = mutant('tenant-page', [['...(row.page_tenant === null ? {} : { tenantId: row.page_tenant }), ', '']]);
+    expect(await tenantFailures(store)).toBeGreaterThan(0);
+  });
+  it('the collection\'s tenant left out of collectionFacts fails the two-tenant check', async () => {
+    const store = mutant('tenant-collection', [['...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), ', '']]);
+    expect(await tenantFailures(store)).toBeGreaterThan(0);
+  });
+  it('the user\'s tenant left out of the facts fails the two-tenant check', async () => {
+    const store = mutant('tenant-user', [[", ...(r.user_tenant === null ? {} : { tenantId: r.user_tenant })", '']]);
+    expect(await tenantFailures(store)).toBeGreaterThan(0);
   });
   it('the viewer cap removed from visibleCollections fails the list form', async () => {
     const store = mutant('viewer', [['least(1, v.best)', 'v.best']]);

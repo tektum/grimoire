@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPageAccess } from '../../src/authorize/index.js';
-import { decide } from '../../src/authorize/decide.js';
+import { decide, decideCollection } from '../../src/authorize/decide.js';
 import type { AccessFacts, AccessRequest, AccessStore } from '../../src/ports/access-store.js';
 
 // docs/tenancy.md, sections 3.3 and 3.4 (tests of section 7, items 1 and 2): the person and the page must be of one tenant, whatever else says yes. A page of another
@@ -63,5 +63,28 @@ describe('the collapsed answer the host and the routes use', () => {
 
   it('takes the same one round trip for the re-check of many, and drops only the page of the other tenant', async () => {
     expect(await access.pageAccessMany([{ userId: 'a', pageId: 'pa' }, { userId: 'a', pageId: 'pb' }])).toEqual([{ result: 'allowed', access: 'read-write', epoch: 3 }, { result: 'not-found' }]);
+  });
+});
+
+describe('a collection of another tenant (docs/tenancy.md, 3.3)', () => {
+  const inCollection = (user: string | undefined, collection: string | undefined, role: 'admin' | 'member' | 'viewer' = 'member') => ({
+    request: { userId: 'u', collectionId: 'c' },
+    user: { role, suspended: false, ...(user === undefined ? {} : { tenantId: user }) },
+    collection: { deleted: false, defaultPermission: 'read_write' as const, entries: [], ...(collection === undefined ? {} : { tenantId: collection }) },
+  });
+
+  it.each(['admin', 'member', 'viewer'] as const)('gives a %s of tenant A nothing in a collection of tenant B, as for a collection that is not there', (role) => {
+    expect(decideCollection(inCollection('A', 'B', role))).toEqual({ access: 'none', reason: 'no-collection' });
+    expect(decideCollection(inCollection('A', 'A', role)).access).not.toBe('none');
+  });
+
+  it('denies when only one of the two says its tenant, and is unchanged when neither does', () => {
+    expect(decideCollection(inCollection('A', undefined))).toEqual({ access: 'none', reason: 'no-collection' });
+    expect(decideCollection(inCollection(undefined, 'A'))).toEqual({ access: 'none', reason: 'no-collection' });
+    expect(decideCollection(inCollection(undefined, undefined)).access).toBe('read-write');
+  });
+
+  it('keeps the earlier refusals first: no user, suspended', () => {
+    expect(decideCollection({ ...inCollection('A', 'B'), user: { role: 'member', suspended: true, tenantId: 'A' } })).toEqual({ access: 'none', reason: 'suspended' });
   });
 });

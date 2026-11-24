@@ -7,7 +7,7 @@ export interface World {
   users: { id: string; role: Role; suspended: boolean; tenantId?: string }[];
   groups: { id: string }[];
   members: { groupId: string; userId: string }[];
-  collections: { id: string; deleted: boolean; defaultPermission: Permission | null; position?: string }[];
+  collections: { id: string; deleted: boolean; defaultPermission: Permission | null; position?: string; tenantId?: string }[];
   access: { collectionId: string; userId?: string; groupId?: string; permission: Permission }[];
   pages: { id: string; collectionId: string; deleted: boolean; epoch: number; tenantId?: string }[];
 }
@@ -29,7 +29,7 @@ export function createFakeAccessStore(world: World): AccessStore {
     const entries = world.access
       .filter((a) => a.collectionId === collectionId && ((a.userId !== undefined && a.userId === userId) || (a.groupId !== undefined && groups.has(a.groupId))))
       .map((a) => a.permission);
-    return { deleted: c.deleted, defaultPermission: c.defaultPermission, entries };
+    return { deleted: c.deleted, defaultPermission: c.defaultPermission, entries, ...(c.tenantId === undefined ? {} : { tenantId: c.tenantId }) };
   };
   const collectionFacts = (r: CollectionAccessRequest): CollectionFacts => {
     const user = userFacts(r.userId);

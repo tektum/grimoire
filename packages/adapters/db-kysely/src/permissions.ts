@@ -9,11 +9,11 @@ import type { Role } from '@tektum/grimoire-core/ports/user-store';
 // The differential test in test/permissions compares both forms on random worlds.
 
 interface AccessTables {
-  users: { id: string; role: string; suspended_at: Date | null };
+  users: { id: string; role: string; suspended_at: Date | null; tenant_id: string };
   group_members: { group_id: string; user_id: string };
-  collections: { id: string; position: string; default_permission: string | null; deleted_at: Date | null };
+  collections: { id: string; position: string; default_permission: string | null; deleted_at: Date | null; tenant_id: string };
   collection_access: { collection_id: string; user_id: string | null; group_id: string | null; permission: string };
-  pages: { id: string; collection_id: string; state_epoch: number; deleted_at: Date | null };
+  pages: { id: string; collection_id: string; state_epoch: number; deleted_at: Date | null; tenant_id: string };
 }
 
 // Only builds SQL text and parameters; the statements run on the `Queryable` the store was given, so one `query` call is one statement.
@@ -50,8 +50,8 @@ const entriesOf = (collectionId: string, userId: string) => sql<string[] | null>
     select ca.permission from group_members gm join collection_access ca on ca.collection_id = ${sql.ref(collectionId)} and ca.group_id = gm.group_id where gm.user_id = ${sql.ref(userId)}
   ) e)`;
 
-interface Common { role: string | null; suspended_at: Date | null; user_found: boolean }
-const userOf = (r: Common): { role: Role; suspended: boolean } | undefined => (r.user_found && r.role !== null && isRole(r.role) ? { role: r.role, suspended: r.suspended_at !== null } : undefined);
+interface Common { role: string | null; suspended_at: Date | null; user_found: boolean; user_tenant: string | null }
+const userOf = (r: Common): { role: Role; suspended: boolean; tenantId?: string } | undefined => (r.user_found && r.role !== null && isRole(r.role) ? { role: r.role, suspended: r.suspended_at !== null, ...(r.user_tenant === null ? {} : { tenantId: r.user_tenant }) } : undefined);
 const entriesFrom = (v: readonly string[] | null): Permission[] => (v ?? []).flatMap((p) => asPermission(p) ?? []);
 
 export function createAccessStore(db: Queryable): AccessStore {
@@ -67,7 +67,7 @@ export function createAccessStore(db: Queryable): AccessStore {
         .leftJoin('pages as p', 'p.id', 'r.page_id')
         .leftJoin('collections as c', 'c.id', 'p.collection_id')
         .select([
-          'r.ord', 'u.role', 'u.suspended_at', 'p.state_epoch', 'p.deleted_at as page_deleted_at', 'c.deleted_at as collection_deleted_at', 'c.default_permission',
+          'r.ord', 'u.role', 'u.suspended_at', 'u.tenant_id as user_tenant', 'p.tenant_id as page_tenant', 'p.state_epoch', 'p.deleted_at as page_deleted_at', 'c.deleted_at as collection_deleted_at', 'c.default_permission',
           sql<boolean>`u.id is not null`.as('user_found'),
           sql<boolean>`c.id is not null`.as('page_found'),
           entriesOf('c.id', 'r.user_id').as('entries'),
@@ -81,7 +81,7 @@ export function createAccessStore(db: Queryable): AccessStore {
         out[hit.i] = {
           request: hit.request,
           ...(user ? { user } : {}),
-          ...(row.page_found ? { page: { deleted: row.page_deleted_at !== null, epoch: row.state_epoch ?? -1, collection } } : {}),
+          ...(row.page_found ? { page: { ...(row.page_tenant === null ? {} : { tenantId: row.page_tenant }), deleted: row.page_deleted_at !== null, epoch: row.state_epoch ?? -1, collection } } : {}),
         };
       }
       return out;
@@ -97,7 +97,7 @@ export function createAccessStore(db: Queryable): AccessStore {
         .leftJoin('users as u', 'u.id', 'r.user_id')
         .leftJoin('collections as c', 'c.id', 'r.collection_id')
         .select([
-          'r.ord', 'u.role', 'u.suspended_at', 'c.deleted_at as collection_deleted_at', 'c.default_permission',
+          'r.ord', 'u.role', 'u.suspended_at', 'u.tenant_id as user_tenant', 'c.tenant_id as collection_tenant', 'c.deleted_at as collection_deleted_at', 'c.default_permission',
           sql<boolean>`u.id is not null`.as('user_found'),
           sql<boolean>`c.id is not null`.as('collection_found'),
           entriesOf('c.id', 'r.user_id').as('entries'),
@@ -110,7 +110,7 @@ export function createAccessStore(db: Queryable): AccessStore {
         out[hit.i] = {
           request: hit.request,
           ...(user ? { user } : {}),
-          ...(row.collection_found ? { collection: { deleted: row.collection_deleted_at !== null, defaultPermission: asPermission(row.default_permission) ?? null, entries: entriesFrom(row.entries) } } : {}),
+          ...(row.collection_found ? { collection: { deleted: row.collection_deleted_at !== null, ...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), defaultPermission: asPermission(row.default_permission) ?? null, entries: entriesFrom(row.entries) } } : {}),
         };
       }
       return out;
@@ -131,6 +131,7 @@ export function createAccessStore(db: Queryable): AccessStore {
           .selectFrom('users as u')
           .crossJoin('collections as c')
           .where('u.id', '=', userId)
+          .whereRef('c.tenant_id', '=', 'u.tenant_id') // a collection of another tenant is not there (docs/tenancy.md, 3.3)
           .where('u.suspended_at', 'is', null)
           .$if(!includeDeleted, (q) => q.where('c.deleted_at', 'is', null))
           .select(['c.id', 'c.position', 'u.role', best.as('best')]))
