@@ -7,14 +7,6 @@ export const SCRIPTED_URL_ID = 'abc123';
 export interface ScriptedApiOptions {
   /** The address of the collaboration server the client is told to use (`GET /v1/config`). */
   readonly collabUrl: string;
-  readonly minClientVersion?: string;
-  readonly markdown?: string;
-  /** Sent as `X-Grimoire-Markdown-Stale` and as `markdownStale` of the page. */
-  readonly stale?: boolean;
-  readonly title?: string;
-  readonly permission?: 'read-write' | 'read-only';
-  /** The answer for `GET /v1/pages/by-url-id/...`: a status other than 200 stands for a page that is not there, or that may not be read. */
-  readonly pageStatus?: number;
 }
 
 export interface ScriptedApi {
@@ -45,15 +37,14 @@ export async function scriptedApi(options: ScriptedApiOptions): Promise<Scripted
     const json = (status: number, body: unknown, headers: Record<string, string> = {}) => res.writeHead(status, { ...CORS, 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
     if (req.method === 'OPTIONS') return void res.writeHead(204, CORS).end();
     if (url.pathname === '/v1/config') {
-      return json(200, { collabUrl: options.collabUrl, minClientVersion: options.minClientVersion ?? '0.0.0', local: true, providerProjectId: null, providerBaseUrl: null, fileStoreOrigin: null });
+      return json(200, { collabUrl: options.collabUrl, minClientVersion: '0.0.0', local: true, providerProjectId: null, providerBaseUrl: null, fileStoreOrigin: null });
     }
     if (url.pathname === '/v1/me') return json(200, { id: '22222222-2222-4222-8222-222222222222', email: 'scripted@dev.invalid', name: 'Scripted Person', role: 'member' });
     if (url.pathname === `/v1/pages/by-url-id/${SCRIPTED_URL_ID}`) {
-      if (options.pageStatus !== undefined && options.pageStatus !== 200) return json(options.pageStatus, { error: { code: 'not_found', message: 'not found' } });
       return json(200, {
         id: SCRIPTED_PAGE_ID,
         urlId: SCRIPTED_URL_ID,
-        title: options.title ?? 'Scripted page',
+        title: 'Scripted page',
         collectionId: SCRIPTED_PAGE_ID,
         parentId: null,
         position: 'a',
@@ -64,15 +55,13 @@ export async function scriptedApi(options: ScriptedApiOptions): Promise<Scripted
         lastEditedAt: null,
         lastEditedBy: null,
         breadcrumb: [],
-        markdownStale: options.stale === true,
+        markdownStale: false,
         markdownStaleSince: null,
-        myPermission: options.permission ?? 'read-write',
+        myPermission: 'read-write',
       });
     }
     if (url.pathname === `/v1/pages/${SCRIPTED_PAGE_ID}/markdown`) {
-      return void res
-        .writeHead(200, { ...CORS, 'content-type': 'text/markdown', 'x-grimoire-markdown-stale': options.stale === true ? 'true' : 'false' })
-        .end(options.markdown ?? 'The saved text of the scripted page.\n');
+      return void res.writeHead(200, { ...CORS, 'content-type': 'text/markdown', 'x-grimoire-markdown-stale': 'false' }).end('The saved text of the scripted page.\n');
     }
     if (url.pathname === '/v1/users/names') return json(200, { items: [] });
     return json(404, { error: { code: 'not_found', message: 'not found' } });
@@ -82,6 +71,6 @@ export async function scriptedApi(options: ScriptedApiOptions): Promise<Scripted
 }
 
 /** Points the page at a scripted API: `config.json` is the one build-time setting of the client (a static file, so it can be fulfilled by interception). */
-export async function useScriptedApi(page: import('@playwright/test').Page, api: ScriptedApi, extra: { hiddenDisconnectMs?: number } = {}): Promise<void> {
-  await page.route('**/config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ apiUrl: api.url, ...extra }) }));
+export async function useScriptedApi(page: import('@playwright/test').Page, api: ScriptedApi): Promise<void> {
+  await page.route('**/config.json', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ apiUrl: api.url }) }));
 }
