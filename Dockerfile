@@ -24,7 +24,7 @@ RUN bun run --cwd apps/web build
 RUN rm -rf node_modules && bun install --frozen-lockfile --production --filter @tektum/grimoire-server --filter @tektum/grimoire-adapter-markdown-milkdown
 # Stage exactly what runs: per workspace package its package.json, dist and any CommonJS entry (`*.cjs`) beside it, the pruned node_modules, the migrations
 # directory (@types/debug, mdast, ms and unist are real dependencies of the Markdown libraries, but hold only type declarations; test helpers compiled into dist/testing, the declarations of the test projects in dist/test and build info are left out). A shell is fine here: this stage is not shipped.
-RUN set -eu; mkdir /out; cp package.json /out/; mkdir /out/certs; cp /rds/global-bundle.pem /out/certs/; cp -a node_modules /out/node_modules; \
+RUN set -eu; mkdir /out; cp package.json /out/; mkdir /out/certs; install -m 0644 /rds/global-bundle.pem /out/certs/global-bundle.pem; test "$(stat -c %a /out/certs/global-bundle.pem)" = 644; cp -a node_modules /out/node_modules; \
     for d in apps/server packages/core packages/editor-schema packages/adapters/*; do \
       mkdir -p "/out/$d"; cp "$d/package.json" "/out/$d/"; cp -a "$d/dist" "/out/$d/dist"; cp "$d"/*.cjs "/out/$d/" 2>/dev/null || true; \
     done; \

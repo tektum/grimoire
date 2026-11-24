@@ -22,3 +22,12 @@ test('credentials come from official actions only: AWS from aws-actions/configur
   assert.match(workflow, /uses: actions\/github-script@[0-9a-f]{40} # v/);
   assert.doesNotMatch(workflow, /curl|ACTIONS_ID_TOKEN_REQUEST/, 'no hand-written token fetching');
 });
+
+test('the gate checks every variable the stage needs, the staging ones included, before the job assumes the AWS role or asks for the Descope token', () => {
+  const start = workflow.indexOf('id: gate');
+  const gate = workflow.slice(start, workflow.indexOf('uses: actions/checkout', start));
+  for (const name of ['AWS_ROLE_ARN', 'AWS_REGION', 'KEY_ID', 'STAGING_DOMAIN', 'STAGING_ALLOWED_EMAIL_DOMAINS']) assert.match(gate, new RegExp(`\\b${name}\\b`), name);
+  assert.match(gate, /"\$\{STAGE\}" = "staging"/, 'the staging variables are required for the staging stage only');
+  assert.ok(workflow.indexOf('id: gate') < workflow.indexOf('configure-aws-credentials'));
+  assert.ok(workflow.indexOf('id: gate') < workflow.indexOf('getIDToken'));
+});
