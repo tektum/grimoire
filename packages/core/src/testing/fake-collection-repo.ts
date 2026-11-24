@@ -183,7 +183,9 @@ export class FakeCollectionRepo implements CollectionRepo {
 
   private store(record: CollectionRecord): void {
     this.rows.set(record.id, record);
-    const fact = { id: record.id, deleted: false, defaultPermission: record.defaultPermission, position: record.position };
+    // The permission facts name a tenant only when it is not legacy, as the page facts of the page fake do: the rule compares the person's tenant with the collection's, and a fact with none is legacy.
+    const tenant = this.tenants.get(record.id) ?? 'legacy';
+    const fact = { id: record.id, deleted: false, defaultPermission: record.defaultPermission, position: record.position, ...(tenant === 'legacy' ? {} : { tenantId: tenant }) };
     const at = this.world.collections.findIndex((c) => c.id === record.id);
     if (at < 0) this.world.collections.push(fact);
     else this.world.collections[at] = fact;

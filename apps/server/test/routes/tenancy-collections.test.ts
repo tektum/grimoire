@@ -19,7 +19,7 @@ function build() {
   const t = makeContext();
   const world = emptyWorld();
   const rows: UserRecord[] = PEOPLE.map((p, i) => ({ id: `00000000-0000-4000-8000-00000000050${String(i)}`, descopeUserId: `d-${p.name}`, email: `${p.name}@example.com`, name: p.name, role: p.role, suspended: false, tenantId: p.tenant }));
-  for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: false });
+  for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: false, tenantId: r.tenantId as string });
   const verifier: AuthVerifier = {
     verify: (token) => {
       const row = rows.find((r) => `tok-${r.name}` === token);
