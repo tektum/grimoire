@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { buildDevToken } from '../../test/support/dev-token';
 import { expect, test } from '@playwright/test';
 import { apiUrl, devSecret } from '../support/env';
+import { downloadName } from '../support/quirks';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
 import { controlNetwork } from './network';
 import { makePage, resetPageState } from './pages';
 
 test.describe('the epoch handshake', () => {
-  test('a tab that was offline across a reset is not allowed to push its old edits: it reloads the reset page once and keeps a copy of what it had', async ({ browser, baseURL }) => {
+  test('a tab that was offline across a reset is not allowed to push its old edits: it reloads the reset page once and keeps a copy of what it had', async ({ browser, baseURL, browserName }) => {
     test.slow(); // a minute or more of reconnecting, and a reset, in one test
     const made = await makePage('# Epoch\n\nold\n', { title: 'Epoch page' });
     const users = await twoUsers(browser, baseURL);
@@ -40,7 +41,7 @@ test.describe('the epoch handshake', () => {
       const download = page.waitForEvent('download');
       await notice.getByRole('button', { name: 'Download my copy' }).click();
       const file = await download;
-      expect(file.suggestedFilename()).toBe('Epoch page-your-copy.md');
+      expect(file.suggestedFilename()).toBe(downloadName(browserName, 'Epoch page-your-copy.md'));
       const copy = readFileSync((await file.path())!, 'utf8');
       expect(copy).toContain('old-edit'); // typed while online, saved before the cut
       expect(copy).toContain('more'); // typed after the cut: never reached the server, only the copy has it

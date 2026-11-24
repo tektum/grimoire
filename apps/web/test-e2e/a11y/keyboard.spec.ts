@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { devSecret } from '../support/env';
+import { FIREFOX_ARIA_CRASH } from '../support/quirks';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
 import { api, makeCollection, prepareWorld, type World } from './world';
@@ -44,7 +45,8 @@ test('the walk counts a mouse click (so that "no pointer events" says something)
   }
 });
 
-test('sign in: the form is filled and sent with the keyboard', async ({ browser, baseURL }) => {
+test('sign in: the form is filled and sent with the keyboard', async ({ browser, baseURL, browserName }) => {
+  test.fixme(browserName === 'firefox', FIREFOX_ARIA_CRASH);
   await walk(browser, baseURL, null, async (page) => {
     await page.goto('/login');
     await expect(page.getByLabel('User id'), 'the form is drawn (its chunk comes after the page)').toBeVisible(); // the first Tab press is after it, or it lands on an empty page

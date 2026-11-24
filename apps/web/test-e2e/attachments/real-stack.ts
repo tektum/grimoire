@@ -15,7 +15,10 @@ export async function pastePng(page: Page, name: string): Promise<void> {
       const bytes = Uint8Array.from(atob(base64!), (c) => c.charCodeAt(0));
       const data = new DataTransfer();
       data.items.add(new File([bytes], fileName!, { type: 'image/png' }));
-      document.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      // The data goes on the event as a property: Firefox gives an event made by a script an empty clipboard whatever it is made with, and every engine reads the property the same way.
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: data });
+      document.querySelector('.ProseMirror')!.dispatchEvent(event);
     },
     [name, PNG_BASE64],
   );

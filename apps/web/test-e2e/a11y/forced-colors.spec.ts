@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { axeViolations } from '../support/axe';
+import { FIREFOX_ARIA_CRASH } from '../support/quirks';
 import { signInAs } from '../support/sign-in';
 import { STOPS, stopReady } from './routes';
 import { focusWithoutIndicator } from './support';
@@ -8,7 +9,8 @@ import { prepareWorld, type World } from './world';
 // With the system's colours forced (high contrast), every route still shows where the focus is, and axe finds nothing serious (needs the whole stack).
 let world: World;
 
-test.beforeAll(async ({ browser, baseURL }) => {
+test.beforeAll(async ({ browser, baseURL, browserName }) => {
+  test.fixme(browserName === 'firefox', FIREFOX_ARIA_CRASH);
   test.slow(); // the stack side of the tour: collections, pages and a saved version
   world = await prepareWorld(browser, baseURL);
 });
