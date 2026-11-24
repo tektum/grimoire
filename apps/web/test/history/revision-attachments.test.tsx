@@ -10,7 +10,10 @@ import '../support/dom';
 const fakeEditor = { destroy: vi.fn(async () => undefined) };
 
 describe('the text of a version', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks(); // a spy of one test (the new tab) never reaches the next
+  });
 
   it('gives the editor that draws it the links of the session, so the uploaded images of an old version load, and takes them back', async () => {
     const POST = vi.fn(async () => ({ data: { urls: [] }, response: new Response('{}', { status: 200 }) }));
@@ -56,7 +59,6 @@ describe('the text of a version', () => {
     act(() => { link.click(); });
     await waitFor(() => expect(tab.close).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.body.textContent).toContain("That file isn't available"));
-    opener.mockRestore();
   });
 
   it('still draws with no session (a screen on its own)', async () => {
