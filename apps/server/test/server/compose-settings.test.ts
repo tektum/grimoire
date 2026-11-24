@@ -18,6 +18,7 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: 'the default limit suits the local stack',
   GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: 'the default limit suits the local stack',
   GRIMOIRE_S3_ADMIN_ACCESS_KEY: 'the running server never holds the admin key',
+  GRIMOIRE_WEB_ROOT: 'the local stack serves the web client from its own static server (apps/web/scripts/serve.mjs); a deployment sets it to the built client in the image',
   GRIMOIRE_DATABASE_ADMIN_URL: 'only the db-setup step holds the administrator connection; the server refuses to start with it',
   GRIMOIRE_DB_APP_PASSWORD: 'only the db-setup step holds the role passwords; the server refuses to start with it',
   GRIMOIRE_DB_MIGRATOR_PASSWORD: 'only the db-setup step holds the role passwords; the server refuses to start with it',

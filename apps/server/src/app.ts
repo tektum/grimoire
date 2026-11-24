@@ -19,6 +19,7 @@ import type { OpenAPIHono } from '@hono/zod-openapi';
 import { errorName, errorOrigin } from './events.js';
 import { shippedMigration } from './health/migrations.js';
 import { healthRoutes } from './health/routes.js';
+import { webClient } from './web/index.js';
 import type { AppContext } from './composition.js';
 
 export interface AppOptions {
@@ -71,7 +72,12 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
     c.set('deps', ctx.http);
     await next();
   });
-  app.use(secureHeaders());
+  // The web client, when configured, sets its own response headers (a content security policy per document, X-Frame-Options and the rest): the defaults below would overwrite them.
+  const web = ctx.config.webRoot === undefined || ctx.config.publicApiUrl === undefined || ctx.config.publicCollabUrl === undefined || ctx.config.files === undefined
+    ? undefined
+    : webClient({ root: ctx.config.webRoot, apiUrl: ctx.config.publicApiUrl, collabUrl: ctx.config.publicCollabUrl, storeOrigin: ctx.config.files.publicOrigin, descopeUrl: ctx.config.descopeBaseUrl });
+  const defaults = secureHeaders();
+  app.use((c, next) => (web?.serves(c.req.path) === true ? next() : defaults(c, next)));
   app.use(timeout(opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, () => new ApiError('unavailable')));
   // CORS covers the API paths and comes before the body limit, so a 413 can be read from an allowed origin. The health routes stay plain.
   app.use('/v1/*', corsMiddleware(ctx.config.allowedOrigins));
@@ -84,5 +90,6 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   app.use('/v1/*', userLimiter(app, ctx.config.http, ctx.log));
   app.use('/v1/*', idempotency(app, ctx.http, { rebuild: { ...routeReplays, ...opts.replayRebuild }, stored: { ...routeStored, ...opts.storedShape }, ...(opts.idempotencySample === undefined ? {} : { sample: opts.idempotencySample }) }));
   for (const router of routers) app.route('/', router);
+  if (web !== undefined) app.use(web.middleware);
   return app;
 }
