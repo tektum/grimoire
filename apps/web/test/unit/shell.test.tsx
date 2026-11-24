@@ -7,11 +7,9 @@ import { ErrorBoundary } from '../../src/app/ErrorBoundary';
 import { routeObjects } from '../../src/app/router';
 import { ROUTES } from '../../src/app/routes';
 
-// `/c/:collectionId`, `/p/:slug`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx, test/trash and test/admin.
+// `/c/:collectionId`, `/p/:slug`, `/p/:slug/history*`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx, test/history, test/trash and test/admin.
 describe('shell and screens', () => {
   it.each([
-    ['/p/a-b1/history', 'History'],
-    ['/p/a-b1/history/r1', 'History'],
     ['/search', 'Search'],
     ['/import', 'Import'],
     ['/nope/x', 'Page not found'],
@@ -93,9 +91,9 @@ describe('skip link', () => {
   });
 
   it('points into the current page, not at the root of the document base', async () => {
-    render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/p/a-b1/history?x=1'] })} />);
+    render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: ['/search?x=1'] })} />);
     const link = screen.getByRole('link', { name: 'Skip to the page' });
-    expect(link.getAttribute('href')).toBe('/p/a-b1/history?x=1#main');
+    expect(link.getAttribute('href')).toBe('/search?x=1#main');
     expect(document.getElementById('main')).toBeTruthy();
     await screen.findAllByRole('heading', { level: 1 });
   });
