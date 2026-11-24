@@ -43,7 +43,7 @@ export default function staging() {
   });
 
   const cluster = new sst.aws.Cluster('Cluster', { vpc });
-  const service = new sst.aws.Service('App', {
+  const service = new sst.aws.Service('Server', { // not 'App': SST reserves that name for a linkable component
     cluster,
     cpu: '0.5 vCPU',
     memory: '2 GB', // above the collaboration memory guard (1 GiB by default, with Node, socket buffers and the Markdown worker on top of it), so the guard refuses work before the task is killed

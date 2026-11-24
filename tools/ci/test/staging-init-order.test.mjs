@@ -44,3 +44,10 @@ test('the app alone gets a stop timeout, and it covers what the server needs to 
   assert.ok(APP_STOP_TIMEOUT_SECONDS * 1000 >= requiredGracePeriodMs(defaultSaveMs), 'SIGKILL would come before the server has finished saving');
   assert.ok(APP_STOP_TIMEOUT_SECONDS <= 120, 'Fargate allows at most 120 seconds');
 });
+
+test('no component of the staging stack is named "App": SST refuses that name for a linkable component and the whole diff fails with it', () => {
+  const source = readFileSync(new URL('../../../infra/staging.ts', import.meta.url), 'utf8');
+  const names = [...source.matchAll(/new (?:sst|aws|random|descope)\.[\w.]+\(\s*'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(names.includes("Server"), names.join());
+  assert.equal(names.some((name) => name.toLowerCase() === 'app'), false, names.join());
+});
