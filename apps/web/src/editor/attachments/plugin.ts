@@ -13,12 +13,15 @@ import { imagePlugin } from './image-view';
 import { attachmentId } from './path';
 import { uploadAttachment, type Attachment } from './upload';
 
+/** The image types a browser shows inline: the server signs only these for display (any other type is a download), so only these become image nodes. */
+const INLINE_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
+
 /** What goes into the document for the files that were stored: an image for an image, the file's name as a link to its saved path for any other file. */
 export function fragmentFor(attachments: readonly Attachment[], schema: Schema): Fragment {
   const nodes: ProseNode[] = [];
   for (const attachment of attachments) {
     if (nodes.length > 0) nodes.push(schema.text(' '));
-    if (attachment.contentType.startsWith('image/')) nodes.push(schema.nodes['image']!.create({ src: attachment.markdownPath, alt: attachment.fileName }));
+    if (INLINE_IMAGE_TYPES.has(attachment.contentType)) nodes.push(schema.nodes['image']!.create({ src: attachment.markdownPath, alt: attachment.fileName }));
     else nodes.push(schema.text(attachment.fileName, [schema.marks['link']!.create({ href: attachment.markdownPath })]));
   }
   return Fragment.from(nodes);
@@ -106,6 +109,7 @@ async function openAttachment(host: NonNullable<ReturnType<typeof providedFor>>[
     log('warn', 'web.attachment_open_failed');
   }
   tab?.close();
+  host.notify?.("That file isn't available");
 }
 
 /** Images, the upload of files by paste and drop, and the opening of attachment links. */

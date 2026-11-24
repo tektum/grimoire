@@ -45,6 +45,7 @@ describe('the text of a version', () => {
     );
     await waitFor(() => expect(provided).not.toBeNull());
     expect(provided!.host.api).toBe(session.api);
+    expect(provided!.host.notify).toBeTypeOf('function'); // a file that cannot be opened is said, in an old version too
     expect(provided!.host.pageId).toBeUndefined(); // an old version is read, nothing is uploaded into it
   });
 

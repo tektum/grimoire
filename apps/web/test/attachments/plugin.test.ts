@@ -33,6 +33,16 @@ describe('what an upload puts into the document', () => {
     expect(node.marks[0]?.attrs['href']).toBe(`attachments/${ID}/plan%20v2.pdf`);
   });
 
+  it.each(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'])('shows %s inline, as an image node', (type) => {
+    expect(fragmentFor([attachment('a', type)], schema()).firstChild?.type.name).toBe('image');
+  });
+
+  it.each(['image/bmp', 'image/tiff', 'image/svg+xml', 'application/pdf'])('makes %s a link: the server signs it as a download, so an img could never show it', (type) => {
+    const node = fragmentFor([attachment('a', type)], schema()).firstChild!;
+    expect(node.type.name).toBe('text');
+    expect(node.marks[0]?.type.name).toBe('link');
+  });
+
   it('puts a space between several files, and nothing for none', () => {
     const fragment = fragmentFor([attachment('a.png', 'image/png'), attachment('b.pdf', 'application/pdf', '11111111-2222-4333-8444-555555555555')], schema());
     expect(fragment.childCount).toBe(3);
@@ -130,12 +140,14 @@ describe('opening an attachment link', () => {
   let harness: Harness;
   let dispose: () => void;
   const open = vi.fn();
+  const told = vi.fn();
   const GET = vi.fn<(path: string, init?: unknown) => Promise<never>>(async () => ({ data: { url: 'https://files.test/signed?download', expiresAt: 5 }, response: new Response('{}', { status: 200 }) }) as never);
   beforeEach(async () => {
     open.mockClear();
+    told.mockClear();
     GET.mockClear();
     harness = await makeEditor(`[the plan](attachments/${ID}/plan.pdf) and [a site](https://example.test/x)\n`, attachmentPlugins, { editable: false });
-    dispose = provideAttachments(harness.root, { fetchUrls: async () => new Map(), api: { GET } as never, open });
+    dispose = provideAttachments(harness.root, { fetchUrls: async () => new Map(), api: { GET } as never, open, notify: told });
   });
   afterEach(async () => { dispose(); await harness.destroy(); });
   const click = (link: Element): MouseEvent => {
@@ -158,7 +170,7 @@ describe('opening an attachment link', () => {
     const fakeTab = () => ({ opener: 'x' as unknown, location: { replace: vi.fn() }, close: vi.fn() });
     beforeEach(() => {
       dispose();
-      dispose = provideAttachments(harness.root, { fetchUrls: async () => new Map(), api: { GET } as never });
+      dispose = provideAttachments(harness.root, { fetchUrls: async () => new Map(), api: { GET } as never, notify: told });
     });
 
     it('opens the new tab in the click itself, before the answer comes, then sends it to the signed link', async () => {
@@ -186,6 +198,7 @@ describe('opening an attachment link', () => {
       click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
       await vi.waitFor(() => expect(tab2.close).toHaveBeenCalledTimes(1));
       expect(tab.location.replace).not.toHaveBeenCalled();
+      expect(told).toHaveBeenCalledTimes(2); // each time the person is told
     });
 
     it('does nothing more when the browser refused the new tab', async () => {
@@ -202,6 +215,7 @@ describe('opening an attachment link', () => {
     click(harness.root.querySelector(`a[href="attachments/${ID}/plan.pdf"]`)!);
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('web.attachment_open_failed'))); // the failure has been handled
     expect(open).not.toHaveBeenCalled();
+    expect(told).toHaveBeenCalledWith("That file isn't available");
   });
 
   it('leaves other links alone', () => {
@@ -216,5 +230,6 @@ describe('opening an attachment link', () => {
     await vi.waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
     await new Promise((resolve) => setTimeout(resolve, 0)); // a whole turn: the answer has been handled
     expect(open).not.toHaveBeenCalled();
+    expect(told).toHaveBeenCalledWith("That file isn't available"); // a deleted file or lost access is said, not a flash of a tab
   });
 });
