@@ -26,6 +26,7 @@ test.describe('the live region', () => {
       const page = await context.newPage();
       await page.goto(made.path);
       await waitForSynced(page);
+      await expect(statusLine(page)).toHaveText('Saved'); // nothing is waiting: what follows is the typing's
       await page.evaluate(() => {
         // The live region node is kept: screen readers announce changes inside a node that stays in the page. It is noted now and watched; it must be the same node after.
         const line = document.querySelector('p.page-status');

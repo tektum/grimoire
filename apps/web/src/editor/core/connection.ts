@@ -337,7 +337,8 @@ export class ConnectionManager {
         this.act(mapSignal({ type: 'scope', readOnly: true }));
         return;
       case 'unsynced':
-        this.set(event.count > this.current.unsynced ? { unsynced: event.count, changes: this.current.changes + 1 } : { unsynced: event.count });
+        // A change counts once the page is open: the provider also reports 1 and then 0 around each connect and sync, which are not changes of the person's.
+        this.set(event.count > this.current.unsynced && this.current.phase === 'synced' ? { unsynced: event.count, changes: this.current.changes + 1 } : { unsynced: event.count });
         return;
       case 'synced':
         this.onSynced();

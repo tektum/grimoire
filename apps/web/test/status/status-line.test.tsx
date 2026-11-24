@@ -115,6 +115,10 @@ describe('the connection manager counts the changes the server has not acknowled
     manager.start();
     await flush();
     expect(manager.state().unsynced).toBe(0);
+    h.last().provider.emit({ type: 'unsynced', count: 1 }); // around the connect: not a change of the person's
+    h.last().provider.emit({ type: 'unsynced', count: 0 });
+    expect(manager.state().changes).toBe(0);
+    h.last().provider.emit({ type: 'synced' });
     h.last().provider.emit({ type: 'unsynced', count: 2 });
     expect(manager.state().unsynced).toBe(2);
     h.last().provider.emit({ type: 'unsynced', count: 0 });
