@@ -11,6 +11,8 @@ export interface AttachmentRow {
   readonly size: number;
   /** The object key in the file store. */
   readonly key: string;
+  /** The tenant of the row (docs/tenancy.md); absent only in tests that do not use tenants. */
+  readonly tenantId?: string;
   readonly status: 'pending' | 'ready';
   /** Pending rows only: when the row and its object may be cleaned up. */
   readonly expiresAt: number | null;
@@ -26,6 +28,7 @@ export interface NewPending {
   readonly contentType: string;
   readonly size: number;
   readonly key: string;
+  readonly tenantId?: string;
   readonly expiresAt: number;
 }
 

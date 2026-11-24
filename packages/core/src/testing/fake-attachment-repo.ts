@@ -22,7 +22,7 @@ export class FakeAttachmentRepo implements AttachmentRepo {
     if (live >= cap) return Promise.resolve({ kind: 'cap' });
     if (this.exists.pages?.(input.pageId) === false) return Promise.resolve({ kind: 'no-page' });
     const row: AttachmentRow = {
-      id: input.id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: input.fileName, contentType: input.contentType, size: input.size, key: input.key,
+      id: input.id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: input.fileName, contentType: input.contentType, size: input.size, key: input.key, ...(input.tenantId === undefined ? {} : { tenantId: input.tenantId }),
       status: 'pending', expiresAt: input.expiresAt, createdAt: now, readyAt: null,
     };
     this.rows.push(row);

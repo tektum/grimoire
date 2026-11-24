@@ -41,6 +41,22 @@ describe('the PostgreSQL AttachmentRepo meets the conformance cases', () => {
 });
 
 describe('what only the database does', () => {
+  const pending = (id: string, extra: { tenantId?: string } = {}) => ({ id, pageId, uploaderId: userId, fileName: 'x.txt', contentType: 'text/plain', size: 5, key: `attachments/${id}`, expiresAt: NOW + 3_600_000, ...extra });
+
+  it('gives a pending row the tenant of its page when none is named, and the tenant named when it is the page\'s (tenants, docs/tenancy.md 3.5)', async () => {
+    const repo = createAttachments(t.app);
+    const a = await repo.createPending(pending(randomUUID()), 100, NOW);
+    const b = await repo.createPending(pending(randomUUID(), { tenantId: 'legacy' }), 100, NOW);
+    expect([a, b].map((r) => (r.kind === 'created' ? r.row.tenantId : r.kind))).toEqual(['legacy', 'legacy']);
+  });
+
+  it('refuses a pending row whose tenant is not its page\'s (the keys between tenants would not hold): it is not created', async () => {
+    const repo = createAttachments(t.app);
+    await t.admin.query(`insert into tenants (id, name) values ('other', 'Other') on conflict do nothing`, []);
+    const r = await repo.createPending(pending(randomUUID(), { tenantId: 'other' }), 100, NOW);
+    expect(r.kind).not.toBe('created');
+  });
+
   const ready = (id: string, page: string) => ({ id, pageId: page, uploaderId: userId, fileName: 'x.txt', contentType: 'text/plain', size: 5, key: `attachments/${id}`, readyAt: NOW });
 
   it('stores a ready row inside the caller\'s transaction: it commits with it and a rollback leaves no row', async () => {
