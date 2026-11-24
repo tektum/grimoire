@@ -131,7 +131,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
       if (cancelled) return;
       if (next.generation > seenGeneration) {
         // A new document: the person's access may have changed (that is usually why), so the page is read again.
-        if (seenGeneration > 0) replacedRef.current?.();
+        if (seenGeneration > 0) void replacedRef.current?.();
         seenGeneration = next.generation;
       }
       if (live !== null && next.generation !== liveGeneration) {
