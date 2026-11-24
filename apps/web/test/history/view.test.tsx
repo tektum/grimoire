@@ -142,6 +142,16 @@ describe('one revision', () => {
     await waitFor(() => { expect(screen.getByRole('tabpanel').querySelectorAll('ins, del').length).toBeGreaterThan(0); });
   });
 
+  it('treats a current page that does not come back as text as a failed comparison, not as an empty page', async () => {
+    const { api } = fakeApi({ [ONE]: ok({ ...rev('r1'), markdown: OLD }), [CURRENT]: ok({ unexpected: true }) });
+    show(api);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Changes' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain("Couldn't compare with the page");
+    expect(screen.getByRole('tabpanel').querySelectorAll('ins, del')).toHaveLength(0);
+    expect(screen.queryByText(/Restoring this version would remove/)).toBeNull();
+  });
+
   it('offers to try again when the revision cannot be read', async () => {
     let attempt = 0;
     const { api } = fakeApi({ [ONE]: () => (attempt++ === 0 ? { status: 503 } : ok({ ...rev('r1'), markdown: OLD })), [CURRENT]: ok(NOW) });
