@@ -85,7 +85,7 @@ function Running({ props, apiUrl, config, devSignIn }: { props: AppProps; apiUrl
       reload: markClientOutdated,
       fetch: props.fetch === undefined ? guardedFetch : blockWhenOutdated(props.fetch),
     });
-    return { auth, api: api satisfies ApiLike, collabUrl: config.collabUrl };
+    return { auth, api: api satisfies ApiLike, collabUrl: config.collabUrl, apiUrl };
   }, [apiUrl, config, devSignIn, props]);
   const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } }), []);
   const router = useMemo(() => props.router(), [props]);

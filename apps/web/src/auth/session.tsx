@@ -8,6 +8,8 @@ export interface Session {
   readonly api: ApiLike;
   /** The address of the collaboration server, from the server's config. */
   readonly collabUrl: string;
+  /** The address of the API: for the one plain request the client makes outside the API client (the check of the minimum version). */
+  readonly apiUrl?: string;
 }
 export const SessionContext = createContext<Session | null>(null);
 export const useSession = (): Session | null => useContext(SessionContext);

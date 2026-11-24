@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Auth } from '../../src/auth';
 import { SessionContext, type Session as AppSession } from '../../src/auth/session';
 import type { MountedEditor } from '../../src/editor/core/mount';
+import { isClientOutdated, resetClientOutdated } from '../../src/gate/outdated';
 import { PageView, STALE_TEXT, type PageMeta } from '../../src/screens/page/PageView';
 import type { Engine } from '../../src/screens/page/engine';
 import { sessionDirectory } from '../../src/editor/core/directory';
@@ -101,7 +102,7 @@ function mountPage(
       };
     }),
   } as unknown as AppSession['api'];
-  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test' };
+  const value: AppSession = { auth, api, collabUrl: 'ws://collab.test', apiUrl: 'http://api.test' };
   const setPage: { current: (p: PageMeta) => void } = { current: () => undefined };
   const engine = { ...fake.engine, ...(typeof options.engine === 'function' ? options.engine(fake.engine) : options.engine) };
   const Host = () => {
@@ -540,5 +541,33 @@ describe('the page screen', () => {
     await waitFor(() => expect(screen.queryByText('Copied.')).toBeNull());
     await act(async () => void screen.getByRole('button', { name: 'Copy to clipboard' }).click());
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('copy number 2'));
+  });
+
+  it('checks the minimum client version again when the connection is made again after more than a minute, with a plain request, and shows nothing else when the server wants a newer client', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); // only the clock of the page moves: the waits of the test are real
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return new Response(JSON.stringify({ minClientVersion: '999.0.0' }), { status: 200 });
+      }),
+    );
+    try {
+      const t = mountPage();
+      await t.synced();
+      await waitFor(() => expect(t.lives).toHaveLength(1));
+      expect(isClientOutdated()).toBe(false);
+      await act(async () => void t.sessions[0]!.provider.disconnected());
+      vi.setSystemTime(Date.now() + 61_000);
+      await act(async () => void t.sessions[0]!.provider.succeed(1));
+      await waitFor(() => expect(isClientOutdated()).toBe(true));
+      expect(asked).toEqual(['http://api.test/v1/config']);
+      expect(t.api.GET).not.toHaveBeenCalledWith('/v1/config', expect.anything()); // not through the API client: its notices would show a toast for a probe
+    } finally {
+      resetClientOutdated();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 });
