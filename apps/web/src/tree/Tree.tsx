@@ -28,7 +28,7 @@ function Row({ node, style, dragHandle }: NodeRendererProps<TreeItem>) {
   return (
     <div ref={dragHandle} style={style} className="tree-row" data-focused={node.isFocused || undefined}>
       {node.isInternal ? (
-        <button type="button" className="tree-toggle" aria-label={`${node.isOpen ? 'Collapse' : 'Expand'} ${item.name}`} onClick={() => { node.toggle(); }}>
+        <button type="button" className="tree-toggle" aria-label={`${node.isOpen ? 'Collapse' : 'Expand'} ${item.name}`} onClick={(e) => { e.stopPropagation(); node.toggle(); }}>
           {node.isOpen ? <ChevronDown aria-hidden size={14} /> : <ChevronRight aria-hidden size={14} />}
         </button>
       ) : (

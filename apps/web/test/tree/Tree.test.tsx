@@ -77,4 +77,11 @@ describe('Tree', () => {
     expect(screen.getByRole('button', { name: 'Collapse Welcome' })).toBe(toggle);
     expect(document.activeElement).toBe(toggle);
   });
+
+  it('opens a branch with its toggle without opening its page', async () => {
+    render(<MemoryRouter><Tree items={items} /><Where /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Deep' }));
+    expect(screen.getByLabelText('location').textContent).toBe('/');
+    expect(screen.getAllByRole('treeitem')).toHaveLength(5);
+  });
 });
