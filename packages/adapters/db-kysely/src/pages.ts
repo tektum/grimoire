@@ -49,11 +49,11 @@ async function neighbours(tx: Queryable, collectionId: string, parentId: string 
 /** The PostgreSQL PageRepo over `pages`. */
 export function createPages(db: KyselyDatabase): PageRepo {
   return {
-    create(input, limits, position) {
+    create(tenantId, input, limits, position) {
       return db.transaction(async (tx): Promise<CreatePageResult> => {
         // The collection row first: a delete of the collection and other creates take it too, so the liveness check, the count and the
-        // sibling positions below cannot change under this transaction.
-        const locked = await tx.query(`select 1 from collections where id = $1 and deleted_at is null for no key update`, [input.collectionId]);
+        // sibling positions below cannot change under this transaction. A collection of another tenant is one that is not there.
+        const locked = await tx.query(`select 1 from collections where id = $1 and tenant_id = $2 and deleted_at is null for no key update`, [input.collectionId, tenantId]);
         if (locked.length === 0) return { kind: 'collection-deleted' };
         if (input.parentId !== null) {
           const parent = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null`, [input.parentId, input.collectionId]);
@@ -75,22 +75,22 @@ export function createPages(db: KyselyDatabase): PageRepo {
         const c = input.content;
         // Markdown is stored only with a non-empty editor state, checked in the statement that writes both (R7.13).
         const rows = await tx.query<Row>(
-          `insert into pages (collection_id, parent_id, position, title, created_by, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch)
-           select $1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $6::bytea, $7::integer, $8::text, $9::text, $10::bytea, 0 where $6::bytea is null or octet_length($6::bytea) > 0 returning ${META_COLUMNS}`,
+          `insert into pages (collection_id, parent_id, position, title, created_by, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch, tenant_id)
+           select $1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $6::bytea, $7::integer, $8::text, $9::text, $10::bytea, 0, $11::text where $6::bytea is null or octet_length($6::bytea) > 0 returning ${META_COLUMNS}`,
           [
             input.collectionId, input.parentId, position(before, after), input.title, input.createdBy,
-            c === undefined ? null : Buffer.from(c.state), c === undefined ? null : c.state.length, c?.markdown ?? null, c?.text ?? null, c?.hash ?? null,
+            c === undefined ? null : Buffer.from(c.state), c === undefined ? null : c.state.length, c?.markdown ?? null, c?.text ?? null, c?.hash ?? null, tenantId,
           ],
         );
         if (rows.length === 0) throw new Error('the editor state of a page with Markdown cannot be empty');
         return { kind: 'created', page: meta(rows[0] as Row) };
       });
     },
-    async get(id) {
+    async get(tenantId, id) {
       const rows = await db.query<Row & { stale_ms: string | null; stale: boolean }>(
         `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms,
                 (markdown_stale_since is not null or (markdown is null and ydoc is not null)) as stale
-           from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id],
+           from pages p where id = $1 and tenant_id = $2 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id, tenantId],
       );
       const row = rows[0];
       if (row === undefined) return undefined;
@@ -102,26 +102,26 @@ export function createPages(db: KyselyDatabase): PageRepo {
       const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms), markdownStale: row.stale };
       return detail;
     },
-    async markdownOf(id) {
+    async markdownOf(tenantId, id) {
       const rows = await db.query<{ markdown: string | null; has_state: boolean; title: string; saved_ms: string; stale_ms: string | null }>(
         `select markdown, ydoc is not null as has_state, title, (extract(epoch from updated_at) * 1000)::bigint::text as saved_ms,
                 (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms
-           from pages p where id = $1 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id],
+           from pages p where id = $1 and tenant_id = $2 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id, tenantId],
       );
       const row = rows[0];
       if (row === undefined) return undefined;
       return { markdown: row.markdown, hasState: row.has_state, title: row.title, savedAt: Number(row.saved_ms), markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
     },
-    async idOfUrlId(urlId) {
-      return (await db.query<{ id: string }>(`select id from pages where url_id = $1`, [urlId]))[0]?.id;
+    async idOfUrlId(tenantId, urlId) {
+      return (await db.query<{ id: string }>(`select id from pages where url_id = $1 and tenant_id = $2`, [urlId, tenantId]))[0]?.id;
     },
-    updateMeta(id, patch) {
+    updateMeta(tenantId, id, patch) {
       return db.transaction(async (tx) => {
         const retitled = patch.title !== undefined;
         // The Markdown is read, and the title and hash written, only when the title changes: an icon change must not rebuild the search vector.
         const row = (await tx.query<{ markdown?: string | null }>(
-          `select ${retitled ? 'markdown' : '1 as one'} from pages p where id = $1 and deleted_at is null
-             and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update`, [id],
+          `select ${retitled ? 'markdown' : '1 as one'} from pages p where id = $1 and tenant_id = $2 and deleted_at is null
+             and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update`, [id, tenantId],
         ))[0];
         if (row === undefined) return undefined;
         const sets = ['updated_at = now()'];
@@ -143,19 +143,20 @@ export function createPages(db: KyselyDatabase): PageRepo {
         return meta(rows[0] as Row);
       });
     },
-    async move(id, to, limits, position) {
+    async move(tenantId, id, to, limits, position) {
       for (let attempt = 1; attempt <= MOVE_ATTEMPTS; attempt += 1) {
         try {
           return await db.transaction(async (tx): Promise<MovePageResult> => {
             await tx.query(`set transaction isolation level serializable`);
-            const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
+            const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and tenant_id = $2 and deleted_at is null`, [id, tenantId]))[0];
             if (page === undefined) return { kind: 'not-found' };
             // Access was checked against this collection; a page that left it since is not moved on that check.
             if (page.collection_id !== to.expectedCollectionId) return { kind: 'conflict' };
             const target = to.collectionId ?? page.collection_id;
-            // The collections first, in id order, as `create` takes them: moves, creates and deletes of a collection run one at a time.
+            // The collections first, in id order, as `create` takes them: moves, creates and deletes of a collection run one at a time. A target of another tenant is
+            // not among them, so it answers as a deleted one.
             const locked = await tx.query<{ id: string; deleted_at: Date | null }>(
-              `select id, deleted_at from collections where id = any($1::uuid[]) order by id for no key update`, [[...new Set([page.collection_id, target])]],
+              `select id, deleted_at from collections where id = any($1::uuid[]) and tenant_id = $2 order by id for no key update`, [[...new Set([page.collection_id, target])], tenantId],
             );
             if (locked.find((c) => c.id === page.collection_id)?.deleted_at !== null) return { kind: 'not-found' };
             if (locked.find((c) => c.id === target)?.deleted_at !== null) return { kind: 'collection-deleted' };
@@ -204,9 +205,9 @@ export function createPages(db: KyselyDatabase): PageRepo {
       }
       return { kind: 'conflict' };
     },
-    softDelete(id, deletedBy, expectedCollectionId) {
+    softDelete(tenantId, id, deletedBy, expectedCollectionId) {
       return db.transaction(async (tx): Promise<SoftDeleteResult> => {
-        const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and deleted_at is null`, [id]))[0];
+        const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and tenant_id = $2 and deleted_at is null`, [id, tenantId]))[0];
         if (page === undefined) return { kind: 'not-found' };
         // Access was checked against this collection; a page that left it since is not deleted on that check.
         if (page.collection_id !== expectedCollectionId) return { kind: 'conflict' };

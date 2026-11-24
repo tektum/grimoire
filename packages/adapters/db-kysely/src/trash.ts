@@ -21,35 +21,35 @@ type MetaRow = Parameters<typeof meta>[0];
 /** The PostgreSQL TrashRepo: the only place that issues `DELETE FROM pages`. */
 export function createTrash(db: KyselyDatabase): TrashRepo {
   return {
-    async roots(collectionIds, limit, after) {
+    async roots(tenantId, collectionIds, limit, after) {
       const rows = await db.query<{ id: string; title: string; collection_id: string; deleted_ms: string; deleted_by: string | null }>(
         `select p.id, p.title, p.collection_id, (extract(epoch from p.deleted_at) * 1000)::bigint::text as deleted_ms, p.deleted_by
            from pages p
-          where ${IS_ROOT}
+          where ${IS_ROOT} and p.tenant_id = $5
             and ($1::uuid[] is null or p.collection_id = any($1::uuid[]))
             and ($2::bigint is null or (extract(epoch from p.deleted_at) * 1000)::bigint < $2::bigint
                  or ((extract(epoch from p.deleted_at) * 1000)::bigint = $2::bigint and p.id < $3::uuid))
           order by (extract(epoch from p.deleted_at) * 1000)::bigint desc, p.id desc
           limit $4`,
-        [collectionIds === null ? null : [...collectionIds], after === undefined ? null : String(after.deletedAt), after?.id ?? null, limit],
+        [collectionIds === null ? null : [...collectionIds], after === undefined ? null : String(after.deletedAt), after?.id ?? null, limit, tenantId],
       );
       return rows.map((r) => ({ id: r.id, title: r.title, collectionId: r.collection_id, deletedAt: Number(r.deleted_ms), deletedBy: r.deleted_by }));
     },
 
-    async rootOf(id) {
+    async rootOf(tenantId, id) {
       const row = (
         await db.query<{ collection_id: string; batch: string; collection_deleted: boolean }>(
           `select p.collection_id, p.deleted_batch as batch, c.deleted_at is not null as collection_deleted
-             from pages p join collections c on c.id = p.collection_id where p.id = $1 and ${IS_ROOT}`,
-          [id],
+             from pages p join collections c on c.id = p.collection_id where p.id = $1 and p.tenant_id = $2 and ${IS_ROOT}`,
+          [id, tenantId],
         )
       )[0];
       return row === undefined ? undefined : { id, collectionId: row.collection_id, batch: row.batch, collectionDeleted: row.collection_deleted };
     },
 
-    restore(id, expectedCollectionId, limits, position) {
+    restore(tenantId, id, expectedCollectionId, limits, position) {
       return db.transaction(async (tx): Promise<RestoreResult> => {
-        const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages p where id = $1 and ${IS_ROOT}`, [id]))[0];
+        const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages p where id = $1 and tenant_id = $2 and ${IS_ROOT}`, [id, tenantId]))[0];
         if (page === undefined) return { kind: 'not-found' };
         // The caller's right was checked on this collection: a page that moved since (with an ancestor) is not restored on that check.
         if (page.collection_id !== expectedCollectionId) return { kind: 'conflict' };
@@ -104,15 +104,15 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
       if (keys.length > 0) await db.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and deleted_at is null`, [[...keys]]);
     },
 
-    purge(batch, actorId, removedKeys) {
+    purge(tenantId, batch, actorId, removedKeys) {
       return db.transaction(async (tx) => {
         // One statement: the composite foreign key between pages is deferred, so pages that point at each other go together. `deleted_at is not
         // null` is checked on the row itself, so a restore that commits while this waits on a row lock is seen again and its pages are kept.
-        const gone = await tx.query(`${DOOMED} delete from pages where id in (select id from doomed) and deleted_at is not null returning 1`, [batch]);
+        const gone = await tx.query(`${DOOMED} delete from pages where id in (select id from doomed) and deleted_at is not null and tenant_id = $2 returning 1`, [batch, tenantId]);
         // Objects the caller removed whose attachment row is still here: its page came back (a restore ran in between). The row says so.
         if (removedKeys.length > 0) await tx.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and deleted_at is null`, [[...removedKeys]]);
         if (gone.length > 0) {
-          await insertAuditEvent(tx, { actorId, action: 'page.purged', targetType: 'page', targetId: batch, detail: { batch, pages: gone.length } });
+          await insertAuditEvent(tx, { actorId, action: 'page.purged', targetType: 'page', targetId: batch, detail: { batch, pages: gone.length }, tenantId });
         }
         return { pages: gone.length };
       });

@@ -545,12 +545,12 @@ describe('POST /v1/pages/{id}/move', () => {
     const page = b.pages.seed({ collectionId: b.shared.id });
     const seen: string[] = [];
     const original = b.pages.move.bind(b.pages);
-    b.pages.move = (id, to, limits, position) => { seen.push(to.expectedCollectionId); return original(id, to, limits, position); };
+    b.pages.move = (tenant, id, to, limits, position) => { seen.push(to.expectedCollectionId); return original(tenant, id, to, limits, position); };
     expect((await move(b, page.id, { parentId: null })).status).toBe(200);
     expect(seen).toEqual([b.shared.id]);
     // Another user moves the page to another collection after the caller's check and before the move runs.
     const get = b.pages.get.bind(b.pages);
-    b.pages.get = async (id) => { const found = await get(id); await original(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm'); return found; };
+    b.pages.get = async (tenant, id) => { const found = await get(tenant, id); await original(tenant, id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm'); return found; };
     const raced = await move(b, page.id, { parentId: null });
     expect([raced.status, await code(raced)]).toEqual([409, 'conflict']);
     expect(((await (await b.call('member', 'GET', `/v1/pages/${page.id}`)).json()) as Detail).collectionId).toBe(b.shared2.id);
@@ -562,9 +562,9 @@ describe('POST /v1/pages/{id}/move', () => {
     const get = b.pages.get.bind(b.pages);
     const original = b.pages.move.bind(b.pages);
     // After the page check another user moves the page into a collection the caller can only read.
-    b.pages.get = async (id) => {
-      await original(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
-      return get(id);
+    b.pages.get = async (tenant, id) => {
+      await original(tenant, id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(tenant, id);
     };
     const res = await move(b, page.id, { parentId: null });
     expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
@@ -629,9 +629,9 @@ describe('DELETE /v1/pages/{id} racing a move', () => {
     const page = b.pages.seed({ collectionId: b.shared.id });
     const get = b.pages.get.bind(b.pages);
     // After the page check another user moves the page into a collection the caller can only read.
-    b.pages.get = async (id) => {
-      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
-      return get(id);
+    b.pages.get = async (tenant, id) => {
+      await b.pages.move(tenant, id, { expectedCollectionId: b.shared.id, collectionId: b.open.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return get(tenant, id);
     };
     const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
     expect([res.status, await code(res)]).toEqual([403, 'forbidden']);
@@ -642,9 +642,9 @@ describe('DELETE /v1/pages/{id} racing a move', () => {
     const b = build();
     const page = b.pages.seed({ collectionId: b.shared.id });
     const original = b.pages.softDelete.bind(b.pages);
-    b.pages.softDelete = async (id, by, expected) => {
-      await b.pages.move(id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
-      return original(id, by, expected);
+    b.pages.softDelete = async (tenant, id, by, expected) => {
+      await b.pages.move(tenant, id, { expectedCollectionId: b.shared.id, collectionId: b.shared2.id, parentId: null, afterId: null }, { maxDepth: 32, maxPages: 10_000 }, (x, y) => x ?? y ?? 'm');
+      return original(tenant, id, by, expected);
     };
     const res = await b.call('member', 'DELETE', `/v1/pages/${page.id}`);
     expect([res.status, await code(res)]).toEqual([409, 'conflict']);

@@ -26,7 +26,7 @@ const seeded = async (markdown: string, state = new Uint8Array([1, 2, 3, 4])): P
 
 /** A page with Markdown and a saved state. */
 async function makePage(markdown = 'first'): Promise<string> {
-  const made = await createPages(t.app).create({ collectionId, parentId: null, afterId: null, title: 'Doc', createdBy: admin, content: await seeded(markdown) }, { maxDepth: 32, maxPages: 10_000 }, between);
+  const made = await createPages(t.app).create('legacy', { collectionId, parentId: null, afterId: null, title: 'Doc', createdBy: admin, content: await seeded(markdown) }, { maxDepth: 32, maxPages: 10_000 }, between);
   if (made.kind !== 'created') throw new Error(made.kind);
   return made.page.id;
 }
@@ -148,7 +148,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     const gone = await makePage('gone');
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [gone]);
     const other = (await createCollections(t.app).append('legacy', { name: 'Other', createdBy: admin }, (last) => ordering.between(last, null))).id;
-    const inOther = (await createPages(t.app).create({ collectionId: other, parentId: null, afterId: null, title: 'T', createdBy: admin, content: await seeded('o') }, { maxDepth: 32, maxPages: 10 }, between));
+    const inOther = (await createPages(t.app).create('legacy', { collectionId: other, parentId: null, afterId: null, title: 'T', createdBy: admin, content: await seeded('o') }, { maxDepth: 32, maxPages: 10 }, between));
     if (inOther.kind !== 'created') throw new Error(inOther.kind);
     await t.admin.query(`update collections set deleted_at = now() where id = $1`, [other]);
     const repo = createPageState(t.app);

@@ -173,9 +173,9 @@ describe('POST /v1/pages/{id}/revisions/{rid}/restore', () => {
   it('does not change the live document: no page is written', async () => {
     const b = build();
     saved(b);
-    const pageBefore = await b.pages.get(b.page.id);
+    const pageBefore = await b.pages.get('legacy', b.page.id);
     await restore(b, 'member', b.four[0]?.id);
-    expect(await b.pages.get(b.page.id)).toEqual(pageBefore);
+    expect(await b.pages.get('legacy', b.page.id)).toEqual(pageBefore);
   });
 
   it('writes no second safety copy for a state the latest revision already holds, and names that revision', async () => {

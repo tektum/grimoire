@@ -39,25 +39,25 @@ const summary = (r: Row): RevisionSummary => ({
 /** The PostgreSQL RevisionRepo over `revisions`. */
 export function createRevisions(db: KyselyDatabase): RevisionRepo {
   return {
-    async list(pageId, query) {
+    async list(tenantId, pageId, query) {
       // Every branch reads `revisions_page_created_idx` (page, created_at desc, id) from the cursor on: a later page does not read the earlier ones.
       const listed = (rows: readonly Row[]): ListedRevision[] => rows.map((r) => ({ ...summary(r), sortKey: Number(r.sort_key) }));
       if (query.after === undefined) {
-        return listed(await db.query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 order by r.created_at desc, r.id limit $2`, [pageId, query.limit]));
+        return listed(await db.query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $3 order by r.created_at desc, r.id limit $2`, [pageId, query.limit, tenantId]));
       }
       const at = `timestamptz 'epoch' + $3::bigint * interval '1 microsecond'`;
       // The union is ordered in a wrapping select: directly on a union only output names are allowed, and the sort key is text there.
       return listed(await db.query<Row>(
         `select * from (
-           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
+           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $5 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
            union all
-           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.created_at < ${at} order by r.created_at desc, r.id limit $2)
+           (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $5 and r.created_at < ${at} order by r.created_at desc, r.id limit $2)
          ) u order by u.sort_key::bigint desc, u.id limit $2`,
-        [pageId, query.limit, query.after[0], query.after[1]],
+        [pageId, query.limit, query.after[0], query.after[1], tenantId],
       ));
     },
-    async get(pageId, revisionId) {
-      const rows = await db.query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2`, [pageId, revisionId]);
+    async get(tenantId, pageId, revisionId) {
+      const rows = await db.query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2 and r.tenant_id = $3`, [pageId, revisionId, tenantId]);
       const row = rows[0];
       return row === undefined ? undefined : { ...summary(row), markdown: row.markdown as string } satisfies Revision;
     },
@@ -86,10 +86,11 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
         if (latest !== undefined && Buffer.from(latest.h).equals(hash)) return { kind: 'unchanged' };
         // Authors that are not user rows are dropped (a development token's name is not a user), in the order they were given.
         const rows = await tx.query<{ id: string }>(
-          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at, tenant_id)
            values ($1, $2, $3, $4,
              (select coalesce(array_agg(t.id order by t.ord), '{}') from unnest($5::uuid[]) with ordinality as t(id, ord) where exists (select 1 from users u where u.id = t.id)),
-             (select id from users where id = $6::uuid), $7, ${NEWEST('$1::uuid', "timestamptz 'epoch' + $8::bigint * interval '1 millisecond'")}) returning id`,
+             (select id from users where id = $6::uuid), $7, ${NEWEST('$1::uuid', "timestamptz 'epoch' + $8::bigint * interval '1 millisecond'")},
+             (select tenant_id from pages where id = $1)) returning id`,
           [request.pageId, page.title, page.markdown, hash, authors, last, request.reason, at],
         );
         return { kind: 'created', id: (rows[0] as { id: string }).id };
@@ -109,8 +110,8 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
         for (const { id } of candidates) {
           await lockPage(tx, id);
           const rows = await tx.query<{ page_id: string; id: string }>(
-            `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
-             select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', ${NEWEST('p.id', 'p.last_edited_at')}
+            `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at, tenant_id)
+             select p.id, p.title, p.markdown, p.markdown_hash, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'idle', ${NEWEST('p.id', 'p.last_edited_at')}, p.tenant_id
                from pages p left join users u on u.id = p.last_edited_by
               where p.id = $2 and ${due}
              returning page_id, id`,
@@ -136,8 +137,8 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
         const latest = (await tx.query<{ id: string; h: Buffer }>(`select id, markdown_hash as h from revisions where page_id = $1 order by created_at desc, id limit 1`, [pageId]))[0];
         if (latest !== undefined && Buffer.from(latest.h).equals(hash)) return { kind: 'existing', id: latest.id };
         const rows = await tx.query<{ id: string }>(
-          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
-           select p.id, p.title, p.markdown, $2::bytea, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'before_restore', ${NEWEST('p.id', 'coalesce(p.last_edited_at, now())')}
+          `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at, tenant_id)
+           select p.id, p.title, p.markdown, $2::bytea, case when u.id is null then '{}'::uuid[] else array[u.id] end, u.id, 'before_restore', ${NEWEST('p.id', 'coalesce(p.last_edited_at, now())')}, p.tenant_id
              from pages p left join users u on u.id = p.last_edited_by where p.id = $1 returning id`,
           [pageId, hash],
         );

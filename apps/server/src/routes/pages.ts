@@ -4,7 +4,7 @@ import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/see
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import type { ReplayRebuild } from '../http/idempotency.js';
-import { caller, guardCollection } from '../http/collection-guard.js';
+import { caller, callerTenant, guardCollection } from '../http/collection-guard.js';
 import { guardPage } from '../http/page-guard.js';
 import { seedRefusalToHttp } from '../http/seed-errors.js';
 
@@ -150,6 +150,7 @@ router.openapi(createPage, async (c) => {
     content = seeded;
   }
   const result = await pages.create(
+    callerTenant(c),
     { collectionId: body.collectionId, parentId: body.parentId ?? null, afterId: body.afterId ?? null, beforeId: body.beforeId ?? null, title, createdBy: user.id, content },
     PAGE_LIMITS,
     (before, after) => ordering.between(before, after),
@@ -166,14 +167,14 @@ router.openapi(createPage, async (c) => {
 
 async function present(c: Parameters<typeof guardPage>[0], id: string) {
   const mine = await guardPage(c, id, 'read');
-  const page = await c.get('deps').pages.get(id);
+  const page = await c.get('deps').pages.get(callerTenant(c), id);
   if (page === undefined) return fail('not_found');
   return { ...page, myPermission: mine };
 }
 
 router.openapi(getPageByUrlId, async (c) => {
   // An unknown URL id takes the same road as a page the caller cannot read, access check included, so the two cost the same.
-  const id = (await c.get('deps').pages.idOfUrlId(c.req.valid('param').urlId)) ?? NO_PAGE;
+  const id = (await c.get('deps').pages.idOfUrlId(callerTenant(c), c.req.valid('param').urlId)) ?? NO_PAGE;
   return c.json(await present(c, id), 200);
 });
 
@@ -182,7 +183,7 @@ router.openapi(getPage, async (c) => c.json(await present(c, c.req.valid('param'
 router.openapi(patchPage, async (c) => {
   const { id } = c.req.valid('param');
   await guardPage(c, id, 'write');
-  const page = await c.get('deps').pages.updateMeta(id, c.req.valid('json'));
+  const page = await c.get('deps').pages.updateMeta(callerTenant(c), id, c.req.valid('json'));
   return page === undefined ? fail('not_found') : c.json(page, 200);
 });
 
@@ -191,13 +192,14 @@ router.openapi(movePage, async (c) => {
   const body = c.req.valid('json');
   await guardPage(c, id, 'write');
   const { pages, ordering } = c.get('deps');
-  const current = await pages.get(id);
+  const current = await pages.get(callerTenant(c), id);
   if (current === undefined) return fail('not_found');
   // The page may have changed collection since the page check: write access is checked on the collection read here, the one the move is bound to.
   await guardCollection(c, current.collectionId, 'write');
   // Moving into another collection needs write access there as well (R6.25).
   if (body.collectionId !== undefined && body.collectionId !== current.collectionId) await guardCollection(c, body.collectionId, 'write');
   const result = await pages.move(
+    callerTenant(c),
     id,
     { expectedCollectionId: current.collectionId, collectionId: body.collectionId ?? null, parentId: body.parentId, afterId: body.afterId ?? null, beforeId: body.beforeId ?? null },
     PAGE_LIMITS,
@@ -220,11 +222,11 @@ router.openapi(deletePage, async (c) => {
   const { id } = c.req.valid('param');
   await guardPage(c, id, 'write');
   const { pages } = c.get('deps');
-  const current = await pages.get(id);
+  const current = await pages.get(callerTenant(c), id);
   if (current === undefined) return fail('not_found');
   // The page may have changed collection since the page check: write access is checked on the collection read here, the one the delete is bound to.
   await guardCollection(c, current.collectionId, 'write');
-  const result = await pages.softDelete(id, caller(c).id, current.collectionId);
+  const result = await pages.softDelete(callerTenant(c), id, caller(c).id, current.collectionId);
   if (result.kind === 'not-found') return fail('not_found');
   if (result.kind === 'conflict') return fail('conflict');
   return c.body(null, 204);

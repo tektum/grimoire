@@ -17,7 +17,7 @@ const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
 const collectionsRepo = () => createCollections(t.app);
 const newCollection = async (name: string): Promise<string> => (await collectionsRepo().append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 const create = (collectionId: string, extra: { parentId?: string; afterId?: string; beforeId?: string; title?: string } = {}, l: PageLimits = limits) =>
-  createPages(t.app).create({ collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, beforeId: extra.beforeId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
+  createPages(t.app).create('legacy', { collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, beforeId: extra.beforeId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
 const created = async (r: ReturnType<typeof create>) => {
   const result = await r;
   if (result.kind !== 'created') throw new Error(result.kind);
@@ -66,7 +66,7 @@ describe('the PostgreSQL PageRepo create', () => {
     const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array([9, 8, 7, 6]) }, convert: { ok: true, markdown: '# Hi', text: 'Hi' } });
     const seeded = await seedUserMarkdown(converter, user, 'Title', '# raw');
     if (isSeedRefusal(seeded)) throw new Error('refused');
-    const r = await createPages(t.app).create({ collectionId: c, parentId: null, afterId: null, title: 'Title', createdBy: user, content: seeded }, limits, between);
+    const r = await createPages(t.app).create('legacy', { collectionId: c, parentId: null, afterId: null, title: 'Title', createdBy: user, content: seeded }, limits, between);
     if (r.kind !== 'created') throw new Error(r.kind);
     const row = (await t.admin.query<{ markdown: string; text_content: string; ydoc: Buffer; ydoc_size: number; markdown_hash: Buffer; state_epoch: number }>(
       `select markdown, text_content, ydoc, ydoc_size, markdown_hash, state_epoch from pages where id = $1`, [r.page.id]))[0];
@@ -86,7 +86,7 @@ describe('the PostgreSQL PageRepo create', () => {
     const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array(0) }, convert: { ok: true, markdown: 'x', text: 'x' } });
     const seeded = await seedUserMarkdown(converter, user, 'T', 'x');
     if (isSeedRefusal(seeded)) throw new Error('refused');
-    await expect(createPages(t.app).create({ collectionId: c, parentId: null, afterId: null, title: 'T', createdBy: user, content: seeded }, limits, between)).rejects.toThrow(/cannot be empty/);
+    await expect(createPages(t.app).create('legacy', { collectionId: c, parentId: null, afterId: null, title: 'T', createdBy: user, content: seeded }, limits, between)).rejects.toThrow(/cannot be empty/);
     expect(Number((await t.admin.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1`, [c]))[0]?.n)).toBe(0);
   });
 

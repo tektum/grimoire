@@ -22,7 +22,7 @@ function build(deleteFiles: (keys: readonly string[]) => Promise<void>) {
 describe('purgeBatch', () => {
   it('removes the objects first and then every page row of the batch, and no other batch', async () => {
     const b = build(() => Promise.resolve());
-    const out = await purgeBatch(b.deps, b.root, ADMIN);
+    const out = await purgeBatch(b.deps, 'legacy', b.root, ADMIN);
     expect(out).toEqual({ pages: 2, files: 2 });
     expect(b.events).toEqual(['files:attachments/a/1/x.png,attachments/a/2/y.png:rows-still-there=true']);
     expect([b.trash.state(b.root), b.trash.state(b.child), b.trash.state(b.other)]).toEqual(['gone', 'gone', 'deleted']);
@@ -30,18 +30,18 @@ describe('purgeBatch', () => {
 
   it('writes exactly one audit row with ids only', async () => {
     const b = build(() => Promise.resolve());
-    await purgeBatch(b.deps, b.root, ADMIN);
-    expect(b.trash.audit.events).toEqual([{ actorId: ADMIN, action: 'page.purged', targetType: 'page', targetId: b.root, detail: { batch: b.root, pages: 2 } }]);
+    await purgeBatch(b.deps, 'legacy', b.root, ADMIN);
+    expect(b.trash.audit.events).toEqual([{ actorId: ADMIN, action: 'page.purged', targetType: 'page', targetId: b.root, detail: { batch: b.root, pages: 2 }, tenantId: 'legacy' }]);
   });
 
   it('leaves every row and writes no audit row when the objects cannot be removed, so it can be run again', async () => {
     let fail = true;
     const b = build(() => (fail ? Promise.reject(new Error('store down')) : Promise.resolve()));
-    await expect(purgeBatch(b.deps, b.root, ADMIN)).rejects.toThrow('store down');
+    await expect(purgeBatch(b.deps, 'legacy', b.root, ADMIN)).rejects.toThrow('store down');
     expect([b.trash.state(b.root), b.trash.state(b.child)]).toEqual(['deleted', 'deleted']);
     expect(b.trash.audit.events).toEqual([]);
     fail = false;
-    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
+    expect(await purgeBatch(b.deps, 'legacy', b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
   });
 
   it('marks the attachments whose objects the store did remove before it failed, and rethrows the failure; a retry completes', async () => {
@@ -49,12 +49,12 @@ describe('purgeBatch', () => {
     const b = build(async (keys) => {
       if (fail) throw new PartialFileDeletion([keys[0] as string], new Error('store down'));
     });
-    await expect(purgeBatch(b.deps, b.root, ADMIN)).rejects.toThrow('store down');
+    await expect(purgeBatch(b.deps, 'legacy', b.root, ADMIN)).rejects.toThrow('store down');
     expect([b.trash.keyDeleted('attachments/a/1/x.png'), b.trash.keyDeleted('attachments/a/2/y.png')]).toEqual([true, false]);
     expect([b.trash.state(b.root), b.trash.state(b.child)]).toEqual(['deleted', 'deleted']);
     expect(b.trash.audit.events).toEqual([]);
     fail = false;
-    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
+    expect(await purgeBatch(b.deps, 'legacy', b.root, ADMIN)).toEqual({ pages: 2, files: 2 });
   });
 
   it('tries the marker a second time when the first fails, and still reports the store failure when it keeps failing', async () => {
@@ -62,28 +62,28 @@ describe('purgeBatch', () => {
     const real = flaky.trash.markFilesRemoved.bind(flaky.trash);
     let calls = 0;
     flaky.trash.markFilesRemoved = (keys) => { calls += 1; return calls === 1 ? Promise.reject(new Error('db blip')) : real(keys); };
-    await expect(purgeBatch(flaky.deps, flaky.root, ADMIN)).rejects.toThrow('store down');
+    await expect(purgeBatch(flaky.deps, 'legacy', flaky.root, ADMIN)).rejects.toThrow('store down');
     expect([calls, flaky.trash.keyDeleted('attachments/a/1/x.png')]).toEqual([2, true]);
     const broken = build(() => Promise.reject(new PartialFileDeletion(['attachments/a/1/x.png'], new Error('store down'))));
     let attempts = 0;
     broken.trash.markFilesRemoved = () => { attempts += 1; return Promise.reject(new Error('db down')); };
-    await expect(purgeBatch(broken.deps, broken.root, ADMIN)).rejects.toThrow('store down');
+    await expect(purgeBatch(broken.deps, 'legacy', broken.root, ADMIN)).rejects.toThrow('store down');
     expect(attempts).toBe(2);
   });
 
   it('marks nothing when the store removed nothing, and passes any other failure on as it is', async () => {
     const none = build(() => Promise.reject(new PartialFileDeletion([], new Error('first key failed'))));
-    await expect(purgeBatch(none.deps, none.root, ADMIN)).rejects.toThrow('first key failed');
+    await expect(purgeBatch(none.deps, 'legacy', none.root, ADMIN)).rejects.toThrow('first key failed');
     expect(none.trash.keyDeleted('attachments/a/1/x.png')).toBe(false);
     const other = build(() => Promise.reject(new Error('plain')));
-    await expect(purgeBatch(other.deps, other.root, ADMIN)).rejects.toThrow('plain');
+    await expect(purgeBatch(other.deps, 'legacy', other.root, ADMIN)).rejects.toThrow('plain');
   });
 
   it('is a no-op for a batch that is already gone: no files asked for, no second audit row', async () => {
     const b = build(() => Promise.resolve());
-    await purgeBatch(b.deps, b.root, ADMIN);
+    await purgeBatch(b.deps, 'legacy', b.root, ADMIN);
     b.events.length = 0;
-    expect(await purgeBatch(b.deps, b.root, ADMIN)).toEqual({ pages: 0, files: 0 });
+    expect(await purgeBatch(b.deps, 'legacy', b.root, ADMIN)).toEqual({ pages: 0, files: 0 });
     expect(b.events).toEqual([]);
     expect(b.trash.audit.events).toHaveLength(1);
   });
@@ -102,6 +102,7 @@ describe('purgeBatch', () => {
             return Promise.resolve();
           },
         },
+        'legacy',
         parent,
         ADMIN,
       ),
@@ -113,7 +114,7 @@ describe('purgeBatch', () => {
   it('marks the objects it removed when a restore brought the page back in between, and writes no audit row', async () => {
     const trash = new FakeTrashRepo();
     const root = trash.seedDeleted({ collectionId: COLLECTION, attachments: ['attachments/r/1/r.png', 'attachments/r/2/s.png'] });
-    const restored = () => trash.restore(root, COLLECTION, { maxDepth: 32, maxPages: 10_000 }, () => 'z');
+    const restored = () => trash.restore('legacy', root, COLLECTION, { maxDepth: 32, maxPages: 10_000 }, () => 'z');
     const out = await purgeBatch(
       {
         trash,
@@ -121,6 +122,7 @@ describe('purgeBatch', () => {
           expect((await restored()).kind).toBe('restored');
         },
       },
+      'legacy',
       root,
       ADMIN,
     );
@@ -143,6 +145,7 @@ describe('purgeBatch', () => {
             return Promise.resolve();
           },
         },
+        'legacy',
         root,
         ADMIN,
       ),

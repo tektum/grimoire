@@ -21,11 +21,11 @@ async function newCollection(name: string): Promise<string> {
   return (await createCollections(t.app).append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
 }
 async function make(title: string, parentId: string | null = null, collectionId = collection): Promise<string> {
-  const r = await pages().create({ collectionId, parentId, afterId: null, title, createdBy: user }, limits, place);
+  const r = await pages().create('legacy', { collectionId, parentId, afterId: null, title, createdBy: user }, limits, place);
   if (r.kind !== 'created') throw new Error(r.kind);
   return r.page.id;
 }
-const remove = (id: string, collectionId = collection) => pages().softDelete(id, user, collectionId);
+const remove = (id: string, collectionId = collection) => pages().softDelete('legacy', id, user, collectionId);
 const state = async (id: string): Promise<string> => {
   const rows = await t.admin.query<{ deleted_at: Date | null; deleted_batch: string | null }>(`select deleted_at, deleted_batch from pages where id = $1`, [id]);
   return rows[0] === undefined ? 'gone' : rows[0].deleted_at === null ? 'live' : 'deleted';
@@ -52,11 +52,11 @@ describe('TrashRepo.roots and rootOf', () => {
     await remove(root);
     await t.admin.query(`update pages set deleted_at = deleted_at - interval '1 minute' where id = $1`, [root]); // two distinct deletion times, so the order is the time and not the id
     await remove(other);
-    const roots = (await trash().roots([collection], 10)).map((r) => r.id);
+    const roots = (await trash().roots('legacy', [collection], 10)).map((r) => r.id);
     expect(roots).toEqual([other, root]);
     expect(roots).not.toContain(child);
     expect(roots).not.toContain(grandchild);
-    expect((await trash().roots([collection], 10))[0]).toMatchObject({ title: 'other', collectionId: collection, deletedBy: user });
+    expect((await trash().roots('legacy', [collection], 10))[0]).toMatchObject({ title: 'other', collectionId: collection, deletedBy: user });
   });
 
   it('counts a page deleted on its own earlier as a root of its own batch, under a parent deleted later', async () => {
@@ -64,7 +64,7 @@ describe('TrashRepo.roots and rootOf', () => {
     const child = await make('child', parent);
     await remove(child);
     await remove(parent);
-    const roots = (await trash().roots([collection], 10)).map((r) => r.id);
+    const roots = (await trash().roots('legacy', [collection], 10)).map((r) => r.id);
     expect(roots.sort()).toEqual([parent, child].sort());
   });
 
@@ -76,14 +76,14 @@ describe('TrashRepo.roots and rootOf', () => {
     await remove(a);
     await remove(b);
     await remove(c, other);
-    expect((await trash().roots([collection], 10)).map((r) => r.id).sort()).toEqual([a, b].sort());
-    const everything = (await trash().roots(null, 100)).map((r) => r.id);
+    expect((await trash().roots('legacy', [collection], 10)).map((r) => r.id).sort()).toEqual([a, b].sort());
+    const everything = (await trash().roots('legacy', null, 100)).map((r) => r.id);
     expect(everything).toEqual(expect.arrayContaining([a, b, c]));
-    const first = await trash().roots([collection], 1);
+    const first = await trash().roots('legacy', [collection], 1);
     expect(first).toHaveLength(1);
-    const next = await trash().roots([collection], 1, { deletedAt: first[0]?.deletedAt as number, id: first[0]?.id as string });
+    const next = await trash().roots('legacy', [collection], 1, { deletedAt: first[0]?.deletedAt as number, id: first[0]?.id as string });
     expect([...first, ...next].map((r) => r.id).sort()).toEqual([a, b].sort());
-    expect(await trash().roots([], 10)).toEqual([]);
+    expect(await trash().roots('legacy', [], 10)).toEqual([]);
   });
 
   it('answers rootOf for a root only, with its batch and whether the collection is deleted', async () => {
@@ -91,12 +91,12 @@ describe('TrashRepo.roots and rootOf', () => {
     const child = await make('child', root);
     const live = await make('live');
     await remove(root);
-    expect(await trash().rootOf(root)).toEqual({ id: root, collectionId: collection, batch: root, collectionDeleted: false });
-    expect(await trash().rootOf(child)).toBeUndefined();
-    expect(await trash().rootOf(live)).toBeUndefined();
-    expect(await trash().rootOf('00000000-0000-4000-8000-000000000999')).toBeUndefined();
+    expect(await trash().rootOf('legacy', root)).toEqual({ id: root, collectionId: collection, batch: root, collectionDeleted: false });
+    expect(await trash().rootOf('legacy', child)).toBeUndefined();
+    expect(await trash().rootOf('legacy', live)).toBeUndefined();
+    expect(await trash().rootOf('legacy', '00000000-0000-4000-8000-000000000999')).toBeUndefined();
     await createCollections(t.app).softDelete('legacy', collection, user);
-    expect((await trash().rootOf(live))?.collectionDeleted).toBe(true);
+    expect((await trash().rootOf('legacy', live))?.collectionDeleted).toBe(true);
   });
 });
 
@@ -108,7 +108,7 @@ describe('TrashRepo.restore', () => {
     const late = await make('late', root);
     await remove(early);
     await remove(root);
-    const out = await trash().restore(root, collection, limits, place);
+    const out = await trash().restore('legacy', root, collection, limits, place);
     expect(out.kind).toBe('restored');
     expect(await Promise.all([root, child, late, early].map(state))).toEqual(['live', 'live', 'live', 'deleted']);
     expect(
@@ -129,10 +129,10 @@ describe('TrashRepo.restore', () => {
     const root = await make('root', parent);
     await remove(root);
     await remove(parent);
-    const out = await trash().restore(root, collection, limits, place);
+    const out = await trash().restore('legacy', root, collection, limits, place);
     if (out.kind !== 'restored') throw new Error(out.kind);
     expect(out.page.parentId).toBeNull();
-    const first = (await pages().get(a))?.position as string;
+    const first = (await pages().get('legacy', a))?.position as string;
     expect(out.page.position < first).toBe(true);
     const tops = await t.admin.query<{ id: string }>(`select id from pages where collection_id = $1 and parent_id is null and deleted_at is null order by position`, [collection]);
     expect(tops[0]?.id).toBe(root);
@@ -142,15 +142,15 @@ describe('TrashRepo.restore', () => {
     const parent = await make('parent');
     const free = await make('free', parent);
     await remove(free);
-    const kept = await trash().restore(free, collection, limits, place);
+    const kept = await trash().restore('legacy', free, collection, limits, place);
     if (kept.kind !== 'restored') throw new Error(kept.kind);
     expect(kept.page.parentId).toBe(parent);
     const taken = await make('taken', parent);
-    const position = (await pages().get(taken))?.position as string;
+    const position = (await pages().get('legacy', taken))?.position as string;
     await remove(taken);
     const clash = await make('clash', parent);
     await t.admin.query(`update pages set position = $2 where id = $1`, [clash, position]);
-    const moved = await trash().restore(taken, collection, limits, place);
+    const moved = await trash().restore('legacy', taken, collection, limits, place);
     if (moved.kind !== 'restored') throw new Error(moved.kind);
     expect(moved.page.parentId).toBe(parent);
     expect(moved.page.position > position).toBe(true);
@@ -160,15 +160,15 @@ describe('TrashRepo.restore', () => {
     const first = await make('first');
     const second = await make('second');
     await remove(second);
-    const kept = await trash().restore(second, collection, limits, place);
+    const kept = await trash().restore('legacy', second, collection, limits, place);
     if (kept.kind !== 'restored') throw new Error(kept.kind);
     const order = await t.admin.query<{ id: string }>(`select id from pages where collection_id = $1 and deleted_at is null order by position`, [collection]);
     expect(order.map((r) => r.id)).toEqual([first, second]);
-    const position = (await pages().get(second))?.position as string;
+    const position = (await pages().get('legacy', second))?.position as string;
     await remove(second);
     const clash = await make('clash');
     await t.admin.query(`update pages set position = $2 where id = $1`, [clash, position]);
-    const moved = await trash().restore(second, collection, limits, place);
+    const moved = await trash().restore('legacy', second, collection, limits, place);
     if (moved.kind !== 'restored') throw new Error(moved.kind);
     expect(moved.page.parentId).toBeNull();
     expect(moved.page.position > position).toBe(true);
@@ -182,18 +182,18 @@ describe('TrashRepo.restore', () => {
     await remove(root);
     // top (1), mid (2), root (3), leaf (4): four levels under the parent's two do not fit three, and the same tree fits four.
     const tight = { maxDepth: 3, maxPages: 10_000 };
-    const out = await trash().restore(root, collection, tight, place);
+    const out = await trash().restore('legacy', root, collection, tight, place);
     if (out.kind !== 'restored') throw new Error(out.kind);
     expect(out.page.parentId).toBeNull();
     const single = await make('single', mid);
     await remove(single);
-    const ok = await trash().restore(single, collection, tight, place);
+    const ok = await trash().restore('legacy', single, collection, tight, place);
     if (ok.kind !== 'restored') throw new Error(ok.kind);
     expect(ok.page.parentId).toBe(mid);
     const edge = await make('edge', mid);
     await make('edge-leaf', edge);
     await remove(edge);
-    const exact = await trash().restore(edge, collection, { maxDepth: 4, maxPages: 10_000 }, place);
+    const exact = await trash().restore('legacy', edge, collection, { maxDepth: 4, maxPages: 10_000 }, place);
     if (exact.kind !== 'restored') throw new Error(exact.kind);
     expect(exact.page.parentId).toBe(mid);
   });
@@ -203,7 +203,7 @@ describe('TrashRepo.restore', () => {
     const child = await make('child', root);
     await remove(root);
     const elsewhere = await newCollection('elsewhere');
-    expect((await trash().restore(root, elsewhere, limits, place)).kind).toBe('conflict');
+    expect((await trash().restore('legacy', root, elsewhere, limits, place)).kind).toBe('conflict');
     expect(await Promise.all([root, child].map(state))).toEqual(['deleted', 'deleted']);
   });
 
@@ -211,12 +211,12 @@ describe('TrashRepo.restore', () => {
     const root = await make('root');
     const child = await make('child', root);
     await remove(root);
-    expect((await trash().restore(root, collection, { maxDepth: 32, maxPages: 1 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 1 }, place)).kind).toBe('collection-full');
     expect(await state(root)).toBe('deleted');
-    expect((await trash().restore(child, collection, limits, place)).kind).toBe('not-found');
-    expect((await trash().restore('00000000-0000-4000-8000-000000000999', collection, limits, place)).kind).toBe('not-found');
+    expect((await trash().restore('legacy', child, collection, limits, place)).kind).toBe('not-found');
+    expect((await trash().restore('legacy', '00000000-0000-4000-8000-000000000999', collection, limits, place)).kind).toBe('not-found');
     await createCollections(t.app).softDelete('legacy', collection, user);
-    expect((await trash().restore(root, collection, limits, place)).kind).toBe('collection-deleted');
+    expect((await trash().restore('legacy', root, collection, limits, place)).kind).toBe('collection-deleted');
     expect(await state(root)).toBe('deleted');
   });
 
@@ -227,10 +227,10 @@ describe('TrashRepo.restore', () => {
     await make('live');
     const other = await newCollection('elsewhere');
     await make('x', null, other);
-    expect((await trash().restore(root, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('restored');
+    expect((await trash().restore('legacy', root, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('restored');
     const again = await make('r2');
     await remove(again);
-    expect((await trash().restore(again, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('collection-full');
+    expect((await trash().restore('legacy', again, collection, { maxDepth: 32, maxPages: 3 }, place)).kind).toBe('collection-full');
   });
 });
 
@@ -252,7 +252,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
   it('deletes the batch rows in one statement with their revisions and attachment rows, writes one audit row, and leaves other batches', async () => {
     const { root, child, other } = await batchWithFiles();
     expect(await trash().attachmentKeys(root)).toEqual([`attachments/${child}/1/a.png`]);
-    expect(await trash().purge(root, user, [`attachments/${child}/1/a.png`])).toEqual({ pages: 2 });
+    expect(await trash().purge('legacy', root, user, [`attachments/${child}/1/a.png`])).toEqual({ pages: 2 });
     expect(await Promise.all([root, child, other].map(state))).toEqual(['gone', 'gone', 'deleted']);
     expect(await count(`select count(*) as n from revisions where page_id = $1`, child)).toBe(0);
     expect(await count(`select count(*) as n from attachments where page_id = $1`, child)).toBe(0);
@@ -266,8 +266,8 @@ describe('TrashRepo.purge and purgeBatch', () => {
 
   it('is a no-op for a batch already gone: nothing deleted, no second audit row', async () => {
     const { root } = await batchWithFiles();
-    await trash().purge(root, user, []);
-    expect(await trash().purge(root, user, [])).toEqual({ pages: 0 });
+    await trash().purge('legacy', root, user, []);
+    expect(await trash().purge('legacy', root, user, [])).toEqual({ pages: 0 });
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(1);
   });
 
@@ -282,7 +282,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     expect(await count(`select count(*) as n from attachments where s3_key = $1 and deleted_at is not null`, key)).toBe(1);
     await trash().markFilesRemoved([key]); // again: unchanged
     expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, child)).toBe(1);
-    expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, root, user)).toMatchObject({ pages: 2 });
+    expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, 'legacy', root, user)).toMatchObject({ pages: 2 });
   });
 
   it('asks for the files first, and leaves every row and writes nothing when that fails', async () => {
@@ -297,6 +297,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
             return Promise.reject(new Error('store down'));
           },
         },
+        'legacy',
         root,
         user,
       ),
@@ -305,7 +306,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     expect(await Promise.all([root, child].map(state))).toEqual(['deleted', 'deleted']);
     expect(await count(`select count(*) as n from attachments where page_id = $1`, child)).toBe(1);
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(0);
-    expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, root, user)).toEqual({ pages: 2, files: 1 });
+    expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, 'legacy', root, user)).toEqual({ pages: 2, files: 1 });
   });
 
   it('takes with it a page below the batch that was deleted earlier, and its files, instead of failing on the parent link', async () => {
@@ -315,7 +316,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     await remove(early);
     await remove(parent);
     expect(await trash().attachmentKeys(parent)).toEqual([`attachments/${early}/1/e.png`]);
-    expect(await trash().purge(parent, user, [`attachments/${early}/1/e.png`])).toEqual({ pages: 2 });
+    expect(await trash().purge('legacy', parent, user, [`attachments/${early}/1/e.png`])).toEqual({ pages: 2 });
     expect(await Promise.all([parent, early].map(state))).toEqual(['gone', 'gone']);
   });
 
@@ -325,8 +326,8 @@ describe('TrashRepo.purge and purgeBatch', () => {
     await t.admin.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'r.png', 'image/png', 3, $2, 'ready')`, [root, key]);
     await remove(root);
     const keys = await trash().attachmentKeys(root);
-    expect((await trash().restore(root, collection, limits, place)).kind).toBe('restored');
-    expect(await trash().purge(root, user, keys)).toEqual({ pages: 0 });
+    expect((await trash().restore('legacy', root, collection, limits, place)).kind).toBe('restored');
+    expect(await trash().purge('legacy', root, user, keys)).toEqual({ pages: 0 });
     expect(await state(root)).toBe('live');
     expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, root)).toBe(1);
     expect(await count(`select count(*) as n from audit_events where action = 'page.purged' and target_id = $1`, root)).toBe(0);
@@ -340,7 +341,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     await t.admin.transaction(async (tx) => {
       // The restore's own statement, not yet committed: it holds the row locks the purge needs.
       await tx.query(`update pages set deleted_at = null, deleted_by = null, deleted_batch = null where id = any($1::uuid[])`, [[root, child]]);
-      purging = trash().purge(root, user, []);
+      purging = trash().purge('legacy', root, user, []);
       await vi.waitFor(
         async () => {
           const waiting = await tx.query<{ n: string }>(`select count(*) as n from pg_locks l join pg_stat_activity a on a.pid = l.pid where not l.granted and a.datname = current_database()`);
@@ -358,10 +359,10 @@ describe('TrashRepo.purge and purgeBatch', () => {
     const a = await make('a');
     const b = await make('b');
     await createCollections(t.app).softDelete('legacy', collection, user);
-    const info = await trash().rootOf(a);
+    const info = await trash().rootOf('legacy', a);
     expect(info?.batch).toBeDefined();
     expect(info?.batch).not.toBe(a);
-    expect(await trash().purge(info?.batch as string, user, [])).toEqual({ pages: 2 });
+    expect(await trash().purge('legacy', info?.batch as string, user, [])).toEqual({ pages: 2 });
     expect(await Promise.all([a, b].map(state))).toEqual(['gone', 'gone']);
   });
 });
