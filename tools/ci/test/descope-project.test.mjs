@@ -133,6 +133,7 @@ test('the styles name no components version: Descope refuses a version that is n
   const data = buildStyles(tokens);
   assert.deepEqual(Object.keys(data).sort(), ['references', 'styles']);
   assert.equal(JSON.parse(projectConfig('descope-dev', { flows: {} }).styles).componentsVersion, undefined);
+});
 
 // The sign-in flow makes or joins the tenant of the email domain (docs/tenancy.md), and the user token carries the tenant and the profile. Both were run on a throwaway project.
 const flow = JSON.parse(read('infra/descope/flows/sign-up-or-in.json'));
@@ -153,7 +154,13 @@ test('after the one-time code the flow ends for a person who has a tenant, joins
   const create = next(join, 'ActionErrorUpdateUserTenantByEmailDomainNoTenant');
   assert.equal(tasks[create].action, 'createTenant');
   assert.equal(tasks[next(create, 'success')].action, 'logged-in');
-  assert.equal(next(create, 'TenantExists'), join, 'a tenant made in the meantime is joined, not made twice');
+  // A tenant made in the meantime is joined, not made twice, and the retry has a way out: it is a second join whose "no tenant" answer is not routed back (a tenant that exists
+  // under the domain's name but does not list the domain would otherwise send the person round the two steps for ever).
+  const again = next(create, 'TenantExists');
+  assert.notEqual(again, join);
+  assert.equal(tasks[again].action, 'update-user-tenant-email-domain');
+  assert.equal(next(again, 'success') !== undefined && tasks[next(again, 'success')].action, 'logged-in');
+  assert.equal(next(again, 'ActionErrorUpdateUserTenantByEmailDomainNoTenant'), undefined);
 });
 
 test('the tenant is named after the email domain, lists that domain for self-provisioning, and is the person\'s current tenant', () => {

@@ -9,7 +9,7 @@
         "next": {},
         "type": "automated",
         "view": {
-          "x": 3732,
+          "x": 4080,
           "y": 432
         }
       },
@@ -92,7 +92,7 @@
             },
             {
               "interactionId": "TenantExists",
-              "taskId": "10"
+              "taskId": "12"
             }
           ]
         },
@@ -100,6 +100,29 @@
         "view": {
           "x": 3384,
           "y": 480
+        }
+      },
+      "12": {
+        "action": "update-user-tenant-email-domain",
+        "errorHandlingV2": {
+          "ActionErrorUpdateUserTenantByEmailDomainNoTenant": {
+            "errorHandlingType": "automatic"
+          }
+        },
+        "id": "12",
+        "name": "Join once more after a tenant was made in between",
+        "next": {
+          "rules": [
+            {
+              "interactionId": "success",
+              "taskId": "0"
+            }
+          ]
+        },
+        "type": "automated",
+        "view": {
+          "x": 3732,
+          "y": 600
         }
       },
       "2": {
