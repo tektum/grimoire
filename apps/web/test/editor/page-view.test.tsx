@@ -422,4 +422,28 @@ describe('the page screen', () => {
     await waitFor(() => expect(t.lives).toHaveLength(1));
     expect(t.lives[0]!.editable).toBe(false);
   });
+
+  it('a connection that drops and syncs again while the live editor is being built does not start a second build', async () => {
+    const gates: (() => void)[] = [];
+    let calls = 0;
+    const t = mountPage({
+      engine: (base) => ({
+        mountLive: async (o) => {
+          calls += 1;
+          await new Promise<void>((resolve) => void gates.push(resolve));
+          return base.mountLive(o);
+        },
+      }),
+    });
+    await waitSaved();
+    await t.synced();
+    await waitFor(() => expect(gates).toHaveLength(1));
+    await act(async () => void t.sessions[0]!.provider.close(1001)); // a plain drop: same session, same document
+    await t.synced(); // and it syncs again before the build is done
+    gates[0]!();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await act(async () => undefined);
+    expect(calls).toBe(1);
+    expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+  });
 });

@@ -144,6 +144,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         // A new document: the person's access may have changed (that is usually why), so the page is read again.
         if (seenGeneration > 0) void replacedRef.current?.();
         seenGeneration = next.generation;
+        starting = false; // a build still going is for the document that was replaced: it gives up on its own, and this one starts its own
       }
       if (live !== null && next.generation !== liveGeneration) {
         // The document under the editor was replaced: take the editor down and show the saved text until the new one has synced.
@@ -154,7 +155,6 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         void queue(element, async () => void (await old.destroy())).then(showSaved);
       }
       if (next.phase === 'synced' && live === null && !starting) goLive(next.generation);
-      if (next.phase !== 'synced' && starting && live === null) starting = false;
     });
     manager.start();
     showSaved();
