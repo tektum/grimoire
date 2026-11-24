@@ -74,7 +74,7 @@ describe('the route /', () => {
   it('opens the collection that was read last, through the API of the session and the browser storage', async () => {
     localStorage.setItem('grimoire.last-collection', 'c2');
     const { api } = fakeApi(list(COLLECTIONS));
-    at(<SessionContext.Provider value={{ auth: null as never, api }}><HomeScreen /></SessionContext.Provider>);
+    at(<SessionContext.Provider value={{ auth: null as never, api, collabUrl: 'ws://collab.test' }}><HomeScreen /></SessionContext.Provider>);
     await waitFor(() => { expect(screen.getByLabelText('location').textContent).toBe('/c/c2'); });
     localStorage.removeItem('grimoire.last-collection');
   });
