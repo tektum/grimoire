@@ -24,6 +24,132 @@ The workflow `.github/workflows/descope-infra.yml` holds no secret. Its job runs
 
 Until the three variables exist the job stops at its first step with a notice, and the workflow stays green.
 
+## One-time AWS set-up (an administrator)
+
+The deploy jobs need, in the AWS account, the GitHub OIDC provider and one role per environment. The script `infra/bootstrap/aws-github-oidc.sh` creates them and is safe to run again:
+
+```sh
+infra/bootstrap/aws-github-oidc.sh <account-id> <region> --print   # shows every document, calls nothing
+infra/bootstrap/aws-github-oidc.sh <account-id> <region>           # needs the aws CLI and administrator credentials
+```
+
+It checks that the credentials belong to that account, creates the provider for `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if it is missing, then creates or updates two roles and prints their ARNs. Put each ARN in the variable `AWS_ROLE_ARN` of its GitHub environment (`descope-dev`, `staging`) and the region in `AWS_REGION`. The roles are separate on purpose: the Descope job can never create infrastructure.
+
+| Role | Trusts only | Permissions |
+|---|---|---|
+| `grimoire-deploy-descope-dev` | `repo:tektum/grimoire:environment:descope-dev` | SST's bootstrap and secrets statements, nothing else (below) |
+| `grimoire-deploy-staging` | `repo:tektum/grimoire:environment:staging` | SST's documented deploy policy, `infra/bootstrap/permissions-staging.json`, including its `Deployments` wildcard statement: narrow it once the staging stack exists |
+
+Trust policy of each role (`<environment>` is `descope-dev` or `staging`; the file is `infra/bootstrap/trust.json`):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::__ACCOUNT__:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:tektum/grimoire:environment:__ENVIRONMENT__"
+        }
+      }
+    }
+  ]
+}
+```
+
+Permissions of `grimoire-deploy-descope-dev` (`infra/bootstrap/permissions-descope-dev.json`; `ACCOUNT` and `REGION` are filled in by the script):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageBootstrapStateBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketVersioning",
+        "s3:PutBucketNotification",
+        "s3:PutBucketPolicy",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sst-state-*"
+      ]
+    },
+    {
+      "Sid": "ManageBootstrapAssetBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutBucketVersioning",
+        "s3:PutBucketNotification",
+        "s3:PutBucketPolicy",
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sst-asset-*"
+      ]
+    },
+    {
+      "Sid": "ManageBootstrapECRRepo",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DescribeRepositories"
+      ],
+      "Resource": [
+        "arn:aws:ecr:REGION:ACCOUNT:repository/sst-asset"
+      ]
+    },
+    {
+      "Sid": "ManageBootstrapSSMParameter",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameters",
+        "ssm:PutParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/passphrase/*",
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/bootstrap"
+      ]
+    },
+    {
+      "Sid": "ManageSecrets",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DeleteParameter",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:PutParameter",
+        "ssm:AddTagsToResource",
+        "ssm:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:ssm:REGION:ACCOUNT:parameter/sst/*"
+      ]
+    }
+  ]
+}
+```
+
+A run of the script is tested with `--print` only (`tools/ci/test/aws-bootstrap.test.mjs`): it checks the documents are valid JSON, each role trusts exactly its own environment, and the Descope role has no wildcard statement. Applying them needs a real account and has not been run.
+
 ## Running it
 
 - On a pull request that touches `sst.config.ts` or `infra/`: only `bun run check:infra` (installs the providers and typechecks the config). No credentials, no environment.
