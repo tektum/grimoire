@@ -8,16 +8,15 @@ const PASSWORDS = { app: 'app-password-0123456789', migrator: 'migrator-password
 /** A database that records every statement and parameter it is given, and answers the few questions `setupDatabase` asks. */
 function recorder() {
   const seen: { text: string; params: readonly unknown[] }[] = [];
-  const db = {
-    query: (text: string, params: readonly unknown[] = []) => {
-      seen.push({ text, params });
-      if (text.startsWith('select quote_')) return Promise.resolve([{ q: `'${String(params[0])}'` }]);
-      if (text.includes('from pg_roles where rolname = $1')) return Promise.resolve([]);
-      if (text.includes('current_database')) return Promise.resolve([{ name: 'grimoire' }]);
-      if (text.includes('rolsuper')) return Promise.resolve([{ super: true }]);
-      return Promise.resolve([]);
-    },
-  } as unknown as KyselyDatabase;
+  const query = (text: string, params: readonly unknown[] = []) => {
+    seen.push({ text, params });
+    if (text.startsWith('select quote_')) return Promise.resolve([{ q: `'${String(params[0])}'` }]);
+    if (text.includes('from pg_roles where rolname = $1')) return Promise.resolve([]);
+    if (text.includes('current_database')) return Promise.resolve([{ name: 'grimoire' }]);
+    if (text.includes('rolsuper')) return Promise.resolve([{ super: true }]);
+    return Promise.resolve([]);
+  };
+  const db = { query, transaction: <T>(fn: (tx: { query: typeof query }) => Promise<T>) => fn({ query }) } as unknown as KyselyDatabase;
   return { db, seen };
 }
 

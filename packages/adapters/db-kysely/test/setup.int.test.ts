@@ -70,6 +70,51 @@ describe('setupDatabase against a PostgreSQL superuser', () => {
   });
 });
 
+describe('setupDatabase on a database that is not clean', () => {
+  const OTHER = `t_other_${ID}`;
+  const reset = () => asSuperuser('postgres', async (q) => {
+    await q(`drop database if exists ${DATABASE} with (force)`);
+    for (const role of [ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
+    await q(`create database ${DATABASE}`);
+  });
+  const roleFlags = (role: string) => asSuperuser('postgres', (q) => q(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1`, [role]));
+
+  it('resets the attributes an existing runtime role carries', async () => {
+    await reset();
+    await asSuperuser('postgres', (q) => q(`create role ${ROLES.app} login createdb createrole replication bypassrls`));
+    expect(await roleFlags(ROLES.app)).toEqual([{ rolsuper: false, rolcreatedb: true, rolcreaterole: true, rolreplication: true, rolbypassrls: true }]);
+    await setup(SUPER, PASSWORDS);
+    expect(await roleFlags(ROLES.app)).toEqual([{ rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false }]);
+  });
+
+  it('refuses a role that is a member of another role, and changes nothing', async () => {
+    await reset();
+    await asSuperuser('postgres', async (q) => { await q(`create role ${OTHER}`); await q(`create role ${ROLES.app} login`); await q(`grant ${OTHER} to ${ROLES.app}`); });
+    await expect(setup(SUPER, PASSWORDS)).rejects.toThrow(/is a member of/);
+    expect(await asSuperuser('postgres', (q) => q('select 1 from pg_roles where rolname = $1', [ROLES.migrator]))).toEqual([]); // not even the migration role was made
+  });
+
+  it('hands a pgboss schema that is already there under another owner to the migration role', async () => {
+    await reset();
+    await asSuperuser('postgres', (q) => q(`create role ${OTHER}`));
+    await asSuperuser(DATABASE, (q) => q(`create schema pgboss authorization ${OTHER}`));
+    await setup(SUPER, PASSWORDS);
+    expect(await asSuperuser(DATABASE, (q) => q(`select r.rolname as owner from pg_namespace n join pg_roles r on r.oid = n.nspowner where n.nspname = 'pgboss'`))).toEqual([{ owner: ROLES.migrator }]);
+  });
+
+  it('leaves the database as it was when a step fails part-way: no role made, no password changed', async () => {
+    await reset();
+    await setup(SUPER, PASSWORDS);
+    const handle = createDatabase(url(SUPER.role, SUPER.password, DATABASE), { maxConnections: 1 });
+    const failing = { ...handle, transaction: <T>(fn: Parameters<typeof handle.transaction<T>>[0]) => handle.transaction((tx) => fn({ query: (text, params) => (/create extension/.test(text) ? Promise.reject(new Error('the step failed')) : tx.query(text, params)) })) };
+    try {
+      await expect(setupDatabase(failing as typeof handle, { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789' }, ROLES)).rejects.toThrow('the step failed');
+    } finally { await handle.close(); }
+    expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true); // the rotation was rolled back
+    expect(await canConnect(ROLES.app, 'rotated-app-password-0123456789')).toBe(false);
+  });
+});
+
 describe('setupDatabase as the master user of a managed service (not a superuser)', () => {
   it('does the same, which needs the right to become the migration role to give it the schemas', async () => {
     await asSuperuser('postgres', async (q) => {

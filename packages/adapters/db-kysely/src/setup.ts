@@ -27,9 +27,10 @@ export interface SetupResult { readonly created: readonly string[]; readonly upd
 /**
  * Makes a managed database ready for `grimoire migrate`, as the cluster's administrator (the master user of a managed service, or a superuser): the same end
  * state as `db/init/roles.psql`, which does this for the local stack, but safe to run again. The two login roles exist with the given passwords (a run with
- * new passwords rotates them), only they may connect, the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may
+ * new passwords rotates them) as plain LOGIN roles with no other attribute, the public may not connect (a role that already holds an explicit grant keeps it: that is the
+ * administrator's decision), the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may
  * use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists (the migration role cannot create one).
- * The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
+ * All of it happens in one transaction, so a failure leaves the database as it was. A role that exists and is a member of another role is refused. The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
  */
 export async function setupDatabase(
   db: KyselyDatabase,
@@ -40,32 +41,43 @@ export async function setupDatabase(
   if (roles.app === roles.migrator) throw new Error('the runtime role and the migration role must be different roles');
   for (const password of [passwords.app, passwords.migrator]) if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`a database password must be at least ${String(MIN_PASSWORD_LENGTH)} characters`);
 
-  const quote = async (kind: 'ident' | 'literal', value: string): Promise<string> => {
-    const [row] = await db.query<{ q: string }>(`select quote_${kind}($1::text) as q`, [value]);
-    if (row === undefined) throw new Error('the server did not quote a value');
-    return row.q;
-  };
-  const created: string[] = [];
-  const updated: string[] = [];
-  for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app]] as const) {
-    const exists = (await db.query('select 1 from pg_roles where rolname = $1', [name])).length > 0;
-    await db.query(`${exists ? 'alter' : 'create'} role ${await quote('ident', name)} with login password ${await quote('literal', scramVerifier(password))}`);
-    (exists ? updated : created).push(name);
-  }
-  const app = await quote('ident', roles.app);
-  const migrator = await quote('ident', roles.migrator);
-  const database = await quote('ident', (await db.query<{ name: string }>('select current_database() as name'))[0]?.name ?? '');
+  // One transaction: a failure part-way (a rotation of one password but not the other, a revoke before its grants) leaves the database as it was. Every statement here is transactional.
+  return db.transaction(async (tx) => {
+    const quote = async (kind: 'ident' | 'literal', value: string): Promise<string> => {
+      const [row] = await tx.query<{ q: string }>(`select quote_${kind}($1::text) as q`, [value]);
+      if (row === undefined) throw new Error('the server did not quote a value');
+      return row.q;
+    };
+    // Roles that already exist keep nothing they should not have: an extra membership is refused (db-setup does not guess what to revoke); the attributes are reset below.
+    const memberships = await tx.query<{ member: string; group: string }>(
+      'select r.rolname as member, g.rolname as "group" from pg_auth_members m join pg_roles r on r.oid = m.member join pg_roles g on g.oid = m.roleid where r.rolname = any($1::text[])',
+      [[roles.app, roles.migrator]],
+    );
+    if (memberships.length > 0) throw new Error(`the role ${memberships[0]?.member ?? ''} is a member of ${memberships[0]?.group ?? ''}: db-setup does not change memberships, so remove it or use a clean database`);
 
-  // A managed service's master user is not a superuser: to hand an object to the migration role it must be able to become that role.
-  const [me] = await db.query<{ super: boolean }>('select rolsuper as super from pg_roles where rolname = current_user');
-  if (me?.super === false) await db.query(`grant ${migrator} to current_user with set true`);
+    const created: string[] = [];
+    const updated: string[] = [];
+    for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app]] as const) {
+      const exists = (await tx.query('select 1 from pg_roles where rolname = $1', [name])).length > 0;
+      await tx.query(`${exists ? 'alter' : 'create'} role ${await quote('ident', name)} with login nosuperuser nocreatedb nocreaterole noreplication nobypassrls password ${await quote('literal', scramVerifier(password))}`);
+      (exists ? updated : created).push(name);
+    }
+    const app = await quote('ident', roles.app);
+    const migrator = await quote('ident', roles.migrator);
+    const database = await quote('ident', (await tx.query<{ name: string }>('select current_database() as name'))[0]?.name ?? '');
 
-  await db.query(`revoke all on database ${database} from public`);
-  await db.query(`grant connect on database ${database} to ${migrator}, ${app}`);
-  await db.query(`alter schema public owner to ${migrator}`);
-  await db.query('revoke all on schema public from public');
-  await db.query(`grant usage on schema public to ${app}`);
-  await db.query(`create schema if not exists pgboss authorization ${migrator}`);
-  await db.query('create extension if not exists citext');
-  return { created, updated };
+    // A managed service's master user is not a superuser: to hand an object to the migration role it must be able to become that role.
+    const [me] = await tx.query<{ super: boolean }>('select rolsuper as super from pg_roles where rolname = current_user');
+    if (me?.super === false) await tx.query(`grant ${migrator} to current_user with set true`);
+
+    await tx.query(`revoke all on database ${database} from public`);
+    await tx.query(`grant connect on database ${database} to ${migrator}, ${app}`);
+    await tx.query(`alter schema public owner to ${migrator}`);
+    await tx.query('revoke all on schema public from public');
+    await tx.query(`grant usage on schema public to ${app}`);
+    await tx.query(`create schema if not exists pgboss authorization ${migrator}`);
+    await tx.query(`alter schema pgboss owner to ${migrator}`); // a schema that was already there under another owner is handed over
+    await tx.query('create extension if not exists citext');
+    return { created, updated };
+  });
 }
