@@ -2,9 +2,17 @@ import { defineConfig, devices } from '@playwright/test';
 
 // End-to-end tests of the web client: the built client from `scripts/serve.mjs` (build it first: `bun run --cwd apps/web build`), the API of the
 // Compose stack (`make up`). 127.0.0.1, not localhost: a CI runner may resolve localhost to ::1, where nothing listens.
-// Run: `bunx playwright test -c apps/web/playwright.config.ts --project=chromium`. Install the browsers once:
+// Run: `bunx playwright test -c apps/web/playwright.config.ts --project=chromium` (`E2E_WEB_PORT` changes the port; a server already on the port is an error, never reused). Install the browsers once:
 // `bunx playwright install --with-deps chromium firefox webkit` (test-e2e/support/run-check.ts says whether they are there).
-const WEB_PORT = 4173;
+/** The port of the client's server: 4173, or `E2E_WEB_PORT` (two checkouts can run their specs side by side). */
+function webPort(): number {
+  const asked = process.env['E2E_WEB_PORT'];
+  if (asked === undefined) return 4173;
+  const port = Number(asked);
+  if (!/^\d+$/.test(asked) || port < 1 || port > 65535) throw new Error(`E2E_WEB_PORT must be a port number (1 to 65535), not "${asked}".`);
+  return port;
+}
+const WEB_PORT = webPort();
 export const E2E_API_URL = process.env['E2E_API_URL'] ?? 'http://127.0.0.1:8080';
 
 export default defineConfig({
@@ -33,7 +41,8 @@ export default defineConfig({
     cwd: import.meta.dirname,
     url: `http://127.0.0.1:${WEB_PORT}/`,
     env: { PORT: String(WEB_PORT) },
-    reuseExistingServer: process.env['CI'] === undefined,
+    // Never a server this run did not start: one left on the port by another checkout would serve a different build, and the specs would test that one without a word.
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });
