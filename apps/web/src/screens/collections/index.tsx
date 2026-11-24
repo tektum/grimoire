@@ -1,9 +1,13 @@
-/** Placeholder until the screen's own task fills this folder. */
+import { useMemo } from 'react';
+import { useParams } from 'react-router';
+import { useApi } from '../../api/context';
+import { createClientStorage } from '../../storage';
+import { CollectionsScreen } from './CollectionsScreen';
+
+/** The route `/c/:collectionId`. */
 export default function Screen() {
-  return (
-    <section aria-labelledby="screen-title">
-      <h1 id="screen-title">Collection</h1>
-      <p>This screen is not built yet.</p>
-    </section>
-  );
+  const api = useApi();
+  const { collectionId } = useParams();
+  const storage = useMemo(() => createClientStorage(), []);
+  return <CollectionsScreen api={api} collectionId={collectionId ?? ''} storage={storage} />;
 }
