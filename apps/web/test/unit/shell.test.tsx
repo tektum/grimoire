@@ -7,9 +7,9 @@ import { ErrorBoundary } from '../../src/app/ErrorBoundary';
 import { routeObjects } from '../../src/app/router';
 import { ROUTES } from '../../src/app/routes';
 
+// `/c/:collectionId` is no longer a placeholder: it needs the session of the app, and is tested in test/tree/route.test.tsx.
 describe('shell and screens', () => {
   it.each([
-    ['/c/c1', 'Collection'],
     ['/p/a-b1', 'Page'],
     ['/p/a-b1/history', 'History'],
     ['/p/a-b1/history/r1', 'History'],
