@@ -166,7 +166,6 @@ export class ConnectionManager {
     this.set({ copy: null, notice: this.current.notice === TEXTS.reset ? null : this.current.notice });
   }
 
-  /** Ends the page: no more attempts, the document and the provider are destroyed. */
   /** The tab has been hidden long enough: disconnect and stay quiet (no retries) until `resume`. Nothing happens to a manager that has stopped or not started. */
   suspend(): void {
     if (this.session === null || this.current.phase === 'stopped' || this.current.phase === 'idle' || this.current.suspended) return;
@@ -189,6 +188,7 @@ export class ConnectionManager {
     this.connectSession();
   }
 
+  /** Ends the page: no more attempts, the document and the provider are destroyed. */
   stop(): void {
     this.clearTimers();
     this.teardown();
