@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error plain .mjs script without types
-import { checkBuild } from '../../scripts/check-build.mjs';
+import { checkBuild, withoutOwnDescopeUses } from '../../scripts/check-build.mjs';
 // @ts-expect-error plain .mjs script without types
 import { createServer } from '../../scripts/serve.mjs';
 
@@ -58,15 +58,40 @@ describe('the two documents of the build', () => {
   it('keeps the identity provider and the fingerprinting script out of everything index.html loads, and lists what the sign-in document loads', () => {
     for (const dist of [production, e2e]) {
       for (const chunk of loadedBy(dist, 'index.html')) {
-        const text = read(dist, `assets/${chunk}`).toLowerCase();
-        for (const word of ['descope', 'fingerprint', 'fpnpmcdn', 'descopecdn']) expect([chunk, word, text.includes(word)]).toEqual([chunk, word, false]);
+        const text = read(dist, `assets/${chunk}`);
+        // What remains of the word after the app's own uses (its loader's name, the chunk file names in its preload list, the label of a session's method) is the provider's code.
+        expect([chunk, withoutOwnDescopeUses(text).toLowerCase().includes('descope')]).toEqual([chunk, false]);
+        for (const word of ['fingerprint', 'fpnpmcdn', 'descopecdn']) expect([chunk, word, text.toLowerCase().includes(word)]).toEqual([chunk, word, false]);
       }
     }
     // The provider's code is in chunks only the sign-in document (or a dynamic import) reaches.
-    const withProvider = files(production, '.js').filter((f) => read(production, `assets/${f}`).toLowerCase().includes('descope'));
+    const withProvider = files(production, '.js').filter((f) =>
+      withoutOwnDescopeUses(read(production, `assets/${f}`))
+        .toLowerCase()
+        .includes('descope'),
+    );
     expect(withProvider.length).toBeGreaterThan(0);
     const startOfIndex = new Set(loadedBy(production, 'index.html'));
     for (const chunk of withProvider) expect([chunk, startOfIndex.has(chunk)]).toEqual([chunk, false]);
+  });
+
+  it("takes out only the app's own uses of the word, never the provider's code", () => {
+    const own = 'loadDescope:async()=>(await p(()=>import("./descope-sdk-DKyABvbD.js")))' + ',{status:`signed-in`,method:`descope`},"./descope-signin-Abc_12.js"';
+    expect(withoutOwnDescopeUses(own).toLowerCase()).not.toContain('descope');
+    // A quoted word on its own, outside the one property the app writes it in, is not the app's: provider code could hide behind it.
+    for (const theirs of [
+      '"descope"',
+      '`descope`',
+      "'descope'",
+      '{label:"descope"}',
+      '{kind:`descope`}',
+      '"x-descope-sdk-name"',
+      '"x-descope-sdk-version"',
+      'DescopeSDK',
+      'descopeProjectId',
+      '"descope-wc"',
+    ])
+      expect([theirs, withoutOwnDescopeUses(theirs).toLowerCase().includes('descope')]).toEqual([theirs, true]);
   });
 
   it('has no origin of the provider written as a script address in the entry chunks of index.html', () => {

@@ -3,6 +3,15 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * The ways the app's own code says "descope" without carrying the provider's code: the name of its loader (`loadDescope`), the file names of the two chunks it
+ * imports on demand (`descope-sdk-<hash>.js`, `descope-signin-<hash>.js`, written in the entry's preload list), and the label of a session's method
+ * (`method: "descope"`, only that exact property). Anything else with the word in a chunk the entry document loads is the provider's code, which belongs on the sign-in page only.
+ */
+export const OWN_DESCOPE_USES = [/loadDescope/gi, /descope-(?:sdk|signin)-[\w-]+\.js/g, /method:\s*["'`]descope["'`]/g];
+/** `text` with the app's own uses of the word taken out. */
+export const withoutOwnDescopeUses = (text) => OWN_DESCOPE_USES.reduce((rest, pattern) => rest.replace(pattern, ''), text);
+
 /** Problems of a build in `dist`, as strings; empty when the build is as required. */
 export function checkBuild(dist) {
   const problems = [];
@@ -24,7 +33,8 @@ export function checkBuild(dist) {
   for (const m of html.matchAll(/(?:src|href)="(?:\.\/)?assets\/([^"]+\.js)"/g)) visit(m[1]);
   for (const file of loaded)
     for (const word of ['descope', 'fingerprint', 'fpnpmcdn'])
-      if (text(file).toLowerCase().includes(word)) problems.push(`assets/${file}, loaded by index.html, contains "${word}" (the sign-in libraries load on the sign-in page only)`);
+      if ((word === 'descope' ? withoutOwnDescopeUses(text(file)) : text(file)).toLowerCase().includes(word))
+        problems.push(`assets/${file}, loaded by index.html, contains "${word}" (the sign-in libraries load on the sign-in page only)`);
 
   for (const file of assets)
     if (text(file).includes('grimoire-design-sample')) problems.push(`assets/${file} contains the marker grimoire-design-sample (the design sample page is not in a production build)`);

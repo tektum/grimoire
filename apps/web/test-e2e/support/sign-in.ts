@@ -4,6 +4,8 @@ import { apiUrl, devSecret } from './env';
 
 /** `ClientStorage` key `dev-token` (prefix `grimoire.`): where the web client keeps the development token. */
 export const DEV_TOKEN_STORAGE_KEY = 'grimoire.dev-token';
+/** `dev-token-expires`: when the token ends (ms since the epoch); the client treats a token without it as not signed in. A development token lives one hour. */
+export const DEV_TOKEN_EXPIRES_STORAGE_KEY = 'grimoire.dev-token-expires';
 
 export interface SignedInUser {
   readonly userId: string;
@@ -27,6 +29,12 @@ export async function signInAs(context: BrowserContext, userId: string, role: De
     }
     if (status !== 200) throw new DevTokenError(`GET /v1/me answered ${status} for the development user: the stack must run in local mode (GRIMOIRE_LOCAL=1) with the same GRIMOIRE_DEV_TOKEN_SECRET.`);
   }
-  await context.addInitScript(([key, value]) => window.localStorage.setItem(key as string, value as string), [DEV_TOKEN_STORAGE_KEY, token]);
+  await context.addInitScript(
+    ([tokenKey, expiresKey, value]) => {
+      window.localStorage.setItem(tokenKey as string, value as string);
+      window.localStorage.setItem(expiresKey as string, String(Date.now() + 3_600_000));
+    },
+    [DEV_TOKEN_STORAGE_KEY, DEV_TOKEN_EXPIRES_STORAGE_KEY, token],
+  );
   return { userId, role };
 }

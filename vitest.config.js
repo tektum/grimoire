@@ -72,7 +72,7 @@ export default defineConfig({
         "packages/adapters/jobs-pgboss/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/tree/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/pages/**": { statements: 0, branches: 0, functions: 0, lines: 0 },
-        "apps/web/src/**": { statements: 95, branches: 89, functions: 91, lines: 98 },
+        "apps/web/src/**": { statements: 96, branches: 91, functions: 93, lines: 98 },
         "packages/core/src/attachments/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },

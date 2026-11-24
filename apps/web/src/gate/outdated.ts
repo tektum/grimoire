@@ -30,3 +30,6 @@ export function useClientOutdated(): boolean {
 export function blockWhenOutdated(base: (request: Request) => Promise<Response>): (request: Request) => Promise<Response> {
   return (request) => (outdated ? Promise.reject(new DOMException('This client is too old', 'AbortError')) : base(request));
 }
+
+/** The browser's `fetch` for the API client, refusing at once once the client is marked outdated (this folder may call `fetch`; the app's own code may not). */
+export const guardedFetch = blockWhenOutdated((request) => fetch(request));
