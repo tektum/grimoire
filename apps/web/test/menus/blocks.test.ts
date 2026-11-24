@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BLOCK_KINDS, matchingKinds } from '../../src/editor/menus/blocks';
+import { BLOCK_KINDS, matchingKinds, SLASH_KINDS } from '../../src/editor/menus/blocks';
 import { plainEditor } from './support';
 
 describe('the block kinds of the menu', () => {
@@ -81,5 +81,13 @@ describe('the block kinds of the menu', () => {
     } finally {
       await t.destroy();
     }
+  });
+});
+
+describe('what the slash menu offers beyond the block kinds', () => {
+  it('is the block kinds and then the file chooser, which the block handle does not list', () => {
+    expect(SLASH_KINDS.slice(0, -1)).toEqual(BLOCK_KINDS);
+    expect(SLASH_KINDS.at(-1)).toMatchObject({ id: 'file', label: 'Image or file' });
+    expect(BLOCK_KINDS.some((k) => k.id === 'file')).toBe(false);
   });
 });

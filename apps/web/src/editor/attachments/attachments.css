@@ -28,3 +28,9 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+.attachment-uploading {
+  margin-inline-start: var(--space-2);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+}

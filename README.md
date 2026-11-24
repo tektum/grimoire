@@ -214,6 +214,14 @@ An uploaded image is shown through a link the file store signed for it.
 
 An image from another address is not fetched: the page says where it would have come from.
 
+![An attachment link and an upload in progress](docs/screenshots/m6-t08/upload-in-progress-light.png)
+
+While a file is being uploaded the page says so; a file that is not an image becomes a link with its name.
+
+![A refused upload](docs/screenshots/m6-t08/refused-type-light.png)
+
+A file the server does not accept is told once, in plain words, and leaves nothing in the page.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)

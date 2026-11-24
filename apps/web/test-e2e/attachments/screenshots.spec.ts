@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { shots } from '../support/shots';
-import { ID, openPage, scriptStore } from './support';
+import { ID, openPage, pasteFiles, scriptStore } from './support';
 
 // Screenshots (test-results/shots/M6-T08/): the page's own styles and the real node view; the pictures are drawn by the spec (a vector image served as the file).
 const TASK = 'M6-T08';
@@ -29,3 +29,46 @@ test('the "External image not loaded" placeholder, light and dark', async ({ pag
     await opened.stop();
   }
 });
+
+test('an attachment link, light and dark', async ({ page }) => {
+  await scriptStore(page);
+  const opened = await openPage(page, `# Trip notes\n\nThe route and the budget are in the files: [route-plan.pdf](attachments/${ID}/route-plan.pdf) and [budget.xlsx](attachments/${ID}/budget.xlsx).\n`, { sans: true });
+  try {
+    await expect(page.locator(`a[href="attachments/${ID}/route-plan.pdf"]`)).toBeVisible();
+    await shots(page, TASK, 'attachment-link');
+  } finally {
+    await opened.stop();
+  }
+});
+
+test('an upload in progress, light and dark', async ({ page }) => {
+  let release: () => void = () => undefined;
+  await scriptStore(page, { holdPut: new Promise<void>((resolve) => { release = resolve; }) });
+  const opened = await openPage(page, '# Trip notes\n\nThe ridge at sunset, from the second camp:\n\n', { sans: true, editable: true });
+  try {
+    await pasteFiles(page, [{ name: 'ridge.png', type: 'image/png' }]);
+    await expect(page.locator('.attachment-uploading')).toBeVisible();
+    await shots(page, TASK, 'upload-in-progress');
+    release();
+  } finally {
+    await opened.stop();
+  }
+});
+
+for (const [name, text, options, files] of [
+  ['refused-type', "That file type isn't allowed", { createStatus: () => 422 }, [{ name: 'setup.exe', type: 'application/x-msdownload' }]],
+  ['refused-size', 'That file is too large', { createStatus: () => 413 }, [{ name: 'video.png', type: 'image/png' }]],
+  ['refused-cap', 'Too many uploads at once. Wait a moment.', { createStatus: () => 429 }, [{ name: 'photo.png', type: 'image/png' }]],
+] as const) {
+  test(`the refusal "${text}", light and dark`, async ({ page }) => {
+    await scriptStore(page, options);
+    const opened = await openPage(page, '# Trip notes\n\nThe ridge at sunset, from the second camp.\n', { sans: true, editable: true });
+    try {
+      await pasteFiles(page, [...files]);
+      await expect(page.getByText(text).first()).toBeVisible({ timeout: 20_000 });
+      await shots(page, TASK, name);
+    } finally {
+      await opened.stop();
+    }
+  });
+}

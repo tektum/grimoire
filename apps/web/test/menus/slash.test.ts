@@ -62,7 +62,7 @@ describe('the menu in the editor', () => {
     const t = await emptyParagraph();
     typeText(t, '/');
     await vi.waitFor(() => expect(open(t)).toBe(true));
-    expect(options(t)).toHaveLength(14);
+    expect(options(t)).toHaveLength(15);
     expect(t.view().dom.getAttribute('aria-activedescendant')).toBe('slash-option-text');
     expect(t.view().dom.getAttribute('aria-controls')).toBe('slash-menu');
     typeText(t, 'head');
@@ -114,7 +114,7 @@ describe('the menu in the editor', () => {
     } finally {
       Element.prototype.scrollIntoView = original;
     }
-    expect(shown).toEqual(['slash-option-table', 'slash-option-text', 'slash-option-heading-1']);
+    expect(shown).toEqual(['slash-option-file', 'slash-option-text', 'slash-option-heading-1']);
   });
 
   it('moving the pointer over an item makes it the active one', async () => {

@@ -3,6 +3,7 @@ import type { Ctx } from '@milkdown/ctx';
 import { createCodeBlockCommand, insertHrCommand, wrapInBlockquoteCommand, wrapInBulletListCommand, wrapInOrderedListCommand } from '@milkdown/preset-commonmark';
 import { insertTableCommand } from '@milkdown/preset-gfm';
 import { setBlockLevelCommand } from '@tektum/grimoire-editor-schema';
+import { chooseFiles } from '../attachments';
 
 /** One kind of block the person can turn the current block into, from the slash menu (and later the block handle). */
 export interface BlockKind {
@@ -76,3 +77,12 @@ export function matchingKinds(query: string, kinds: readonly BlockKind[] = BLOCK
   }
   return groups.flat();
 }
+
+/**
+ * What the slash menu offers: the block kinds, then the file chooser (images and any file, uploaded to the page). It is not a kind of block, so the block handle's "turn
+ * into" menu does not list it.
+ */
+export const SLASH_KINDS: readonly BlockKind[] = [
+  ...BLOCK_KINDS,
+  { id: 'file', label: 'Image or file', description: 'Upload from your computer', keywords: ['image', 'picture', 'photo', 'file', 'upload', 'attachment', 'attach'], run: (ctx) => { void chooseFiles(ctx); return true; } },
+];
