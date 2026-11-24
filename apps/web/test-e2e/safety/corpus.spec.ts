@@ -27,6 +27,16 @@ async function open(page: Page) {
   return { dialogs, requests, offOrigin, stop: () => server.stop() };
 }
 
+/**
+ * What an element made by an entry would have done is done when this returns: the browser asks for an image the moment the element is made, which is before the next
+ * frame, so two frames later the request has been made; an image that is still loading is waited for. (A fixed sleep would only hope.)
+ */
+const settled = (page: Page): Promise<void> =>
+  page.evaluate(async () => {
+    await Promise.all([...document.images].map((img) => (img.complete ? undefined : new Promise((resolve) => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); }))));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+
 type Harness = { mount: (markdown: string, editable: boolean) => Promise<void>; apply: (markdown: string) => void };
 
 /** What is wrong with the page after an entry went through it (empty when nothing is). */
@@ -63,7 +73,7 @@ test.describe('the corpus of hostile input', () => {
       for (const entry of entries) {
         const before = opened.offOrigin().length;
         await page.evaluate(([markdown]) => (window as unknown as { harness: Harness }).harness.mount(markdown!, false), [asMarkdown(entry)]);
-        await page.waitForTimeout(40); // an element made by the entry would have loaded or failed by now
+        await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
       expect(wrong).toEqual([]);
@@ -82,7 +92,7 @@ test.describe('the corpus of hostile input', () => {
           const harness = (window as unknown as { harness: Harness }).harness;
           return harness.mount('Start.\n', true).then(() => harness.apply(markdown!));
         }, [asMarkdown(entry)]);
-        await page.waitForTimeout(40);
+        await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
       expect(wrong).toEqual([]);
@@ -111,10 +121,48 @@ test.describe('the corpus of hostile input', () => {
           },
           [html ?? null, entry.markdown ?? entry.html ?? entry.href ?? ''],
         );
-        await page.waitForTimeout(40);
+        await settled(page);
         wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
       }
       expect(wrong).toEqual([]);
+    } finally {
+      await opened.stop();
+    }
+  });
+
+  test('dropped on the page (HTML as HTML, everything else as the text it is), every entry draws only text and safe links, and a dropped Markdown image is text, not a request', async ({ page }) => {
+    const opened = await open(page);
+    try {
+      const wrong: string[] = [];
+      for (const entry of entries) {
+        const before = opened.offOrigin().length;
+        await page.evaluate(([markdown]) => (window as unknown as { harness: Harness }).harness.mount(markdown!, true), ['Start.\n']);
+        const box = (await page.locator('.ProseMirror p').first().boundingBox())!;
+        await page.evaluate(
+          ([html, text, x, y]) => {
+            const data = new DataTransfer();
+            if (html !== null) data.setData('text/html', html as string);
+            data.setData('text/plain', text as string);
+            document.querySelector('.ProseMirror')!.dispatchEvent(new DragEvent('drop', { dataTransfer: data, clientX: x as number, clientY: y as number, bubbles: true, cancelable: true }));
+          },
+          [entry.html ?? null, entry.markdown ?? entry.html ?? entry.href ?? '', box.x + 5, box.y + box.height / 2],
+        );
+        await settled(page);
+        wrong.push(...(await problems(page, entry.id, opened.dialogs, opened.offOrigin, before)));
+      }
+      expect(wrong).toEqual([]);
+      // And the drop does land: a dropped Markdown image is the text it was typed as (the editor reads a dropped text as text), with no image made from it.
+      await page.evaluate(([markdown]) => (window as unknown as { harness: Harness }).harness.mount(markdown!, true), ['Start.\n']);
+      const box = (await page.locator('.ProseMirror p').first().boundingBox())!;
+      await page.evaluate(([x, y]) => {
+        const data = new DataTransfer();
+        data.setData('text/plain', '![](https://evil.example/x.png)');
+        document.querySelector('.ProseMirror')!.dispatchEvent(new DragEvent('drop', { dataTransfer: data, clientX: x!, clientY: y!, bubbles: true, cancelable: true }));
+      }, [box.x + 5, box.y + box.height / 2]);
+      await settled(page);
+      await expect(page.locator('.ProseMirror')).toContainText('https://evil.example/x.png');
+      await expect(page.locator('.ProseMirror .attachment-image')).toHaveCount(0);
+      expect(opened.offOrigin()).toEqual([]);
     } finally {
       await opened.stop();
     }

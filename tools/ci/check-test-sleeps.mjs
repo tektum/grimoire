@@ -22,6 +22,8 @@ const kindFor = (file) => (/\.[cm]?tsx$/.test(file) ? ts.ScriptKind.TSX : /\.[cm
 function calleeName(node) {
   const e = node.expression;
   if (ts.isIdentifier(e)) return e.text;
+  // Playwright's `test.setTimeout(ms)` sets how long the test may take; nothing waits for it, so it is not a sleep.
+  if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === 'test' && e.name.text === 'setTimeout') return undefined;
   if (ts.isPropertyAccessExpression(e)) return e.name.text;
   return undefined;
 }
