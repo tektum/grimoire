@@ -1,0 +1,30 @@
+/* Images of a page and what stands in for one that is not shown. Colours and spacing come from the tokens. */
+.attachment-image {
+  display: inline-block;
+  max-width: 100%;
+}
+.attachment-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-1);
+}
+.attachment-image[data-state='loading'] {
+  min-height: 3rem;
+  min-width: 6rem;
+  background: var(--code-bg);
+  border-radius: var(--radius-1);
+}
+.attachment-image[data-state='external'],
+.attachment-image[data-state='failed'] {
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-1);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+}
+.attachment-image.is-selected {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

@@ -1,2 +1,5 @@
-// Owned by a later task of this milestone; nothing here yet.
-export {};
+import './attachments.css';
+export { imagePlugin } from './image-view';
+export { provideAttachments, type AttachmentHost } from './host';
+export { attachmentId } from './path';
+export { signedUrlsFrom } from './api';

@@ -206,6 +206,14 @@ A page past its size limit stays readable; an admin has the reset action in the 
 
 ![The size-limit banner](docs/screenshots/m6-t06/size-limit-banner-light.png)
 
+![An image in a page](docs/screenshots/m6-t08/image-light.png)
+
+An uploaded image is shown through a link the file store signed for it.
+
+![The placeholder for an image from another site](docs/screenshots/m6-t08/external-image-light.png)
+
+An image from another address is not fetched: the page says where it would have come from.
+
 In the dark theme:
 
 ![A page with the contents tree beside it, dark theme](docs/screenshots/m6-t03/page-with-contents-dark.png)
