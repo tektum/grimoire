@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
 # Waits until an ECS task has stopped, by polling its own status (the AWS waiter gives up after about ten minutes, and a task that sets up and then adopts may run longer; the caller's
 # timeout bounds this). A failing call (a bad role, no access) or an unknown status stops at once with an error; only a task that is still on its way is waited for, a pause at a time.
-# `ADOPT_POLL_SECONDS` sets the pause (15 by default).
+# ECS is eventually consistent: the task `run-task` just started may not be visible to `describe-tasks` yet, so a task not seen yet is waited for too, but only for a bounded window
+# (`ADOPT_VISIBLE_SECONDS`, 60 by default); one that was seen and then is gone, or never appears, stops with an error. `ADOPT_POLL_SECONDS` sets the pause (15 by default).
 set -euo pipefail
 cluster="${1:-}"
 task="${2:-}"
 [ -n "${cluster}" ] && [ -n "${task}" ] || { echo "usage: wait-task.sh <cluster> <task>" >&2; exit 2; }
+seen=no
+started=${EPOCHREALTIME}
 while :; do
   status=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --output json | jq -r '.tasks[0].lastStatus // "none"')
   case "${status}" in
     STOPPED) exit 0 ;;
-    PROVISIONING | PENDING | ACTIVATING | RUNNING | DEACTIVATING | STOPPING | DEPROVISIONING) sleep "${ADOPT_POLL_SECONDS:-15}" ;;
+    PROVISIONING | PENDING | ACTIVATING | RUNNING | DEACTIVATING | STOPPING | DEPROVISIONING) seen=yes; sleep "${ADOPT_POLL_SECONDS:-15}" ;;
+    none)
+      if [ "${seen}" = "no" ] && awk -v s="${started}" -v n="${EPOCHREALTIME}" -v w="${ADOPT_VISIBLE_SECONDS:-60}" 'BEGIN { exit !(n - s < w) }'; then
+        sleep "${ADOPT_POLL_SECONDS:-15}"
+      else
+        [ "${seen}" = "no" ] && how="never seen" || how="seen, then gone"
+        echo "the task ${task##*/} is not known to ECS (${how})" >&2
+        exit 1
+      fi
+      ;;
     *) echo "the task ${task##*/} has an unexpected status: ${status}" >&2; exit 1 ;;
   esac
 done

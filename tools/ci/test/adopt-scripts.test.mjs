@@ -133,17 +133,41 @@ test('wait-task: an error of the API stops it at once, without a retry or a paus
   } finally { s.done(); }
 });
 
-test('wait-task: a task the API does not know, or a status it has never seen, stops it with the status named', () => {
-  const missing = scenario({ 'tasks.last': { tasks: [], failures: [{ reason: 'MISSING' }] } });
+test('wait-task: a task ECS does not show yet is waited for, because it is eventually consistent, and then followed to its end', () => {
+  const missing = { tasks: [], failures: [{ reason: 'MISSING' }] };
+  const s = scenario({ 'tasks.1': missing, 'tasks.2': missing, 'tasks.3': task('PENDING'), 'tasks.last': task('STOPPED') });
+  try {
+    const r = s.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '5' });
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.calls.length, 4);
+  } finally { s.done(); }
+});
+
+test('wait-task: a task that never shows stops after the window, naming it, and one that was seen and is gone stops at once', () => {
+  const missing = { tasks: [], failures: [{ reason: 'MISSING' }] };
+  const never = scenario({ 'tasks.last': missing });
+  const gone = scenario({ 'tasks.1': task('RUNNING'), 'tasks.last': missing });
+  try {
+    const started = Date.now();
+    const a = never.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '0.5' });
+    assert.equal(a.code, 1);
+    assert.match(a.err, /task-arn is not known to ECS \(never seen\)/);
+    assert.ok(a.calls.length >= 3 && a.calls.length <= 12, `${a.calls.length} calls`);
+    assert.ok(Date.now() - started >= 450, 'the window was waited out');
+    const b = gone.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '0.1', ADOPT_VISIBLE_SECONDS: '5' });
+    assert.equal(b.code, 1);
+    assert.match(b.err, /seen, then gone/);
+    assert.equal(b.calls.length, 2);
+  } finally { never.done(); gone.done(); }
+});
+
+test('wait-task: a status it has never seen stops it with the status named, and a missing argument is a usage error', () => {
   const odd = scenario({ 'tasks.last': task('SOMETHING_NEW') });
   try {
-    const a = missing.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '5' });
-    assert.equal(a.code, 1);
-    assert.match(a.err, /unexpected status: none/);
-    assert.equal(a.calls.length, 1);
     const b = odd.run(waitTask, ['c', 'task-arn'], { ADOPT_POLL_SECONDS: '5' });
     assert.equal(b.code, 1);
     assert.match(b.err, /unexpected status: SOMETHING_NEW/);
-    assert.equal(missing.run(waitTask, [], {}).code, 2);
-  } finally { missing.done(); odd.done(); }
+    assert.equal(b.calls.length, 1);
+    assert.equal(odd.run(waitTask, [], {}).code, 2);
+  } finally { odd.done(); }
 });
