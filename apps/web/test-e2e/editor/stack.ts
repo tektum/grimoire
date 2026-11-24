@@ -12,6 +12,19 @@ export async function compose(...args: string[]): Promise<string> {
   return result.stdout;
 }
 
+/**
+ * Recreates the app with test settings of the web overlay (`compose.m6.yaml`: `M6_REQUIRE_HANDSHAKE`, `M6_MAX_CONNECTIONS_PER_PAGE`, `M6_RECHECK_SECONDS`,
+ * `M6_MIN_CLIENT_VERSION`) and waits until it answers. With no settings it returns the app to the stack's defaults: a spec that changed them calls it in `finally`.
+ */
+export async function recreateApp(settings: Record<string, string> = {}): Promise<void> {
+  await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
+    cwd: repoRoot,
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, COMPOSE_FILE: 'compose.yaml:compose.m6.yaml', ...settings },
+  });
+  await waitReady();
+}
+
 /** Waits for the app to answer `/readyz` again (after a restart or a start). */
 export async function waitReady(): Promise<void> {
   await expect
