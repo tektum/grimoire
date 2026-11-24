@@ -80,7 +80,7 @@ function mountPage(
     markdown?: string;
     staleHeader?: boolean;
     markdownStatus?: number;
-    markdownHangs?: boolean;
+    markdownGate?: Promise<void>;
     onReplaced?: () => void;
     engine?: Partial<Engine> | ((base: Engine) => Partial<Engine>);
     authOver?: Partial<Auth>;
@@ -90,7 +90,7 @@ function mountPage(
   const auth = { getToken: async () => 'token', refresh: async () => true, signOut: async () => undefined, ...options.authOver } as unknown as Auth;
   const api = {
     GET: vi.fn(async () => {
-      if (options.markdownHangs) return new Promise<never>(() => undefined);
+      if (options.markdownGate) await options.markdownGate;
       return {
         data: options.markdown ?? 'Saved text',
         response: new Response('', { status: options.markdownStatus ?? 200, headers: options.staleHeader ? { 'X-Grimoire-Markdown-Stale': 'true' } : {} }),
@@ -382,12 +382,32 @@ describe('the page screen', () => {
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
   });
 
-  it('goes live when the page has synced even if the saved text is slow to arrive, and does not show it afterwards', async () => {
-    const t = mountPage({ markdownHangs: true });
+  it('goes live when the page has synced even if the saved text is slow to arrive, and the late text is dropped, not shown over the live editor', async () => {
+    let arrive: () => void = () => undefined;
+    const markdownGate = new Promise<void>((resolve) => void (arrive = resolve));
+    const t = mountPage({ markdownGate, markdown: 'Late saved text' });
     await waitFor(() => expect(t.api.GET).toHaveBeenCalled());
     await t.synced();
     await waitFor(() => expect(t.root().getAttribute('data-collab-state')).toBe('synced'));
     expect(t.root().textContent).toBe('live');
+    arrive(); // the saved text arrives after the live editor is up
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(t.root().textContent).toBe('live');
     expect(t.root().querySelectorAll('.ProseMirror')).toHaveLength(1);
+    expect(t.events).not.toContain('saved-destroyed'); // it was never mounted
+  });
+
+  it('the stale warning follows the page as it is read again: a document replaced after the page stopped being stale shows no warning', async () => {
+    const t = mountPage({ page: page({ markdownStale: true }) });
+    await waitSaved();
+    expect(screen.getByText(STALE_TEXT)).toBeTruthy();
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    await t.setPage(page({ markdownStale: false })); // the page read again
+    await act(async () => void t.sessions[0]!.provider.close(4205, 'access-changed'));
+    await waitFor(() => expect(t.sessions).toHaveLength(2));
+    await waitSaved();
+    expect(screen.queryByText(STALE_TEXT)).toBeNull();
   });
 });

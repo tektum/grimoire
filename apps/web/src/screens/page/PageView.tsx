@@ -41,6 +41,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   // The effect below outlives a page response: it reads what the person may do now, not what the first response said.
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;
+  const staleRef = useRef(page.markdownStale);
+  staleRef.current = page.markdownStale;
   const replacedRef = useRef(onReplaced);
   replacedRef.current = onReplaced;
   const readOnly = permissionReadOnly || state.readOnly;
@@ -59,6 +61,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
     let seenGeneration = 0;
     let starting = false;
     let attempts = 0;
+    let savedToken = 0;
     const editable = (): boolean => !(permissionRef.current || manager.state().readOnly || manager.state().stopped !== null);
     const manager: ConnectionManager = new ConnectionManager({
       auth: { getToken: () => session.auth.getToken(), refresh: () => session.auth.refresh(), signOut: () => session.auth.signOut('expired') },
@@ -70,14 +73,16 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
 
     const showSaved = (): void => {
       void (async () => {
-        if (live !== null || saved !== null) return;
+        if (cancelled || live !== null || saved !== null) return;
+        // Only the newest request may show its text: a late answer to an older one (or one that began before a live editor did) is dropped.
+        const token = (savedToken += 1);
         // The read happens outside the queue: a slow export must not hold up the live editor, which only needs the queue for its DOM steps.
         const { data, response } = await session.api.GET('/v1/pages/{id}/markdown' as never, { params: { path: { id: page.id } }, parseAs: 'text' } as never);
-        if (cancelled || !response.ok) return;
+        if (cancelled || !response.ok || token !== savedToken) return;
         await queue(element, async () => {
-          if (cancelled || live !== null || saved !== null) return; // a live editor that mounted first wins
+          if (cancelled || token !== savedToken || live !== null || saved !== null) return; // a live editor that mounted first wins
           saved = await engine.mountReadOnly(element, typeof data === 'string' ? data : '');
-          setStale(page.markdownStale || response.headers.get('X-Grimoire-Markdown-Stale') === 'true');
+          setStale(staleRef.current || response.headers.get('X-Grimoire-Markdown-Stale') === 'true');
           setShowingSaved(true);
         });
       })().catch(() => log('warn', 'web.page_saved_view_failed', { page: page.id }));
@@ -85,6 +90,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
 
     const goLive = (generation: number): void => {
       starting = true;
+      savedToken += 1; // a saved text still on its way is not wanted any more
       const attempt = (attempts += 1);
       // Only the newest attempt may say the building is over: an older one that gives up must not let a second build start beside the newer one.
       const finished = (): void => {

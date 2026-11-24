@@ -57,4 +57,14 @@ describe('the page screen asks for the page by the id at the end of its address'
     expect(screen.getByRole('heading', { name: 'My plan' })).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('a failed re-read of a page that was not found says it cannot be opened, not that it is missing', async () => {
+    const { GET, client } = show(404);
+    await screen.findByRole('heading', { name: 'Page not found' });
+    GET.mockResolvedValue({ data: {}, response: new Response('', { status: 500 }) });
+    await act(async () => void (await client.refetchQueries()));
+    await waitFor(() => expect(client.getQueryCache().getAll()[0]!.state.status).toBe('error'));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/can.t be opened right now/);
+    expect(screen.queryByRole('heading', { name: 'Page not found' })).toBeNull();
+  });
 });
