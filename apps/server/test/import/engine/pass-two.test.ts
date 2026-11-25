@@ -114,6 +114,15 @@ describe('writing pages in the order of the tree', () => {
   });
 });
 
+describe('an entry listed twice', () => {
+  it('the page is written from the first entry of that path, the one pass one kept, never from the later copy it skipped', async () => {
+    const t = await setup([md('a.md\u0000# First\n'), md('a.md\u0000# Second\n')]);
+    await t.run();
+    expect(t.repo.written.map((w) => w.page.content.markdown)).toEqual(['# First\n']);
+    expect((await t.items()).filter((i) => i.status === 'skipped').map((i) => i.message)).toEqual(['duplicate_path']);
+  });
+});
+
 describe('links', () => {
   it('a link to a page of the archive becomes /p/<url_id> with its fragment, and one that matches nothing stays as written and is a warning', async () => {
     const t = await setup([md('a.md\u0000[b](dir/b.md#part) [gone](missing.md)\n'), md('dir/b.md\u0000# B\n')]);

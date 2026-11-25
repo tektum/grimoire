@@ -208,7 +208,9 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const index: LinkIndex = { byPath, byId: new Map() };
   const itemById = new Map(all.map((i) => [i.id, i]));
   const lowerPaths: ReadonlySet<string> = new Set(all.filter((i) => !isContainer(i) && i.kind !== 'other').map((i) => segmentsOf(i.path).join('/').normalize('NFC').toLowerCase()));
-  const entryByPath = new Map(deps.entries.map((e) => [e.path, e]));
+  // The first entry of a path is the one pass one kept; a later copy was skipped as a duplicate and must not be read in its place.
+  const entryByPath = new Map<string, ZipEntry>();
+  for (const e of deps.entries) if (!entryByPath.has(e.path)) entryByPath.set(e.path, e);
 
   // Which page stands for which folder: a folder's own page file, else its container.
   const folderPage = new Map<string, ImportItem>();
