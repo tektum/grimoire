@@ -1,6 +1,6 @@
 name: Benchmark row-level security
 # BENCHMARK, by manual dispatch only: no pull-request or push trigger, nothing requires it. It measures what scoped() and the row-level security policies
-# (docs/tenancy.md step 4) add to page-open and tree-read, on the pgvector image of the integration job started with the staging database parameters
+# (docs/tenancy.md step 4) add to page-open, tree-read and the semantic chunk search, on the pgvector image of the integration job started with the staging database parameters
 # (tools/bench/compose.bench.yaml). The result is the log of the "Run the benchmark" step. Rerun it for the policies pull request.
 on:
   workflow_dispatch:
