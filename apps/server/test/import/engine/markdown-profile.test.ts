@@ -175,6 +175,11 @@ describe('preprocess: front matter is stripped (R10.10)', () => {
     expect(p.preprocess(toml, ctx)).toBe('Body\n');
   });
 
+  it('a closed block of only blank lines and comments is not front matter: a heading between two rules stays', () => {
+    for (const page of ['---\n# Title\n---\nText\n', '---\n\n---\nText\n', '---\n# a\n\n# b\n---\nText\n', '+++\n# Title\n+++\nText\n']) expect(p.preprocess(page, ctx)).toBe(page);
+    expect(p.titleOf('f.md', '---\n# Title\n---\nText\n')).toBe('Title');
+  });
+
   it('strips a block that is empty', () => {
     expect(p.preprocess('---\n---\nText\n', ctx)).toBe('Text\n');
   });

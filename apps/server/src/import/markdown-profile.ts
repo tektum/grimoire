@@ -33,13 +33,13 @@ function stripFrontMatter(markdown: string): string {
     const end = text.indexOf('\n', at);
     const line = (end === -1 ? text.slice(at) : text.slice(at, end)).replace(/\r$/, '');
     const closes = toml ? line.trimEnd() === '+++' : line.trimEnd() === '---' || line.trimEnd() === '...';
-    if (closes) return end === -1 ? '' : text.slice(end + 1);
+    // A closed block that has lines but no content (only blanks and comments, a `# Title` between two rules) is a horizontal rule and some text, not front matter; a block with no
+    // line at all (`---` and `---` one after the other) is an empty front matter and goes.
+    if (closes) return sawContent || at === open[0].length ? (end === -1 ? '' : text.slice(end + 1)) : markdown;
     if (!shape.test(line)) return markdown;
-    // A block of blank lines and comments only is a horizontal rule and some text, not front matter.
     if (line.trim() !== '' && !line.trimStart().startsWith('#')) sawContent = true;
     if (end === -1) return markdown;
     at = end + 1;
-    if (!sawContent && at >= text.length) return markdown;
   }
   return markdown;
 }
