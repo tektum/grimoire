@@ -10,7 +10,7 @@ export interface RevisionCatchUpDeps {
 }
 
 /**
- * The daily revision catch-up (R9.3, R2.24): `RevisionRepo.catchUp` in batches until one is not full. The repository makes the revision of each page in
+ * The daily revision catch-up (R9.3, R2.24): `RevisionRepo.catchUp` in batches until one makes no revision. The repository makes the revision of each page in
  * the page's own tenant, under the page's lock, so the job and a concurrent first-open query on one page yield one revision. Returns how many it made.
  */
 export async function runRevisionCatchUp(deps: RevisionCatchUpDeps, signal: AbortSignal): Promise<number> {
@@ -19,6 +19,7 @@ export async function runRevisionCatchUp(deps: RevisionCatchUpDeps, signal: Abor
   for (;;) {
     const made = await deps.revisions.catchUp(deps.now() - CATCH_UP_IDLE_MS, size);
     total += made.length;
-    if (made.length < size || signal.aborted) return total;
+    // A short batch proves nothing: `catchUp` re-checks each candidate under its page lock and skips one that a concurrent save or first-open query already covered. Only an empty one does.
+    if (made.length === 0 || signal.aborted) return total;
   }
 }

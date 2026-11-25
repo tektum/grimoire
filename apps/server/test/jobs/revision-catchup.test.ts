@@ -9,10 +9,10 @@ const repo = (rounds: number[]) => {
 };
 
 describe('runRevisionCatchUp', () => {
-  it('asks for pages idle for five minutes, in batches of 500, until a batch is not full', async () => {
-    const r = repo([500, 500, 7]);
-    expect(await runRevisionCatchUp({ revisions: r.revisions, now: () => 1_000_000, batchSize: 500 }, new AbortController().signal)).toBe(1007);
-    expect(r.catchUp.mock.calls).toEqual([[1_000_000 - CATCH_UP_IDLE_MS, 500], [1_000_000 - CATCH_UP_IDLE_MS, 500], [1_000_000 - CATCH_UP_IDLE_MS, 500]]);
+  it('asks for pages idle for five minutes, in batches of 500, until a batch makes no revision', async () => {
+    const r = repo([500, 499, 7]);
+    expect(await runRevisionCatchUp({ revisions: r.revisions, now: () => 1_000_000, batchSize: 500 }, new AbortController().signal)).toBe(1006);
+    expect(r.catchUp.mock.calls).toEqual([[1_000_000 - CATCH_UP_IDLE_MS, 500], [1_000_000 - CATCH_UP_IDLE_MS, 500], [1_000_000 - CATCH_UP_IDLE_MS, 500], [1_000_000 - CATCH_UP_IDLE_MS, 500]]);
     expect(CATCH_UP_IDLE_MS).toBe(300_000);
   });
 
