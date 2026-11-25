@@ -32,36 +32,27 @@ function files(dir: string): string[] {
   } catch { return []; }
 }
 
-// Both scans parse only the texts that can hold what they look for (the word check or checkMany; a module path with authorize/ or one of the names of the decision),
-// read with their escapes decoded: parsing all of the production files twice took about 0.5 s idle and passed the 5 s default under a loaded test run. A whole word
-// and not `.check`: a comment may stand between the dot and the name.
+// Both scans parse only the texts that can hold what they look for (the word check or checkMany; a module path with authorize/ or one of the names of the decision)
+// or that have a backslash: a text with no backslash has no escape sequence, so every name and path the parser reads is in it as written, and one with a backslash
+// is left to the parser, which decodes. A whole word and not `.check`: a comment may stand between the dot and the name. Each file is parsed once for both scans.
+// Parsing all of the production files twice took about 0.5 s idle and passed the 5 s default under a loaded test run.
 const CHECK_NAME = /\bcheck(?:Many)?\b/;
+const hasEscape = (text: string): boolean => text.includes('\\');
 
-/**
- * The text with its well-formed escape sequences decoded the way a string literal or an identifier is (an identity escape such as \e gives e, a line continuation
- * goes): a name or a path spelled with escapes is then a plain substring, so the text filters never skip what the parser sees. Only well-formed escapes are decoded,
- * because a lax pattern would let an unfinished \u{ in a comment swallow the code up to the next }. \n gives n rather than a newline, which only lets more texts through.
- */
-function decodeEscapes(text: string): string {
-  return text.replace(
-    /\\(?:u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-7]{1,3})|(\r\n|[\n\r\u2028\u2029])|([\s\S]))/g,
-    (_all, braced?: string, u4?: string, x2?: string, octal?: string, newline?: string, other?: string) =>
-      braced !== undefined
-        ? String.fromCodePoint(Math.min(parseInt(braced, 16), 0x10ffff))
-        : (u4 ?? x2) !== undefined
-          ? String.fromCharCode(parseInt((u4 ?? x2) as string, 16))
-          : octal !== undefined
-            ? String.fromCharCode(parseInt(octal, 8))
-            : newline !== undefined
-              ? ''
-              : (other as string),
-  );
+const parsed = new Map<string, { text: string; sf: ts.SourceFile }>();
+/** The parse of `text` as `file`, made once and shared by the two scans (a different text under the same name, as the probes below pass, is parsed again). */
+function parse(file: string, text: string): ts.SourceFile {
+  const hit = parsed.get(file);
+  if (hit !== undefined && hit.text === text) return hit.sf;
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  parsed.set(file, { text, sf });
+  return sf;
 }
 
 /** `<receiver>.check(...)` and `<receiver>.checkMany(...)` calls in `text`, with the receiver's source text. */
 export function checkCalls(file: string, text: string): { file: string; line: number; receiver: string }[] {
-  if (!CHECK_NAME.test(decodeEscapes(text))) return [];
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  if (!hasEscape(text) && !CHECK_NAME.test(text)) return [];
+  const sf = parse(file, text);
   const out: { file: string; line: number; receiver: string }[] = [];
   const visit = (n: ts.Node): void => {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ['check', 'checkMany'].includes(n.expression.name.text)) {
@@ -86,9 +77,8 @@ const IMPORT_ALLOWED = [
 
 /** Imports of the uncollapsed decision in `text`: `file:line module`. */
 export function uncollapsedImports(file: string, text: string): string[] {
-  const plain = decodeEscapes(text);
-  if (!plain.includes('authorize/') && !UNCOLLAPSED_NAMES.some((name) => plain.includes(name))) return [];
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+  if (!hasEscape(text) && !text.includes('authorize/') && !UNCOLLAPSED_NAMES.some((name) => text.includes(name))) return [];
+  const sf = parse(file, text);
   const out: string[] = [];
   const at = (n: ts.Node, what: string): void => { out.push(`${file}:${String(sf.getLineAndCharacterOfPosition(n.getStart()).line + 1)} ${what}`); };
   const visit = (n: ts.Node): void => {
@@ -138,7 +128,7 @@ describe('only the collapsed authorisation answer is used outside the authoriser
     }
     expect(checkCalls('apps/server/src/x.ts', 'const checked = isChecked(x); // see check(')).toEqual([]);
     // What the parser sees and a plain text filter would not: a comment between the dot and the name, a name spelled with an escape, and code after an unfinished escape.
-    for (const [probe, receiver] of [['await a./* note */check(r);', 'a'], ['await deps.authz.ch\\u0065ckMany(rs);', 'deps.authz'], ['// \\u{\nawait authorizer.check(r); // }', 'authorizer']] as const) {
+    for (const [probe, receiver] of [['await a./* note */check(r);', 'a'], ['await deps.authz.ch\\u0065ckMany(rs);', 'deps.authz'], ['await x.\\u{0000063}heck(r);', 'x'], ['// \\u{\nawait authorizer.check(r); // }', 'authorizer']] as const) {
       expect(checkCalls('apps/server/src/x.ts', probe).map((c) => c.receiver), probe).toEqual([receiver]);
     }
   });
@@ -167,7 +157,7 @@ describe('only the collapsed authorisation answer is used outside the authoriser
       expect(uncollapsedImports('apps/server/src/x.ts', line), line).toHaveLength(1);
     }
     // A name or a path spelled with escapes is decoded by the parser, so the filter must not skip it.
-    for (const line of ["import { d\\u0065cide as pick } from '../elsewhere.js';", "export * from '../auth\\x6frize/authorizer.js';"]) {
+    for (const line of ["import { d\\u0065cide as pick } from '../elsewhere.js';", "import { \\u{0000064}ecide } from '../elsewhere.js';", "export * from '../auth\\x6frize/authorizer.js';"]) {
       expect(uncollapsedImports('apps/server/src/x.ts', line), line).toHaveLength(1);
     }
     expect(uncollapsedImports('apps/server/src/x.ts', "import type { DenyReason } from '../authorize/decide.js'; import { createPageAccess } from '@tektum/grimoire-core/authorize';")).toEqual([]);
