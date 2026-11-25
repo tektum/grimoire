@@ -7,7 +7,7 @@ import { LAST_COLLECTION_KEY, useCollections } from '../screens/collections/useC
 import { type ClientStorage, createClientStorage } from '../storage';
 import { Button } from '../ui/primitives';
 import { type TreeActions, useTreeActions } from './actions';
-import { buildTree, type FlatPage, pagePath } from './model';
+import { buildTree, pagePath } from './model';
 import { Tree } from './Tree';
 import { HttpError, useCollectionTree } from './useTree';
 import './tree.css';
@@ -37,15 +37,14 @@ function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { read
   const actions = useMemo<TreeActions>(
     () => ({
       ...plain,
-      create: async (parentId) => {
-        // The page that was made is opened only if the person is still where they pressed the button (the key of the location): they may have gone elsewhere meanwhile.
+      create: (parentId) => {
+        // The page that was made is opened only if the person is still where they pressed the button (the key of the location): they may have gone elsewhere meanwhile. It is opened as soon as the
+        // server has answered, not when the tree has been read again afterwards: that read can end late, and by then the person may be renaming a row of this very tree, which opening the page
+        // would take from under them (the title field is gone with the tree).
         const pressedAt = hereKey.current;
-        const outcome = await plain.create(parentId);
-        if (outcome.ok && hereKey.current === pressedAt) {
-          const page = outcome.data as FlatPage;
-          navigate(pagePath(page.title, page.urlId), { state: { newPage: true } });
-        }
-        return outcome;
+        return plain.create(parentId, (page) => {
+          if (hereKey.current === pressedAt) navigate(pagePath(page.title, page.urlId), { state: { newPage: true } });
+        });
       },
     }),
     [plain, navigate, hereKey],
@@ -91,7 +90,12 @@ export function useOpenCollection(api: ApiLike, storage?: ClientStorage): { read
 }
 
 export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonly storage?: ClientStorage }) {
-  const { collectionId, urlId } = useOpenCollection(api, storage);
+  const { collectionId: open, urlId } = useOpenCollection(api, storage);
+  // The collection whose tree was shown, kept while the page that is being opened says which collection it is in: a new page opens from a tree, and a tree that is taken down for that moment takes the
+  // row being renamed (and its title field) with it. A page opened with no tree before it has none until its collection is known.
+  const shown = useRef<string | undefined>(undefined);
+  if (open !== undefined) shown.current = open;
+  const collectionId = open ?? (urlId === undefined ? undefined : shown.current);
   // Kept here, in the part that stays when the screen changes: the key of the location now, for `CollectionContents` to compare with the one where a page was asked for.
   const { key } = useLocation();
   const hereKey = useRef(key);

@@ -21,8 +21,11 @@ async function run<T>(call: () => Result): Promise<Outcome<T>> {
 const moveBody = (to: Placement) => ({ parentId: to.parentId, ...(to.beforeId !== null ? { beforeId: to.beforeId } : { afterId: to.afterId }) });
 
 export interface TreeActions {
-  /** A new, untitled page under `parentId` (null for the top level), last among its siblings. */
-  create(parentId: string | null): Promise<Outcome>;
+  /**
+   * A new, untitled page under `parentId` (null for the top level), last among its siblings. `made` is called with the page as soon as the server has answered, before the tree is read again: what a
+   * caller does with the new page (opening it) must not wait for that read, which can take long and ends after the person has gone on to something else in the tree.
+   */
+  create(parentId: string | null, made?: (page: FlatPage) => void): Promise<Outcome>;
   /** Renames a page. What is shown is what the server holds once the page record is read again, whatever order overlapping renames were answered in. */
   rename(id: string, title: string): Promise<Outcome>;
   /** Moves a page: under `to.parentId`, after the sibling `to.afterId`, before `to.beforeId`, or last when neither is set. */
@@ -50,10 +53,13 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
       return outcome;
     };
     return {
-      create: (parentId) =>
+      create: (parentId, made) =>
         settle<FlatPage>(
           () => api.POST('/v1/pages' as never, { body: { collectionId, parentId } } as never),
-          (page) => { local((pages) => applyCreate(pages, page)); },
+          (page) => {
+            local((pages) => applyCreate(pages, page));
+            made?.(page);
+          },
         ),
       rename: async (id, title) => {
         // Shown at once, in the tree and in the page record of the open page; the answers decide nothing: the page record is read again whatever the order they come in, so the heading and the address follow the server's title.
