@@ -16,6 +16,9 @@ const MIN_REFRESH_MS = 5_000;
 const TIMED_RETRIES = 3;
 const TIMED_RETRY_MS = 10_000;
 
+/** The words of a rejection, short enough for an attribute. */
+const messageOf = (e: unknown): string => (e instanceof Error ? e.message : 'unknown').slice(0, 100);
+
 type State = 'loading' | 'ready' | 'failed' | 'external';
 
 /**
@@ -36,7 +39,10 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     if (typeof title === 'string' && title !== '') img.title = title;
     else img.removeAttribute('title');
   };
-  const setState = (state: State): void => { dom.dataset['state'] = state; };
+  const setState = (state: State): void => {
+    dom.dataset['state'] = state;
+    if (state !== 'failed') delete dom.dataset['failedReason'];
+  };
   const clear = (): void => {
     generation += 1;
     clearTimeout(timer);
@@ -60,10 +66,12 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     dom.append(text);
   };
 
-  const failed = (): void => {
+  // Why an image failed is left on the node (`data-failed-reason`) for whoever looks at a failed one: a test that fails, a person with the inspector.
+  const failed = (reason: string): void => {
     generation += 1; // final: an answer still on its way must not bring the image back, or set a timer
     clearTimeout(timer);
     setState('failed');
+    dom.dataset['failedReason'] = reason;
     dom.replaceChildren(Object.assign(document.createElement('span'), { textContent: "Image couldn't be loaded" }));
   };
 
@@ -75,7 +83,7 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
     setTitle(img);
     dom.append(img);
     setState('loading');
-    if (links === null) return failed();
+    if (links === null) return failed('no-attachments-host');
     let refreshed = false; // one replacement is asked for because of a failure between two successful loads: a link that keeps failing is not asked for again and again
     const refreshBeforeExpiry = (retries: number): void => {
       links.refresh(id).then(show, () => {
@@ -94,9 +102,9 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
       if (wait >= MIN_REFRESH_MS) timer = setTimeout(() => refreshBeforeExpiry(TIMED_RETRIES), Math.min(MAX_TIMER_MS, wait));
     };
     const refreshOnce = (): void => {
-      if (refreshed) return failed(); // it failed again after a new link: not a matter of expiry
+      if (refreshed) return failed('image-error-after-refresh'); // it failed again after a new link: not a matter of expiry
       refreshed = true;
-      links.refresh(id).then(show, () => mine === generation && failed());
+      links.refresh(id).then(show, (e: unknown) => mine === generation && failed(`refresh-rejected: ${messageOf(e)}`));
     };
     img.addEventListener('load', () => {
       if (mine !== generation) return;
@@ -104,7 +112,7 @@ export function imageView(node: ProseNode, view: EditorView): NodeView {
       setState('ready');
     });
     img.addEventListener('error', () => mine === generation && refreshOnce());
-    links.url(id).then(show, () => mine === generation && failed());
+    links.url(id).then(show, (e: unknown) => mine === generation && failed(`link-rejected: ${messageOf(e)}`));
   };
 
   const render = (): void => {
