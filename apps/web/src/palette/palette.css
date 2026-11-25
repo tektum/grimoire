@@ -1,0 +1,15 @@
+.palette { top: 12vh; padding: var(--space-3); width: min(40rem, 94vw); max-height: 70vh; display: flex; flex-direction: column; }
+.palette [cmdk-list] { overflow-y: auto; margin-top: var(--space-2); }
+.palette [cmdk-group-heading] { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: var(--space-2) var(--space-3) var(--space-1); }
+.palette [cmdk-item] { overflow-wrap: anywhere; }
+.palette-result-title { font-weight: 600; display: block; }
+.palette-snippet { display: block; color: var(--muted); font-size: 0.85rem; }
+/* The matched words: a marker colour with the text colour on it, in both schemes (4.5 or more: #ffe08a under #1b1a17, #6b5600 under #ece8de). */
+.palette-snippet mark, .search-snippet mark { background: #ffe08a; color: #1b1a17; border-radius: 2px; }
+@media (prefers-color-scheme: dark) {
+  .palette-snippet mark, .search-snippet mark { background: #6b5600; color: #ece8de; }
+}
+.palette-note { padding: var(--space-3); color: var(--muted); margin: 0; }
+@media (forced-colors: active) {
+  .palette-snippet mark, .search-snippet mark { background: Highlight; color: HighlightText; }
+}
