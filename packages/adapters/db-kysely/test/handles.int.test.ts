@@ -56,6 +56,15 @@ describe('scoped(db, tenant)', () => {
     await scoped(one, 'tenant-e').query(`insert into tenants (id, name, domain) values ('committed', 'c', 'c.example')`);
     expect(await one.query(`select count(*)::int as n from tenants where id = 'committed'`)).toEqual([{ n: 1 }]);
   });
+
+  it('lets a transaction raise its isolation level as its first statement, with the tenant still set', async () => {
+    const seen = await scoped(one, 'tenant-f').transaction(async (tx) => {
+      await tx.query('set transaction isolation level serializable');
+      return tx.query(`select current_setting('transaction_isolation') as isolation, nullif(current_setting('app.tenant', true), '') as tenant`);
+    });
+    expect(seen).toEqual([{ isolation: 'serializable', tenant: 'tenant-f' }]);
+    expect(await one.query(TENANT)).toEqual([{ tenant: null }]);
+  });
 });
 
 describe('createOpsDatabase(url): the operator role grimoire_ops', () => {

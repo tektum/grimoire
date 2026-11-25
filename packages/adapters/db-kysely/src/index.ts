@@ -91,12 +91,13 @@ export type TenantScoped = Pick<Database, 'query' | 'transaction'>;
 
 /**
  * The runtime database for one tenant (docs/tenancy.md section 3.2): every `query` is one short transaction and every `transaction` sets the tenant first, with
- * `set_config('app.tenant', id, true)`. The setting is local to the transaction, so a pooled connection never carries a tenant into the next one. `begin` and the
- * setting go in one simple query (one round trip); that is why the id sits in the SQL text, and why only a validated id gets there.
+ * `set local app.tenant`. The setting is local to the transaction, so a pooled connection never carries a tenant into the next one. `begin` and the setting go in
+ * one simple query (one round trip); that is why the id sits in the SQL text, and why only a validated id gets there. `set local` takes no snapshot, so a
+ * transaction may still raise its isolation level as its first statement.
  */
 export function scoped(db: KyselyDatabase, tenantId: string): TenantScoped {
   if (!TENANT_ID.test(tenantId)) throw new TenantIdError();
-  const begin = CompiledQuery.raw(`begin; select set_config('app.tenant', '${tenantId}', true)`);
+  const begin = CompiledQuery.raw(`begin; set local app.tenant = '${tenantId}'`);
   const transaction = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> => db.kysely.connection().execute(async (connection) => {
     try {
       await connection.executeQuery(begin);
