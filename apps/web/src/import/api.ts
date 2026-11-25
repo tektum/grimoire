@@ -43,6 +43,13 @@ const STATUSES: readonly unknown[] = ['created', 'uploaded', 'running', 'done', 
 const isCreated = (v: unknown): v is CreatedImport => isObject(v) && typeof v.id === 'string' && isObject(v.upload) && v.upload.method === 'PUT' && typeof v.upload.url === 'string' && isObject(v.upload.headers);
 const isState = (v: unknown): v is ImportState =>
   isObject(v) && STATUSES.includes(v.status) && isObject(v.counts) && ['pagesTotal', 'pagesDone', 'skipped', 'failed'].every((k) => typeof (v.counts as Record<string, unknown>)[k] === 'number');
+const isItems = (v: unknown): v is ImportItems =>
+  isObject(v) &&
+  Array.isArray(v.items) &&
+  v.items.every(
+    (i: unknown) => isObject(i) && typeof i.id === 'string' && typeof i.path === 'string' && ['imported', 'skipped', 'failed'].includes(i.status as string) && (i.message === null || typeof i.message === 'string'),
+  ) &&
+  (v.nextCursor === null || typeof v.nextCursor === 'string');
 /** The routes are not in the generated client yet, so the answers are not typed for us: what is not shaped as it is used is an error of that step, not a failure later and elsewhere. */
 function shaped<T>(step: ImportError['step'], value: unknown, is: (v: unknown) => v is T): T {
   if (!is(value)) throw new ImportError(step, 200, undefined);
@@ -92,7 +99,7 @@ export async function cancelImport(api: ApiLike, id: string): Promise<void> {
 
 /** One page of the report of an import (R6.41). */
 export async function readItems(api: ApiLike, id: string, cursor: string | undefined): Promise<ImportItems> {
-  return okOr('items', await api.GET('/v1/imports/{id}/items' as never, { params: { path: { id }, query: cursor === undefined ? {} : { cursor } } } as never)) as ImportItems;
+  return shaped('items', okOr('items', await api.GET('/v1/imports/{id}/items' as never, { params: { path: { id }, query: cursor === undefined ? {} : { cursor } } } as never)), isItems);
 }
 
 /** The address a failed page's original file can be fetched from, for a short time (R6.41). */

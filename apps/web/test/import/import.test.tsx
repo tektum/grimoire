@@ -440,6 +440,18 @@ describe('the report of an ended import', () => {
   });
 });
 
+describe('a report that is not shaped as the contract says', () => {
+  it('is a report that cannot be read, not rows with holes in them', async () => {
+    const t = fake({ states: [ended()] });
+    const inner = (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET;
+    (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET = async (path: string, init?: unknown) =>
+      path === '/v1/imports/{id}/items' ? { data: { items: [{ id: 'a', path: 'docs/a.md', status: 'exploded', message: null }], nextCursor: null }, response: new Response(null, { status: 200 }) } : inner(path, init);
+    show(t.api, '/import?import=imp1');
+    expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
+    expect(screen.queryByRole('listitem')).toBeNull();
+  });
+});
+
 describe('cancelling an import', () => {
   it('offers it while running only, and says what became of the import once it is cancelled, which then offers the report', async () => {
     const t = fake({ states: [state({ done: 4 }), state({ status: 'cancelled', done: 4 })], items: [[item({ id: 'a' })]] });
