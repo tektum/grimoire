@@ -61,7 +61,7 @@ const Item = z
   })
   .openapi('ImportItem');
 const Items = z.object({ items: z.array(Item), nextCursor: z.string().nullable() }).openapi('ImportItems');
-const Started = z.object({ status: z.literal('running') }).openapi('ImportStarted');
+const Started = z.object({ status: z.literal('uploaded').describe('The import waits for its turn: the job moves it to `running` (one import of a workspace runs at a time)') }).openapi('ImportStarted');
 const Source = z.object({ url: z.string(), expiresAt: z.number().int().describe('Epoch milliseconds') }).openapi('ImportSource');
 
 export const createImport = defineRoute({
@@ -83,9 +83,9 @@ export const startImport = defineRoute({
   policy: { kind: 'import', param: 'id', who: 'creator' },
   request: { params: IdParam },
   responses: {
-    202: json(Started, 'The import is running'),
+    202: json(Started, 'The import is accepted and its job queued'),
     404: json(ErrorBody, 'Not found, not the caller\'s, or the caller can no longer write in the collection'),
-    409: json(ErrorBody, '`upload_missing`, `size_mismatch`, `already_started` or `already_running` (another import of the workspace is running)'),
+    409: json(ErrorBody, '`upload_missing`, `size_mismatch` or `already_started`'),
     422: json(ErrorBody, '`not_a_zip`: the file is not a zip archive'),
     503: json(ErrorBody, 'The file store does not answer, or the job queue is not up'),
   },
@@ -212,21 +212,18 @@ router.openapi(startImport, async (c) => {
   if (magic === undefined) return fail('upload_missing');
   if (magic[0] !== ZIP_MAGIC[0] || magic[1] !== ZIP_MAGIC[1]) return fail('not_a_zip');
   if (!(await deps.imports.markUploaded(tenant, id))) return fail('already_started');
-  const began = await deps.imports.begin(tenant, id, deps.clock.now());
-  if (began.kind === 'busy') return fail('already_running');
-  if (began.kind === 'not-uploaded') return fail('already_started');
+  // The job moves the import to `running` when its turn comes: a workspace has one running import at a time, held by the database, so a second one waits as `uploaded` and its job tries again.
   try {
     await deps.enqueue('import', { importId: id, tenantId: tenant }, { singletonKey: id });
   } catch {
-    // The work could not be queued: the import goes back to waiting, so that the person may start it again, and the tenant is not left with a running import nothing runs.
-    await deps.imports.unbegin(tenant, id);
+    // The work could not be queued: the import stays `uploaded`, and the person may start it again.
     deps.log.error('files.unavailable', { operation: 'import-start' });
     return fail('unavailable');
   }
   await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });
   deps.log.info('import.started', { importId: id });
   noStore(c);
-  return c.json({ status: 'running' as const }, 202);
+  return c.json({ status: 'uploaded' as const }, 202);
 });
 
 router.openapi(getImport, async (c) => {

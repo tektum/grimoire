@@ -110,11 +110,12 @@ function build(options: { files?: boolean; enqueueFails?: boolean } = {}) {
   const sent = async (id: string, tenant = 'T-a', bytes: Uint8Array = ZIP) => {
     await files.put(importZipKey(tenant, id), bytes, { size: bytes.length, contentType: 'application/zip' });
   };
-  /** An import of ada's that has been sent and started. */
+  /** An import of ada's that is running: sent, and moved there by the repository as the job does. */
   const running = async () => {
     const { id } = await made();
     await sent(id);
-    expect((await call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(202);
+    await imports.markUploaded('T-a', id);
+    expect(await imports.start('T-a', id, t.clock.now())).toMatchObject({ status: 'running' });
     return id;
   };
   return { call, made, sent, running, uid, imports, files, enqueued, collections, world, rw, ro, theirs, audit: collections.audit, clock: t.clock, logs: t.logger };
@@ -169,17 +170,19 @@ describe('POST /v1/imports', () => {
 });
 
 describe('POST /v1/imports/{id}/start', () => {
-  it('runs a zip that arrived: 202, running, one job for this import of this tenant, one audit row', async () => {
+  it('accepts a zip that arrived: 202, waiting (the job runs it), one job for this import of this tenant, one audit row', async () => {
     const t = build();
     const { id } = await t.made();
     await t.sent(id);
     const res = await t.call('ada', 'POST', `/v1/imports/${id}/start`);
-    expect([res.status, await res.json()]).toEqual([202, { status: 'running' }]);
-    expect(await t.imports.get('T-a', id)).toMatchObject({ status: 'running' });
+    expect([res.status, await res.json()]).toEqual([202, { status: 'uploaded' }]);
+    expect(await t.imports.get('T-a', id)).toMatchObject({ status: 'uploaded' });
     expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: id, tenantId: 'T-a' }, options: { singletonKey: id } }]);
     expect(t.audit.events).toMatchObject([{ action: 'import.started', targetType: 'import', targetId: id, tenantId: 'T-a', actorId: t.uid('ada') }]);
+    // Asking again while it waits is safe (the queue keeps one job for the import); once it runs the start is refused.
+    expect((await t.call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(202);
+    await t.imports.start('T-a', id, t.clock.now());
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('already_started');
-    expect(t.enqueued).toHaveLength(1);
   });
 
   it('says what is wrong with the file: not sent (409 upload_missing), another size (409 size_mismatch), not a zip (422 not_a_zip); the import stays as it was', async () => {
@@ -215,31 +218,33 @@ describe('POST /v1/imports/{id}/start', () => {
     expect((await t.imports.get('T-a', id))?.status).toBe('created');
   });
 
-  it('lets one import of a workspace run at a time: the second start is 409 already_running and waits as it was, and can start when the first has ended', async () => {
+  it('accepts every start, whatever else runs: a workspace with a running import gets the next one queued and waiting, never refused', async () => {
     const t = build();
-    const first = await t.running();
+    await t.running();
     const second = (await t.made()).id;
     await t.sent(second);
-    const refused = await t.call('ada', 'POST', `/v1/imports/${second}/start`);
-    expect([refused.status, await code(refused)]).toEqual([409, 'already_running']);
+    const res = await t.call('ada', 'POST', `/v1/imports/${second}/start`);
+    expect([res.status, await res.json()]).toEqual([202, { status: 'uploaded' }]);
     expect((await t.imports.get('T-a', second))?.status).toBe('uploaded');
-    expect(t.enqueued).toHaveLength(1);
-    expect((await t.call('ada', 'POST', `/v1/imports/${first}/cancel`)).status).toBe(200);
-    expect((await t.call('ada', 'POST', `/v1/imports/${second}/start`)).status).toBe(202);
+    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: second, tenantId: 'T-a' }, options: { singletonKey: second } }]);
   });
 
-  it('two starts at once leave one running and one 409 already_running', async () => {
+  it('two starts at once are both accepted and queued: both wait, and the database lets one run at a time', async () => {
     const t = build();
     const a = (await t.made()).id;
     const b = (await t.made()).id;
     await t.sent(a);
     await t.sent(b);
     const results = await Promise.all([t.call('ada', 'POST', `/v1/imports/${a}/start`), t.call('ada', 'POST', `/v1/imports/${b}/start`)]);
-    expect(results.map((r) => r.status).sort()).toEqual([202, 409]);
-    expect(t.enqueued).toHaveLength(1);
+    expect(results.map((r) => r.status)).toEqual([202, 202]);
+    expect(t.enqueued).toHaveLength(2);
+    // What the two jobs then do, at once: one moves its import to running, the other is turned away and its import waits (and another workspace's would run beside it).
+    const turns = await Promise.allSettled([t.imports.start('T-a', a, t.clock.now()), t.imports.start('T-a', b, t.clock.now())]);
+    expect(turns.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect([(await t.imports.get('T-a', a))?.status, (await t.imports.get('T-a', b))?.status].sort()).toEqual(['running', 'uploaded']);
   });
 
-  it('answers 503 and gives the import back when the job cannot be queued, so that the start can be tried again', async () => {
+  it('answers 503 when the job cannot be queued, and the import waits as `uploaded`, so that the start can be tried again', async () => {
     const t = build({ enqueueFails: true });
     const { id } = await t.made();
     await t.sent(id);
@@ -295,12 +300,10 @@ describe('the start, where the store or the repository does not do what is expec
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('upload_missing');
   });
 
-  it('is 409 already_started when another start got there first, whether it moved the row before or after this one looked', async () => {
+  it('is 409 already_started when another start got there first (the row moved after this one looked)', async () => {
     const t = build();
     const id = await sendAndStart(t);
     vi.spyOn(t.imports, 'markUploaded').mockResolvedValueOnce(false);
-    expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('already_started');
-    vi.spyOn(t.imports, 'begin').mockResolvedValueOnce({ kind: 'not-uploaded' });
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('already_started');
     expect(t.enqueued).toEqual([]);
   });
@@ -470,8 +473,8 @@ describe('POST /v1/imports/{id}/cancel', () => {
     const res = await t.call('root', 'POST', `/v1/imports/${id}/cancel`);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString() });
-    expect(t.audit.events.map((e) => e.action)).toEqual(['import.started', 'import.cancelled']);
-    expect(t.audit.events[1]).toMatchObject({ actorId: t.uid('root'), targetId: id, tenantId: 'T-a' });
+    expect(t.audit.events.map((e) => e.action)).toEqual(['import.cancelled']);
+    expect(t.audit.events[0]).toMatchObject({ actorId: t.uid('root'), targetId: id, tenantId: 'T-a' });
   });
 
   it('is 409 not_running when it is not running (not started, ended, or cancelled already), and 404 for anyone who may not see it', async () => {
