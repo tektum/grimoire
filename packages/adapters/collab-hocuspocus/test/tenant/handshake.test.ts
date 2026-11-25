@@ -84,6 +84,12 @@ describe('the token and the tenant', () => {
     }
   });
 
+  it('keeps the tenant of the user row, which admission checked the page in, for a token with no usable tenant (the page work runs in it, as on HTTP)', async () => {
+    for (const claim of [{ kind: 'none' }, { kind: 'many' }] as TenantClaim[]) {
+      await expect(setup({ claim, user: 'tenant-a', page: 'tenant-a', requireTenant: false }).authenticate()).resolves.toMatchObject({ userId: U1, tenantId: 'tenant-a' });
+    }
+  });
+
   it('is unchanged, while tenants are not required, for a verifier that knows nothing of them (no claim, rows with no tenant)', async () => {
     await expect(setup({ claim: undefined, user: undefined, page: undefined, requireTenant: false }).authenticate()).resolves.toMatchObject({ userId: U1 });
   });

@@ -8,7 +8,7 @@ export interface ConnectionContext {
   peerId: string;
   userId?: string;
   descopeUserId?: string;
-  /** The tenant the token named when the connection was admitted (absent when it named none); a renewed token must name the same one. */
+  /** The tenant of the user row admission checked the page in (absent for a row with none): the page work runs in it, and a renewed token must name the same one. */
   tenantId?: string;
   accessLevel?: 'read-write' | 'read-only';
   expiresAt?: number;
