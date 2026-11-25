@@ -45,6 +45,19 @@ describe('/ (HomeRedirect)', () => {
     at(<HomeRedirect api={fakeApi(list([])).api} storage={memoryStorage()} />);
     expect(await screen.findByText('No collections yet')).toBeTruthy();
   });
+  it('offers an administrator a New collection button in the empty workspace, and tells anyone else whom to ask', async () => {
+    const empty = (role: string) => ({ ...list([]), 'GET /v1/me': { status: 200, body: { id: 'u', name: 'U', email: 'u@example.test', role } } });
+    const admin = at(<HomeRedirect api={fakeApi(empty('admin')).api} storage={memoryStorage()} />);
+    expect((await screen.findByRole('link', { name: 'New collection' })).getAttribute('href')).toBe('/collections/new');
+    expect(screen.queryByText('Ask an admin to create one.')).toBeNull();
+    admin.unmount();
+    for (const role of ['member', 'viewer']) {
+      const view = at(<HomeRedirect api={fakeApi(empty(role)).api} storage={memoryStorage()} />);
+      expect(await screen.findByText('Ask an admin to create one.')).toBeTruthy();
+      expect(screen.queryByRole('link', { name: 'New collection' })).toBeNull();
+      view.unmount();
+    }
+  });
   it('offers to try again when the collections cannot be loaded', async () => {
     let attempt = 0;
     const { api } = fakeApi({ 'GET /v1/collections': () => (attempt++ === 0 ? { status: 503 } : { status: 200, body: { items: COLLECTIONS } }) });

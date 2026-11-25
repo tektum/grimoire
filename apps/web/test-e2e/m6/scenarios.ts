@@ -38,6 +38,11 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'history-restore', title: 'a restored version is seen by the second browser', specs: [`${E}/history/restore.spec.ts`] },
   { id: 'admin', title: 'the admin screens change a role, a group and the access of a collection', specs: [`${E}/admin/admin.spec.ts`] },
   {
+    id: 'admin-creates-content',
+    title: 'an administrator makes a collection with the form and a page in it (against the real stack; from an empty workspace on the stand-in, since the stack is shared), and a member cannot',
+    specs: [`${E}/collections/new-collection-stack.spec.ts`, `${E}/collections/new-collection.spec.ts`],
+  },
+  {
     id: 'import',
     title: 'the import screen takes a file into a collection (the real routes and file store of the stack accept it and hold it; what an import does once it runs is scripted until the engine is in)',
     specs: [`${E}/import/stack.spec.ts`, `${E}/import/upload.spec.ts`, `${E}/import/import.spec.ts`],

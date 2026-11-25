@@ -6,6 +6,7 @@ import { Shell } from './Shell';
 const screens: Record<string, ReturnType<typeof lazy>> = {
   login: lazy(() => import('../screens/login')),
   collections: lazy(() => import('../screens/collections')),
+  'new-collection': lazy(() => import('../screens/collections/NewCollection')),
   page: lazy(() => import('../screens/page')),
   history: lazy(() => import('../screens/history')),
   search: lazy(() => import('../screens/search')),

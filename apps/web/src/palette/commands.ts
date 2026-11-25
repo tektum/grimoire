@@ -28,6 +28,7 @@ export function commandsFor(world: CommandWorld): Command[] {
   commands.push({ id: 'go:search', group: 'Go to', label: 'Search', run: (go) => go('/search') });
   commands.push({ id: 'go:trash', group: 'Go to', label: 'Trash', run: (go) => go('/trash') });
   if (world.role === 'admin') commands.push({ id: 'go:admin', group: 'Go to', label: 'Admin', run: (go) => go('/admin/users') });
+  if (world.role === 'admin') commands.push({ id: 'action:new-collection', group: 'Actions', label: 'New collection', run: (go) => go('/collections/new') });
   if (world.canMakePage) commands.push({ id: 'action:new-page', group: 'Actions', label: 'New page', run: (_go, newPage) => newPage() });
   return commands;
 }

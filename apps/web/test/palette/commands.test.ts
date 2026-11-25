@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { commandsFor, filterCommands, PAGES_TYPED, PAGES_UNTYPED, type CommandWorld } from '../../src/palette/commands';
 
 const world = (over: Partial<CommandWorld> = {}): CommandWorld => ({
@@ -34,6 +34,14 @@ describe('the commands of the palette', () => {
   it('lists the pages of the open collection, the collections, the places and New page', () => {
     expect(labels(world())).toEqual(['Pages: Quarterly plan', 'Pages: Untitled', 'Collections: Dev', 'Collections: Handbook', 'Go to: Search', 'Go to: Trash', 'Actions: New page']);
   });
+  it('offers New collection to an administrator only, and it goes to the form', () => {
+    expect(labels(world({ role: 'admin' }))).toContain('Actions: New collection');
+    for (const role of ['member', 'viewer', undefined] as const) expect(labels(world({ role }))).not.toContain('Actions: New collection');
+    const go = vi.fn();
+    commandsFor(world({ role: 'admin' })).find((c) => c.label === 'New collection')?.run(go, () => undefined);
+    expect(go).toHaveBeenCalledWith('/collections/new');
+  });
+
   it('offers Admin to an administrator only', () => {
     expect(labels(world({ role: 'admin' }))).toContain('Go to: Admin');
     for (const role of ['member', 'viewer', undefined] as const) expect(labels(world({ role }))).not.toContain('Go to: Admin');

@@ -38,3 +38,8 @@
     width: auto;
   }
 }
+/* A link that is the main action of an empty screen looks like the primary button. */
+.button[data-variant='primary'] { background: var(--accent); border-color: var(--accent); color: var(--paper); text-decoration: none; display: inline-block; }
+@media (forced-colors: active) {
+  .button[data-variant='primary'] { background: ButtonFace; border: 2px solid ButtonText; color: ButtonText; }
+}

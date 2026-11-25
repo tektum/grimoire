@@ -7,6 +7,7 @@ export interface RouteSpec {
 /** The route table (contracts section 3). `/` redirects to the last or first collection. */
 export const ROUTES: readonly RouteSpec[] = [
   { path: '/login', screen: 'login', who: 'anyone' },
+  { path: '/collections/new', screen: 'new-collection', who: 'admin' },
   { path: '/c/:collectionId', screen: 'collections', who: 'read' },
   { path: '/p/:slug', screen: 'page', who: 'read' },
   { path: '/p/:slug/history', screen: 'history', who: 'read' },

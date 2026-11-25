@@ -5,6 +5,7 @@ import type { ClientStorage } from '../../storage';
 import { Button } from '../../ui/primitives';
 import type { HttpError } from '../../tree/useTree';
 import NotFoundScreen from '../notfound';
+import { NoCollections } from './NoCollections';
 import { LAST_COLLECTION_KEY, useCollection, useCollections } from './useCollections';
 import './collections.css';
 
@@ -19,11 +20,13 @@ export function CollectionsScreen({ api, collectionId, storage }: { readonly api
   const current = collection.data ?? collections.data?.find((c) => c.id === collectionId);
   // The collection that was read last is where `/` goes next time (only a collection that could be read counts).
   const readable = collection.data !== undefined;
-  useEffect(() => { if (readable) storage?.set(LAST_COLLECTION_KEY, collectionId); }, [readable, storage, collectionId]);
+  useEffect(() => {
+    if (readable) storage?.set(LAST_COLLECTION_KEY, collectionId);
+  }, [readable, storage, collectionId]);
   return (
     <div className="collections">
       <nav aria-label="Collections" className="collections-list">
-        {collections.data?.length === 0 && <p>No collections yet</p>}
+        {collections.data?.length === 0 && <NoCollections api={api} />}
         {collections.isError && <p role="alert">Couldn&apos;t load the collections.</p>}
         <ul>
           {collections.data?.map((c) => (
@@ -35,6 +38,7 @@ export function CollectionsScreen({ api, collectionId, storage }: { readonly api
             </li>
           ))}
         </ul>
+        {me.data?.role === 'admin' && collections.data !== undefined && collections.data.length > 0 && <Link to="/collections/new">New collection</Link>}
       </nav>
       <section className="collections-tree" aria-labelledby="collection-title">
         {isNotFound(collection.error) ? (
