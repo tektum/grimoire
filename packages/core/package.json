@@ -9,6 +9,10 @@
       "types": "./dist/ports/*.d.ts",
       "default": "./dist/ports/*.js"
     },
+    "./semantic/*": {
+      "types": "./dist/semantic/*.d.ts",
+      "default": "./dist/semantic/*.js"
+    },
     "./testing/*": {
       "types": "./dist/testing/*.d.ts",
       "default": "./dist/testing/*.js"
