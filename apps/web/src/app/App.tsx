@@ -12,6 +12,7 @@ import { Gate } from '../gate/Gate';
 import type { ServerConfig } from '../gate/config';
 import { blockWhenOutdated, guardedFetch, markClientOutdated } from '../gate/outdated';
 import type { ClientStorage } from '../storage';
+import { followDialogLayers } from '../ui/inert-layers';
 import { notify, Toaster } from '../ui/primitives';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -33,6 +34,7 @@ export interface AppProps {
 /** The application: settings, the configuration gate, the session and the API client, the sign-in requirement, then the routes. */
 export function App(props: AppProps): ReactNode {
   const [web, setWeb] = useState<WebConfig | 'failed' | null>(null);
+  useEffect(() => followDialogLayers(), []); // what a menu or a dialog hides from a screen reader is made inert too
   useEffect(() => {
     let live = true;
     props.loadConfig().then(
