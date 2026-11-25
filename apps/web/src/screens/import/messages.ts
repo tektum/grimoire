@@ -55,6 +55,8 @@ const WORDS: Record<string, (l: ImportLimits) => string> = {
   ignored: () => 'The import leaves this kind of file out on purpose.',
   duplicate_path: () => 'Another file in the zip has the same path.',
   too_large: (l) => limit('page', l.markdownBytes, 'page'),
+  'too-large': (l) => limit('page', l.markdownBytes, 'page'), // the spelling of the Markdown seed
+  'too-deep': () => 'The page has too many levels.',
   entry_too_large: (l) => limit('file', l.entryBytes, 'file'),
   type_not_allowed: () => 'This type of file is not allowed.',
   type_mismatch: () => 'The content of the file does not match its type.',
@@ -67,7 +69,8 @@ const WORDS: Record<string, (l: ImportLimits) => string> = {
   'invalid-markdown': () => 'The Markdown could not be read.',
   timeout: () => 'Converting the file took too long.',
   'out-of-memory': () => 'The file was too big to convert.',
-  state_too_large: (l) => limit('converted page', l.markdownBytes, 'page'),
+  // The converted page is over its own cap (its state, not its Markdown): the Markdown cap is another number, so none is named.
+  state_too_large: () => limit('converted page', undefined, 'page'),
   'content-lost': () => 'Part of the content could not be kept.',
   convert_failed: () => 'The file could not be converted.',
   collection_full: () => 'The collection is full.',

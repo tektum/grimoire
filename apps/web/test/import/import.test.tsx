@@ -547,6 +547,14 @@ describe('what a person is told about a file: the reason is a code, and the scre
     expect(none.join(' ')).not.toMatch(/\d/);
   });
 
+  it('says the same words for the spelling the Markdown seed uses (too-large, too-deep), and names no number for the page whose converted state is over its own cap', async () => {
+    show(reasons(['too-large', 'too-deep', 'state_too_large'], 'skipped', { maxMarkdownBytes: 131072 }).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 3);
+    expect(texts[0]).toBe('The page is larger than the limit of 128 KB.'); // the same sentence as too_large
+    expect(texts[1]).toBe('The page has too many levels.');
+    expect(texts[2]).toBe('The converted page is larger than the limit for a page.'); // another limit than the Markdown cap: no number of it
+  });
+
   it('says the generic sentence of the status for a code it does not know, for no reason and for text that is not a code, and never the text', async () => {
     show(
       fake({
