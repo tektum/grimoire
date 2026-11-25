@@ -38,6 +38,14 @@ describe('runUploadCleanup', () => {
     expect(w.repo.all()).toHaveLength(1);
   });
 
+  it('keeps going when a row of a batch is not removed because it completed meanwhile', async () => {
+    const w = world();
+    for (let i = 0; i < 5; i += 1) w.row(`a${String(i)}`, 'T-a');
+    const first = w.repo.removeIfPending.bind(w.repo);
+    const racing = Object.assign(Object.create(w.repo) as typeof w.repo, { removeIfPending: (id: string) => (id === 'a0' ? Promise.resolve(false) : first(id)) });
+    expect(await runUploadCleanup({ ...w.deps, attachments: racing, batchSize: 2 }, new AbortController().signal)).toBe(4);
+  });
+
   it('stops between batches when the signal aborts', async () => {
     const w = world();
     for (let i = 0; i < 4; i += 1) w.row(`a${String(i)}`, 'T-a');

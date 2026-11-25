@@ -61,6 +61,22 @@ describe('runPurge', () => {
     expect(await runPurge(w.deps, new AbortController().signal)).toEqual({ pages: 1, objects: 1 });
   });
 
+  it('does not let one failing batch stall the later ones of its tenant, and fails the job at the end', async () => {
+    const w = world();
+    const bad = w.old('T-a', 60, ['bad-key']);
+    const rest = [w.old('T-a', 50), w.old('T-a', 40), w.old('T-a', 35)];
+    const deps = { ...w.deps, batchSize: 1, deleteFiles: (keys: readonly string[]) => (keys[0] === 'bad-key' ? Promise.reject(new Error('store down')) : Promise.resolve()) };
+    await expect(runPurge(deps, new AbortController().signal)).rejects.toThrow('store down');
+    expect([bad, ...rest].map((id) => w.trash.state(id))).toEqual(['deleted', 'gone', 'gone', 'gone']);
+  });
+
+  it('does not count the objects of a batch that another purge removed first', async () => {
+    const w = world();
+    w.old('T-a', 40, ['k']);
+    const raced = { ...w.trash, expiredBatches: w.trash.expiredBatches.bind(w.trash), attachmentKeys: w.trash.attachmentKeys.bind(w.trash), markFilesRemoved: w.trash.markFilesRemoved.bind(w.trash), purge: () => Promise.resolve({ pages: 0 }) } as unknown as typeof w.trash;
+    expect(await runPurge({ ...w.deps, trash: raced }, new AbortController().signal)).toEqual({ pages: 0, objects: 0 });
+  });
+
   it('stops at the next batch when the signal aborts, and reports what it did', async () => {
     const w = world();
     const first = w.old('T-a', 40);

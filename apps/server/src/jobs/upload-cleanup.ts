@@ -20,7 +20,7 @@ export async function runUploadCleanup(deps: UploadCleanupDeps, signal: AbortSig
     for (;;) {
       const n = await cleanupExpiredAttachments({ repo: deps.attachments, files: deps.files, tenantId, now: deps.now, batch });
       removed += n;
-      if (n < batch || signal.aborted) return;
+      if (n === 0 || signal.aborted) return; // a row that completed or went meanwhile makes a round short, so only an empty round ends it
     }
   });
   return removed;
