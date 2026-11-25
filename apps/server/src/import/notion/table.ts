@@ -20,8 +20,8 @@ export function readCsv(bytes: Buffer, limits: { readonly maxFieldBytes: number 
   }
 }
 
-/** constructed: [F§6] what would break a Markdown table cell is escaped: a backslash, a pipe, and a line break (written as a space). */
-const cell = (value: string): string => value.replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/\r?\n/g, ' ');
+/** constructed: [F§6] what would break a Markdown table cell is escaped: a backslash, a pipe, and a line break, including a lone carriage return (written as a space). */
+const cell = (value: string): string => value.replaceAll('\\', '\\\\').replaceAll('|', '\\|').replace(/\r\n|\r|\n/g, ' ');
 
 /** constructed: [F§6] a Markdown table: the first row is the header. A cell is text: a formula such as `=SUM(A1)` is written as it is and nothing evaluates it. */
 export function csvToMarkdownTable(rows: readonly (readonly string[])[]): string {

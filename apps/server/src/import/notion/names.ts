@@ -13,13 +13,23 @@ export function splitName(name: string): SplitName {
   return { base: name.slice(0, name.length - ext.length), id: undefined, ext };
 }
 
+/** `Plan ##` is `Plan`; `C#` stays `C#` (the closing hashes must follow a space or tab). Linear: no regular expression. */
+function withoutClosingHashes(text: string): string {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === '#') end--;
+  if (end === text.length || end === 0 || (text[end - 1] !== ' ' && text[end - 1] !== '\t')) return text;
+  return text.slice(0, end).trimEnd();
+}
+
 /** constructed: [F§6] the title of a page: its file name without the id; else the first heading of its Markdown (R10.5); else the file name as it is. */
 export function titleOf(path: string, markdown: string): string {
   const file = path.split('/').at(-1) ?? path;
   const { base, ext } = splitName(file);
   if (base !== '') return base;
-  const heading = /^#{1,6}[ \t]+(.+?)[ \t#]*$/m.exec(markdown)?.[1];
-  return heading ?? file.slice(0, file.length - ext.length);
+  // Linear: the line is captured whole and trimmed afterwards (a lazy group followed by a character class backtracks quadratically on a crafted line).
+  const line = /^#{1,6}[ \t]+(.*)$/m.exec(markdown)?.[1];
+  const heading = line === undefined ? '' : withoutClosingHashes(line.trim());
+  return heading !== '' ? heading : file.slice(0, file.length - ext.length);
 }
 
 /**

@@ -13,6 +13,11 @@ describe('readCsv', () => {
     expect(readCsv(Buffer.from('a,b\nc\n'), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'csv_malformed' });
   });
 
+  it('judges the limit in bytes, not characters: 400 characters of CJK text are 1,200 bytes', () => {
+    expect(readCsv(Buffer.from(`a,${'\u6f22'.repeat(400)}\n`), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'csv_field_too_large' });
+    expect(readCsv(Buffer.from(`a,${'\u6f22'.repeat(300)}\n`), { maxFieldBytes: 1000 }).ok).toBe(true);
+  });
+
   it('refuses text that is not UTF-8', () => {
     expect(readCsv(Buffer.from([0x61, 0x2c, 0xff, 0x0a]), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'invalid_encoding' });
   });
@@ -27,11 +32,15 @@ describe('csvToMarkdownTable', () => {
     expect(csvToMarkdownTable([['H'], ['a|b'], ['line\nbreak'], ['back\\slash']])).toBe('| H |\n| --- |\n| a\\|b |\n| line break |\n| back\\\\slash |\n');
   });
 
+  it('a lone carriage return in a cell is a space too (CommonMark counts it as a line ending)', () => {
+    expect(csvToMarkdownTable([['H'], ['a\rb'], ['c\r\nd']])).toBe('| H |\n| --- |\n| a b |\n| c d |\n');
+  });
+
   it('a table with only a header has the header and the separator', () => {
     expect(csvToMarkdownTable([['A', 'B']])).toBe('| A | B |\n| --- | --- |\n');
   });
 
-  it('is the empty string for no rows, and the size of what it makes can be known before it is made', () => {
+  it('is the empty string for no rows', () => {
     expect(csvToMarkdownTable([])).toBe('');
   });
 });

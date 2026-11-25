@@ -38,6 +38,18 @@ describe('titleOf', () => {
     expect(titleOf('dir/Notes.md', '')).toBe('Notes');
   });
 
+  it('reads a crafted heading in linear time (no backtracking on a long run of spaces and hashes)', () => {
+    const t = Date.now();
+    expect(titleOf(`${ID}.md`, `# ${'a #'.repeat(40_000)} x\n`).length).toBeGreaterThan(1000);
+    expect(titleOf(`${ID}.md`, `#${' '.repeat(100_000)}\n`)).toBe(ID);
+    expect(Date.now() - t).toBeLessThan(500);
+  });
+
+  it('takes a heading without its closing hashes', () => {
+    expect(titleOf(`${ID}.md`, '## Plan ##\n')).toBe('Plan');
+    expect(titleOf(`${ID}.md`, '# C# notes\n')).toBe('C# notes');
+  });
+
   it('uses the last path segment and ignores the folders', () => {
     expect(titleOf(`Home ${ID2}/Child ${ID}.md`, '')).toBe('Child');
   });
