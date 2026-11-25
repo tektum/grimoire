@@ -205,6 +205,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-blob-unit
+          overwrite: true # a re-run of the job replaces its blob: the one of the failed attempt must not be merged with the new one
           path: |
             vitest-blobs/unit.json
             vitest-blob-roots/unit.root
@@ -312,6 +313,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-blob-integration
+          overwrite: true # a re-run of the job replaces its blob: the one of the failed attempt must not be merged with the new one
           path: |
             vitest-blobs/integration.json
             vitest-blob-roots/integration.root
