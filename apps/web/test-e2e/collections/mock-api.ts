@@ -35,6 +35,8 @@ export interface MockState {
   firstNewPageId?: string;
   /** The address id of that page (default: the id padded to eight characters). */
   firstNewPageUrlId?: string;
+  /** `POST /v1/collections` is refused like this (default: it makes the collection and answers 201). */
+  refuseCollection?: { readonly status: number; readonly code: string };
   /** The role of the signed-in person (default member). */
   role?: 'admin' | 'member' | 'viewer';
   /** Collections that exist but that this person may not read: reading their tree answers 404, exactly as for an id that does not exist. */
@@ -48,6 +50,8 @@ export interface MockApi {
   treeReads(collectionId: string): number;
   /** The requests that changed something, as `METHOD /path`, in order. */
   writes(): string[];
+  /** The bodies of the `POST /v1/collections` requests, in order. */
+  collectionBodies(): Record<string, unknown>[];
 }
 
 const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) => route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
@@ -60,6 +64,8 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
   const reads = new Map<string, number>();
   const written: string[] = [];
   let created = 0;
+  const collectionBodies: Record<string, unknown>[] = [];
+  let collectionsMade = 0;
   await page.route('**/config.json', (route) => json(route, 200, { apiUrl: API }));
   await page.route(`${API}/**`, async (route) => {
     const request = route.request();
@@ -73,6 +79,16 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (pathname === '/v1/config')
       return json(route, 200, { collabUrl: state.collabUrl ?? COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null, ...(state.config ?? {}) }, cors);
     if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: state.userName ?? 'e2e-alice', email: 'e2e-alice@dev.invalid', role: state.role ?? 'member' }, cors);
+    if (pathname === '/v1/collections' && request.method() === 'POST') {
+      const posted = JSON.parse(request.postData() ?? '{}') as Record<string, unknown>;
+      collectionBodies.push(posted);
+      written.push('POST /v1/collections');
+      if (state.refuseCollection !== undefined) return json(route, state.refuseCollection.status, { error: { code: state.refuseCollection.code, message: 'refused' } }, cors);
+      collectionsMade += 1;
+      const made = { id: `new-c${String(collectionsMade)}`, name: String(posted['name']), myPermission: 'read-write' as const };
+      state.collections.push(made);
+      return json(route, 201, { ...made, description: null, icon: null, color: null, position: 'z', defaultPermission: (posted['defaultPermission'] as string | undefined) ?? null }, cors);
+    }
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
     const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
     if (one_?.[1] !== undefined && request.method() === 'GET') {
@@ -172,5 +188,5 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     }
     return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }, cors);
   });
-  return { state, treeReads: (id) => reads.get(id) ?? 0, writes: () => written };
+  return { state, treeReads: (id) => reads.get(id) ?? 0, writes: () => written, collectionBodies: () => collectionBodies };
 }

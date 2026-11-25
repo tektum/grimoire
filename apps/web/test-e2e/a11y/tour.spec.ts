@@ -109,6 +109,10 @@ test('the editor with its slash menu, bubble and block menu open, and the dialog
     await page.goto(`/admin/groups?group=${world.groupId}`);
     await page.getByRole('heading', { level: 2, name: /^Members of/ }).waitFor();
     found.push(...(await axeBothSchemes(page, 'admin: a group open')));
+    await page.goto('/collections/new');
+    await page.getByRole('button', { name: 'Create collection' }).click();
+    await page.getByRole('alert').filter({ hasText: 'Give the collection a name.' }).waitFor();
+    found.push(...(await axeBothSchemes(page, 'new collection: the name is missing')));
   });
   reports.push(...found);
   expect(blockingText(found), 'serious or critical violations').toBe('');

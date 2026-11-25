@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { CollectionsScreen } from '../../src/screens/collections/CollectionsScreen';
@@ -57,6 +57,17 @@ describe('CollectionsScreen', () => {
     const { api } = fakeApi({ 'GET /v1/collections': ok({ items: [] }), 'GET /v1/collections/{id}': { status: 404 } });
     renderAt(<CollectionsScreen api={api} collectionId="c1" />);
     expect(await screen.findByText('No collections yet')).toBeTruthy();
+  });
+
+  it('offers an administrator New collection beside the list of collections, and nobody else', async () => {
+    for (const [role, shown] of [['admin', true], ['member', false]] as const) {
+      const { api } = fakeApi({ 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}': ok(COLLECTIONS[0]), 'GET /v1/me': ok({ role }) });
+      const view = renderAt(<CollectionsScreen api={api} collectionId="c1" />);
+      await screen.findByText('Choose a page in the contents, or start a new one.');
+      await waitFor(() => expect(screen.queryAllByRole('link', { name: 'New collection' }).length).toBe(shown ? 1 : 0));
+      if (shown) expect(screen.getByRole('link', { name: 'New collection' }).getAttribute('href')).toBe('/collections/new');
+      view.unmount();
+    }
   });
 
   it('says so when the collection list cannot be loaded, and still shows the collection', async () => {
