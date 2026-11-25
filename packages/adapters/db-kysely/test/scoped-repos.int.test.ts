@@ -215,6 +215,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     finish: (tn) => imports().finish(tn, s.importId, 'done', null, Date.now()),
     cancel: (tn) => imports().cancel(tn, s.importId, Date.now()),
     get: (tn) => imports().get(tn, s.importId),
+    ended: (tn) => imports().ended(tn, { since: 0, limit: 10 }),
     running: (tn) => imports().running(tn),
     stale: (tn) => imports().stale(tn, Date.now(), 10),
     abandon: (tn) => imports().abandon(tn, s.importId, Date.now()),
