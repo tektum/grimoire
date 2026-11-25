@@ -218,6 +218,16 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(body).not.toContain(`Tasks%20${ID2}.csv`);
   });
 
+  it('an export of Notion: a callout is stored as a quote with a bold first line, and a plain Markdown zip keeps it as it was written', async () => {
+    const page = md(`Tip ${ID1}.md\u0000# Tip\n\n<aside>\n💡 Keep the receipts\n\n</aside>\n`);
+    const notion = await setup([page], { source: 'notion_md_csv' });
+    await notion.run();
+    expect(notion.repo.written[0]?.page.content.markdown).toContain('> **💡 Keep the receipts**');
+    const plain = await setup([page]);
+    await plain.run();
+    expect(plain.repo.written[0]?.page.content.markdown).toContain('<aside>');
+  });
+
   it('the same archive as a plain Markdown zip (markdown_zip, the default): titles from the first heading, and the folder is an empty page of its own', async () => {
     const t = await setup(exported);
     await t.run();

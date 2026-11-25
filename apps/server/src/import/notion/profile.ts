@@ -1,5 +1,6 @@
 import { markdownProfile } from '../markdown-profile.js';
 import type { ImportProfile } from '../profile.js';
+import { convertConstructs } from './constructs.js';
 import { resolveNotionLink } from './links.js';
 import { idOf, splitName, titleOf } from './names.js';
 
@@ -71,7 +72,8 @@ export const notionProfile: ImportProfile = {
     if (!folders.has(bare) || plain || (pagesNamed(lowerPaths).get(bare) ?? 0) > 1) return at(stem);
     return at(base);
   },
-  preprocess: markdownProfile.preprocess,
+  /** Front matter goes as in the generic profile; callouts and toggles are converted before the schema sees them (`constructs.ts`). */
+  preprocess: (markdown, ctx) => convertConstructs(markdownProfile.preprocess(markdown, ctx)),
   resolveLink: resolveNotionLink,
   idOf,
 };
