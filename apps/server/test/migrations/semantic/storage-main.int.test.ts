@@ -40,15 +40,13 @@ describe('migration 0013', () => {
     expect(other).toEqual([{ storage: 'x' }]);
   });
 
-  it('keeps 768-dimension vectors in the row: 300 vectors that do not compress leave the TOAST table of page_chunks empty, and each is about 3 KB inside the row', async () => {
-    await run(`insert into tenants (id, name) values ('T-store', 'Store') on conflict do nothing`);
-    const user = await insertUser(run, { tenant_id: 'T-store' });
-    const collection = await insertCollection(run, { created_by: user, tenant_id: 'T-store' });
-    const page = await insertPage(run, { collection_id: collection, created_by: user, tenant_id: 'T-store', markdown_hash: raw(`decode(repeat('01', 32), 'hex')`) });
+  // Writes the same 300 vectors (the same seed) into `table` and reads what the storage did with them: how many rows, the stored size of the smallest and the largest vector, the size of the TOAST
+  // table and of the heap. `page_chunks_scratch` is a copy of the table (its columns, defaults and storage settings; no foreign key), so a case can change the setting without touching the real one.
+  async function written(table: string, page: string): Promise<{ n: number; smallest: number; largest: number; toast: number; heap: number }> {
     const random = seeded(11);
     for (let i = 0; i < 300; i += 1) {
       await run(
-        insertSql('page_chunks', {
+        insertSql(table, {
           page_id: page,
           tenant_id: 'T-store',
           chunk_index: i,
@@ -61,20 +59,44 @@ describe('migration 0013', () => {
         }),
       );
     }
-    const [rows] = (await run(`select count(*)::int as n, min(pg_column_size(embedding))::int as smallest, max(pg_column_size(embedding))::int as largest from page_chunks where model = 'm-768'`)) as {
+    const [rows] = (await run(`select count(*)::int as n, min(pg_column_size(embedding))::int as smallest, max(pg_column_size(embedding))::int as largest from ${table}`)) as {
       n: number;
       smallest: number;
       largest: number;
     }[];
-    expect(rows?.n).toBe(300); // the rows are there, so what follows is about 300 rows and not about fewer
-    // The size of a stored value: 4 bytes a dimension and the header, and no more if it is neither compressed nor out of line (a TOAST pointer would read 18 bytes, a compressed value fewer than 3 KB).
-    expect(rows?.smallest).toBeGreaterThanOrEqual(3000);
-    expect(rows?.largest).toBeLessThanOrEqual(3100);
-    const [sizes] = (await run(`select coalesce(pg_relation_size(reltoastrelid), 0)::bigint as toast, pg_relation_size('page_chunks')::bigint as heap from pg_class where oid = 'page_chunks'::regclass`)) as {
+    const [sizes] = (await run(`select coalesce(pg_relation_size(reltoastrelid), 0)::bigint as toast, pg_relation_size('${table}')::bigint as heap from pg_class where oid = '${table}'::regclass`)) as {
       toast: string;
       heap: string;
     }[];
-    expect(Number(sizes?.toast)).toBe(0);
-    expect(Number(sizes?.heap)).toBeGreaterThan(300 * 3000);
+    return { n: rows?.n ?? 0, smallest: rows?.smallest ?? 0, largest: rows?.largest ?? 0, toast: Number(sizes?.toast), heap: Number(sizes?.heap) };
+  }
+  let page = '';
+  beforeAll(async () => {
+    await run(`insert into tenants (id, name) values ('T-store', 'Store') on conflict do nothing`);
+    const user = await insertUser(run, { tenant_id: 'T-store' });
+    const collection = await insertCollection(run, { created_by: user, tenant_id: 'T-store' });
+    page = await insertPage(run, { collection_id: collection, created_by: user, tenant_id: 'T-store', markdown_hash: raw(`decode(repeat('01', 32), 'hex')`) });
+  });
+
+  it('keeps 768-dimension vectors in the row: 300 vectors that do not compress leave the TOAST table of page_chunks empty, and the heap holds them', async () => {
+    const seen = await written('page_chunks', page);
+    expect(seen.n).toBe(300); // the rows are there, so what follows is about 300 rows and not about fewer
+    // 4 bytes a dimension and the header, uncompressed: a vector that was compressed would be smaller.
+    expect(seen.smallest).toBeGreaterThanOrEqual(3000);
+    expect(seen.largest).toBeLessThanOrEqual(3100);
+    expect(seen.toast).toBe(0);
+    expect(seen.heap).toBeGreaterThan(300 * 3000);
+  }, 120_000);
+
+  it('can tell the two layouts apart: the same 300 vectors in a copy of the table set to `extended` go out of line (TOAST holds them, the heap does not), so the case above is not passing on anything', async () => {
+    await run('create table page_chunks_scratch (like page_chunks including defaults including constraints including storage)');
+    await run('alter table page_chunks_scratch alter column embedding set storage extended');
+    const seen = await written('page_chunks_scratch', page);
+    expect(seen.n).toBe(300);
+    expect(seen.toast).toBeGreaterThan(300 * 3000);
+    expect(seen.heap).toBeLessThan(300 * 1000);
+    // And the copy started from the real setting: that is what the migration's column is compared against.
+    const [control] = (await run(`select attstorage::text as storage from pg_attribute where attrelid = 'page_chunks'::regclass and attname = 'embedding'`)) as { storage: string }[];
+    expect(control?.storage).toBe('m');
   }, 120_000);
 });
