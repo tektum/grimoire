@@ -99,6 +99,20 @@ test('targets: an Aurora cluster of the stage is found by the tags SST gives it,
   } finally { s.done(); }
 });
 
+test('targets: a cluster of another stage, of another app or of another engine is refused even when the service connects to it (each filter is what excludes it)', () => {
+  // Each excluded cluster has an endpoint of its own, so with the service pointed at the stage's cluster it never matches whatever the filters say: point the service at the excluded one.
+  for (const excluded of ['grimoire-dev-dbcluster-q2', 'other-dbcluster-q3', 'grimoire-staging-mysql-q4']) {
+    const endpoint = `${excluded}.cluster-cabc123.us-east-1.rds.amazonaws.com`;
+    const s = scenario(AURORA({ 'ssm-get-parameter.json': url(endpoint) }));
+    try {
+      const r = s.run(targets, ['staging']);
+      assert.equal(r.code, 1, excluded);
+      assert.equal(r.out, '', `${excluded}: nothing is printed`);
+      assert.match(r.err, /that the service connects to .*, found: \[\]/, excluded);
+    } finally { s.done(); }
+  }
+});
+
 test('targets: with an instance and a cluster of the stage together (the overlap of a move) the one the service connects to is chosen, and the other is never snapshotted by mistake', () => {
   const both = (live) => scenario(AURORA({ 'rds-describe-db-instances.json': { DBInstances: [db('grimoire-staging-dbinstance-abc123')] }, 'ssm-get-parameter.json': url(live) }));
   const onInstance = both(host('grimoire-staging-dbinstance-abc123'));
