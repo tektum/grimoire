@@ -497,6 +497,29 @@ describe('GET /v1/imports/{id}/items/{itemId}/source', () => {
     expect((await t.call('root', 'GET', `/v1/imports/${id}/items/${broken.id}/source`)).status).toBe(200);
   });
 
+  it('gives the kept original of a failed database (its CSV) the same way, and says so in the report; a failed file of another kind has none', async () => {
+    const t = build();
+    const id = await t.running();
+    await t.imports.addItems('T-a', id, [
+      { path: 'db/Tasks.csv', kind: 'database_csv' },
+      { path: 'img/c.png', kind: 'attachment' },
+    ]);
+    const [table] = await t.imports.pending('T-a', id, 'database_csv', 1);
+    const [picture] = await t.imports.pending('T-a', id, 'attachment', 1);
+    await t.imports.settle('T-a', id, table!.id, { status: 'failed', message: 'table_too_large' });
+    await t.imports.settle('T-a', id, picture!.id, { status: 'failed', message: 'type_not_allowed' });
+    for (const item of [table!, picture!]) await t.files.put(importFailedKey('T-a', id, item.id), new Uint8Array([97]), { size: 1, contentType: 'text/csv' });
+    const listed = (await (await t.call('ada', 'GET', `/v1/imports/${id}/items`)).json()) as { items: { path: string; hasSource: boolean }[] };
+    expect(listed.items.map((i) => [i.path, i.hasSource])).toEqual([
+      ['db/Tasks.csv', true],
+      ['img/c.png', false],
+    ]);
+    const sign = vi.spyOn(t.files, 'signDownload');
+    expect((await t.call('ada', 'GET', `/v1/imports/${id}/items/${table!.id}/source`)).status).toBe(200);
+    expect(sign).toHaveBeenCalledWith(importFailedKey('T-a', id, table!.id), expect.objectContaining({ disposition: 'attachment', contentType: 'application/octet-stream', fileName: 'Tasks.csv' }));
+    expect((await t.call('ada', 'GET', `/v1/imports/${id}/items/${picture!.id}/source`)).status, 'a failed attachment has no original to give').toBe(404);
+  });
+
   it("is 404 for a file that did not fail, one with no kept original, another import's item, another person and another workspace", async () => {
     const { t, id, broken, other } = await failedPage();
     expect((await t.call('ada', 'GET', `/v1/imports/${id}/items/${broken.id}/source`)).status, 'no original kept').toBe(404);
