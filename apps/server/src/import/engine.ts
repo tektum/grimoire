@@ -45,13 +45,22 @@ const canonical = (path: string): string => path.split('/').filter((s) => s !== 
 export async function passOne(repo: ImportRepo, tenantId: string, importId: string, entries: readonly PassOneEntry[], options: PassOneOptions): Promise<PassOneResult> {
   const { profile } = options;
   const duplicates = duplicateIndexes(entries.map((e) => e.path));
-  const lowerPaths: ReadonlySet<string> = new Set(entries.map((e) => canonical(e.path).normalize('NFC').toLowerCase()));
+  // Only files can be a folder's page: a directory entry named `index.md/` is not an index file.
+  const lowerPaths: ReadonlySet<string> = new Set(entries.filter((e) => !e.isDirectory && !e.path.endsWith('/')).map((e) => canonical(e.path).normalize('NFC').toLowerCase()));
+  // Generated rows (a bad name, a duplicate) take a path no real entry has: the suffix grows until the path is free.
+  const taken = new Set(entries.map((e) => e.path));
+  const free = (base: string, index: number): string => {
+    let path = `${base} [entry ${String(index)}]`;
+    for (let n = 2; taken.has(path); n++) path = `${base} [entry ${String(index)}.${String(n)}]`;
+    taken.add(path);
+    return path;
+  };
 
   const rows: NewImportItem[] = [];
   const pagePaths: string[] = [];
   entries.forEach((e, at) => {
-    if (!e.nameValid || isBadName(e.path)) { rows.push({ path: `${reportedName(e.path).slice(0, BAD_NAME_ROOM)} [entry ${String(e.index)}]`, kind: 'other', status: 'failed', message: 'bad_name' }); return; }
-    if (duplicates.has(at)) { rows.push({ path: `${e.path} [entry ${String(e.index)}]`, kind: 'other', status: 'skipped', message: 'duplicate_path' }); return; }
+    if (!e.nameValid || isBadName(e.path)) { rows.push({ path: free(reportedName(e.path).slice(0, BAD_NAME_ROOM), e.index), kind: 'other', status: 'failed', message: 'bad_name' }); return; }
+    if (duplicates.has(at)) { rows.push({ path: free(e.path, e.index), kind: 'other', status: 'skipped', message: 'duplicate_path' }); return; }
     if (isIgnoredEntry(e.path, e.isDirectory)) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'ignored' }); return; }
     if (/\.zip$/i.test(e.path) && !options.allowNestedZips) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'nested_archive' }); return; }
     const kind = profile.classify({ path: e.path });
@@ -76,7 +85,7 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
   if (pagesTotal > options.maxPages) return { ok: false, reason: 'collection_full', pagesTotal };
 
   const containerKeys = new Set(containers.keys());
-  const kept = rows.filter((r) => !(r.status === 'skipped' && r.message === 'ignored' && r.path.endsWith('/') && containerKeys.has(key(r.path))));
+  const kept = rows.filter((r) => !(r.status === 'skipped' && r.message === 'ignored' && containerKeys.has(key(r.path))));
   const all = [...kept, ...[...containerPaths].map((path): NewImportItem => ({ path, kind: 'page' }))];
   for (let from = 0; from < all.length; from += BATCH) await repo.addItems(tenantId, importId, all.slice(from, from + BATCH));
 

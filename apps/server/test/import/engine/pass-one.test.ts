@@ -105,6 +105,42 @@ describe('pages get their ids now, and a folder with no page of its own gets an 
     expect(items.find((i) => i.path.toLowerCase() === 'dir/')).toMatchObject({ kind: 'page', status: 'pending' });
   });
 
+  it('a directory entry without its trailing slash is the container too, not an ignored row beside it', async () => {
+    const { items, result } = await run([entry('dir', { index: 0, isDirectory: true }), entry('dir/a.md', { index: 1 })]);
+    expect(items.filter((i) => i.path.replace(/\/$/, '') === 'dir')).toHaveLength(1);
+    expect(result).toMatchObject({ skipped: 0, pagesTotal: 2 });
+  });
+
+  it('a directory entry named like an index file is not an index file', async () => {
+    const { items } = await run([entry('dir/index.md/', { index: 0, isDirectory: true }), entry('dir/b.md', { index: 1 })]);
+    expect(items.some((i) => i.path === 'dir/' && i.kind === 'page')).toBe(true); // dir has no page of its own: a container
+  });
+
+  it('NFD and upper-case folder names find their index and README like any other', async () => {
+    const { items } = await run(entries('cafe\u0301/Index.md', 'cafe\u0301/README.md', 'CAF\u00c9/b.md'));
+    expect(items.some((i) => i.path.endsWith('/') && i.kind === 'page')).toBe(false);
+    // Index.md is the folder's page, so README.md is an ordinary page inside it, not a second page standing for the folder.
+    const lower = new Set(['cafe\u0301/index.md', 'cafe\u0301/readme.md', 'caf\u00e9/b.md'].map((x) => x.normalize('NFC')));
+    expect(markdownProfile.folderPathOf('cafe\u0301/README.md', lower)).toBeUndefined();
+    expect(markdownProfile.parentPathOf('cafe\u0301/README.md', lower)).toBe('cafe\u0301');
+  });
+
+  it('a README beside a directory entry named index.md is its folder\'s page, since only a file is an index file', async () => {
+    const { items } = await run([entry('dir/index.md/', { index: 0, isDirectory: true }), entry('dir/README.md', { index: 1 })]);
+    expect(items.some((i) => i.path === 'dir/')).toBe(false);
+  });
+
+  it('a generated row for a bad name or a duplicate never takes the path of a real entry', async () => {
+    const real = 'A.md [entry 1]';
+    const list = [entry('a.md', { index: 0 }), entry('A.md', { index: 1 }), entry(real, { index: 2 })];
+    const { items, result } = await run(list);
+    expect(items.filter((i) => i.path === real)).toHaveLength(1);
+    expect(items.find((i) => i.path === real)?.status).toBe('pending'); // the real entry is the one that is imported as a file
+    expect(items).toHaveLength(3);
+    expect(new Set(items.map((i) => i.path)).size).toBe(3);
+    expect(result).toMatchObject({ skipped: 1 });
+  });
+
   it('the spellings of a folder do not push an archive over the cap', async () => {
     const list = entries('Dir/a.md', 'dir/b.md', 'DIR/c.md');
     expect((await run(list, { maxPages: 4 })).result).toMatchObject({ ok: true, pagesTotal: 4 });
