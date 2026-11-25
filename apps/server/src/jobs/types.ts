@@ -27,3 +27,6 @@ export function isImportPayload(value: unknown): value is ImportPayload {
   const v = value as Record<string, unknown>;
   return keys.length === 2 && typeof v['tenantId'] === 'string' && TENANT_ID.test(v['tenantId']) && typeof v['importId'] === 'string' && UUID.test(v['importId']);
 }
+
+/** The singleton key of an import's job: the one form used to enqueue it, to ask the queue whether it is still live (the sweep), and by the job itself. */
+export const importSingletonKey = (importId: string): string => `import:${importId}`;

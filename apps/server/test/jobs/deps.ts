@@ -1,5 +1,6 @@
 import { FakeAttachmentRepo } from '@tektum/grimoire-core/testing/fake-attachment-repo';
 import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
+import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
@@ -17,7 +18,7 @@ export function fakeJobDeps(over: Partial<JobDeps> = {}): { readonly deps: JobDe
   const clock = new FakeClock(1_000_000);
   const deps: JobDeps = {
     config: makeFakeConfig(), log: createEventLog(logger), clock, tenants: new FakeTenantRepo(['T-a']), trash: new FakeTrashRepo(), deleteFiles: () => Promise.resolve(),
-    attachments: new FakeAttachmentRepo(), files: new FakeFileStorage(), revisions: new FakeRevisionRepo(), pages: new FakePageStore(), converter: new FakeMarkdownConverter(), ...over,
+    attachments: new FakeAttachmentRepo(), files: new FakeFileStorage(), revisions: new FakeRevisionRepo(), pages: new FakePageStore(), imports: new FakeImportRepo(), queue: { isLive: () => Promise.resolve(false), enqueueImport: () => Promise.resolve('job'), enqueueImportCleanup: () => Promise.resolve('job') }, converter: new FakeMarkdownConverter(), ...over,
   };
   return { deps, logger, clock };
 }

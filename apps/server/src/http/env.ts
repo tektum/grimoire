@@ -47,6 +47,8 @@ export interface HttpDeps {
   readonly imports: ImportRepo;
   /** Hands the job of an import to the queue (the import start): its payload is the ids and nothing else (decision 4). Rejects with `jobs-unavailable` while there is no queue (the `collab` role has none, and the queue may not be up yet). */
   enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
+  /** Hands the cleanup of an import that is over to the queue (a cancel): ids only. Rejects like `enqueueImport`. */
+  enqueueImportCleanup(payload: { readonly importId: string; readonly tenantId: string }): Promise<string | null>;
   /** Sibling ordering on fractional keys. */
   readonly ordering: Ordering;
   readonly idempotency: IdempotencyStore;

@@ -45,12 +45,26 @@ describe('the job runner', () => {
     await expect(runner.enqueueImport({ importId: 'i1', tenantId: 't1' })).rejects.toThrow('jobs-unavailable');
   });
 
+  it('sends the cleanup of each import under a key of its own: the queue keeps one waiting run per key, so a shared slot would drop the cleanup of every import after the first of a burst', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    const { runner } = make(queue);
+    await runner.start();
+    await runner.enqueueImportCleanup({ importId: 'i1', tenantId: 't1' });
+    await runner.enqueueImportCleanup({ importId: 'i2', tenantId: 't1' });
+    expect(sent).toEqual([
+      ['import-cleanup', { importId: 'i1', tenantId: 't1' }, { singletonKey: 'import-cleanup:i1' }],
+      ['import-cleanup', { importId: 'i2', tenantId: 't1' }, { singletonKey: 'import-cleanup:i2' }],
+    ]);
+  });
+
   it('registers a handler for each job of the registry when it starts, and starts once', async () => {
     const queue = new RecordingQueue();
     const { runner } = make(queue);
     await runner.start();
     await runner.start();
-    expect(queue.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
+    expect(queue.worked).toEqual(['import']);
   });
 
   it('schedules each job that has a cron, once its handler is registered, so no run is sent to a queue nobody works', async () => {
@@ -106,7 +120,7 @@ describe('the job runner', () => {
     expect(logger.entries.filter((e) => e.event === 'jobs.failed')).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(attempts).toBe(2);
-    expect(queue.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
+    expect(queue.worked).toEqual(['import']);
     await runner.hook.run();
   });
 
@@ -129,7 +143,7 @@ describe('the job runner', () => {
     expect(made[0]?.stopped).toEqual([{ graceMs: 0 }]);
     await vi.advanceTimersByTimeAsync(START_RETRY_MS);
     expect(made).toHaveLength(2);
-    expect(made[1]?.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
+    expect(made[1]?.worked).toEqual(['import']);
     expect(made[1]?.stopped).toEqual([]);
     await runner.hook.run();
     expect(made[1]?.stopped).toEqual([{ graceMs: 1500 }]);

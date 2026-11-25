@@ -143,6 +143,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
     ordering: createOrdering(), converter, search: createSearchRepo(db, { statementTimeoutMs: config.search.statementTimeoutMs }), imports: createImportRepo(db),
     enqueueImport: (payload, options) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImport(payload, options)),
+    enqueueImportCleanup: (payload) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImportCleanup(payload)),
     idempotency: createIdempotency(db, ops), collections: createCollections(db), audit: createAudit(db, ops),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db, ops), admin: createAdmin(db), pageState: createPageState(db),
     attachments: createAttachments(db),
@@ -173,9 +174,9 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
-    jobs: registerJobs({
+    jobs: (queue) => registerJobs({
       config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
-      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
+      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }), imports: http.imports, queue,
     }),
     onError: (error) => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0, ...reasonOf(error) }); } });
   const shutdownHooks: ShutdownHook[] = [
@@ -197,17 +198,11 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
 export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
 export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
-/**
- * Queues that an earlier version scheduled and this one does not: `import-sweep` was scheduled while its handler was a stub (decision 16 chains, removed with the schedule). Take the name
- * out when M7-T05 schedules the real sweep again.
- */
-const NO_LONGER_SCHEDULED: readonly string[] = ['import-sweep'];
-
 /** Kysely migrations first, then pg-boss's own schema, the queues of `jobQueues()` and the grants for the runtime role (the role name is fixed by the migrations), all of it under one lock: a second `migrate` waits. */
 export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string, queues: readonly QueueDefinition[] = jobQueues(), onQueueRecreated?: MigratePgBossOptions['onQueueRecreated']): Promise<{ readonly applied: string[]; readonly jobTables: number }> {
   return withMigrationLock(migrationUrl, async () => {
     const { applied } = await migrateDatabase(db, dir);
-    const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app', queues, dropScheduledRuns: NO_LONGER_SCHEDULED, ...(onQueueRecreated ? { onQueueRecreated } : {}) });
+    const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app', queues, ...(onQueueRecreated ? { onQueueRecreated } : {}) });
     return { applied, jobTables: granted.length }; // `applied` lists only the Kysely migrations
   });
 }

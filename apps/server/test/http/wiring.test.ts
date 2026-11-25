@@ -9,7 +9,7 @@ import { makeContext } from '../server/support/context.js';
 import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const HTTP_KEYS = [
-  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports', 'enqueueImport',
+  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports', 'enqueueImport', 'enqueueImportCleanup',
   'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState', 'attachments', 'deleteFiles',
 ] as const satisfies readonly (keyof HttpDeps)[];
 
