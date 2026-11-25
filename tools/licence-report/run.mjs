@@ -3,10 +3,11 @@
 //   node tools/licence-report/run.mjs [--root DIR] [--out DIR] [--exceptions FILE] [--images FILE]
 //                                     [--compose FILE] [--check-images]
 // Exit 0 when every package and image passes the rule, 1 on any violation, 2 on a usage or input error.
-import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bunLockToPackages } from "./bun-lock.mjs";
+import { findDockerfiles } from "./find-dockerfiles.mjs";
 import { validateModels, validateExceptions, validatePending, validateImagesText, checkLock, checkImages, extractImages, summarise, SHIPPED_ALLOWED, DEV_ALLOWED } from "./licence.mjs";
 
 const toolDir = dirname(fileURLToPath(import.meta.url));
@@ -39,16 +40,6 @@ function readJson(file, what) {
   }
 }
 
-function findDockerfiles(dir, found = []) {
-  for (const d of readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules", ".git", "reference", "out"].includes(d.name)) continue;
-    const p = join(dir, d.name);
-    if (d.isDirectory()) findDockerfiles(p, found);
-    else if (/^Dockerfile(\..+)?$/.test(d.name)) found.push({ name: relative(root, p), text: readFileSync(p, "utf8") });
-  }
-  return found;
-}
-
 const exceptions = existsSync(exceptionsFile) ? readJson(exceptionsFile, "exceptions file") : [];
 const pending = existsSync(pendingFile) ? readJson(pendingFile, "pending file") : [];
 const imageErrors = validateImagesText(readFileSync(imagesFile, "utf8"));
@@ -68,7 +59,7 @@ const imageMap = readJson(imagesFile, "images map");
 // The second database image of the semantic tests (compose.pgvector087.yaml, M7-T10) is audited like the one of compose.yaml (R12.36).
 const overlayFile = join(root, "compose.pgvector087.yaml");
 const composeText = [composeFile, ...(opt("--compose") === undefined && existsSync(overlayFile) ? [overlayFile] : [])].map((f) => (existsSync(f) ? readFileSync(f, "utf8") : "")).join("\n");
-const refs = extractImages(composeText, findDockerfiles(root));
+const refs = extractImages(composeText, findDockerfiles(root, { root }));
 const imageResult = checkImages(refs, imageMap, exceptions);
 
 let packageResult = { packages: [], violations: [], pending: [], usedExceptions: new Set(), unusedPending: [] };
