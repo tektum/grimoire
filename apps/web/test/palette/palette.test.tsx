@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { Palette } from '../../src/palette/Palette';
+import { pagePath } from '../../src/tree/model';
 import '../support/dom';
 
 afterEach(cleanup);
@@ -20,7 +21,9 @@ const TREE = [
 ];
 const HIT = (id: string, title: string, text: string, ranges: [number, number][]) => ({ pageId: id, urlId: `u${id}`, title, snippet: { text, ranges }, collectionId: 'c1', rank: 1, updatedAt: '2026-11-20T00:00:00Z' });
 
-function fake(options: { role?: string; search?: (q: string) => { status: number; body?: unknown }; tree?: () => number } = {}) {
+const NEW = { id: 'p9', urlId: 'nw0001', parentId: null, position: 'p9', title: 'Untitled', icon: null, collectionId: 'c1' };
+function fake(options: { role?: string; search?: (q: string) => { status: number; body?: unknown }; tree?: () => number; create?: () => Promise<{ status: number; body?: unknown }> } = {}) {
+  const creates: unknown[] = [];
   const searches: string[] = [];
   const answer = (status: number, body?: unknown) => ({ data: status < 300 ? body : undefined, error: status < 300 ? undefined : body, response: new Response(null, { status }) });
   const api = {
@@ -39,12 +42,17 @@ function fake(options: { role?: string; search?: (q: string) => { status: number
       }
       return answer(404);
     },
-    POST: async () => answer(500),
+    POST: async (path: string, init?: { body?: unknown }) => {
+      if (path !== '/v1/pages') return answer(500);
+      creates.push(init?.body);
+      const made = await (options.create ?? (async () => ({ status: 201, body: NEW })))();
+      return answer(made.status, made.body);
+    },
     PUT: async () => answer(500),
     PATCH: async () => answer(500),
     DELETE: async () => answer(500),
   } as unknown as ApiLike;
-  return { api, searches };
+  return { api, searches, creates };
 }
 
 const Where = () => {
@@ -73,6 +81,85 @@ const openIt = async () => {
   await userEvent.keyboard('{Control>}k{/Control}');
   return screen.findByRole('combobox');
 };
+
+describe('the rest of what the palette does', () => {
+  it('takes an administrator to the admin screen with the Admin command, which a member is not offered', async () => {
+    show(fake({ role: 'admin' }).api);
+    await openIt();
+    await userEvent.click(await screen.findByRole('option', { name: 'Admin' }));
+    await waitFor(() => expect(where()).toBe('/admin/users'));
+    cleanup();
+    show(fake({ role: 'member' }).api);
+    await openIt();
+    await screen.findByRole('option', { name: 'Trash' });
+    expect(screen.queryByRole('option', { name: 'Admin' })).toBeNull();
+  });
+
+  it('takes the person to the search screen with the Search command', async () => {
+    show(fake().api);
+    await openIt();
+    await userEvent.click(await screen.findByRole('option', { name: 'Search' }));
+    await waitFor(() => expect(where()).toBe('/search'));
+  });
+
+  it('names a page and a search hit that have no title Untitled', async () => {
+    const t = fake({ search: () => ({ status: 200, body: { items: [HIT('r1', '', 'a roadmap', [[2, 9]])], nextCursor: null } }) });
+    show(t.api);
+    await openIt();
+    await userEvent.keyboard('roadmap');
+    const titles = await screen.findAllByText('Untitled');
+    expect(titles.length).toBeGreaterThan(0);
+  });
+
+  it('draws nothing at all when nobody is signed in, and the shortcut does nothing', async () => {
+    render(
+      <SessionContext.Provider value={null}>
+        <Palette />
+      </SessionContext.Provider>,
+    );
+    await userEvent.keyboard('{Control>}k{/Control}');
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+describe('the New page command', () => {
+  const choose = async () => {
+    await openIt();
+    await userEvent.click(await screen.findByRole('option', { name: 'New page' }));
+  };
+
+  it('makes a page at the top of the open collection and opens it, as a new page', async () => {
+    const t = fake();
+    show(t.api);
+    await choose();
+    await waitFor(() => expect(where()).toBe(pagePath(NEW.title, NEW.urlId)));
+    expect(t.creates).toEqual([{ collectionId: 'c1', parentId: null }]);
+    await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull()); // the palette closed when the command was chosen
+  });
+
+  it('does not open the page when the person has gone somewhere else while it was being made', async () => {
+    let finish: () => void = () => undefined;
+    const t = fake({ create: () => new Promise((resolve) => (finish = () => resolve({ status: 201, body: NEW }))) });
+    show(t.api);
+    await choose();
+    await waitFor(() => expect(t.creates).toHaveLength(1));
+    await openIt();
+    await userEvent.click(await screen.findByRole('option', { name: 'Trash' }));
+    await waitFor(() => expect(where()).toBe('/trash'));
+    await act(async () => {
+      finish();
+    });
+    await waitFor(() => expect(where()).toBe('/trash'));
+  });
+
+  it('stays where it is when the page could not be made', async () => {
+    const t = fake({ create: async () => ({ status: 403, body: { error: { code: 'forbidden' } } }) });
+    show(t.api);
+    await choose();
+    await waitFor(() => expect(t.creates).toHaveLength(1));
+    expect(where()).toBe('/c/c1');
+  });
+});
 
 describe('the command palette', () => {
   it('opens with Mod-K (Ctrl or Cmd) with the focus in the input, and closes with it again', async () => {
