@@ -58,6 +58,11 @@ export interface StageSettings {
   readonly allowedEmailDomains: readonly string[];
   readonly refusedEmailDomains: readonly string[];
   readonly firstAdminEmails: readonly string[];
+  /**
+   * The ARN of a snapshot of the stage's RDS instance (`GRIMOIRE_AURORA_SNAPSHOT`, an ARN because a cluster restores from an instance's snapshot by ARN only): set, the stage's database is an
+   * Aurora cluster restored from it (docs/operations/database-setup.md). It stays set once the stage has moved: without it the cluster would leave the program.
+   */
+  readonly auroraSnapshot?: string;
 }
 
 const list = (value: string | undefined): string[] => (value ?? '').split(',').map((v) => v.trim()).filter((v) => v !== '');
@@ -71,5 +76,17 @@ export function stageSettings(stage: string, env: Readonly<Record<string, string
   const domain = required('GRIMOIRE_DOMAIN');
   if (!HOST.test(domain)) throw new Error('GRIMOIRE_DOMAIN must be the host name of the site, for example app.example.test (a variable of the stage\'s environment).');
   required('GRIMOIRE_ALLOWED_EMAIL_DOMAINS');
-  return { domain, allowedEmailDomains: list(env['GRIMOIRE_ALLOWED_EMAIL_DOMAINS']), refusedEmailDomains: list(env['GRIMOIRE_REFUSED_EMAIL_DOMAINS']), firstAdminEmails: list(env['GRIMOIRE_FIRST_ADMIN_EMAILS']) };
+  const snapshot = env['GRIMOIRE_AURORA_SNAPSHOT'] ?? '';
+  // Named for the stage, as the runbook names it: dev and staging share an account, and a cluster restored from the other stage's snapshot would keep that data (the snapshot is ignored once the cluster exists).
+  const name = /^arn:aws:rds:[a-z0-9-]+:\d{12}:snapshot:([A-Za-z][A-Za-z0-9-]*)$/.exec(snapshot)?.[1];
+  if (snapshot !== '' && name?.startsWith(`grimoire-${stage}-`) !== true) {
+    throw new Error(`GRIMOIRE_AURORA_SNAPSHOT must be the ARN of a snapshot of the stage's RDS instance, named for the stage (grimoire-${stage}-...), for example arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-${stage}-to-aurora (a variable of the environment "${stage}").`);
+  }
+  return {
+    domain,
+    allowedEmailDomains: list(env['GRIMOIRE_ALLOWED_EMAIL_DOMAINS']),
+    refusedEmailDomains: list(env['GRIMOIRE_REFUSED_EMAIL_DOMAINS']),
+    firstAdminEmails: list(env['GRIMOIRE_FIRST_ADMIN_EMAILS']),
+    ...(snapshot === '' ? {} : { auroraSnapshot: snapshot }),
+  };
 }

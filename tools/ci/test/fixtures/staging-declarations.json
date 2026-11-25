@@ -420,7 +420,7 @@
       "name": "AdminUrl",
       "args": {
         "type": "SecureString",
-        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+        "value": "<resolve(user=Db.username,secret=Db.password,host=Db.host,port=Db.port,name=Db.database)|apply(fn)>"
       }
     },
     {
@@ -452,7 +452,7 @@
       "name": "MigratorUrl",
       "args": {
         "type": "SecureString",
-        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+        "value": "<resolve(user,secret=DbMigratorPassword.result,host=Db.host,port=Db.port,name=Db.database)|apply(fn)>"
       }
     },
     {
@@ -460,7 +460,7 @@
       "name": "AppUrl",
       "args": {
         "type": "SecureString",
-        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+        "value": "<resolve(user,secret=DbAppPassword.result,host=Db.host,port=Db.port,name=Db.database)|apply(fn)>"
       }
     },
     {
@@ -468,7 +468,7 @@
       "name": "OpsUrl",
       "args": {
         "type": "SecureString",
-        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+        "value": "<resolve(user,secret=DbOpsPassword.result,host=Db.host,port=Db.port,name=Db.database)|apply(fn)>"
       }
     },
     {

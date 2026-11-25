@@ -17,7 +17,7 @@ const IMAGE = { context: '.', dockerfile: 'Dockerfile' };
  * the stage's environment. A deploy replaces the task, the old one serving until the new one is ready.
  */
 export default function grimoireStage(config: StageConfig, settings: StageSettings) {
-  const { domain } = settings;
+  const { domain, auroraSnapshot } = settings;
   const url = `https://${domain}`;
   const region = aws.getRegionOutput().region;
   const identity = descopeProject(config, domain);
@@ -32,7 +32,25 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
     : sst.aws.Vpc.get('Vpc', aws.ec2.getVpcOutput({ tags: { 'sst:app': $app.name, 'sst:stage': config.vpcFrom } }).id);
   const { serviceGroup, dbGroup } = stageSecurityGroups(vpc, VPC_CIDR);
   if (config.vpcFrom === undefined) vpcFlowLogs(vpc);
-  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id] } } });
+  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id], ...(auroraSnapshot === undefined ? {} : { deletionProtection: true }) } } });
+  // The move to Aurora Serverless v2 (docs/operations/database-setup.md): a stage given a snapshot of its instance gets a cluster restored from it in the same database group, and every
+  // connection goes to the cluster. The instance stays, protected, as the way back until a later change removes it.
+  const aurora = auroraSnapshot === undefined ? undefined : new sst.aws.Aurora('DbCluster', {
+    engine: 'postgres',
+    version: POSTGRES_VERSION,
+    vpc,
+    scaling: { min: '0.5 ACU', max: '2 ACU' }, // always on: the service, its job queue and the health checks never leave it idle, so a minimum of 0 would never pause it (docs/decisions.md, 166)
+    transform: {
+      cluster: (args, opts) => {
+        args.vpcSecurityGroupIds = [dbGroup.id];
+        args.snapshotIdentifier = auroraSnapshot;
+        args.deletionProtection = true;
+        args.backupRetentionPeriod = 7; // as long as the instance keeps its backups
+        opts.ignoreChanges = ['snapshotIdentifier']; // the snapshot only seeds the cluster: a later value must never replace it
+      },
+    },
+  });
+  const database = aurora ?? db;
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
@@ -42,7 +60,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   // plain environment values: the task definition then holds only their ARNs.
   const secret = (id: string, value: $util.Input<string>) => new aws.ssm.Parameter(id, { type: 'SecureString', value }).arn;
   const urlOf = (user: $util.Input<string>, password: $util.Input<string>) =>
-    $resolve({ user, secret: password, host: db.host, port: db.port, name: db.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
+    $resolve({ user, secret: password, host: database.host, port: database.port, name: database.database }).apply((v) => databaseUrl(v.user, v.secret, v.host, v.port, v.name));
   const trust = { NODE_EXTRA_CA_CERTS: RDS_CA_BUNDLE };
 
   // The CORS rule is the one `grimoire files-setup` writes for a store the application sets up itself (external mode: the infrastructure owns it, nothing in the task writes or checks it).
@@ -64,7 +82,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
         command: ['apps/server/dist/cli.js', 'db-setup'],
         environment: trust,
         ssm: {
-          GRIMOIRE_DATABASE_ADMIN_URL: secret('AdminUrl', urlOf(db.username, db.password)),
+          GRIMOIRE_DATABASE_ADMIN_URL: secret('AdminUrl', urlOf(database.username, database.password)),
           GRIMOIRE_DB_APP_PASSWORD: secret('AppPassword', appPassword),
           GRIMOIRE_DB_MIGRATOR_PASSWORD: secret('MigratorPassword', migratorPassword),
           GRIMOIRE_DB_OPS_PASSWORD: secret('OpsPassword', opsPassword),

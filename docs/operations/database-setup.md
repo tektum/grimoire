@@ -41,3 +41,17 @@ Migration 0009 put every row a database held before tenancy in the tenant `legac
 - It refuses, and changes nothing, when the target already holds a row in any tenant table other than `users`, or when the source holds no row at all (so a second run is refused). The tenant ids must have the shape `[A-Za-z0-9_-]{1,128}` and differ.
 - The `legacy` row of `tenants` stays: the columns still default to it. The migration that drops those defaults removes it.
 - It prints `tenant_adopt.done` with the rows moved in each table, or `tenant_adopt.refused` with its reason (`bad-tenant-id`, `same-tenant`, `source-unknown`, `source-empty`, `target-unnamed`, `target-not-empty`); never a name, a domain or anything of a person. Exit 0 when done, 1 when refused or failed, 2 for a usage or settings error.
+
+## Moving a stage to Aurora Serverless v2
+
+Every stage moves once, dev first, each move with its own go (decision 166). The stage's RDS instance stays as the way back, with deletion protection, until a later change removes it. The site is down from step 1 to the end of step 4, most of it the restore.
+
+1. **Freeze.** Dispatch `descope-infra.yml` with `action=freeze` for the stage. Its service then runs no task, so nothing writes to the database.
+2. **Snapshot.** `tools/adopt/targets.sh <stage>` prints the instance (`database=<id>`, `database_kind=instance`); `tools/adopt/snapshot.sh instance <id> grimoire-<stage>-to-aurora` returns once the snapshot is available.
+3. **Variable.** Set `GRIMOIRE_AURORA_SNAPSHOT` in the stage's GitHub environment to the snapshot's ARN (`aws rds describe-db-snapshots --db-snapshot-identifier grimoire-<stage>-to-aurora --query 'DBSnapshots[0].DBSnapshotArn' --output text`: a cluster restores from an instance's snapshot by ARN only). The deploy refuses a snapshot whose name does not start with `grimoire-<stage>-`, so another stage's snapshot cannot be restored here by mistake: dev and staging share an account. It stays set: without it the cluster would leave the program.
+4. **Deploy.** Dispatch `action=deploy`. SST restores the cluster `DbCluster` from the snapshot (Aurora PostgreSQL at `POSTGRES_VERSION`, 0.5 to 2 ACU and never paused, the stage's database security group, deletion protection, 7 days of backups, the snapshot ignored once the cluster exists), points the four connection strings at it and protects the instance. The deploy then starts the service, whose `db-setup` and `migrate` run against the cluster, and the gate waits for `/readyz`.
+5. **Check.** `targets.sh` prints `database_kind=cluster`. Sign in, open a page and the tree, edit and save, import, search; `/readyz` answers 200 and the load balancer logs no 5xx.
+
+If the deploy fails, the service stays stopped. While `targets.sh` still prints the instance (the connection strings change only once the cluster exists), `tools/deploy/freeze.sh thaw <stage>` runs the stage on the instance again, with nothing lost. Once it prints the cluster, fix the cause and deploy again; never unset the variable then.
+
+Not yet run: the dev move is the first. It checks what only a real restore shows: that the cluster takes the master password SST gives it, that Amazon's bundle in the image verifies the cluster's endpoint, and that Aurora's pgvector for 17.9 is at least the one the database has.
