@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
-import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { Database } from '@tektum/grimoire-core/ports/database';
 import { createDatabase, type KyselyDatabase } from '../../src/index.js';
 import { createUserStore } from '../../src/users.js';
 import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
@@ -51,7 +51,7 @@ describe('users migration: no authentication secrets', () => {
 
 describe('createUserStore', () => {
   it('maps find/insert/avatar/suspended/last_seen and updateRole while preserving all identity values', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     expect(await users.findByDescopeId('not-present')).toBeUndefined();
     const values = { descopeUserId: 'store-mapping', email: 'mapping@example.test', name: 'Private Name', avatarUrl: 'https://example.test/avatar', role: 'member' as Role };
     const created = await users.createIfAbsent(values);
@@ -70,7 +70,7 @@ describe('createUserStore', () => {
   });
 
   it('20 concurrent createIfAbsent calls for one sub produce one row, one created and 19 existing', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const all = await Promise.all(Array.from({ length: 20 }, async () => users.createIfAbsent(input('race'))));
     expect(all.filter((result) => result.kind === 'created')).toHaveLength(1);
     expect(all.filter((result) => result.kind === 'existing')).toHaveLength(19);
@@ -79,7 +79,7 @@ describe('createUserStore', () => {
   });
 
   it('the same email with another sub gives email-taken', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const first = input('email-first', 'member', 'first@example.test');
     const second = { ...input('email-second'), email: first.email };
     expect(await users.createIfAbsent(first)).toMatchObject({ kind: 'created' });
@@ -88,7 +88,7 @@ describe('createUserStore', () => {
   });
 
   it('citext unique email conflicts ignore case after another-subject insertion', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const first = input('citext-first', 'admin', 'person@example.test');
     const second = { ...input('citext-second'), email: 'PERSON@example.TEST' };
     expect(await users.createIfAbsent(first)).toMatchObject({ kind: 'created' });
@@ -101,25 +101,31 @@ describe('createUserStore', () => {
     // publicly returned database row for the follow-up select if a mutation wrongly suppresses this other constraint error.
     const cause = Object.assign(new Error('users_pkey duplicate key'), { code: '23505', constraint: 'users_pkey' });
     const collided: UserRecord = { id: 'collision', descopeUserId: 'collision-subject', email: 'collision@example.test', name: 'Collision', role: 'member', suspended: false, tenantId: 'legacy' };
-    let readAlreadySupplied = false;
-    const failing: Queryable = {
+    let reads = 0;
+    const failing: Database = {
       async query<Row>(source: string): Promise<readonly Row[]> {
+        if (source.includes('pg_advisory_xact_lock')) return [];
+        if (source.startsWith('select 1 from users where email')) return []; // the email check finds nobody
         if (source.startsWith('insert ')) throw cause;
-        if (source.startsWith('select ') && !readAlreadySupplied) {
-          readAlreadySupplied = true;
+        // The first read (the person is not there yet) finds nobody; a read after the failure would find the row, if a mutation wrongly went on to look.
+        if (source.startsWith('select ') && reads++ === 0) return [];
+        if (source.startsWith('select ')) {
           return [{ id: collided.id, descope_user_id: collided.descopeUserId, email: collided.email, name: collided.name, avatar_url: null, role: collided.role, suspended_at: null } as Row];
         }
         throw new Error('unexpected database operation after unique error');
       },
+      transaction: (fn) => fn(failing),
+      ping: () => Promise.resolve(),
+      close: () => Promise.resolve(),
     };
-    const caught = await createUserStore(failing).createIfAbsent({ descopeUserId: collided.descopeUserId, email: collided.email, name: collided.name, role: 'member' }).catch((error: unknown) => error);
+    const caught = await createUserStore(failing, 1000).createIfAbsent({ descopeUserId: collided.descopeUserId, email: collided.email, name: collided.name, role: 'member' }).catch((error: unknown) => error);
     expect(caught).toBe(cause);
     expect(caught).not.toEqual({ kind: 'email-taken' });
-    expect(readAlreadySupplied).toBe(false);
+    expect(reads, 'no read after the failure').toBe(1);
   });
 
   it('two simultaneous different subjects with the same email ignoring case produce one created and one email-taken', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const first = input('shared-first', 'admin', 'shared@example.test');
     const second = { ...input('shared-second'), email: 'SHARED@EXAMPLE.TEST' };
     const results = await Promise.all([users.createIfAbsent(first), users.createIfAbsent(second)]);
@@ -129,10 +135,10 @@ describe('createUserStore', () => {
   });
 
   it('existing-subject conflict reads the row rather than changing role or personal fields', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const first = input('stable', 'member');
     const created = await users.createIfAbsent(first);
-    if (created.kind === 'email-taken') throw new Error('the first user is created, not refused');
+    if (created.kind === 'email-taken' || created.kind === 'tenant-full') throw new Error('the first user is created, not refused');
     expect(await users.createIfAbsent({ ...first, email: 'changed@example.test', name: 'Changed', role: 'admin' })).toEqual({ kind: 'existing', user: created.user });
   });
 
@@ -144,7 +150,7 @@ describe('createUserStore', () => {
         ['suspended-subject', 'suspended@example.test', 'Suspended'],
       );
     } finally { await admin.close(); }
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     const found = await users.findByDescopeId('suspended-subject');
     expect(found).toMatchObject({ descopeUserId: 'suspended-subject', suspended: true, role: 'viewer', name: 'Suspended' });
     if (!found) throw new Error('seed must exist');
@@ -155,18 +161,18 @@ describe('createUserStore', () => {
 
 describe('createIfAbsent when the same user signs in several times at once', () => {
   it('every call gets the one row (one created, the rest existing): a clash on the email index of that same row is not email-taken', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     for (let round = 0; round < 10; round++) {
       const values = { descopeUserId: `race-${String(round)}`, email: `race-${String(round)}@example.test`, name: 'Racer', role: 'member' as Role };
       const results = await Promise.all(Array.from({ length: 8 }, () => users.createIfAbsent(values)));
       expect(results.map((r) => r.kind).filter((k) => k === 'email-taken')).toEqual([]);
       expect(results.filter((r) => r.kind === 'created')).toHaveLength(1);
-      expect(new Set(results.map((r) => (r.kind === 'email-taken' ? '' : r.user.id))).size).toBe(1);
+      expect(new Set(results.map((r) => ('user' in r ? r.user.id : ''))).size).toBe(1);
     }
   });
 
   it('a different subject with the same email is still email-taken', async () => {
-    const users = createUserStore(db);
+    const users = createUserStore(db, 1000);
     await users.createIfAbsent({ descopeUserId: 'taken-a', email: 'taken@example.test', name: 'A', role: 'member' as Role });
     expect(await users.createIfAbsent({ descopeUserId: 'taken-b', email: 'taken@example.test', name: 'B', role: 'member' as Role })).toEqual({ kind: 'email-taken' });
   });
@@ -174,7 +180,7 @@ describe('createIfAbsent when the same user signs in several times at once', () 
 
 
 describe('the tenant of a new person (docs/tenancy.md section 3.1)', () => {
-  const store = () => createUserStore(db);
+  const store = () => createUserStore(db, 1000);
   const tenants = async (): Promise<readonly { id: string; name: string; domain: string | null }[]> => db.query('select id, name, domain from tenants order by id');
   const person = (n: string) => ({ descopeUserId: `tenant-subject-${n}`, email: `${n}@tenant-${n}.test`, name: n, role: 'member' as Role });
 

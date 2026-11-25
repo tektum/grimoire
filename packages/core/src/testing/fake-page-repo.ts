@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { markdownHash } from '../pages/hash.js';
 import { checkMove, forestOf } from '../tree/move.js';
-import type { CreatePageResult, MarkdownOfPage, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult } from '../ports/page-repo.js';
+import type { CreatePageResult, MarkdownOfPage, NewPage, PageDetail, MovePageResult, PageLimits, PageMeta, PageMetaPatch, PageMove, PageRepo, SoftDeleteResult, TenantPageLimits } from '../ports/page-repo.js';
 import { emptyWorld } from './fake-access-store.js';
 import type { World } from './fake-access-store.js';
 
@@ -78,7 +78,7 @@ export class FakePageRepo implements PageRepo {
     return (this.collectionTenants.get(id) ?? 'legacy') === tenantId ? this.world.collections.find((c) => c.id === id) : undefined;
   }
 
-  create(tenantId: string, input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult> {
+  create(tenantId: string, input: NewPage, limits: TenantPageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult> {
     const collection = this.collectionIn(tenantId, input.collectionId);
     if (collection === undefined || collection.deleted) return Promise.resolve({ kind: 'collection-deleted' });
     this.beforeInsert?.();
@@ -94,6 +94,7 @@ export class FakePageRepo implements PageRepo {
     for (let up = parent; up !== undefined; up = live.find((r) => r.id === up?.parentId)) depth += 1;
     if (depth > limits.maxDepth) return Promise.resolve({ kind: 'too-deep' });
     if (live.length >= limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
+    if (this.rows.filter((r) => !r.deleted && r.tenantId === tenantId).length >= limits.maxTenantPages) return Promise.resolve({ kind: 'tenant-pages-full' });
     const { before, next } = around;
     const page = this.seed({ collectionId: input.collectionId, parentId: input.parentId, title: input.title, createdBy: input.createdBy, position: position(before, next), tenantId });
     const row = this.rows.find((r) => r.id === page.id) as Row;

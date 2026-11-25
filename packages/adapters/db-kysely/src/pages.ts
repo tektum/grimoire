@@ -46,6 +46,16 @@ async function neighbours(tx: Queryable, collectionId: string, parentId: string 
   return { before: anchor.position, after: next[0]?.position ?? null };
 }
 
+/**
+ * The open pages (not in the trash) of a tenant, read under the tenant's lock, which the transaction then holds to its end: two creates or restores, in any of the tenant's
+ * collections, cannot both take the last place of its cap (docs/tenancy.md section 3.8). Taken after the collection's lock, as every caller does, so the order never inverts.
+ */
+export async function openPagesOfTenant(tx: Queryable, tenantId: string): Promise<number> {
+  await tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.tenants.pages.' || $1::text, 0))`, [tenantId]);
+  const rows = await tx.query<{ n: string }>(`select count(*)::text as n from pages where tenant_id = $1 and deleted_at is null`, [tenantId]);
+  return Number(rows[0]?.n);
+}
+
 /** The PostgreSQL PageRepo over `pages`. */
 export function createPages(db: KyselyDatabase): PageRepo {
   return {
@@ -67,6 +77,7 @@ export function createPages(db: KyselyDatabase): PageRepo {
         }
         const count = await tx.query<{ n: string }>(`select count(*) as n from pages where collection_id = $1 and deleted_at is null`, [input.collectionId]);
         if (Number(count[0]?.n) >= limits.maxPages) return { kind: 'collection-full' };
+        if ((await openPagesOfTenant(tx, tenantId)) >= limits.maxTenantPages) return { kind: 'tenant-pages-full' };
 
         const around = await neighbours(tx, input.collectionId, input.parentId, input.afterId, input.beforeId ?? null, NO_PAGE);
         if (around === undefined) return { kind: 'no-after' };

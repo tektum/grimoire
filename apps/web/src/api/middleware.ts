@@ -148,6 +148,7 @@ function reportOther(status: number, code: string | undefined, method: string, n
         too_deep: 1,
         collection_full: 1,
         collection_deleted: 1,
+        tenant_pages_full: 1,
         name_taken: 1,
         last_admin: 1,
         save_failed: 1,

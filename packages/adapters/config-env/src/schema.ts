@@ -206,6 +206,9 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(1000),
   GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE: field(int(1, MAX_INT)).default(60),
   GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE: field(int(1, MAX_INT)).default(6000),
+  GRIMOIRE_TENANT_MAX_USERS: field(int(1, MAX_INT)).default(1000),
+  GRIMOIRE_TENANT_MAX_STORAGE_BYTES: field(int(1, MAX_INT)).default(10 * 1024 ** 3),
+  GRIMOIRE_TENANT_MAX_PAGES: field(int(1, MAX_INT)).default(50_000),
   GRIMOIRE_PUBLIC_API_URL: field(httpUrl),
   GRIMOIRE_WEB_ROOT: field(z.string(msg('must be an absolute path')).refine((v) => v.startsWith('/') || /^[A-Za-z]:[\\/]/.test(v), msg('must be an absolute path'))),
   GRIMOIRE_PUBLIC_COLLAB_URL: field(z.url({ protocol: /^(?:https?|wss?)$/, ...msg('must be an http(s):// or ws(s):// URL') })),
@@ -444,6 +447,11 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
     userLimitPerMinute: v.GRIMOIRE_HTTP_USER_LIMIT_PER_MINUTE,
     addressLimitPerMinute: v.GRIMOIRE_HTTP_ADDRESS_LIMIT_PER_MINUTE,
     addressCeilingPerMinute: v.GRIMOIRE_HTTP_ADDRESS_CEILING_PER_MINUTE,
+  },
+  tenantLimits: {
+    maxUsers: v.GRIMOIRE_TENANT_MAX_USERS,
+    maxStorageBytes: v.GRIMOIRE_TENANT_MAX_STORAGE_BYTES,
+    maxPages: v.GRIMOIRE_TENANT_MAX_PAGES,
   },
   collab: {
     maxPayloadBytes: v.GRIMOIRE_COLLAB_MAX_PAYLOAD_BYTES, maxStateBytes: v.GRIMOIRE_COLLAB_MAX_STATE_BYTES,

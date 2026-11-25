@@ -6,7 +6,8 @@ export class FakeUserStore implements UserStore {
   private readonly users: UserRecord[] = [];
   private readonly madeTenants: NewTenant[] = [];
 
-  constructor(rows: readonly UserRecord[] = []) {
+  /** `maxTenantUsers`: the cap of people of each tenant, as `createUserStore` takes it; none unless a test sets one. */
+  constructor(rows: readonly UserRecord[] = [], private readonly maxTenantUsers = Number.POSITIVE_INFINITY) {
     for (const user of rows) this.users.push(this.copy(user));
   }
 
@@ -18,6 +19,8 @@ export class FakeUserStore implements UserStore {
     const existing = this.users.find((u) => u.descopeUserId === n.descopeUserId);
     if (existing) return Promise.resolve({ kind: 'existing', user: this.copy(existing) });
     if (this.users.some((u) => u.email.toLowerCase() === n.email.toLowerCase())) return Promise.resolve({ kind: 'email-taken' });
+    const tenantId = n.tenant?.id ?? 'legacy';
+    if (this.users.filter((u) => (u.tenantId ?? 'legacy') === tenantId).length >= this.maxTenantUsers) return Promise.resolve({ kind: 'tenant-full' });
     const user: UserRecord = { id: randomUUID(), descopeUserId: n.descopeUserId, email: n.email, name: n.name, ...(n.avatarUrl === undefined ? {} : { avatarUrl: n.avatarUrl }), role: n.role, suspended: false, ...(n.tenant === undefined ? {} : { tenantId: n.tenant.id }) };
     if (n.tenant && !this.madeTenants.some((t) => t.id === n.tenant?.id)) this.madeTenants.push({ ...n.tenant });
     this.users.push(user);

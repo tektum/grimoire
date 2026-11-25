@@ -4,7 +4,7 @@ import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { caller, callerTenant } from '../http/collection-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
-import { ErrorBody, PageMetaSchema, PAGE_LIMITS } from './pages.js';
+import { addLimits, ErrorBody, PageMetaSchema } from './pages.js';
 
 // This file is the one place that asks the access checks to see deleted pages and collections (`includeDeleted`), and it asks only after the
 // role or the write right the route needs: the list for what the caller can write (an administrator: everything), the restore for a caller
@@ -55,7 +55,7 @@ export const restoreFromTrash = defineRoute({
   responses: {
     200: { description: 'The restored root page', content: { 'application/json': { schema: PageMetaSchema } } },
     409: {
-      description: 'The collection is deleted (`collection_deleted`) or would be over its page limit (`collection_full`), or the page moved to another collection meanwhile (`conflict`)',
+      description: 'The collection is deleted (`collection_deleted`) or would be over its page limit (`collection_full`), the workspace would be over its limit of pages (`tenant_pages_full`), or the page moved to another collection meanwhile (`conflict`)',
       content: { 'application/json': { schema: ErrorBody } },
     },
   },
@@ -116,7 +116,7 @@ router.openapi(restoreFromTrash, async (c) => {
   const decision = await authorizer.checkCollection({ userId: user.id, collectionId: root.collectionId }, { includeDeleted: true });
   if (decision.access !== 'read-write') return fail('not_found');
   // The restore is bound to the collection that was checked: a page that moved since is not restored on that check.
-  const result = await trash.restore(callerTenant(c), id, root.collectionId, PAGE_LIMITS, (before, after) => ordering.between(before, after));
+  const result = await trash.restore(callerTenant(c), id, root.collectionId, addLimits(c), (before, after) => ordering.between(before, after));
   switch (result.kind) {
     case 'restored':
       return c.json(result.page, 200);
@@ -126,6 +126,8 @@ router.openapi(restoreFromTrash, async (c) => {
       return fail('collection_deleted');
     case 'collection-full':
       return fail('collection_full');
+    case 'tenant-pages-full':
+      return fail('tenant_pages_full');
     case 'conflict':
       return fail('conflict');
   }

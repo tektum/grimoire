@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PageLimits, PageMeta } from '../ports/page-repo.js';
+import type { PageMeta, TenantPageLimits } from '../ports/page-repo.js';
 import type { RestoreResult, TrashCursor, TrashRepo, TrashRoot, TrashRootInfo } from '../ports/trash-repo.js';
 import { FakeAuditLog } from './fake-audit-log.js';
 import { emptyWorld } from './fake-access-store.js';
@@ -133,7 +133,7 @@ export class FakeTrashRepo implements TrashRepo {
     return down(root);
   }
 
-  restore(tenantId: string, id: string, expectedCollectionId: string, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
+  restore(tenantId: string, id: string, expectedCollectionId: string, limits: TenantPageLimits, position: (before: string | null, after: string | null) => string): Promise<RestoreResult> {
     this.beforeRestore?.();
     const root = this.rows.find((r) => r.id === id && r.tenantId === tenantId);
     if (root === undefined || !this.isRoot(root)) return Promise.resolve({ kind: 'not-found' });
@@ -142,6 +142,7 @@ export class FakeTrashRepo implements TrashRepo {
     const batch = this.rows.filter((r) => r.batch === root.batch);
     const live = this.rows.filter((r) => r.deletedAt === null && r.collectionId === root.collectionId);
     if (live.length + batch.length > limits.maxPages) return Promise.resolve({ kind: 'collection-full' });
+    if (this.rows.filter((r) => r.deletedAt === null && r.tenantId === tenantId).length + batch.length > limits.maxTenantPages) return Promise.resolve({ kind: 'tenant-pages-full' });
     const parent = root.parentId === null ? undefined : live.find((r) => r.id === root.parentId);
     // A parent that is gone or deleted, or under which the batch would be deeper than allowed, sends the root to the top level.
     const unavailable = root.parentId !== null && (parent === undefined || this.depthAbove(parent) + this.heightBelow(root, batch) > limits.maxDepth);

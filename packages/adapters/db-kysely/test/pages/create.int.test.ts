@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
-import type { PageLimits } from '@tektum/grimoire-core/ports/page-repo';
+import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
@@ -13,10 +13,10 @@ let t: TestDatabase;
 let user: string;
 const ordering = new FakeOrdering();
 const between = (before: string | null, after: string | null): string => ordering.between(before, after);
-const limits: PageLimits = { maxDepth: 32, maxPages: 10_000 };
+const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const collectionsRepo = () => createCollections(t.app);
 const newCollection = async (name: string): Promise<string> => (await collectionsRepo().append('legacy', { name, createdBy: user }, (last) => ordering.between(last, null))).id;
-const create = (collectionId: string, extra: { parentId?: string; afterId?: string; beforeId?: string; title?: string } = {}, l: PageLimits = limits) =>
+const create = (collectionId: string, extra: { parentId?: string; afterId?: string; beforeId?: string; title?: string } = {}, l: TenantPageLimits = limits) =>
   createPages(t.app).create('legacy', { collectionId, parentId: extra.parentId ?? null, afterId: extra.afterId ?? null, beforeId: extra.beforeId ?? null, title: extra.title ?? 'T', createdBy: user }, l, between);
 const created = async (r: ReturnType<typeof create>) => {
   const result = await r;
@@ -97,8 +97,8 @@ describe('the PostgreSQL PageRepo create', () => {
     expect(await create(c, { parentId: elsewhere.id })).toEqual({ kind: 'no-parent' });
     expect(await create(c, { parentId: '00000000-0000-4000-8000-000000000000' })).toEqual({ kind: 'no-parent' });
     let parent: string | undefined;
-    for (let level = 1; level <= 3; level += 1) parent = (await created(create(c, parent === undefined ? {} : { parentId: parent }, { maxDepth: 3, maxPages: 100 }))).id;
-    expect(await create(c, { parentId: parent as string }, { maxDepth: 3, maxPages: 100 })).toEqual({ kind: 'too-deep' });
+    for (let level = 1; level <= 3; level += 1) parent = (await created(create(c, parent === undefined ? {} : { parentId: parent }, { maxDepth: 3, maxPages: 100, maxTenantPages: 50_000 }))).id;
+    expect(await create(c, { parentId: parent as string }, { maxDepth: 3, maxPages: 100, maxTenantPages: 50_000 })).toEqual({ kind: 'too-deep' });
     await t.admin.query(`update pages set deleted_at = now() where id = $1`, [parent]);
     expect(await create(c, { parentId: parent as string })).toEqual({ kind: 'no-parent' });
   });

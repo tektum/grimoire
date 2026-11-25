@@ -127,6 +127,7 @@ describe('API wrapper', () => {
       'type_mismatch',
       'upload_missing',
       'size_mismatch',
+      'tenant_pages_full',
     ]) {
       expect(MESSAGES[code]).toBeTruthy();
       const t = setup([err(409, code)]);

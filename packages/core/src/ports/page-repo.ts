@@ -48,6 +48,12 @@ export interface PageLimits {
   readonly maxPages: number;
 }
 
+/** The limits of a create and of a restore, which add open pages: the tree's, and the tenant's cap (docs/tenancy.md section 3.8). A move adds none, so it takes `PageLimits`. */
+export interface TenantPageLimits extends PageLimits {
+  /** Most open pages (not in the trash) of one tenant, counted under a per-tenant lock. */
+  readonly maxTenantPages: number;
+}
+
 export interface NewPage {
   readonly collectionId: string;
   readonly parentId: string | null;
@@ -68,7 +74,9 @@ export type CreatePageResult =
   | { readonly kind: 'no-parent' }
   | { readonly kind: 'no-after' }
   | { readonly kind: 'too-deep' }
-  | { readonly kind: 'collection-full' };
+  | { readonly kind: 'collection-full' }
+  /** The tenant has its cap of open pages already; nothing is written. */
+  | { readonly kind: 'tenant-pages-full' };
 
 /** Where a page goes (R6.25). `collectionId` null: it stays in its collection. `afterId` null (and no `beforeId`): last among the new siblings. */
 export interface PageMove {
@@ -107,10 +115,10 @@ export interface PageRepo {
   /**
    * Adds a page in one transaction: the collection row is locked first (so a delete of the collection and other creates run one at a
    * time), then the collection must still be live, the parent and `afterId` must be live in it, the depth and the page count are
-   * checked, and the row is inserted in ONE statement together with its Markdown and state. `position` gets the keys of the
-   * neighbours (null for an open end) and returns the new key.
+   * checked, then the tenant's count of open pages under a per-tenant lock, and the row is inserted in ONE statement together with its
+   * Markdown and state. `position` gets the keys of the neighbours (null for an open end) and returns the new key.
    */
-  create(tenantId: string, input: NewPage, limits: PageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
+  create(tenantId: string, input: NewPage, limits: TenantPageLimits, position: (before: string | null, after: string | null) => string): Promise<CreatePageResult>;
   /** A live page of a live collection with its breadcrumb, or undefined. */
   get(tenantId: string, id: string): Promise<PageDetail | undefined>;
   /**

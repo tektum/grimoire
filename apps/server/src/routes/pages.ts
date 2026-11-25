@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import type { PageMeta } from '@tektum/grimoire-core/ports/page-repo';
+import type { PageMeta, TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import { fail } from '../http/error.js';
 import { createRouter, defineRoute } from '../http/factory.js';
@@ -10,6 +10,8 @@ import { seedRefusalToHttp } from '../http/seed-errors.js';
 
 /** Page tree limits (R5.8, R6.22, R6.54). */
 export const PAGE_LIMITS = { maxDepth: 32, maxPages: 10_000 } as const;
+/** What a create or a restore enforces: the tree's limits, and the tenant's cap of open pages from the settings (docs/tenancy.md section 3.8). */
+export const addLimits = (c: Parameters<typeof guardPage>[0]): TenantPageLimits => ({ ...PAGE_LIMITS, maxTenantPages: c.get('deps').config.tenantLimits.maxPages });
 const TITLE_MAX = 255;
 /** The id no page has: a lookup that found nothing is checked as this, and is refused as any unreadable page is. */
 const NO_PAGE = '00000000-0000-0000-0000-000000000000';
@@ -86,7 +88,7 @@ export const createPage = defineRoute({
   request: { body: { required: true, content: { 'application/json': { schema: CreateBody } } } },
   responses: {
     201: json(PageMetaSchema, 'The new page'),
-    409: json(ErrorBody, 'Too deep, the collection is full or deleted'),
+    409: json(ErrorBody, 'Too deep, the collection is full or deleted, or the workspace has its limit of pages (`tenant_pages_full`)'),
   },
 });
 
@@ -152,7 +154,7 @@ router.openapi(createPage, async (c) => {
   const result = await pages.create(
     callerTenant(c),
     { collectionId: body.collectionId, parentId: body.parentId ?? null, afterId: body.afterId ?? null, beforeId: body.beforeId ?? null, title, createdBy: user.id, content },
-    PAGE_LIMITS,
+    addLimits(c),
     (before, after) => ordering.between(before, after),
   );
   switch (result.kind) {
@@ -162,6 +164,7 @@ router.openapi(createPage, async (c) => {
     case 'no-after': return fail('invalid');
     case 'too-deep': return fail('too_deep');
     case 'collection-full': return fail('collection_full');
+    case 'tenant-pages-full': return fail('tenant_pages_full');
   }
 });
 

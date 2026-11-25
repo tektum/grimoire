@@ -1,4 +1,4 @@
-import type { CollabConfig, Config, HttpConfig, ImportConfig, JobsConfig, SearchConfig } from '../ports/config.js';
+import type { CollabConfig, Config, HttpConfig, ImportConfig, JobsConfig, SearchConfig, TenantLimitsConfig } from '../ports/config.js';
 
 export const defaultCollabConfig: CollabConfig = {
   maxPayloadBytes: 1048576,
@@ -38,6 +38,7 @@ export const defaultImportConfig: ImportConfig = {
 };
 export const defaultJobsConfig: JobsConfig = { importExpireSeconds: 900, stopGraceMs: 15_000, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' };
 export const defaultSearchConfig: SearchConfig = { statementTimeoutMs: 3000 };
+export const defaultTenantLimits: TenantLimitsConfig = { maxUsers: 1000, maxStorageBytes: 10 * 1024 ** 3, maxPages: 50_000 };
 
 /** A valid local-mode Config for tests, with shallow overrides (collab is merged). */
 export function makeFakeConfig(
@@ -63,6 +64,7 @@ export function makeFakeConfig(
     descopeMaxTokenLifetimeSeconds: 86400,
     requireHandshake: false,
     minClientVersion: '0.0.0',
+    tenantLimits: defaultTenantLimits,
     ...rest,
     collab: { ...defaultCollabConfig, ...collab },
     http: { ...defaultHttpConfig, ...http },

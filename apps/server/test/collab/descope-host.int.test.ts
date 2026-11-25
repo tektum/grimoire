@@ -40,7 +40,7 @@ async function rig(o: { dbUrl?: string; attempts?: number } = {}): Promise<Rig> 
   const clock = { now: () => Date.now() };
   const verifier: DescopeVerifier = createDescopeVerifier({ projectId: PROJECT_ID, baseUrl: keys.baseUrl, logger, clock, maxTokenLifetimeMs: 3_600_000, failureBackoffMs: 0 });
   const db = createDatabase(o.dbUrl ?? appUrl(DB), { maxConnections: 4, queryTimeoutMs: 1500, connectionTimeoutMs: 1500 });
-  const users = createUserStore(db);
+  const users = createUserStore(db, 1000);
   const host = createCollabHost();
   await host.start({
     config: makeFakeConfig({ collab: { connectAttemptsPerWindow: o.attempts ?? 1000 } }), logger, clock, verifier,
@@ -115,7 +115,7 @@ describe('Descope verifier + database authoriser (production wiring, local key-s
     const verifier = createDescopeVerifier({ projectId: PROJECT_ID, baseUrl: r.keys.baseUrl, logger: new FakeLogger(), clock: { now: () => Date.now() } });
     const v = await verifier.verify(token); verifier.close();
     if (v.kind !== 'ok') throw new Error('token should verify');
-    const provisioner = createProvisioner({ users: createUserStore(r.db), verifier, policy: { firstAdminEmails: [], allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false } });
+    const provisioner = createProvisioner({ users: createUserStore(r.db, 1000), verifier, policy: { firstAdminEmails: [], allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false } });
     expect(await provisioner.signIn({ identity: { userId: v.userId, ...(v.profile ? { profile: v.profile } : {}) } })).toMatchObject({ kind: 'ok', created: true, user: { role: 'member' } });
     expect(await outcome(r, p, token)).toBe('read-write');
   }, 30_000);
@@ -124,7 +124,7 @@ describe('Descope verifier + database authoriser (production wiring, local key-s
     const r = await rig();
     const p = await page();
     const token = await issuer.token('U2outsider', profileClaims('x@elsewhere.test'));
-    const provisioner = createProvisioner({ users: createUserStore(r.db), verifier: { verify: () => Promise.resolve({ kind: 'invalid-token' }) }, policy: { firstAdminEmails: [], allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false } });
+    const provisioner = createProvisioner({ users: createUserStore(r.db, 1000), verifier: { verify: () => Promise.resolve({ kind: 'invalid-token' }) }, policy: { firstAdminEmails: [], allowedEmailDomains: ['example.test'], refusedEmailDomains: [], allowDevRole: false } });
     expect(await provisioner.signIn({ identity: { userId: 'U2outsider', profile: { ...profileClaims('x@elsewhere.test') } } })).toMatchObject({ kind: 'refused', reason: 'domain-not-allowed' });
     expect(await outcome(r, p, token)).toBe('forbidden');
   }, 30_000);
