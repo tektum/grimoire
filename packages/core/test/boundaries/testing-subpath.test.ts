@@ -22,6 +22,14 @@ function moduleSpecifiers(text: string, fileName = "file.ts"): string[] {
   return out;
 }
 
+/**
+ * Whether a source text imports the testing subpath. The parser runs only on a text that names `/testing` or has a backslash (93 of the 423 production files today): a
+ * text with no backslash has no escape sequence, so every specifier the parser reads is in it as written, and one with a backslash is left to the parser, which decodes.
+ * Parsing every file took about 0.4 s idle and passed the 5 s default under a loaded test run.
+ */
+const importsTestingSubpath = (text: string, fileName?: string): boolean =>
+  (text.includes("/testing") || text.includes("\\")) && moduleSpecifiers(text, fileName).some(isTestingSubpath);
+
 function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -43,12 +51,27 @@ describe("the testing subpath of an adapter", () => {
       ...readdirSync(path.join(repoRoot, "packages")).map((d) => path.join(repoRoot, "packages", d, "src")),
       ...readdirSync(path.join(repoRoot, "packages/adapters")).map((d) => path.join(repoRoot, "packages/adapters", d, "src")),
     ];
-    const offenders = roots.flatMap(sourceFiles).filter((f) => moduleSpecifiers(readFileSync(f, "utf8"), f).some(isTestingSubpath));
+    const offenders = roots.flatMap(sourceFiles).filter((f) => importsTestingSubpath(readFileSync(f, "utf8"), f));
     expect(offenders.map((f) => path.relative(repoRoot, f))).toEqual([]);
   });
 
+  it("the scan sees a specifier spelled with escape sequences, which the parser decodes", () => {
+    const spelled = [
+      'import { s } from "@tektum/grimoire-adapter-x/test\\u0069ng";',
+      'import { s } from "@tektum/grimoire-adapter-x/t\\x65sting";',
+      'import { s } from "@tektum/grimoire-adapter-x/tes\\u{0000074}ing";', // a braced escape with leading zeros: any number of digits is valid
+      'import { s } from "@tektum/grimoire-adapter-x/t\\esting";', // an identity escape
+      'import { s } from "@tektum/grimoire-adapter-x/test\\\ning";', // a line continuation
+      // An unfinished escape in a comment before a plain import (a filter that decoded escapes could let it swallow the code after it).
+      '// an unfinished escape in a comment: \\u{ and \\x\nimport * as s from "@tektum/grimoire-adapter-x/testing"; // }',
+    ];
+    for (const text of spelled) expect(importsTestingSubpath(text), text).toBe(true);
+  });
+
   it("the scan sees a violation (a source text that imports it)", () => {
-    expect(moduleSpecifiers(`import { createSaver } from "@tektum/grimoire-adapter-collab-hocuspocus/testing";`).some(isTestingSubpath)).toBe(true);
-    expect(moduleSpecifiers(`const m = await import("@tektum/grimoire-adapter-collab-hocuspocus/testing");`).some(isTestingSubpath)).toBe(true);
+    expect(importsTestingSubpath(`import { createSaver } from "@tektum/grimoire-adapter-collab-hocuspocus/testing";`)).toBe(true);
+    expect(importsTestingSubpath(`const m = await import("@tektum/grimoire-adapter-collab-hocuspocus/testing");`)).toBe(true);
+    expect(importsTestingSubpath(`export type { Saver } from "@tektum/grimoire-adapter-x/testing/deep";`)).toBe(true);
+    expect(importsTestingSubpath(`import { createSaver } from "@tektum/grimoire-adapter-collab-hocuspocus";\n// see /testing for the fake`)).toBe(false);
   });
 });
