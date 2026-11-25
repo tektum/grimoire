@@ -44,6 +44,11 @@ describe('a callout', () => {
     expect(convertConstructs(lines('<aside>', '<aside>', '🔥 Inner', '', '</aside>', '', 'Outer text', '', '</aside>'))).toBe(lines('> > **🔥 Inner**', '>', '> Outer text'));
   });
 
+  it('inside a code fence that shows Markdown, a fence line with an info string does not close it (CommonMark): the callout in the code stays as it is', () => {
+    const code = lines('```', '```js', '<aside>', 'x', '</aside>', '```', 'After');
+    expect(convertConstructs(code)).toBe(code);
+  });
+
   it('inside a code fence is code and stays exactly as it is; a callout that is never closed stays as it is', () => {
     const fenced = lines('```html', '<aside>', 'x', '</aside>', '```');
     expect(convertConstructs(fenced)).toBe(fenced);

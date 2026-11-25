@@ -31,7 +31,8 @@ function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close:
   let fence: string | undefined;
   lines.forEach((line, i) => {
     const marker = FENCE.exec(line)?.[1];
-    if (fence !== undefined) { if (marker !== undefined && marker[0] === fence[0] && marker.length >= fence.length) fence = undefined; return; }
+    // CommonMark: a closing fence has nothing after it, so a line such as ```js inside code does not close the fence.
+    if (fence !== undefined) { if (marker !== undefined && marker[0] === fence[0] && marker.length >= fence.length && line.trim() === marker) fence = undefined; return; }
     if (marker !== undefined) { fence = marker; return; }
     for (const kind of ['aside', 'details'] as const) {
       const opened = OPEN[kind].exec(line);
