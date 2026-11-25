@@ -78,7 +78,8 @@ export interface ImportItem {
 
 /** How an item ends without a page: left out on purpose (`skipped`) or not readable (`failed`), with the reason as its message. */
 export interface ItemOutcome {
-  readonly status: 'skipped' | 'failed';
+  /** `ok` is for a file used by a page (an attachment item); a page item becomes `ok` only through `writePage`, and a settle of it as `ok` is refused. */
+  readonly status: 'ok' | 'skipped' | 'failed';
   readonly message: string;
   readonly markdownBytes?: number;
   readonly stateBytes?: number;
@@ -108,6 +109,8 @@ export interface NewImportedPage {
   readonly stateBytes: number;
   readonly warnings?: number;
   readonly attachments: readonly Omit<NewReady, 'pageId'>[];
+  /** The file items the attachments were made from: settled `ok` in the same transaction as the page and its rows, so a crash cannot leave a used file to be swept as unreferenced. */
+  readonly attachmentItemIds?: readonly string[];
 }
 
 /** `not-running`: the import was cancelled, failed or finished, so nothing is written (a late page would escape the trash batch of a cancelled or failed import). `not-pending`: the item was settled already (a resumed run, a duplicate), so nothing is written. The rest are the refusals of a page create. */

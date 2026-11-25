@@ -10,7 +10,9 @@ import { rewriteMarkdown } from './markdown-rewrite.js';
 import type { Resolved } from './markdown-rewrite.js';
 import { normalizePage } from './normalize.js';
 import type { ImportProfile, IndexedItem, LinkIndex } from './profile.js';
-import { EntryAbort } from './zip-reader.js';
+import { stageAttachment } from './attachments.js';
+import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
+import { readEntry } from './read-entry.js';
 import type { ZipEntry, ZipReader } from './zip-reader.js';
 
 /** What pass one reads of an entry of the archive: its place in the central directory, its name, and whether it is a directory. */
@@ -117,6 +119,8 @@ export interface PassTwoDeps {
   readonly profile: ImportProfile;
   readonly ordering: Pick<Ordering, 'between'>;
   readonly reader: Pick<ZipReader, 'openEntry'>;
+  /** The files setting and the type sniffer: absent, the files a page uses stay as written. */
+  readonly attachments?: AttachmentSettings;
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
   readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number };
@@ -146,27 +150,6 @@ const MAX_TITLE = 255;
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const segmentsOf = (path: string): string[] => path.split('/').filter((s) => s !== '' && s !== '.');
 const folderKey = (folder: string): string => segmentsOf(folder).join('/').normalize('NFC').toLowerCase();
-
-type Read = { readonly kind: 'ok'; readonly bytes: Buffer } | { readonly kind: 'skipped'; readonly reason: 'too_large' } | { readonly kind: 'failed'; readonly reason: 'size_mismatch' | 'ratio' };
-
-/** The bytes of an entry counted as they come, at most `cap` of them: more is `too_large` (the entry is not read on), and a header that lies is `size_mismatch`. */
-async function readEntry(deps: PassTwoDeps, entry: ZipEntry, cap: number): Promise<Read> {
-  if (entry.size > cap) return { kind: 'skipped', reason: 'too_large' };
-  const chunks: Buffer[] = [];
-  let total = 0;
-  try {
-    const stream = await deps.reader.openEntry(entry, deps.limits);
-    for await (const chunk of stream) {
-      total += (chunk as Buffer).length;
-      if (total > cap) { stream.destroy(); return { kind: 'skipped', reason: 'too_large' }; }
-      chunks.push(chunk as Buffer);
-    }
-  } catch (e) {
-    if (!(e instanceof EntryAbort)) throw e;
-    return e.reason === 'entry_too_large' ? { kind: 'skipped', reason: 'too_large' } : { kind: 'failed', reason: e.reason };
-  }
-  return { kind: 'ok', bytes: Buffer.concat(chunks) };
-}
 
 const cutTitle = (title: string): { readonly title: string; readonly cut: boolean } => {
   const points = [...title.trim()];
@@ -240,16 +223,17 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   // Warnings live on the item rows (written with the page or the settle), so the count is worked out from them like the others and survives a resumed or an overlapping run.
   const warned = new Map(all.map((i) => [i.id, i.warnings]));
   const counts = (): ImportCounts => {
-    let pagesDone = 0, skipped = 0, failed = 0;
+    let pagesDone = 0, attachments = 0, skipped = 0, failed = 0;
     for (const i of all) {
       const s = status.get(i.id);
       if (s === 'ok' && i.kind === 'page') pagesDone++;
+      else if (s === 'ok' && i.kind === 'attachment') attachments++;
       else if (s === 'skipped') skipped++;
       else if (s === 'failed') failed++;
     }
     let warnings = 0;
     for (const n of warned.values()) warnings += n;
-    return { pagesTotal: pageItems.length, pagesDone, attachments: record.counts.attachments, skipped, failed, warnings };
+    return { pagesTotal: pageItems.length, pagesDone, attachments, skipped, failed, warnings };
   };
   /** The status another run gave an item this one lost the race for, read back (a written page keeps its ids, a settled one has none). */
   const adopt = async (item: ImportItem): Promise<void> => {
@@ -273,8 +257,11 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     return null;
   };
 
-  type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number };
-  const processItem = async (item: ImportItem): Promise<Step> => {
+  /** `wrote`: the page was written by this run, or by another run that won the race (its attachments are the same objects: deterministic ids). */
+  type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number; readonly wrote?: 'here' | 'other' };
+  /** Files judged unfit for any page that uses them (a property of the file), decided once. */
+  const rejected = new Map<string, Rejection>();
+  const processInner = async (item: ImportItem, staged: Map<string, StagedFile>): Promise<Step> => {
     let original: Buffer | undefined;
     let markdown = '';
     let titleSource = '';
@@ -284,8 +271,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     } else {
       const entry = entryByPath.get(item.path);
       if (entry === undefined) { await settle(item, 'failed', 'missing_entry'); return { bytes: 0 }; }
-      const read = await readEntry(deps, entry, deps.limits.seedMaxMarkdownBytes);
-      if (read.kind === 'skipped') { await settle(item, 'skipped', read.reason, { markdownBytes: entry.size }); return { bytes: 0 }; }
+      const read = await readEntry(deps.reader, deps.limits, entry, deps.limits.seedMaxMarkdownBytes);
+      if (read.kind === 'too_large') { await settle(item, 'skipped', 'too_large', { markdownBytes: entry.size }); return { bytes: 0 }; }
       if (read.kind === 'failed') { await settle(item, 'failed', read.reason); return { bytes: 0 }; }
       original = read.bytes;
       try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
@@ -294,10 +281,31 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const { title, cut } = cutTitle(name);
     let own = cut ? 1 : 0;
+    // The files this page uses (stage 4d), found first and stored before the page is written; the rewrite then points each link at its attachment.
+    if (deps.attachments !== undefined) {
+      const wanted: ImportItem[] = [];
+      rewriteMarkdown(markdown, (target) => {
+        const found = profile.resolveLink(target, item.path, index);
+        const file = found?.kind === 'attachment' ? itemById.get(found.itemId) : undefined;
+        if (file !== undefined && !wanted.includes(file)) wanted.push(file);
+        return undefined;
+      });
+      const stage: StageContext = { files: deps.files, reader: deps.reader, limits: deps.limits, settings: deps.attachments, tenantId, importId, uploaderId: importer, now: deps.now };
+      for (const file of wanted) {
+        if (rejected.has(file.id)) continue;
+        const entry = entryByPath.get(file.path);
+        const result: Staged = entry === undefined ? { kind: 'rejected', status: 'failed', reason: 'missing_entry' } : await stageAttachment(stage, entry, item.path);
+        if (result.kind === 'ok') { staged.set(file.id, result); continue; }
+        if (result.scope === 'page') continue; // this page's object, not the file: this page keeps its link, other pages may still use the file
+        rejected.set(file.id, result);
+        if (status.get(file.id) === 'pending') await settle(file, result.status, result.reason);
+      }
+    }
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
-      if (kind === 'image') return undefined;
       const found = profile.resolveLink(target, item.path, index);
-      if (found === undefined || found.kind !== 'page') return undefined;
+      if (found === undefined) return undefined;
+      if (found.kind === 'attachment') { const file = staged.get(found.itemId); return file === undefined ? undefined : { kind: 'file', url: file.url }; }
+      if (kind === 'image') return undefined; // an image that is a page is nothing to point at
       const targetItem = itemById.get(found.itemId);
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
     });
@@ -315,11 +323,11 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
-      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [],
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
-      case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); return { bytes };
-      case 'not-pending': await adopt(item); return { bytes };
+      case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); for (const id of staged.keys()) if (status.get(id) === 'pending') status.set(id, 'ok'); return { bytes, wrote: 'here' };
+      case 'not-pending': await adopt(item); for (const id of staged.keys()) await adopt(itemById.get(id) as ImportItem); return { bytes, wrote: 'other' };
       case 'not-running': return { stop: 'not_running', bytes };
       case 'collection-deleted': return { stop: 'collection_deleted', bytes };
       case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
@@ -327,6 +335,17 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
       case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
     }
+  };
+
+  /** Stores the files a page uses, writes the page, and then either settles the files it used as ok or removes the objects it stored for a page that was not written. */
+  const processItem = async (item: ImportItem): Promise<Step> => {
+    const staged = new Map<string, StagedFile>();
+    const step = await processInner(item, staged);
+    // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
+    if (step.wrote === undefined && staged.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
+      for (const f of staged.values()) await deps.files.delete(f.row.key);
+    }
+    return step;
   };
 
   const finish = async (result: (c: ImportCounts) => PassTwoResult): Promise<PassTwoResult> => {
@@ -351,5 +370,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     await repo.setCounts(tenantId, importId, counts());
   }
+  // Every page is dealt with: a file that no page used is skipped (a file used by a page that failed is one too: nothing was stored for it).
+  for (const i of all) if (i.kind === 'attachment' && status.get(i.id) === 'pending') await settle(i, 'skipped', 'unreferenced');
   return finish((c) => ({ kind: 'done', counts: c }));
 }

@@ -74,8 +74,8 @@ export class FakeImportRepo implements ImportRepo {
   settle(tenantId: string, importId: string, itemId: string, outcome: ItemOutcome): Promise<boolean> {
     const at = this.stored.findIndex((s) => s.tenantId === tenantId && s.importId === importId && s.item.id === itemId && s.item.status === 'pending');
     const found = this.stored[at];
-    if (found === undefined) return Promise.resolve(false);
-    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, pageId: null, urlId: null, warnings: outcome.warnings ?? 0, message: clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
+    if (found === undefined || (outcome.status === 'ok' && found.item.kind === 'page')) return Promise.resolve(false);
+    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, pageId: null, urlId: null, warnings: outcome.warnings ?? 0, message: outcome.status === 'ok' ? null : clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
     return Promise.resolve(true);
   }
 
@@ -95,6 +95,11 @@ export class FakeImportRepo implements ImportRepo {
     const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
     const urlId = found.item.urlId ?? `u${pageId}`;
     this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    for (const fileId of page.attachmentItemIds ?? []) {
+      const f = this.stored.findIndex((x) => x.tenantId === tenantId && x.importId === importId && x.item.id === fileId && x.item.status === 'pending' && x.item.kind === 'attachment');
+      const file = this.stored[f];
+      if (file !== undefined) this.stored[f] = { ...file, item: { ...file.item, status: 'ok', message: null } };
+    }
     this.written.push({ tenantId, importId, page, position });
     return Promise.resolve({ kind: 'ok', pageId, urlId });
   }
