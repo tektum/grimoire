@@ -8,6 +8,7 @@ const DB = `grimoire_m3t01b_preauth_${String(process.pid)}`;
 const page = newPage();
 const sockets: WebSocket[] = [];
 let lastOpened = 0;
+let lastClosed = 0;
 
 const closeCodes: number[] = [];
 
@@ -16,7 +17,7 @@ function at(index: number): WebSocket {
   class Forwarded extends WebSocket { constructor(url: string | URL) { super(url, { headers: { Origin: ALLOWED_ORIGIN, 'X-Forwarded-For': address } }); } }
   const socket = new Forwarded(wsUrl(server.port));
   socket.addEventListener('open', () => { lastOpened = Date.now(); });
-  socket.addEventListener('close', (e) => { closeCodes.push(e.code); });
+  socket.addEventListener('close', (e) => { closeCodes.push(e.code); lastClosed = Date.now(); });
   sockets.push(socket);
   return socket;
 }
@@ -40,16 +41,21 @@ afterAll(async () => { for (const s of sockets) s.close(); await server.kill(); 
 
 describe('pre-sign-in slot lifetime (U1)', () => {
   it('500 idle sockets release by 6.5 seconds, replacement connects, and 4-second link stays for 30 seconds', async () => {
-    const before = Date.now();
     await Promise.all(Array.from({ length: 500 }, (_, i) => open(i)));
     expect(sockets.every((s) => s.readyState === WebSocket.OPEN)).toBe(true);
-    await vi.waitFor(() => { expect(sockets.every((s) => s.readyState === WebSocket.CLOSED)).toBe(true); }, { timeout: 6500, interval: 10 });
+    // The bound is on the server's release of the slots, so it is read from the server's own events (their time is the server's clock), not from when this test's client noticed the
+    // closes: on a loaded runner the client sees 500 close frames late, and opening 500 sockets takes this process a while too. The client only has to see them, within a wait that
+    // is not the measure.
+    await vi.waitFor(() => { expect(sockets.every((s) => s.readyState === WebSocket.CLOSED)).toBe(true); }, { timeout: 20_000, interval: 10 });
     expect(closeCodes).toHaveLength(500);
     expect(new Set(closeCodes)).toEqual(new Set([4408])); // the contract's timeout code, not a bare reset
+    await vi.waitFor(() => { expect(server.events.filter((e) => e.event === 'collab.refused' && e.code === 'preauth-timeout')).toHaveLength(500); }, { timeout: 10_000, interval: 10 });
+    const released = server.events.filter((e) => e.event === 'collab.refused' && e.code === 'preauth-timeout').map((e) => Date.parse(String(e.ts)));
+    const lastRelease = Math.max(...released);
+    const timeline = `server released ${String(released.length)} slots; last release ${String(lastRelease - lastOpened)} ms after the last socket opened (first ${String(Math.min(...released) - lastOpened)} ms); this client saw the last close ${String(lastClosed - lastOpened)} ms after it`;
+    expect(lastRelease - lastOpened, timeline).toBeLessThan(6500);
     const last = server.events.filter((e) => e.event === 'server.stats' && e.openUnauthenticated === 0).at(-1);
-    expect(last).toBeDefined();
-    expect(Date.now() - before).toBeLessThan(6600);
-    expect(Date.now() - lastOpened).toBeLessThan(6500);
+    expect(last, timeline).toBeDefined();
     const replacement = new WebSocket(wsUrl(server.port), { headers: { Origin: ALLOWED_ORIGIN } }); sockets.push(replacement);
     await onOpen(replacement); replacement.send(authOnlyFrame(page, 'dev:test-secret-0123456789abcdef:bob:member'));
     await vi.waitFor(() => { expect(server.events.some((e) => e.event === 'collab.connected' && e.pageId === page)).toBe(true); }, { timeout: 2000 });
