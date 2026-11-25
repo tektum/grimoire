@@ -29,8 +29,10 @@ export function recreateEnv(settings: Record<string, string> = {}): NodeJS.Proce
 export async function recreateApp(settings: Record<string, string> = {}): Promise<void> {
   const began = Date.now();
   let phase = 'compose up';
-  // Describes the stack while the recreate is still going, once: a spec that is cut off by its own timeout never reaches the lines after the await, and a stall is the thing to see.
-  const stalled = setTimeout(() => void stackReport().then((report) => console.log(`recreateApp: still in ${phase} after ${seconds(STALL_REPORT_MS)}\n${report}`)), STALL_REPORT_MS);
+  const reportStall = (): void => void stackReport().then((report) => console.log(`recreateApp: still in ${phase} after ${seconds(STALL_REPORT_MS)}\n${report}`));
+  // A watchdog, not a wait (allow-listed in tools/ci/test-sleep-allow.json): it describes the stack once while the recreate is still going, because a spec cut
+  // off by its own timeout never reaches the lines after the await, and a stall is the thing to see.
+  const stalled = setTimeout(reportStall, STALL_REPORT_MS);
   try {
     await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
       cwd: repoRoot,
