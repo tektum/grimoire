@@ -34,6 +34,8 @@ export interface ImportJobDeps {
   };
   /** How long one run of the job works before it hands the rest to its continuation (default 300 s). */
   readonly chunkMs?: number;
+  /** A signal that aborts after `ms`: the chunk's time (default `AbortSignal.timeout`; a test supplies its own so it does not wait on the wall clock). */
+  readonly chunkSignal?: (ms: number) => AbortSignal;
   readonly batchPages?: number;
   /** The most pages a collection holds (default 10,000; a test names a smaller one). */
   readonly maxPages?: number;
@@ -104,7 +106,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
           await fail(one.reason);
           return;
         }
-        const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(deps.chunkMs ?? DEFAULT_CHUNK_MS)]);
+        const signal = AbortSignal.any([ctx.signal, (deps.chunkSignal ?? AbortSignal.timeout.bind(AbortSignal))(deps.chunkMs ?? DEFAULT_CHUNK_MS)]);
         const current = (await imports.get(tenantId, importId)) ?? record;
         const result = await passTwo({
           repo: imports, files, converter: deps.converter, profile: markdownProfile, ordering: deps.ordering, reader: opened.reader, entries: opened.entries,
