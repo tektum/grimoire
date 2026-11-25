@@ -50,3 +50,26 @@ for (const scheme of ['light', 'dark'] as const) {
     });
   });
 }
+
+// The highlighted words of a result in forced colours (high contrast): the system's own colours for a marker, which axe must find readable. (The tour's forced-colours specification needs the whole stack;
+// this one has the highlights in a result of the scripted search, in the engines that run axe.)
+test.describe('forced colours', () => {
+  test('/search with highlighted words has no serious or critical violation, and the highlight is drawn in system colours', async ({ page, context }) => {
+    await signInAs(context, 'e2e-alice', 'member', { check: false });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [] });
+    await scriptedSearch(page, () => ({
+      items: [
+        hit('r1', 'r1000000', 'Product plan', 'the roadmap for the next quarter, the roadmap again', [
+          [4, 11],
+          [38, 45],
+        ]),
+      ],
+    }));
+    await page.goto('/search?q=roadmap');
+    await expect(page.getByRole('link', { name: 'Product plan' })).toBeVisible();
+    expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches), 'forced colours are on').toBe(true);
+    await expect(page.locator('.search-snippet mark')).toHaveCount(2);
+    await expectNoAxeViolations(page, { minImpact: 'serious' });
+  });
+});

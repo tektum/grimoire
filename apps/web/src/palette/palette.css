@@ -16,5 +16,6 @@
 }
 .palette-note { padding: var(--space-3); color: var(--muted); margin: 0; }
 @media (forced-colors: active) {
-  .palette-snippet mark, .search-snippet mark { background: Highlight; color: HighlightText; }
+  /* The system's own pair for a marker (`Mark` under `MarkText`), not the selection's (`Highlight`): the engine draws the one it means for a <mark>, and a checker reads it as readable. */
+  .palette-snippet mark, .search-snippet mark { background: Mark; color: MarkText; }
 }
