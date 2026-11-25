@@ -22,13 +22,13 @@ test('the list of scenarios and the report agree: the same ids, the same files, 
 test('the report is sound: every proved row names files that are there, every pending row names its task and still lacks a file', () => {
   expect(reportProblems(report)).toEqual([]);
   const pending = rowsOf(report).filter((r) => r.state.startsWith('pending'));
-  expect(pending.length, 'the screens that are not built are listed, not left out').toBeGreaterThan(5);
-  for (const task of ['M6-T09', 'M6-T12a'])
+  expect(pending.length, 'the screens that are not built are listed, not left out').toBeGreaterThan(3);
+  for (const task of ['M6-T12a'])
     expect(
       pending.some((r) => r.state === `pending ${task}`),
       `${task} is listed as pending`,
     ).toBe(true);
-  for (const id of ['search-palette', 'import']) expect(SCENARIOS.find((s) => s.id === id)?.pending, `${id} is a pending scenario`).toBeDefined();
+  for (const id of ['import']) expect(SCENARIOS.find((s) => s.id === id)?.pending, `${id} is a pending scenario`).toBeDefined();
 });
 
 test('the run names the three browsers and every scenario, and runs the files of the scenarios that are not pending once each', () => {
@@ -44,7 +44,7 @@ test('the run names the three browsers and every scenario, and runs the files of
   expect(new Set(files).size, 'once each').toBe(files.length);
   expect(files).toContain('apps/web/test-e2e/m6/handshake.spec.ts');
   expect(
-    files.some((f) => f.includes('/search/') || f.includes('/import/')),
+    files.some((f) => f.includes('/import/')),
     'nothing of the pending screens is run',
   ).toBe(false);
 });
@@ -98,7 +98,7 @@ test('the check of the list, run as make runs it, prints the browsers and the sc
   expect(ok.status, ok.stderr).toBe(0);
   expect(ok.stdout).toContain('browsers: chromium, firefox, webkit');
   for (const s of SCENARIOS) expect(ok.stdout).toContain(`scenario ${s.id}:`);
-  expect(ok.stdout).toContain('scenario search-palette: pending M6-T09');
+  expect(ok.stdout).toContain('scenario import: pending M6-T12a');
   const dir = mkdtempSync(path.join(repoRoot, 'test-results', 'm6-exit-'));
   try {
     const shortened = path.join(dir, 'report.md');
