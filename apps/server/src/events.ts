@@ -81,6 +81,8 @@ export interface InfoEvents {
 
 export interface WarnEvents {
   'jobs.retrying': JobEvent;
+  /** The stale-Markdown sweep could not convert a page (at most once an hour for each): the page's id and the converter's failure code, never content. */
+  'markdown_sweep.convert_failed': { pageId: string; reason: string };
   'jobs.aborted': { name: string; jobId: string };
   /** A search that ran into its statement timeout. */
   'search.timeout': Record<string, never>;
