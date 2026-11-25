@@ -20,6 +20,19 @@ export interface ImportPayload {
 const TENANT_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The payload of `embed-page`: the tenant and the page, ids only (never text: pg-boss payloads sit in tables the runtime role can read). */
+export interface EmbedPagePayload {
+  readonly tenantId: string;
+  readonly pageId: string;
+}
+
+/** True for exactly `{ tenantId, pageId }` in their shapes. A handler drops and logs anything else. */
+export function isEmbedPagePayload(value: unknown): value is EmbedPagePayload {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return Object.keys(v).length === 2 && typeof v['tenantId'] === 'string' && TENANT_ID.test(v['tenantId']) && typeof v['pageId'] === 'string' && UUID.test(v['pageId']);
+}
+
 /** True for exactly `{ tenantId, importId }` in their shapes. A handler drops and logs anything else. */
 export function isImportPayload(value: unknown): value is ImportPayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
