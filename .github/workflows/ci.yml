@@ -426,6 +426,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -466,6 +470,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -506,6 +514,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -545,6 +557,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-m4/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -584,6 +600,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-m5/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 20
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -625,6 +645,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-web/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
     timeout-minutes: 30
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -666,6 +690,10 @@ jobs:
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ${{ format('runs-on={0}-{1}-e2e-web-{2}/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt, matrix.browser) }}
     timeout-minutes: 40
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
     strategy:
       fail-fast: false
       matrix:

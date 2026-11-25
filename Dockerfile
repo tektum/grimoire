@@ -7,10 +7,12 @@ FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3
 
 # The model files of the semantic search (M7-T12): the only network use of the model path, at build time. Each file is checked against the lock (SHA-256 and size) when it is fetched and again
 # after: a build whose file is not the locked one fails here. The server reads them from /app/models and never fetches anything.
+# `GRIMOIRE_MODELS=skip` leaves /app/models empty: for the images of the test jobs that run with the semantic search off (about 400 MB less to fetch). The default, and the production image, fetch.
 FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS models
 WORKDIR /src
+ARG GRIMOIRE_MODELS=fetch
 COPY models/models.lock.json scripts/fetch-models.mjs ./
-RUN node fetch-models.mjs --lock models.lock.json --out /models && node fetch-models.mjs --lock models.lock.json --out /models --verify && cp models.lock.json /models/models.lock.json
+RUN if [ "$GRIMOIRE_MODELS" = skip ]; then mkdir -p /models; else node fetch-models.mjs --lock models.lock.json --out /models && node fetch-models.mjs --lock models.lock.json --out /models --verify && cp models.lock.json /models/models.lock.json; fi
 
 FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun

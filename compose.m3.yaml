@@ -8,7 +8,10 @@
 # Restarting only the key server mints a new key id: the app picks it up within 30 s (the SDK's unknown-key cooldown), not at once; see docs/proof/m3-descope.md Q9.
 services:
   keyserver:
-    build: .
+    build:
+      context: .
+      args:
+        GRIMOIRE_MODELS: "${GRIMOIRE_IMAGE_MODELS:-fetch}"
     command: ["/keyserver/server.mjs"]
     environment:
       NODE_ENV: test

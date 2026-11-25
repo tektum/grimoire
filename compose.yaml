@@ -45,7 +45,10 @@ services:
 
   # Local mode with development tokens: no production sign-in adapter exists yet, so a non-local server that serves collaboration refuses to start.
   app:
-    build: .
+    build:
+      context: .
+      args:
+        GRIMOIRE_MODELS: "${GRIMOIRE_IMAGE_MODELS:-fetch}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,6 +61,8 @@ services:
       GRIMOIRE_TEST_SLOW_LOAD: "${GRIMOIRE_TEST_SLOW_LOAD:-}"
       GRIMOIRE_TEST_DISABLE_BREAKER: "${GRIMOIRE_TEST_DISABLE_BREAKER:-}"
       GRIMOIRE_LOCAL: "1"
+      # On unless a test target turns it off: the e2e jobs build the image without the model files (GRIMOIRE_IMAGE_MODELS=skip) and run with it off.
+      GRIMOIRE_SEMANTIC_SEARCH: "${GRIMOIRE_SEMANTIC_SEARCH:-on}"
       # The server refuses local mode on a non-loopback bind unless told this is fine. It is fine here: inside the container the app must listen
       # on 0.0.0.0 (GRIMOIRE_HOST in the image), but this file publishes the port on 127.0.0.1 only (`ports` below), so only this machine reaches it.
       # Do not widen the published address while local mode is on: development tokens are the only sign-in.
@@ -150,7 +155,10 @@ services:
 
   # One-shot (same Dockerfile, so the same cached layers): `make migrate` runs it with the migrator role. The app image never changes the schema by itself.
   migrate:
-    build: .
+    build:
+      context: .
+      args:
+        GRIMOIRE_MODELS: "${GRIMOIRE_IMAGE_MODELS:-fetch}"
     profiles: [tools]
     depends_on:
       postgres:
