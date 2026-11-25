@@ -1,9 +1,11 @@
 import type { Config } from '@tektum/grimoire-core/ports/config';
+import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import type { EventLog } from '../events.js';
 import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
-import { registerJobs } from './index.js';
+import { importJobs, type RegisteredJob } from './index.js';
+import { instrument } from './instrument.js';
 
 /** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
 export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
@@ -29,6 +31,10 @@ export interface JobRunnerOptions {
   /** Constructs and starts the queue: `createJobQueue` of the pg-boss adapter (only the composition root constructs adapters), or a test's own. */
   readonly make: (options: QueueStart) => Promise<JobQueue>;
   readonly onError?: (error: Error) => void;
+  /** The jobs to register: `registerJobs` of the composition root. Without it only the import jobs are. */
+  readonly jobs?: readonly RegisteredJob[];
+  /** The time of the run log (`jobs.started` and the rest carry the milliseconds a run took). */
+  readonly clock?: Clock;
 }
 
 /** How long after a failed start the next one is tried. */
@@ -46,6 +52,8 @@ export const MAX_START_ATTEMPTS = 20;
  */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const { config, log } = options;
+  const jobs = options.jobs ?? importJobs(config);
+  const clock = options.clock ?? { now: () => Date.now() };
   let queue: JobQueue | undefined;
   let running = false;
   let stopped = false;
@@ -68,9 +76,9 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       if (url === undefined) throw new Error('the job queue needs the database url');
       made = await options.make({ connectionString: url, stopGraceMs: config.jobs.stopGraceMs, onError: options.onError ?? (() => undefined) });
       if (!stopped) {
-        for (const job of registerJobs({ config })) {
+        for (const job of jobs) {
           if (stopped) break; // a stop that comes in the middle: no handler is registered after it, so no job starts during the drain
-          await made.work(job.name, job.handler);
+          await made.work(job.name, instrument(job.name, job.handler, log, clock));
         }
       }
       if (stopped) {

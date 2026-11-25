@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase, type KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { insertCollection, insertPage, insertSql, insertUser, raw } from '@tektum/grimoire-test-support/database';
-import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
+import { createJobQueue, type PgBossJobQueue } from '@tektum/grimoire-adapter-jobs-pgboss';
+import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
+import { appUrl, createTestDatabase, dropTestDatabase, migratorUrl, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
 /** A migrated database of its own, the runtime role's connection to it, and a way to seed rows as the owner. */
 export async function jobsDatabase(name: string): Promise<{ readonly app: KyselyDatabase; readonly sql: (text: string) => Promise<unknown>; drop(): Promise<void> }> {
@@ -29,4 +31,19 @@ export async function seedDeletedPage(sql: Sql, tenant: Awaited<ReturnType<typeo
   const key = `tenants/${tenant.tenantId}/attachments/${id}`;
   await sql(insertSql('attachments', { id: randomUUID(), page_id: id, file_name: 'a.png', content_type: 'image/png', size: 1, s3_key: key, status: 'ready', tenant_id: tenant.tenantId }));
   return { id, key };
+}
+
+/** A queue made by the migration role, as `grimoire migrate` makes them (the runtime role may not), with the dead-letter queue of the migrated database. */
+export async function makeQueue(database: string, name: string, over: Partial<QueueDefinition> = {}): Promise<void> {
+  const admin = await createJobQueue({ connectionString: migratorUrl(database), max: 1, onError: () => undefined });
+  try {
+    await admin.ensureQueue({ name, policy: 'standard', retryLimit: 0, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 3600, deadLetter: 'dead-letter', ...over });
+  } finally {
+    await admin.stop({ graceMs: 1000 });
+  }
+}
+
+/** The job queue the server runs on: the runtime role's connection. */
+export function runtimeQueue(database: string): Promise<PgBossJobQueue> {
+  return createJobQueue({ connectionString: appUrl(database), max: 4, onError: () => undefined });
 }
