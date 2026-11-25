@@ -1,6 +1,6 @@
-# RunsOn label convention for heavy jobs that arrive with the code (not used
-# yet: every job below is a tiny gate job on ubuntu-latest):
-#   runs-on: runs-on=${{ github.run_id }}-${{ github.run_attempt }}-<job>/runner=4cpu-linux-x64
+# Runners: every job runs on GitHub's `ubuntu-latest` (4 vCPU, 16 GB of memory, about 14 GB of free disk on this public repository) unless it says why next to its `runs-on`: a pinned image such
+# as `ubuntu-24.04` (the Playwright jobs: `# RUNNER:` comment) or RunsOn (more memory or disk than that, with the peak shown; another architecture; a network the hosted runners cannot be in: `# RunsOn:`
+# comment). tools/ci/test/runners.test.mjs refuses a RunsOn label or a pinned image that has no such reason.
 # The mise binary is pinned below (version and the sha256 of the extracted binary). Bump both by hand
 # together, and keep min_version in mise.toml at or below it; Renovate updates the tools in mise.toml and mise.lock.
 name: CI
@@ -110,7 +110,7 @@ jobs:
     name: Static checks
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-static/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -136,7 +136,7 @@ jobs:
     name: OpenAPI check
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-openapi/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -168,7 +168,7 @@ jobs:
     name: Unit tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-unit/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     permissions:
       id-token: write # Codecov upload by OIDC; contents stays read
       contents: read
@@ -232,7 +232,7 @@ jobs:
     name: Licence check
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-licence/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -279,7 +279,7 @@ jobs:
     name: Integration tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-integration/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     permissions:
       id-token: write # Codecov upload by OIDC; contents stays read
       contents: read
@@ -384,7 +384,7 @@ jobs:
     name: Image and stack
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-image/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -429,7 +429,7 @@ jobs:
     name: Exit test M1
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -473,7 +473,7 @@ jobs:
     name: Exit test M2
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -517,7 +517,7 @@ jobs:
     name: Exit test M3
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -560,7 +560,7 @@ jobs:
     name: Exit test M4
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m4/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -603,7 +603,8 @@ jobs:
     name: Exit test M5
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m5/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    # RUNNER: ubuntu-24.04 and not ubuntu-latest: `ubuntu-latest` is Ubuntu 26.04 since November 2026, and the system libraries this Playwright installs WebKit's dependencies for (libicu 74) are those of 24.04 (a WebKit launch failed on `libicudata.so.74`). Move to `ubuntu-latest` with the Playwright that supports 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -648,7 +649,8 @@ jobs:
     name: Web browser tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-web/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    # RUNNER: ubuntu-24.04 and not ubuntu-latest: `ubuntu-latest` is Ubuntu 26.04 since November 2026, and the system libraries this Playwright installs WebKit's dependencies for (libicu 74) are those of 24.04 (a WebKit launch failed on `libicudata.so.74`). Move to `ubuntu-latest` with the Playwright that supports 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -693,7 +695,8 @@ jobs:
     name: Web browser tests (${{ matrix.browser }})
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-web-{2}/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt, matrix.browser) }}
+    # RUNNER: ubuntu-24.04 and not ubuntu-latest: `ubuntu-latest` is Ubuntu 26.04 since November 2026, and the system libraries this Playwright installs WebKit's dependencies for (libicu 74) are those of 24.04 (a WebKit launch failed on `libicudata.so.74`). Move to `ubuntu-latest` with the Playwright that supports 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -723,7 +726,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('bun.lock') }}
+          key: playwright-${{ runner.os }}-24.04-${{ matrix.browser }}-${{ hashFiles('bun.lock') }}
       - run: bunx playwright install --with-deps "$BROWSER"
         env:
           BROWSER: ${{ matrix.browser }}
@@ -817,7 +820,7 @@ jobs:
     name: Semantic models
     needs: changes
     if: needs.changes.outputs.semantic == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-semantic-models/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
