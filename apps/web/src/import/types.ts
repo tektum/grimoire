@@ -26,7 +26,7 @@ export interface ImportItem {
   readonly path: string;
   readonly kind: string;
   readonly pageId: string | null;
-  readonly status: 'imported' | 'skipped' | 'failed';
+  readonly status: 'ok' | 'skipped' | 'failed';
   readonly message: string | null;
   readonly markdownBytes: number | null;
   readonly stateBytes: number | null;

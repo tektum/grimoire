@@ -51,7 +51,7 @@ const isItems = (v: unknown): v is ImportItems =>
       isObject(i) &&
       typeof i.id === 'string' &&
       typeof i.path === 'string' &&
-      ['imported', 'skipped', 'failed'].includes(i.status as string) &&
+      ['ok', 'skipped', 'failed'].includes(i.status as string) &&
       typeof i.hasSource === 'boolean' &&
       (i.message === null || typeof i.message === 'string'),
   ) &&

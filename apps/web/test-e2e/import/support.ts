@@ -15,7 +15,7 @@ export interface ScriptedState {
 export interface ScriptedItem {
   readonly id: string;
   readonly path: string;
-  readonly status: 'imported' | 'skipped' | 'failed';
+  readonly status: 'ok' | 'skipped' | 'failed';
   readonly message?: string;
   readonly hasSource?: boolean;
 }
