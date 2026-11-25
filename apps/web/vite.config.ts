@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
@@ -21,6 +22,8 @@ const loginDocument = (): Plugin => {
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [staticNoticeCss(), react(), tailwindcss(), loginDocument()],
+  // The package's empty drag image is a `data:` GIF, which `img-src` refuses: its own function is replaced (src/vendor/dnd-html5-backend.ts keeps the rest).
+  resolve: { alias: [{ find: /^react-dnd-html5-backend$/, replacement: fileURLToPath(new URL('./src/vendor/dnd-html5-backend.ts', import.meta.url)) }] },
   define: {
     __GRIMOIRE_DEV_SIGNIN__: JSON.stringify(mode === 'e2e' || mode === 'development'),
   },
