@@ -10,7 +10,7 @@ export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
 
 export interface JobRunner {
   state(): JobsState;
-  /** Starts the queue and registers the handlers; a second call does nothing. Rejects when the queue cannot start (the server then fails to start). */
+  /** Starts the queue and registers the handlers; a second call does nothing. It never rejects: a start that fails is logged and tried again (`MAX_START_ATTEMPTS` times), and the server keeps running. */
   start(): Promise<void>;
   /** Stops the queue in the `release-jobs` phase, with the grace of the settings. */
   readonly hook: ShutdownHook;
@@ -64,12 +64,18 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       const url = config.database.url;
       if (url === undefined) throw new Error('the job queue needs the database url');
       made = await options.make({ connectionString: url, stopGraceMs: config.jobs.stopGraceMs, onError: options.onError ?? (() => undefined) });
-      if (stopped) { // stopped while starting: no handler is registered; the hook stops this queue, or the attempt does when the hook has given up waiting
+      if (!stopped) {
+        for (const job of registerJobs({ config })) {
+          if (stopped) break; // a stop that comes in the middle: no handler is registered after it, so no job starts during the drain
+          await made.work(job.name, job.handler);
+        }
+      }
+      if (stopped) {
+        // Stopped while starting: the hook stops this queue (with the handlers registered so far), or the attempt does when the hook has given up waiting for it.
         if (abandoned) await made.stop({ graceMs: 0 }).catch(() => undefined);
         else queue = made;
         return;
       }
-      for (const job of registerJobs({ config })) await made.work(job.name, job.handler);
       queue = made;
       state = 'up';
     } catch {
@@ -91,18 +97,20 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
     hook: {
       name: 'jobs', phase: 'release-jobs', deadlineMs: config.jobs.stopGraceMs + SHUTDOWN_BUDGET_MS.jobsHookOverhead,
       run: async () => {
+        const began = Date.now();
         stopped = true;
         if (state !== 'down') state = 'stopped';
         if (timer !== undefined) clearTimeout(timer);
         if (inFlight !== undefined) {
-          // A start under way settles first, so shutdown cannot release what it is still using; but not for ever.
+          // A start under way settles first, so shutdown cannot release what it is still using; but only for a part of the grace, so the wait and the stop together fit it.
+          const waitMs = Math.min(START_STOP_WAIT_MS, Math.floor(config.jobs.stopGraceMs / 2));
           let wait: NodeJS.Timeout | undefined;
-          const settled = await Promise.race([inFlight.then(() => true), new Promise<boolean>((resolve) => { wait = setTimeout(() => { resolve(false); }, START_STOP_WAIT_MS); wait.unref(); })]);
+          const settled = await Promise.race([inFlight.then(() => true), new Promise<boolean>((resolve) => { wait = setTimeout(() => { resolve(false); }, waitMs); wait.unref(); })]);
           if (wait !== undefined) clearTimeout(wait);
           if (!settled) { abandoned = true; return; }
         }
         if (queue === undefined) return;
-        const { inFlight: running } = await queue.stop({ graceMs: config.jobs.stopGraceMs });
+        const { inFlight: running } = await queue.stop({ graceMs: Math.max(1, config.jobs.stopGraceMs - (Date.now() - began)) });
         log.info('jobs.stopped', { inFlight: running });
       },
     },

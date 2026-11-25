@@ -32,7 +32,7 @@ export const DERIVED_BUDGETS_MS = {
 
 /**
  * The most the job queue may be given to stop in: what the `release-jobs` phase has left for it after the hook's own overhead (1.5 s). Jobs are resumable (the queue gives a
- * job that was cut short back, and handlers are idempotent), so shutdown never waits on them longer than this, a hung database included. `GRIMOIRE_JOBS_STOP_GRACE_MS` is capped at it.
+ * job that was cut short back, and handlers are idempotent), so shutdown never waits on them longer than this, a hung database included. `GRIMOIRE_JOBS_STOP_GRACE_MS` is capped at it. The hook's wait for a queue that is still starting is taken out of the same grace (the stop gets what remains), so the hook never needs more than the grace plus its overhead.
  */
 export const JOBS_STOP_GRACE_MAX_MS = DERIVED_BUDGETS_MS.releaseJobs - SHUTDOWN_BUDGET_MS.jobsHookOverhead;
 

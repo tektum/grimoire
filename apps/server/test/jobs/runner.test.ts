@@ -138,7 +138,8 @@ describe('the job runner', () => {
     void runner.start();
     let done = false;
     const stopping = runner.hook.run().then(() => { done = true; });
-    await vi.advanceTimersByTimeAsync(START_STOP_WAIT_MS - 1);
+    const waitMs = Math.min(START_STOP_WAIT_MS, Math.floor(1500 / 2)); // half of the default grace of 1.5 s
+    await vi.advanceTimersByTimeAsync(waitMs - 1);
     expect(done).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await stopping;
@@ -147,5 +148,67 @@ describe('the job runner', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(queue.worked).toEqual([]);
     expect(queue.stopped).toEqual([{ graceMs: 0 }]);
+  });
+
+  it('a stop that comes while handlers are being registered registers no more, reports stopped, and stops the queue with what was registered', async () => {
+    const queue = new RecordingQueue();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    queue.work = async (name: string) => { queue.worked.push(name); if (queue.worked.length === 1) await gate; };
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => Promise.resolve(queue) });
+    const starting = runner.start();
+    await Promise.resolve();
+    const stopping = runner.hook.run();
+    open();
+    await Promise.all([starting, stopping]);
+    expect(queue.worked).toEqual(['import']);
+    expect(runner.state()).toBe('stopped');
+    expect(queue.stopped).toHaveLength(1);
+  });
+
+  it('a start that is abandoned while it registers handlers stops its queue when it comes to the end, and does not report up', async () => {
+    vi.useFakeTimers();
+    const queue = new RecordingQueue();
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    queue.work = async (name: string) => { queue.worked.push(name); await gate; };
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => Promise.resolve(queue) });
+    void runner.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const stopping = runner.hook.run();
+    await vi.advanceTimersByTimeAsync(START_STOP_WAIT_MS);
+    await stopping; // gave up waiting
+    open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queue.stopped).toEqual([{ graceMs: 0 }]);
+    expect(runner.state()).toBe('stopped');
+  });
+
+  it('the wait for a start and the stop together fit the stop grace: a start that settles 400 ms in leaves the queue only the 1,100 ms that remain', async () => {
+    vi.useFakeTimers();
+    const queue = new RecordingQueue();
+    let release: (q: RecordingQueue) => void = () => undefined;
+    const pending = new Promise<RecordingQueue>((resolve) => { release = resolve; });
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' }, jobs: { stopGraceMs: 1500 } }), log: createEventLog(new FakeLogger()), make: () => pending });
+    void runner.start();
+    const stopping = runner.hook.run();
+    await vi.advanceTimersByTimeAsync(400);
+    release(queue);
+    await stopping;
+    expect(queue.stopped).toHaveLength(1);
+    expect(queue.stopped[0]!.graceMs).toBeLessThanOrEqual(1100);
+    expect(queue.stopped[0]!.graceMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('with a short grace the wait is shorter too, so the hook always finishes inside its own deadline (grace + 500 ms)', async () => {
+    vi.useFakeTimers();
+    const pending = new Promise<RecordingQueue>(() => undefined);
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' }, jobs: { stopGraceMs: 100 } }), log: createEventLog(new FakeLogger()), make: () => pending });
+    void runner.start();
+    let done = false;
+    const stopping = runner.hook.run().then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(100 + 500 - 1);
+    expect(done).toBe(true);
+    await stopping;
   });
 });
