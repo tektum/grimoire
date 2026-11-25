@@ -218,7 +218,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows.length === 1;
     },
     async ended(tenantId, options) {
-      const rows = await db.query<ImportRow>(
+      const rows = await scoped(db, tenantId).query<ImportRow>(
         `select ${IMPORT_COLUMNS} from imports where tenant_id = $1 and status in ('done', 'failed', 'cancelled') and finished_at >= to_timestamp($2::double precision / 1000.0)
          and ($3::uuid is null or id > $3::uuid) order by id limit $4`,
         [tenantId, options.since, options.afterId ?? null, options.limit],

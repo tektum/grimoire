@@ -58,11 +58,11 @@ export interface InfoEvents {
   'import.cancelled': { importId: string };
   'import.swept': { importId: string; action: string };
   /** The cleanup of an import that is over ran: pages moved to the trash, and whether its zip was deleted. */
+  'import.cleaned': { importId: string; pages: number; zip: boolean };
   /** The daily run of the import cleanup deleted this many kept originals of failed pages (older than 30 days). */
   'import.sources_cleaned': { count: number };
   /** The daily pass made up for cleanups that did not run: zips it asked to delete, pages it moved to the trash. */
   'import.reconciled': { zips: number; pages: number };
-  'import.cleaned': { importId: string; pages: number; zip: boolean };
   'purge.completed': { pages: number; objects: number };
   /** Semantic search (M7). A page's chunks were stored: how many, how many kept their vector, how long it took. Never a text or a vector. */
   'semantic.embedded': { pageId: string; chunks: number; reused: number; ms: number };

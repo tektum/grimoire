@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
+import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
 import { FakeTenantRepo } from '@tektum/grimoire-core/testing/fake-tenant-repo';
 import { importFailedKey, importZipKey } from '../../src/import/keys.js';
 import { FAILED_SOURCE_RETENTION_MS, runFailedSourceCleanup } from '../../src/jobs/failed-sources.js';
@@ -60,6 +61,18 @@ describe('runFailedSourceCleanup', () => {
 
 describe('the scheduled import-cleanup', () => {
   const ctx = { jobId: 'j', attempt: 1, retryLimit: 1, signal: live };
+  it('still makes up for missed cleanups when the store cannot list the kept originals, and then fails the run with that error', async () => {
+    const clock = new FakeClock(NOW);
+    const files = new FakeFileStorage({ clock });
+    const imports = new FakeImportRepo();
+    imports.seed({ id: 'imp9', tenantId: 'T-a', status: 'done', s3Key: importZipKey('T-a', 'imp9'), finishedAt: NOW - 2 * DAY });
+    const w = fakeJobDeps({ clock, files, imports });
+    vi.spyOn(files, 'list').mockRejectedValue(new Error('store down'));
+    const job = registerJobs(w.deps).find((j) => j.name === 'import-cleanup')!;
+    await expect(job.handler(undefined, ctx)).rejects.toThrow('store down');
+    expect(w.logger.entries.map((e) => [e.event, e.fields])).toContainEqual(['import.reconciled', { zips: 1, pages: 0 }]);
+  });
+
   it('runs once a day on the purge schedule with no payload, deletes the old originals and logs the count', async () => {
     const clock = new FakeClock(NOW);
     const files = new FakeFileStorage({ clock });
