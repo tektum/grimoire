@@ -130,6 +130,17 @@ describe('the search screen', () => {
     expect(screen.queryByRole('button', { name: 'Show more results' })).toBeNull();
   });
 
+  it('shows a page once when ranking moved between two requests and the next page repeats it (no duplicate row or key)', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const t = fake((_q, cursor) => (cursor === null ? { items: [hit('1', 'First', 'a'), hit('2', 'Second', 'b')], nextCursor: 'CUR1' } : { items: [hit('2', 'Second', 'b'), hit('3', 'Third', 'c')], nextCursor: null }));
+    show(t.api, '/search?q=a');
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more results' }));
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(3));
+    expect(screen.getAllByRole('link').map((l) => l.textContent)).toEqual(['First', 'Second', 'Third']);
+    expect(error.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    error.mockRestore();
+  });
+
   it('says so when the search fails, and tries again on request', async () => {
     let fail = true;
     const t = fake(() => (fail ? { status: 503 } : { items: [hit('1', 'Back', 'a')] }));

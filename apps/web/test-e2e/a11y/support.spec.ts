@@ -47,7 +47,7 @@ test('the tour has a stop for every route of the route table, and none twice', (
 });
 
 test('the routes whose screens are not built are named, with the task that builds them', () => {
-  expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/search pending M6-T09', '/import pending M6-T12a']);
+  expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/import pending M6-T12a']);
 });
 
 test('an editor that is not editable is reported with the connection state and the status line', async ({ page }) => {

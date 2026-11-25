@@ -56,6 +56,11 @@ export function useSearchResults(api: ApiLike, q: string) {
     initialPageParam: null,
     queryFn: ({ pageParam, signal }) => fetchSearch(api, wanted!, pageParam, signal, SCREEN_LIMIT),
     getNextPageParam: (last) => last.nextCursor,
-    select: (data) => ({ items: data.pages.flatMap((page) => page.items), semantic: data.pages[0]?.semantic }),
+    // A page can come back twice when the ranking moved between two requests (the rank is read again with each): a result is shown once, where it was first read.
+    select: (data) => {
+      const seen = new Set<string>();
+      const items = data.pages.flatMap((page) => page.items).filter((item) => (seen.has(item.pageId) ? false : (seen.add(item.pageId), true)));
+      return { items, semantic: data.pages[0]?.semantic };
+    },
   });
 }
