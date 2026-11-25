@@ -4,7 +4,14 @@ import { FakeEmbedder, vectorOf } from '../../src/testing/fake-embedder.js';
 import { FakeEmbeddingStore } from '../../src/testing/fake-embedding-store.js';
 
 const hash = (n: number): Uint8Array => new Uint8Array(32).fill(n);
-const chunk = (i: number, text: string, dims = 8): ChunkRow => ({ chunkIndex: i, contentHash: hash(i + 1), charStart: i * 10, charEnd: i * 10 + text.length, tokenCount: 3, embedding: vectorOf(`passage: ${text}`, dims) });
+const chunk = (i: number, text: string, dims = 8): ChunkRow => ({
+  chunkIndex: i,
+  contentHash: hash(i + 1),
+  charStart: i * 10,
+  charEnd: i * 10 + text.length,
+  tokenCount: 3,
+  embedding: vectorOf(`passage: ${text}`, dims),
+});
 const NOW = 1_000_000_000;
 
 describe('FakeEmbedder', () => {
@@ -101,7 +108,7 @@ describe('FakeEmbeddingStore', () => {
     expect((await ask())[0]).toMatchObject({ charStart: 0, charEnd: 24, similarity: expect.closeTo(1, 5) });
     expect((await ask({ collectionIds: ['open'] })).map((h) => h.pageId)).toEqual(['p1']);
     expect((await ask({ collectionId: 'closed' })).map((h) => h.pageId)).toEqual(['p2']);
-    expect((await ask({ collectionIds: ['open'], collectionId: 'closed' }))).toEqual([]);
+    expect(await ask({ collectionIds: ['open'], collectionId: 'closed' })).toEqual([]);
     expect((await ask({ minSimilarity: 0.99 })).map((h) => h.pageId)).toEqual(['p1', 'p2']);
     expect(await ask({ limit: 1 })).toHaveLength(1);
     expect(await ask({ model: 'other-model' })).toEqual([]);
@@ -131,7 +138,13 @@ describe('FakeEmbeddingStore, the text of a page', () => {
     expect(await store.pageText('legacy', 'p1')).toEqual({ markdownHash: hash(1), text: 'hello world' });
     store.editPage('p1', hash(2), NOW, 'changed text');
     expect(await store.pageText('legacy', 'p1')).toEqual({ markdownHash: hash(2), text: 'changed text' });
-    for (const [tenant, id] of [['legacy', 'p2'], ['legacy', 'p3'], ['other', 'p1'], ['legacy', 'nope']] as const) expect(await store.pageText(tenant, id)).toBeUndefined();
+    for (const [tenant, id] of [
+      ['legacy', 'p2'],
+      ['legacy', 'p3'],
+      ['other', 'p1'],
+      ['legacy', 'nope'],
+    ] as const)
+      expect(await store.pageText(tenant, id)).toBeUndefined();
   });
 });
 
@@ -175,7 +188,10 @@ describe('FakeEmbeddingStore, what a hit carries', () => {
     store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 1234, text, title: 'Plans', urlId: 'plans-1' });
     store.seedPage({ id: 'p2', collectionId: 'closed', markdownHash: hash(2), editedAt: 1, text: 'secret chunk text' });
     const start = Array.from('🙂 first part of the page. ').length; // code points, not UTF-16 units
-    await store.replacePage('legacy', 'p1', hash(1), 'm', [{ ...chunk(0, 'x'), charStart: 0, charEnd: 25 }, { ...chunk(1, 'second part here'), charStart: start, charEnd: start + 17 }]);
+    await store.replacePage('legacy', 'p1', hash(1), 'm', [
+      { ...chunk(0, 'x'), charStart: 0, charEnd: 25 },
+      { ...chunk(1, 'second part here'), charStart: start, charEnd: start + 17 },
+    ]);
     await store.replacePage('legacy', 'p2', hash(2), 'm', [{ ...chunk(0, 'second part here'), charStart: 0, charEnd: 17 }]);
     const hits = await store.search('legacy', vectorOf('passage: second part here', 8), { model: 'm', collectionIds: ['open'], limit: 5, minSimilarity: 0 });
     expect(hits.map((h) => [h.pageId, h.chunkIndex, h.text, h.editedAt, h.title, h.urlId, h.collectionId])).toEqual([['p1', 1, 'second part here.', 1_234_000, 'Plans', 'plans-1', 'open']]);
