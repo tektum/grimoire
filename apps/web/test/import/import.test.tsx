@@ -204,6 +204,74 @@ describe('the import screen', () => {
   });
 });
 
+describe('when reading fails', () => {
+  const failingPolls = (okStates: ImportState[], failAfter: number) => {
+    const t = fake({ states: okStates });
+    const inner = (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET;
+    let reads = 0;
+    let broken = true;
+    (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET = async (path: string) => {
+      if (path === '/v1/imports/{id}' && reads++ >= failAfter && broken) return { error: {}, response: new Response(null, { status: 503 }) };
+      return inner(path);
+    };
+    return {
+      t,
+      mend: () => {
+        broken = false;
+      },
+      reads: () => reads,
+    };
+  };
+
+  it('stops asking about an import that cannot be read, instead of asking every two seconds for as long as the page is open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const f = failingPolls([state()], 0);
+    show(f.t.api, '/import?import=gone');
+    await screen.findByRole('alert');
+    const after = f.reads();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 5);
+    });
+    expect(f.reads()).toBe(after);
+  });
+
+  it('shows the failure of a later poll beside the last progress, with a way to try again, and goes on when it works', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const f = failingPolls([state({ done: 4 }), state({ done: 8 })], 1);
+    show(f.t.api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS + 50);
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('The progress can’t be read right now.');
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40'); // the last known progress stays
+    f.mend();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('80'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says the collections could not be loaded, with a way to try again, instead of a form that is dead without a word', async () => {
+    const t = fake();
+    const inner = (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET;
+    let broken = true;
+    (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET = async (path: string) => (path === '/v1/collections' && broken ? { error: {}, response: new Response(null, { status: 503 }) } : inner(path));
+    show(t.api);
+    expect((await screen.findByRole('alert')).textContent).toContain('Couldn’t load your collections.');
+    broken = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByLabelText('Into the collection'))
+          .getAllByRole('option')
+          .map((o) => o.textContent),
+      ).toEqual(['Dev', 'Notes']),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
 describe('the screen around it', () => {
   it('says it could not tell who the person is, and asks again on request', async () => {
     const t = fake();

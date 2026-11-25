@@ -51,6 +51,11 @@ export function ImportForm({ onStarted, send }: { readonly onStarted: (id: strin
       <p className="import-warning" role="note">
         {DUPLICATE_WARNING}
       </p>
+      {collections.isError ? (
+        <p role="alert">
+          Couldn&rsquo;t load your collections. <Button onClick={() => void collections.refetch()}>Try again</Button>
+        </p>
+      ) : null}
       <label htmlFor="import-collection">Into the collection</label>
       <select
         id="import-collection"

@@ -53,6 +53,7 @@ export function useImportState(api: ApiLike, id: string | null) {
     retry: false,
     queryKey: queryKey('GET', '/v1/imports/{id}', { params: { path: { id } } }),
     queryFn: async ({ signal }) => okOr('read', await api.GET('/v1/imports/{id}' as never, { params: { path: { id } }, signal } as never)) as ImportState,
-    refetchInterval: (query) => (query.state.data !== undefined && ENDED.includes(query.state.data.status) ? false : POLL_MS),
+    // Not once it has ended, and not while the last read failed: a failure is shown with a way to try again (`refetch`), which goes on polling when it works.
+    refetchInterval: (query) => (query.state.status === 'error' || (query.state.data !== undefined && ENDED.includes(query.state.data.status)) ? false : POLL_MS),
   });
 }

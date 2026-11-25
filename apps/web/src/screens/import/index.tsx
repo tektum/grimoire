@@ -34,17 +34,39 @@ function Importing() {
     <section aria-labelledby="screen-title" className="import-screen">
       <h1 id="screen-title">Import</h1>
       {id === null ? (
-        <ImportForm onStarted={(started) => { setParams({ import: started }); }} />
+        <ImportForm
+          onStarted={(started) => {
+            setParams({ import: started });
+          }}
+        />
       ) : state.data !== undefined ? (
         <>
           <Progress state={state.data} />
+          {state.isError ? (
+            <p role="alert">
+              The progress can&rsquo;t be read right now. <Button onClick={() => void state.refetch()}>Try again</Button>
+            </p>
+          ) : null}
           {state.data.status === 'running' || state.data.status === 'created' || state.data.status === 'uploaded' ? null : (
-            <Button onClick={() => { setParams({}); }}>Import another file</Button>
+            <Button
+              onClick={() => {
+                setParams({});
+              }}
+            >
+              Import another file
+            </Button>
           )}
         </>
       ) : state.isError ? (
         <p role="alert">
-          That import can&rsquo;t be read. <Button onClick={() => { setParams({}); }}>Start again</Button>
+          That import can&rsquo;t be read.{' '}
+          <Button
+            onClick={() => {
+              setParams({});
+            }}
+          >
+            Start again
+          </Button>
         </p>
       ) : (
         <p role="status">Loading…</p>
