@@ -35,8 +35,10 @@ One text to a model run (the weights are quantised with a scale taken over the w
 
 Memory is the whole server-side process of the probe (embedder thread, model thread, tokenizer once): the peak is the process's own `VmHWM`. The plan measured 0.87 GB (base) and 0.70 GB (small) at peak with the tokenizer twice; the budgets the test enforces are 1.1 GB and 0.9 GB. The load takes 1.2 to 2.5 s on this machine. A page of 14 chunks (about 2,000 words) takes about 0.5 s with the base model at 2 threads.
 
+## The image
+
+Measured by the `Image and stack` job on the pull request that added the models to the image (head `204831e`, run on CI: there is no Docker on the machine of the other figures): the image is **679 MiB** (the limit is 900 MiB), with both models and their lock in `/app/models`, the ONNX runtime of the running platform only, and no file named for CUDA or TensorRT. The job also runs the embedder on both models inside the image, with no network, a read-only root filesystem and every capability dropped (`tools/ci/semantic-image-smoke.mjs`). The container limit that goes with it is 3 GiB (`compose.yaml`); the process peaks above are under half of it.
+
 ## Not measured here
 
-- **The image**: no Docker on this machine. Its size is checked against 900 MiB by the `Image and stack` job, which prints it; this file records it once that job has run.
-- **Memory inside the 3 GiB container** and the quality run inside the image with `--network none --read-only`: the `Image and stack` job runs the embedder on both models there (`tools/ci/semantic-image-smoke.mjs`); the corpus test above runs on a checkout.
-- **Hybrid ranking and the search route** (M7-T14) are not built: what is said about their behaviour above is the reason for the default of 0, to be confirmed by T14's own tests.
+- **Hybrid ranking and the search route** (M7-T14) are not built: what is said about their behaviour above is the reason for the default of 0 and for the limit on pages found only by meaning, to be confirmed by T14's own tests.
