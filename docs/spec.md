@@ -544,7 +544,7 @@ Permission words used below: **signed-in** = valid session and an active account
 | Id | Endpoint | Who | Request | Response | Errors | Status |
 |---|---|---|---|---|---|---|
 | R6.9 | `GET /v1/me` | Signed-in | none | 200 `{id, email, name, role}`. The first call creates the user (R8.4). | 401; 403 `account_suspended`; 403 `not_allowed` (sign-in not permitted by R8.4) | Planned |
-| R6.10 | `GET /v1/config` | Signed-in | none | 200 `{collabUrl, minClientVersion, maxMarkdownBytes}`: the WebSocket URL of the collaboration server, the lowest client version it accepts (R4.32), and the largest Markdown of one page (R12.30; `null` when not announced), which the import report names for a page that was skipped for its size | 401 | Planned |
+| R6.10 | `GET /v1/config` | Signed-in | none | 200 `{collabUrl, minClientVersion, maxMarkdownBytes}`: the WebSocket URL of the collaboration server, the lowest client version it accepts (R4.32), and the largest Markdown of one page, in bytes (R12.30, the configured seed cap), which the import report names for a page that was skipped for its size | 401 | Planned |
 | R6.11 | `GET /v1/pages/{id}/state` | (none) | | **No such endpoint.** Editing state is loaded through the Hocuspocus provider (R4.26). | | Rule |
 ### 6.3 Collections
 

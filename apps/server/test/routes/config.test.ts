@@ -29,7 +29,14 @@ describe('GET /v1/config', () => {
       fileStoreOrigin: null,
       maxAttachmentBytes: null,
       pendingUploadsMax: null,
+      maxMarkdownBytes: 131_072,
     });
+  });
+
+  it('tells the client the largest Markdown of one page, the configured seed cap, so that the import report can name it', async () => {
+    const { app } = build({ publicCollabUrl: 'wss://docs.example.test/collab', collab: { seedMaxMarkdownBytes: 65_536 } });
+    const body = (await (await app.request('/v1/config')).json()) as Record<string, unknown>;
+    expect(body['maxMarkdownBytes']).toBe(65_536);
   });
 
   it('returns the sign-in provider project id and the public origin of the file store', async () => {
