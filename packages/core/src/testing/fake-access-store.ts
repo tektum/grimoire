@@ -46,6 +46,8 @@ export function createFakeAccessStore(world: World): AccessStore {
     facts: (rs) => Promise.resolve(rs.map(pageFacts)),
     collectionFacts: (rs) => Promise.resolve(rs.map(collectionFacts)),
     visibleCollections(tenantId: string, userId: string, opts?: AccessOptions) {
+      // As the SQL (`u.tenant_id = $tenant`): a person asked about for another tenant is not there, so they see nothing.
+      if ((userFacts(userId)?.tenantId ?? 'legacy') !== tenantId) return Promise.resolve([]);
       const out: { collectionId: string; access: 'read-write' | 'read-only' }[] = [];
       for (const c of world.collections) {
         const d = decideCollection(collectionFacts({ tenantId, userId, collectionId: c.id }), opts);
