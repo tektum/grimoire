@@ -1,6 +1,6 @@
-# Runners: every job runs on GitHub's `ubuntu-latest` (4 vCPU, 16 GB of memory, about 14 GB of free disk on this public repository). RunsOn is for a job that cannot: more memory or disk
-# than that (show the peak), another architecture, or a network the hosted runners cannot be in. Such a job says why in a comment next to its `runs-on`, and tools/ci/test/runners.test.mjs
-# refuses a RunsOn label with no reason.
+# Runners: every job runs on GitHub's `ubuntu-latest` (4 vCPU, 16 GB of memory, about 14 GB of free disk on this public repository) unless it says why next to its `runs-on`: a pinned image such
+# as `ubuntu-24.04` (the Playwright jobs: `# RUNNER:` comment) or RunsOn (more memory or disk than that, with the peak shown; another architecture; a network the hosted runners cannot be in: `# RunsOn:`
+# comment). tools/ci/test/runners.test.mjs refuses a RunsOn label or a pinned image that has no such reason.
 # The mise binary is pinned below (version and the sha256 of the extracted binary). Bump both by hand
 # together, and keep min_version in mise.toml at or below it; Renovate updates the tools in mise.toml and mise.lock.
 name: CI
