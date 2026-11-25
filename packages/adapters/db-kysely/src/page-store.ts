@@ -115,8 +115,8 @@ export function createPageStore(db: Database, clock: Clock, options: PageStoreOp
     },
 
     async listStale(limit) {
-      const rows = await db.query<{ id: string }>('select id from pages where markdown_stale_since is not null order by markdown_stale_since limit $1', [limit]);
-      return rows.map((r) => r.id);
+      const rows = await db.query<{ id: string; stale_ms: number }>('select id, extract(epoch from markdown_stale_since) * 1000 as stale_ms from pages where markdown_stale_since is not null order by markdown_stale_since limit $1', [limit]);
+      return rows.map((r) => ({ id: r.id, staleSince: Number(r.stale_ms) }));
     },
   };
 }

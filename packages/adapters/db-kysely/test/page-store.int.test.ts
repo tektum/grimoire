@@ -164,11 +164,12 @@ describe('store', () => {
     await store.store(b, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
     await store.store(a, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
     expect((await store.load(a))?.markdownStaleSince).toBe(first);
-    const ids = (await store.listStale(100)).filter((x) => x === a || x === b);
+    const ids = (await store.listStale(100)).map((x) => x.id).filter((x) => x === a || x === b);
     expect(ids).toEqual([a, b]);
     await store.store(a, converted({ markdown: 'M2' }));
     expect((await store.load(a))?.markdownStaleSince).toBeNull();
-    expect(await store.listStale(100)).not.toContain(a);
+    expect((await store.listStale(100)).map((x) => x.id)).not.toContain(a);
+    expect((await store.listStale(100)).find((x) => x.id === b)?.staleSince).toEqual(expect.any(Number));
   });
 
   it('repairMarkdown writes the Markdown of the state it was made from, and only then', async () => {

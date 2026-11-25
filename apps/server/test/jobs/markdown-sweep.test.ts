@@ -109,6 +109,15 @@ describe('the markdown sweep', () => {
     expect(w.failures).toEqual([['p1', 'internal'], ['p1', 'internal']]);
   });
 
+  it('forgets the backoff of a page whose mark was cleared and set again between two sweeps', async () => {
+    const w = world({ convert: new FakeMarkdownConverter({ convert: { ok: false, reason: 'internal', detail: 'x' } }) });
+    w.stalePage('p1', 5);
+    await w.run();
+    w.pages.stale.set('p1', T0 - 3 * MIN); // saved with fresh Markdown, then stored state-only again: a newer mark, in the list all along
+    expect((await w.run()).failed).toBe(1); // tried at once, not after the old retry time
+    expect(w.failures).toHaveLength(2);
+  });
+
   it('skips a page without state or without a mark, and stops when the signal aborts', async () => {
     const w = world();
     w.pages.seed('nostate', null);

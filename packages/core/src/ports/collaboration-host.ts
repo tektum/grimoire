@@ -35,8 +35,8 @@ export interface PageStore {
   seed(id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>;
   /** One transaction under a row lock. Rejects when the database cannot take it; the host retries. */
   store(id: string, w: PageWrite): Promise<WriteOutcome>;
-  /** Ids of pages whose Markdown is stale, oldest first (the sweep's query; the sweep itself belongs to the jobs milestone). */
-  listStale(limit: number): Promise<string[]>;
+  /** Pages whose Markdown is stale, oldest mark first, each with the time of its mark (epoch milliseconds): the sweep's query. A page whose mark was cleared and set again has a new time. */
+  listStale(limit: number): Promise<{ readonly id: string; readonly staleSince: number }[]>;
   /**
    * The sweep's write, a compare-and-set: stores `markdown` and `text` for a page whose Markdown is stale, only while its row still holds exactly the `state`
    * and `epoch` the conversion was made from (checked under the row lock), and clears the mark. Anything else (a save in between, a reset, no mark, no row)

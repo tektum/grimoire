@@ -24,7 +24,7 @@ export interface MarkdownSweepResult { readonly repaired: number; readonly skipp
  * Several instances may sweep at once: the compare-and-set lets one write and the rest skip.
  */
 export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSignal) => Promise<MarkdownSweepResult> {
-  const failing = new Map<string, { failures: number; retryAt: number; reportedAt: number }>();
+  const failing = new Map<string, { failures: number; retryAt: number; reportedAt: number; staleSince: number }>();
   return async (signal) => {
     let repaired = 0;
     let skipped = 0;
@@ -32,9 +32,10 @@ export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSign
     let attempts = 0;
     // Pages that are backing off sit at the front of the list with their old marks: ask for room beyond them, and forget the ones that left the list (their mark was cleared by a save).
     const listed = await deps.pages.listStale(PAGES_PER_RUN * 4 + failing.size);
-    const stale = new Set(listed);
-    for (const id of failing.keys()) if (!stale.has(id)) failing.delete(id);
-    for (const id of listed) {
+    // A page that left the list, or whose mark is a newer one (cleared and set again between two runs), starts fresh.
+    const marks = new Map(listed.map((p) => [p.id, p.staleSince]));
+    for (const [id, entry] of failing) if (marks.get(id) !== entry.staleSince) failing.delete(id);
+    for (const { id } of listed) {
       if (signal.aborted || attempts >= PAGES_PER_RUN) break;
       const now = deps.now();
       const backoff = failing.get(id);
@@ -50,7 +51,7 @@ export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSign
         const reportedAt = backoff?.reportedAt ?? Number.NEGATIVE_INFINITY;
         const report = now - reportedAt >= REPORT_EVERY_MS;
         if (report) deps.onConvertFailure(id, converted.reason);
-        failing.set(id, { failures, retryAt: now + Math.min(60_000 * 2 ** (failures - 1), MAX_BACKOFF_MS), reportedAt: report ? now : reportedAt });
+        failing.set(id, { failures, retryAt: now + Math.min(60_000 * 2 ** (failures - 1), MAX_BACKOFF_MS), reportedAt: report ? now : reportedAt, staleSince: page.markdownStaleSince });
         continue;
       }
       const outcome = await deps.pages.repairMarkdown(id, { state: page.state, epoch: page.epoch }, { markdown: converted.markdown, text: converted.text });
