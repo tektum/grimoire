@@ -5,9 +5,18 @@
 
 FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3e0b5af1db187d9a4 AS bun
 
+# The model files of the semantic search (M7-T12): the only network use of the model path, at build time. Each file is checked against the lock (SHA-256 and size) when it is fetched and again
+# after: a build whose file is not the locked one fails here. The server reads them from /app/models and never fetches anything.
+FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS models
+WORKDIR /src
+COPY models/models.lock.json scripts/fetch-models.mjs ./
+RUN node fetch-models.mjs --lock models.lock.json --out /models && node fetch-models.mjs --lock models.lock.json --out /models --verify && cp models.lock.json /models/models.lock.json
+
 FROM node:26-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /app
+# Belt and braces with the "trustedDependencies": [] below: the ONNX runtime's install script, which would download 284 MB of proprietary GPU libraries, is neither run nor allowed to.
+ENV ONNXRUNTIME_NODE_INSTALL_CUDA=skip
 # Amazon's certificate authorities for the managed database (RDS): the connection to it is verified (sslmode=verify-full) against this bundle, which the server finds through
 # NODE_EXTRA_CA_CERTS, set by the deployment that uses RDS. Readable by everyone (--chmod=644): ADD writes a fetched file as 0600 and the server runs as 65532, which
 # would then load no authorities at all. Fetched with a pinned checksum: when Amazon publishes a new bundle the build fails here until the checksum is updated.
@@ -21,7 +30,7 @@ RUN bun run build
 RUN bun run --cwd apps/web build
 # Production dependencies only: bun does not prune an existing node_modules, so install again from nothing with just the two workspaces
 # (and what they depend on); the dist directories built above stay in place and the workspace links are made again.
-RUN rm -rf node_modules && bun install --frozen-lockfile --production --filter @tektum/grimoire-server --filter @tektum/grimoire-adapter-markdown-milkdown
+RUN rm -rf node_modules && bun install --frozen-lockfile --production --filter @tektum/grimoire-server --filter @tektum/grimoire-adapter-markdown-milkdown --filter @tektum/grimoire-adapter-embedder-onnx
 # Stage exactly what runs: per workspace package its package.json, dist and any CommonJS entry (`*.cjs`) beside it, the pruned node_modules, the migrations
 # directory (@types/debug, mdast, ms and unist are real dependencies of the Markdown libraries, but hold only type declarations; test helpers compiled into dist/testing, the declarations of the test projects in dist/test and build info are left out). A shell is fine here: this stage is not shipped.
 RUN set -eu; mkdir /out; cp package.json /out/; mkdir /out/certs; install -m 0644 /rds/global-bundle.pem /out/certs/global-bundle.pem; test "$(stat -c %a /out/certs/global-bundle.pem)" = 644; cp -a node_modules /out/node_modules; \
@@ -35,10 +44,21 @@ RUN set -eu; mkdir /out; cp package.json /out/; mkdir /out/certs; install -m 064
     rm -rf /out/node_modules/@types; \
     find /out/node_modules -xtype l -delete # drop links to packages not shipped (web, api-client)
 
+# The ONNX runtime's package holds the native library of every platform (294 MB); the image keeps the one it runs on. The build fails if that one is missing, if what is left is over
+# 80 MB, or if anything named for CUDA or TensorRT is in what ships.
+RUN set -eu; rt=/out/node_modules/onnxruntime-node/bin/napi-v6; arch="$(node -p process.arch)"; test -d "$rt/linux/$arch"; \
+    for d in "$rt"/*; do [ "$(basename "$d")" = linux ] || rm -rf "$d"; done; \
+    for d in "$rt"/linux/*; do [ "$(basename "$d")" = "$arch" ] || rm -rf "$d"; done; \
+    test -f "$rt/linux/$arch/onnxruntime_binding.node"; \
+    test "$(du -sm "$rt" | cut -f1)" -le 80; \
+    test -z "$(find /out \( -iname '*cuda*' -o -iname '*tensorrt*' -o -iname 'libnvinfer*' \) -print -quit)"
+
 FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:1d736cf8b5716c07a245301f92717143215d248fd55771ee1936ef4b3302e531
 ENV NODE_ENV=production GRIMOIRE_HOST=0.0.0.0
 WORKDIR /app
 COPY --from=build /out/ /app/
+# The model files, read from here (GRIMOIRE_SEMANTIC_MODEL_DIR, default /app/models) with the lock they are checked against; world-readable, the process is UID 65532.
+COPY --from=models /models /app/models
 # The built web client is in /app/web. The server serves it only when GRIMOIRE_WEB_ROOT=/app/web is set, which needs the public API and live editing addresses and the file store.
 USER 65532:65532
 EXPOSE 8080

@@ -380,6 +380,25 @@ jobs:
         with:
           persist-credentials: false
       - run: make up
+      # The semantic search's files in the image that was just built (M7-T12): both models and their lock, no GPU library, a size within the budget, and the embedder on the real models
+      # inside it, on the distroless base, with no network, a read-only root filesystem, every capability dropped and no TMPDIR.
+      - name: Semantic search in the image
+        run: |
+          set -eu
+          image=grimoire-app
+          size=$(docker image inspect -f '{{.Size}}' "$image")
+          echo "image size: $((size / 1048576)) MiB"
+          test "$size" -le $((900 * 1048576))
+          container=$(docker create "$image")
+          docker export "$container" | tar -t > image-files.txt
+          docker rm "$container" > /dev/null
+          grep -q '^app/models/multilingual-e5-base/model_quantized.onnx$' image-files.txt
+          grep -q '^app/models/multilingual-e5-small/model_quantized.onnx$' image-files.txt
+          grep -q '^app/models/models.lock.json$' image-files.txt
+          if grep -iE 'cuda|tensorrt|libnvinfer' image-files.txt; then echo '::error::a GPU library is in the image'; exit 1; fi
+          test "$(docker image inspect -f '{{.Config.User}}' "$image")" = 65532:65532
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            -v "$PWD/tools/ci/semantic-image-smoke.mjs:/smoke.mjs:ro" --entrypoint /nodejs/bin/node "$image" /smoke.mjs
       - name: Collect Compose logs
         if: failure()
         run: docker compose -p grimoire logs --no-color > compose.log
@@ -723,6 +742,8 @@ jobs:
       - run: node scripts/fetch-models.mjs --verify
       # The Embedder conformance suite on the real models (e5-base and e5-small): the proof of the embedder's worker thread and tokenizer, which the unit run's coverage leaves out. Not in `CI Required` yet.
       - run: GRIMOIRE_MODEL_DIR=models bunx vitest run --project container packages/adapters/embedder-onnx
+      # The script the image job runs inside the image, here on the checkout with the same models: it fails here, on its own, if the script is wrong.
+      - run: GRIMOIRE_MODEL_DIR="$PWD/models" EMBEDDER_MODULE="$PWD/packages/adapters/embedder-onnx/dist/index.js" node tools/ci/semantic-image-smoke.mjs
 
   ci-required:
     name: CI Required

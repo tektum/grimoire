@@ -131,8 +131,9 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     # 1 GiB is the collaboration memory guard's default working limit (GRIMOIRE_COLLAB_MEMORY_LIMIT_BYTES); the other 512 MiB cover Node itself,
-    # socket buffers and the Markdown worker. Past this the kernel kills the container instead of the whole machine, and the policy below restarts it.
-    mem_limit: 1536m
+    # socket buffers and the Markdown worker; the semantic search's model thread adds up to 1.1 GB with the default model (measured peak of e5-base 0.98 GB, limit of the
+    # container tests 1.1 GB; e5-small 0.74 GB). Past this the kernel kills the container instead of the whole machine, and the policy below restarts it.
+    mem_limit: 3072m
     # `unless-stopped`: a crash or an out-of-memory kill comes back by itself, while `make down` and `docker stop` stay down.
     restart: unless-stopped
     # Docker's 10 s default would kill the server mid-save. The order is: this grace period >= the server's overall shutdown backstop >= the sum of its phase
