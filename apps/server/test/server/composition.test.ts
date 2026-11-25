@@ -37,7 +37,7 @@ describe('composition root', () => {
     expect(ctx.collab?.deps.verifier).toBe(ctx.auth.verifier);
     expect(typeof ctx.collab?.deps.access.pageAccess).toBe('function');
     expect(ctx.collab?.deps.requireTenant, 'the WebSocket refuses a token that names no tenant or several, as the API does').toBe(true);
-    expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'jobs', 'import-converter-pool', 'page-store-pool', 'auth-pool', 'database-pool']);
+    expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'jobs', 'page-store-pool', 'auth-pool', 'database-pool']);
   });
 
   describe('the sign-in provider endpoint that GET /v1/config reports to browsers', () => {

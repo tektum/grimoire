@@ -190,7 +190,6 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS: field(int(1, 60)).default(10),
   GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS: field(int(10, 3600)).default(300),
   GRIMOIRE_IMPORT_CONCURRENCY: field(int(1, 16)).default(2),
-  GRIMOIRE_IMPORT_CONVERTER_THREADS: field(int(1, 8)).default(1),
   GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: field(int(1, MAX_INT)).default(900),
   GRIMOIRE_JOBS_STOP_GRACE_MS: field(int(1, MAX_INT)).default(15_000),
   GRIMOIRE_JOBS_PURGE_CRON: cronField.default('17 3 * * *'),
@@ -479,7 +478,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
       maxImages: v.GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES, maxBytes: v.GRIMOIRE_IMPORT_REMOTE_MAX_BYTES ?? Math.min(20_971_520, v.GRIMOIRE_FILES_MAX_BYTES),
       timeoutSeconds: v.GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS, totalSeconds: v.GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS,
     },
-    concurrency: v.GRIMOIRE_IMPORT_CONCURRENCY, converterThreads: v.GRIMOIRE_IMPORT_CONVERTER_THREADS,
+    concurrency: v.GRIMOIRE_IMPORT_CONCURRENCY,
   },
   jobs: {
     importExpireSeconds: v.GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS, stopGraceMs: v.GRIMOIRE_JOBS_STOP_GRACE_MS,

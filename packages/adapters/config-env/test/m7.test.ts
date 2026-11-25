@@ -18,7 +18,7 @@ describe('the defaults', () => {
     const c = load();
     expect(c.import).toEqual({
       maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
-      fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2, converterThreads: 1,
+      fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2,
     });
     expect(c.jobs).toEqual({ importExpireSeconds: 900, stopGraceMs: 15_000, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' });
     expect(c.search).toEqual({ statementTimeoutMs: 3000 });
@@ -35,7 +35,7 @@ describe('the refusals name the variable', () => {
     ['GRIMOIRE_IMPORT_MAX_RATIO', '0'], ['GRIMOIRE_IMPORT_MAX_ZIP_BYTES', '0'], ['GRIMOIRE_IMPORT_MAX_ENTRIES', '-1'], ['GRIMOIRE_IMPORT_MAX_ENTRY_BYTES', '1.5'],
     ['GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS', 'yes'], ['GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES', '2'],
     ['GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES', '0'], ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '61'],
-    ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '9'], ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '3601'], ['GRIMOIRE_IMPORT_CONCURRENCY', '0'], ['GRIMOIRE_IMPORT_CONVERTER_THREADS', '0'],
+    ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '9'], ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '3601'], ['GRIMOIRE_IMPORT_CONCURRENCY', '0'],
     ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '0'],
     ['GRIMOIRE_JOBS_PURGE_CRON', 'daily'], ['GRIMOIRE_JOBS_SWEEP_CRON', '* * * *'], ['GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON', '*/5 * * * * *'], ['GRIMOIRE_JOBS_REVISION_CRON', '; rm * * * *'],
     ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '5'], ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '30001'],
@@ -60,6 +60,10 @@ describe('the refusals name the variable', () => {
   it('with no remote limit set, a small upload limit lowers it instead of refusing the start', () => {
     expect(load({ GRIMOIRE_FILES_MAX_BYTES: '1000' }).import.remote.maxBytes).toBe(1000);
     expect(load().import.remote.maxBytes).toBe(20_971_520);
+  });
+
+  it('there is no setting for a second converter pool: the one pool of the process serves the editor and the import (decision 8)', () => {
+    expect(load({ GRIMOIRE_IMPORT_CONVERTER_THREADS: '4' }).import).not.toHaveProperty('converterThreads');
   });
 
   it('there is no variable for the size of a Markdown file: the seed cap is the limit', () => {

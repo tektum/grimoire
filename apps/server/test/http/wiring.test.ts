@@ -58,9 +58,9 @@ describe('application context wiring', () => {
 
   it('role api: the markdown pool is released in release-jobs, before every close-database hook', () => {
     const hooks = ctxOf({ GRIMOIRE_ROLE: 'api' }).shutdownHooks;
-    // The jobs of the import and their converter pool are released in the same phase (M7-T00).
-    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'jobs', 'import-converter-pool', 'database-pool']);
-    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'release-jobs', 'release-jobs', 'close-database']);
+    // The jobs of the import are released in the same phase (M7-T00).
+    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'jobs', 'database-pool']);
+    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'release-jobs', 'close-database']);
   });
 
   it('the ordering is the real one: it gives a valid first key and a key between two neighbours', () => {

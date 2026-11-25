@@ -150,16 +150,12 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       deps: { config, logger, clock: systemClock, verifier, resolveUser, requireTenant: true, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
-  // Jobs run in the roles `api` and `all`, with a converter pool of their own (the import converts a whole archive; the editor's pool must not wait for it).
+  // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
   const jobs = config.role === 'collab' ? undefined : createJobRunner({ config, log, make: createJobQueue, onError: () => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0 }); } });
-  const importConverter = jobs === undefined ? undefined : createMarkdownConverter({
-    maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs,
-    poolSize: config.import.converterThreads, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs,
-  });
   const shutdownHooks: ShutdownHook[] = [
     ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
     markdownPoolHook(converter),
-    ...(jobs === undefined || importConverter === undefined ? [] : [jobs.hook, { ...markdownPoolHook(importConverter), name: 'import-converter-pool' }]),
+    ...(jobs === undefined ? [] : [jobs.hook]),
     ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },

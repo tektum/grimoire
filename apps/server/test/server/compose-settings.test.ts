@@ -41,7 +41,6 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_IMPORT_CONCURRENCY: 'M7-T00 declares it; the task that uses it passes it',
-  GRIMOIRE_IMPORT_CONVERTER_THREADS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_STOP_GRACE_MS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_PURGE_CRON: 'M7-T00 declares it; the task that uses it passes it',
@@ -102,8 +101,10 @@ it('the app service gives the process at least its shutdown backstop plus the ma
   // The committed file passes no save deadline of its own (the setting is empty unless the operator sets it), so the default of the loader applies.
   const schema = readFileSync(path.join(schemaDir, 'schema.ts'), 'utf8');
   const defaultSave = Number(/GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field\(int\(1, MAX_INT\)\)\.default\((\d+)\)/.exec(schema)?.[1]);
+  const defaultJobsGrace = Number(/GRIMOIRE_JOBS_STOP_GRACE_MS: field\(int\(1, MAX_INT\)\)\.default\(([\d_]+)\)/.exec(schema)?.[1]?.replaceAll('_', ''));
   expect(defaultSave).toBeGreaterThan(0);
-  expect(graceMs).toBeGreaterThanOrEqual(requiredGracePeriodMs(defaultSave));
+  expect(defaultJobsGrace).toBeGreaterThan(0);
+  expect(graceMs).toBeGreaterThanOrEqual(requiredGracePeriodMs(defaultSave, defaultJobsGrace));
 });
 
 

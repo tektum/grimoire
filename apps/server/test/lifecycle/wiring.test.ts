@@ -36,7 +36,7 @@ describe('the single composition root (S1/S7)', () => {
     const result = compose(base);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.ctx.shutdownHooks.map((hook) => hook.name)).toEqual(['markdown-pool', 'jobs', 'import-converter-pool', 'page-store-pool', 'auth-pool', 'database-pool']);
+      expect(result.ctx.shutdownHooks.map((hook) => hook.name)).toEqual(['markdown-pool', 'jobs', 'page-store-pool', 'auth-pool', 'database-pool']);
       expect(result.ctx.shutdown.isDraining()).toBe(false);
     }
   });

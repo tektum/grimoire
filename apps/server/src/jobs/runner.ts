@@ -1,6 +1,7 @@
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import type { EventLog } from '../events.js';
+import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
 import { registerJobs } from './index.js';
 
@@ -62,7 +63,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       await attempt();
     },
     hook: {
-      name: 'jobs', phase: 'release-jobs', deadlineMs: config.jobs.stopGraceMs + 500,
+      name: 'jobs', phase: 'release-jobs', deadlineMs: config.jobs.stopGraceMs + SHUTDOWN_BUDGET_MS.jobsHookOverhead,
       run: async () => {
         stopped = true;
         if (timer !== undefined) clearTimeout(timer);
