@@ -30,6 +30,8 @@ test('the palette finds the same page by its word and opens it with Enter', asyn
   const made = await makePage(`# Palette\n\nOnly the ${word} is written here.\n`, { title: `Palette ${word}` });
   await signInAs(context, 'e2e-alice', 'member');
   await page.goto('/');
+  // The shortcut is the shell's: it is there once the header is, not when the document has loaded.
+  await expect(page.getByRole('link', { name: 'Search' })).toBeVisible();
   await page.keyboard.press('Control+k');
   const input = page.getByRole('combobox');
   await expect(input).toBeFocused();

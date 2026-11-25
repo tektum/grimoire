@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { buildDevToken } from '../../test/support/dev-token';
 import { makePage } from '../editor/pages';
 import { apiUrl, devSecret } from '../support/env';
@@ -9,6 +9,16 @@ import { storedZip } from '../support/zip';
 // so an import is accepted and WAITS (`uploaded`); what an import does once it runs (the progress to done, the report, the source of a failed page, cancelling while it runs) is in the scripted
 // specifications of this folder until then (`stack-engine.spec.ts` is its place). When the engine is in, an accepted import is taken at once and the waiting specification below must change with it.
 // Written for the stack (`make test-m6`, `make test-web-e2e`); not run where there is none.
+/** What the browser did with the PUT of the zip to the file store: its status or why it failed, for the message of a failure ("could not be sent" alone does not say). */
+function watchStore(page: Page): { readonly seen: string[] } {
+  const seen: string[] = [];
+  page.on('response', (response) => {
+    if (response.request().method() === 'PUT') seen.push(`PUT ${new URL(response.url()).origin} -> ${String(response.status())}`);
+  });
+  page.on('requestfailed', (request) => seen.push(`${request.method()} ${new URL(request.url()).origin} failed: ${request.failure()?.errorText ?? '?'}`));
+  return { seen };
+}
+
 const stateOf = async (id: string): Promise<{ status: string }> => {
   const response = await fetch(`${apiUrl()}/v1/imports/${id}`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-alice', 'member')}` } });
   expect(response.status).toBe(200);
@@ -29,8 +39,9 @@ test('a zip is created, sent to the file store and started through the real rout
       { name: 'docs/guide.md', text: '# Guide\n\nAnother one.\n' },
     ]),
   });
+  const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
-  await expect(page).toHaveURL(/\/import\?import=[0-9a-f-]{36}/);
+  await expect(page, `the zip was sent: ${JSON.stringify(store.seen)}`).toHaveURL(/\/import\?import=[0-9a-f-]{36}/);
   const id = new URL(page.url()).searchParams.get('import') as string;
   await expect(page.getByRole('progressbar')).toBeVisible();
   await expect(page.getByRole('status').first()).toHaveText('Waiting to start…');
@@ -48,8 +59,9 @@ test('a file that is not a zip is refused by the start with its own words, and t
   await page.goto('/import');
   await page.getByLabel('Into the collection').selectOption({ label: made.collectionName });
   await page.getByLabel('Choose a .zip file').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('this is text, not an archive, and long enough to be a file') });
+  const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
-  await expect(page.getByRole('alert')).toHaveText('That is not a zip file.');
+  await expect(page.getByRole('alert'), `the zip was sent: ${JSON.stringify(store.seen)}`).toHaveText('That is not a zip file.');
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
 });
 
