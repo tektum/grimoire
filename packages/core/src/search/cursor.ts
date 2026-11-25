@@ -33,8 +33,38 @@ export function decodeSearchCursor(cursor: string): SearchCursorKey {
   const keys = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 1 ? (parsed as { k?: unknown }).k : undefined;
   if (!Array.isArray(keys) || keys.length !== 3) throw new InvalidSearchCursor();
   const [rank, editedAt, id] = keys as unknown[];
-  if (typeof rank !== 'number' || !Number.isFinite(Math.fround(rank)) || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
+  if (typeof rank !== 'number' || !Number.isFinite(Math.fround(rank)) || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || editedAt < 0 || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
   const key = { rank, editedAt, id };
   if (encodeSearchCursor(key) !== cursor) throw new InvalidSearchCursor();
+  return key;
+}
+
+/**
+ * The cursor of a hybrid answer (contracts section 15.5): the last row's fused score, edit time and id, under its own key so that it cannot be mistaken for the cursor of the full-text answer
+ * (whose first number is a text rank, not a score). `decodeSearchCursor` refuses it, `decodeHybridCursor` refuses the other.
+ */
+export function encodeHybridCursor(key: SearchCursorKey): string {
+  return Buffer.from(JSON.stringify({ h: [key.rank, key.editedAt, key.id] }), 'utf8').toString('base64url');
+}
+
+/** The key in a hybrid cursor, `undefined` for a cursor of the full-text answer, `InvalidSearchCursor` for anything this module did not make. */
+export function decodeHybridCursor(cursor: string): SearchCursorKey | undefined {
+  if (cursor.length === 0 || cursor.length > MAX_CURSOR_CHARS || !BASE64URL.test(cursor)) throw new InvalidSearchCursor();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  } catch {
+    throw new InvalidSearchCursor();
+  }
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 1 && 'k' in parsed) {
+    decodeSearchCursor(cursor); // one of ours, of the other kind (or invalid: it throws)
+    return undefined;
+  }
+  const keys = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 1 ? (parsed as { h?: unknown }).h : undefined;
+  if (!Array.isArray(keys) || keys.length !== 3) throw new InvalidSearchCursor();
+  const [rank, editedAt, id] = keys as unknown[];
+  if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0 || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || editedAt < 0 || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
+  const key = { rank, editedAt, id };
+  if (encodeHybridCursor(key) !== cursor) throw new InvalidSearchCursor();
   return key;
 }

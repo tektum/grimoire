@@ -70,6 +70,21 @@ export function pageOf(rows: readonly FusedRow[], after: FusedKey | undefined, l
   return { rows: rest.slice(0, limit), more: rest.length > limit };
 }
 
+/**
+ * The most pages found only by meaning that one answer holds. A nearest-neighbour search always has nearest pages, and with the models in use the similarity of a search that matches nothing
+ * is in the band of real answers (docs/proof/m7-semantic-quality.md), so no similarity separates them: the answer is limited instead, and each of these pages shows the passage that was found.
+ */
+export const MEANING_ONLY_MAX = 5;
+
+/**
+ * The fused rows without the pages found only by meaning beyond the first `max` (in the fused order). Pages found by words, alone or with meaning, are never dropped. It is applied to the whole fused
+ * list before a page is cut out of it, so that the same pages are dropped on every request.
+ */
+export function limitMeaningOnly(rows: readonly FusedRow[], max: number): FusedRow[] {
+  let meaningOnly = 0;
+  return rows.filter((row) => row.fullTextRank !== undefined || (meaningOnly += 1) <= max);
+}
+
 /** A chunk found by the vector query: where it is in the page's text and how near the query it is (cosine, 1 for the same direction). */
 export interface ChunkMatch {
   readonly pageId: string;
