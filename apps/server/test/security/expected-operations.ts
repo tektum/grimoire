@@ -24,6 +24,7 @@ export const EXPECTED_OPERATIONS: readonly (readonly [operation: string, policy:
   ['GET /v1/pages/{id}/markdown', 'page:read:id'],
   ['GET /v1/pages/{id}/revisions', 'page:read:id'],
   ['GET /v1/pages/{id}/revisions/{rid}', 'page:read:id'],
+  ['GET /v1/search', 'authenticated'],
   ['GET /v1/trash', 'authenticated'],
   ['GET /v1/users', 'admin'],
   ['PATCH /v1/collections/{id}', 'collection:admin:id'],

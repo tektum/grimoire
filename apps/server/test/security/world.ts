@@ -131,7 +131,17 @@ export async function buildWorld() {
 export type WorldBuilt = Awaited<ReturnType<typeof buildWorld>>;
 
 /** The path of an operation filled in with ids of this world: `hidden` points it at the resource that only an administrator can read. */
+/** An example value for each query parameter an operation requires (a search needs its `q`): a request without one is 422, which hides what the policy does. */
+function requiredQuery(op: Operation): string {
+  const required = (op.raw.parameters ?? []).filter((p) => p.in === 'query' && p.required === true);
+  return required.length === 0 ? '' : `?${required.map((p) => `${p.name}=${p.schema?.type === 'integer' ? '1' : 'plan'}`).join('&')}`;
+}
+
 export function pathFor(op: Operation, w: WorldBuilt, hidden = false): string {
+  return `${pathWithoutQuery(op, w, hidden)}${requiredQuery(op)}`;
+}
+
+function pathWithoutQuery(op: Operation, w: WorldBuilt, hidden: boolean): string {
   const i = w.ids;
   const resource = (): string => {
     if (op.path.startsWith('/v1/collections')) return hidden ? i.closedCollection : i.openCollection;
