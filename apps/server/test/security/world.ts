@@ -8,6 +8,7 @@ import { FakeAdminRepo } from '@tektum/grimoire-core/testing/fake-admin-repo';
 import { FakeCollectionRepo } from '@tektum/grimoire-core/testing/fake-collection-repo';
 import { FakeAttachmentRepo } from '@tektum/grimoire-core/testing/fake-attachment-repo';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
+import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
 import { FakeIdempotencyStore } from '@tektum/grimoire-core/testing/fake-idempotency-store';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakePageRepo } from '@tektum/grimoire-core/testing/fake-page-repo';
@@ -19,6 +20,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { createApp } from '../../src/app.js';
 import { makeContext } from '../server/support/context.js';
+import { importFailedKey, importZipKey } from '../../src/import/keys.js';
 import type { Operation } from './document.js';
 
 /** Who the walk signs in as. The token is the name; `garbage` and `expired` are tokens the verifier refuses. */
@@ -93,12 +95,39 @@ export async function buildWorld() {
   const pendingAttachment = attachment(3, page.id, 'pending');
   const hiddenPendingAttachment = attachment(4, hidden.id, 'pending');
   for (const id of [readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment]) await files.put(`attachments/${id}`, PNG_BYTES, { size: PNG_BYTES.length, contentType: 'image/png' });
+  // Two imports in the same workspace: one by the member and one by the administrator (the one a member cannot see). Each has its zip, and a failed page with its kept original.
+  const imports = new FakeImportRepo();
+  const importOf = (n: number): string => `00000000-0000-4000-8000-0000000007${String(n).padStart(2, '0')}`;
+  const importRows = { import: importOf(1), hiddenImport: importOf(2) };
+  const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 3, 4, 0, 0, 0, 0]);
+  const items: Record<string, string> = {};
+  const seedImport = async (id: string, who: 'member' | 'admin', status: 'created' | 'running' | 'done'): Promise<void> => {
+    imports.seed({ id, tenantId: 'legacy', status, createdBy: USER_ID[who], targetCollectionId: open.id, bytes: ZIP_BYTES.length, s3Key: importZipKey('legacy', id) });
+    await files.put(importZipKey('legacy', id), ZIP_BYTES, { size: ZIP_BYTES.length, contentType: 'application/zip' });
+  };
+  await seedImport(importRows.import, 'member', 'done');
+  await seedImport(importRows.hiddenImport, 'admin', 'done');
+  for (const id of [importRows.import, importRows.hiddenImport]) {
+    await imports.addItems('legacy', id, [{ path: 'notes/broken.md', kind: 'page' }]);
+    const [pending] = await imports.pending('legacy', id, 'page', 1);
+    await imports.settle('legacy', id, pending!.id, { status: 'failed', message: 'content-lost' });
+    await files.put(importFailedKey('legacy', id, pending!.id), new Uint8Array([35, 32]), { size: 2, contentType: 'text/markdown' });
+    items[id] = pending!.id;
+  }
+  /** The state an import must be in for an operation to be able to succeed: a start needs one that waits (and no other running), a cancel one that runs, the rest one that has ended. */
+  const prepareImport = async (op: Operation, hidden: boolean): Promise<void> => {
+    if (!op.path.startsWith('/v1/imports/')) return;
+    const id = hidden ? importRows.hiddenImport : importRows.import;
+    const status = op.path.endsWith('/start') ? 'created' : op.path.endsWith('/cancel') ? 'running' : 'done';
+    const row = await imports.get('legacy', id);
+    imports.seed({ ...(row as NonNullable<typeof row>), status });
+  };
   const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 } });
   const store = createFakeAccessStore(world);
   const app = createApp({
     ...t.ctx, config, auth: { verifier }, signInPolicy,
     http: {
-      ...t.ctx.http, config, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit, attachments, files,
+      ...t.ctx.http, config, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit, attachments, files, imports,
       idempotency: new FakeIdempotencyStore(t.clock),
       provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
       access: createPageAccess(store), authorizer: createAuthorizer(store),
@@ -124,9 +153,9 @@ export async function buildWorld() {
   };
   const ids = {
     openCollection: open.id, closedCollection: closed.id, page: page.id, hiddenPage: hidden.id, urlId: page.urlId, hiddenUrlId: hidden.urlId,
-    readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment, trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
+    ...importRows, item: items[importRows.import] as string, hiddenItem: items[importRows.hiddenImport] as string, readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment, trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
   };
-  return { call, demote, suspend, ids, world, pages, collections, converter, trash, pageState, admin, config };
+  return { call, demote, suspend, prepareImport, ids, world, pages, collections, converter, trash, pageState, admin, config };
 }
 export type WorldBuilt = Awaited<ReturnType<typeof buildWorld>>;
 
@@ -148,6 +177,7 @@ function pathWithoutQuery(op: Operation, w: WorldBuilt, hidden: boolean): string
     if (op.path.startsWith('/v1/trash')) return hidden ? i.hiddenTrashed : i.trashed;
     if (op.path.startsWith('/v1/pages')) return hidden ? i.hiddenPage : i.page;
     if (op.path.startsWith('/v1/attachments')) return op.path.endsWith('/complete') ? (hidden ? i.hiddenPendingAttachment : i.pendingAttachment) : (hidden ? i.hiddenReadyAttachment : i.readyAttachment);
+    if (op.path.startsWith('/v1/imports')) return hidden ? i.hiddenImport : i.import;
     if (op.path.startsWith('/v1/groups')) return i.group;
     return USER_ID.member; // /v1/users/{id}
   };
@@ -156,6 +186,7 @@ function pathWithoutQuery(op: Operation, w: WorldBuilt, hidden: boolean): string
       case 'id': return resource();
       case 'urlId': return hidden ? i.hiddenUrlId : i.urlId;
       case 'rid': return i.revision;
+      case 'itemId': return hidden ? i.hiddenItem : i.item;
       case 'entryId': return i.entry;
       case 'userId': return USER_ID.member;
       default: throw new Error(`no value for the path parameter ${name} of ${op.key}`);

@@ -13,7 +13,9 @@ export class FakeImportRepo implements ImportRepo {
 
   seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy' | 'bytes' | 's3Key'> & Partial<ImportRecord>): ImportRecord {
     const full: ImportRecord = { bytes: null, s3Key: null, source: 'markdown_zip', targetCollectionId: 'c', createdBy: null, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, ...row };
-    this.rows.push(full);
+    const at = this.find(full.tenantId, full.id);
+    if (at === -1) this.rows.push(full);
+    else this.rows[at] = full;
     return full;
   }
 
@@ -31,6 +33,11 @@ export class FakeImportRepo implements ImportRepo {
   setStatus(id: string, status: ImportRecord['status']): void {
     const at = this.rows.findIndex((r) => r.id === id);
     if (at !== -1) this.replace(at, { status });
+  }
+
+  /** Test setup: how many imports there are, of every tenant. */
+  count(): number {
+    return this.rows.length;
   }
 
   get(tenantId: string, id: string): Promise<ImportRecord | undefined> {
