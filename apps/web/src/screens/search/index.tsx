@@ -72,7 +72,7 @@ export default function SearchScreen() {
         <p className="search-note" role="status">
           Searching…
         </p>
-      ) : search.isError ? (
+      ) : search.isError && search.data === undefined ? (
         <p className="search-note" role="alert">
           Search is not available right now. <Button onClick={() => void search.refetch()}>Try again</Button>
         </p>
@@ -87,7 +87,11 @@ export default function SearchScreen() {
               <Result key={item.pageId} item={item} />
             ))}
           </ul>
-          {search.hasNextPage ? (
+          {search.isFetchNextPageError ? (
+            <p className="search-note" role="alert">
+              More results could not be loaded. <Button onClick={() => void search.fetchNextPage()}>Try again</Button>
+            </p>
+          ) : search.hasNextPage ? (
             <Button disabled={search.isFetchingNextPage} onClick={() => void search.fetchNextPage()}>
               {search.isFetchingNextPage ? 'Loading…' : 'Show more results'}
             </Button>

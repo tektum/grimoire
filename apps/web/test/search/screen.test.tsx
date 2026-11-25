@@ -140,6 +140,21 @@ describe('the search screen', () => {
     expect(await screen.findByRole('link', { name: 'Back' })).toBeTruthy();
   });
 
+  it('keeps the results already read when only the next page fails, says so beside them, and tries only that page again', async () => {
+    let failSecond = true;
+    const t = fake((_q, cursor) => (cursor === null ? { items: [hit('1', 'First', 'a')], nextCursor: 'CUR1' } : failSecond ? { status: 503 } : { items: [hit('2', 'Second', 'b')], nextCursor: null }));
+    show(t.api, '/search?q=a');
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more results' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('More results could not be loaded.');
+    expect(screen.getByRole('link', { name: 'First' })).toBeTruthy(); // not swapped for the full error
+    expect(screen.queryByText('Search is not available right now.', { exact: false })).toBeNull();
+    failSecond = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('link', { name: 'Second' })).toBeTruthy();
+    expect(t.requests.map((r) => r.cursor)).toEqual([null, 'CUR1', 'CUR1']); // the first page was not read again
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('searches the typed text on Enter, by putting it in the address, and the field follows the address', async () => {
     const t = fake(() => ({ items: [] }));
     show(t.api, '/search');
