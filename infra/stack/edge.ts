@@ -2,7 +2,7 @@
 export const TLS_POLICY = 'ELBSecurityPolicy-TLS13-1-2-2021-06';
 
 /**
- * The bucket that receives the access logs of a stage's load balancer: private, encrypted (load balancer logs take SSE-S3 only), TLS only, written by the load balancer service of the region
+ * The bucket (named by its policy, see below) that receives the access logs of a stage's load balancer: private, encrypted (load balancer logs take SSE-S3 only), TLS only, written by the load balancer service of the region
  * below its own prefix and by nobody else, and emptied after 90 days.
  */
 export function loadBalancerLogs() {
@@ -14,7 +14,7 @@ export function loadBalancerLogs() {
     rules: [{ id: 'expire', status: 'Enabled', filter: {}, expiration: { days: 90 }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }],
   });
   const account = aws.getCallerIdentityOutput().accountId;
-  new aws.s3.BucketPolicy('LoadBalancerLogsPolicy', {
+  const policy = new aws.s3.BucketPolicy('LoadBalancerLogsPolicy', {
     bucket: bucket.id,
     policy: aws.iam.getPolicyDocumentOutput({
       statements: [
@@ -36,5 +36,6 @@ export function loadBalancerLogs() {
       ],
     }).json,
   });
-  return bucket;
+  // The name comes from the policy, not from the bucket: whatever uses it waits for the policy, and AWS refuses to enable access logs on a bucket it cannot yet write a test object to.
+  return { bucket: policy.bucket };
 }

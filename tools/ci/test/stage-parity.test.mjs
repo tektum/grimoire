@@ -119,7 +119,7 @@ test('the load balancer of every stage takes TLS 1.2 and newer only, drops inval
     const balancer = {};
     transform.loadBalancer(balancer);
     assert.equal(balancer.dropInvalidHeaderFields, true, name);
-    assert.deepEqual(JSON.parse(JSON.stringify(balancer.accessLogs)), { bucket: '<LoadBalancerLogs.bucket>', prefix: 'alb', enabled: true }, name);
+    assert.deepEqual(JSON.parse(JSON.stringify(balancer.accessLogs)), { bucket: '<LoadBalancerLogsPolicy.bucket>', prefix: 'alb', enabled: true }, `${name}: the bucket name comes from its policy, so the load balancer waits for the policy before AWS tests the bucket`);
     const https = { protocol: 'HTTPS' };
     transform.listener(https);
     assert.equal(https.sslPolicy, 'ELBSecurityPolicy-TLS13-1-2-2021-06', `${name}: TLS 1.3 and 1.2 with forward secrecy only`);
@@ -130,11 +130,11 @@ test('the load balancer of every stage takes TLS 1.2 and newer only, drops inval
     assert.equal(one('aws.s3:Bucket').name, 'LoadBalancerLogs');
     assert.deepEqual(one('aws.s3:BucketPublicAccessBlock').args, { bucket: '<LoadBalancerLogs.id>', blockPublicAcls: true, blockPublicPolicy: true, ignorePublicAcls: true, restrictPublicBuckets: true });
     assert.deepEqual(one('aws.s3:BucketServerSideEncryptionConfiguration').args.rules, [{ applyServerSideEncryptionByDefault: { sseAlgorithm: 'AES256' } }], 'load balancer logs take SSE-S3 only');
-    const policy = String(one('aws.s3:BucketPolicy').args.policy);
-    assert.match(policy, /aws\.elb\.getServiceAccountOutput/, 'the log delivery of the load balancer service writes, no other principal');
-    assert.match(policy, /"actions":\["s3:PutObject"\]/);
-    assert.match(policy, /AWSLogs\/\{?[^"]*\*/, 'only below its own prefix');
-    assert.match(policy, /aws:SecureTransport/, 'a request that is not TLS is refused');
+    const policy = JSON.parse(/^<aws\.iam\.getPolicyDocumentOutput\((.*)\)\.json>$/s.exec(String(one('aws.s3:BucketPolicy').args.policy))?.[1] ?? 'null');
+    assert.deepEqual(policy, { statements: [
+      { sid: 'LoadBalancerServiceWritesItsLogs', effect: 'Allow', principals: [{ type: 'AWS', identifiers: ['<aws.elb.getServiceAccountOutput({}).arn>'] }], actions: ['s3:PutObject'], resources: ['<interpolate:{<LoadBalancerLogs.arn>}/alb/AWSLogs/{<aws.getCallerIdentityOutput({}).accountId>}/*>'] },
+      { sid: 'OnlyOverTls', effect: 'Deny', principals: [{ type: '*', identifiers: ['*'] }], actions: ['s3:*'], resources: ['<LoadBalancerLogs.arn>', '<interpolate:{<LoadBalancerLogs.arn>}/*>'], conditions: [{ test: 'Bool', variable: 'aws:SecureTransport', values: ['false'] }] },
+    ] }, 'exactly: the load balancer service writes below its own prefix, and every request that is not TLS is refused');
     assert.deepEqual(one('aws.s3:BucketLifecycleConfiguration').args.rules, [{ id: 'expire', status: 'Enabled', filter: {}, expiration: { days: 90 }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }]);
   }
 });
