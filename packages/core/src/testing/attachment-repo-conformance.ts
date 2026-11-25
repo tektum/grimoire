@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { AttachmentRepo, NewPending } from '../ports/attachment-repo.js';
+import type { Queryable } from '../ports/database.js';
 
 /** What a conformance case needs besides the repository: ids that exist, ids that do not, and a fixed `now`. */
 export interface AttachmentRepoHarness {
   readonly repo: AttachmentRepo;
+  /** Runs `fn` in a transaction of the tenant the cases use (`legacy`): what a caller of `insertReady` brings. */
+  readonly inTransaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>;
   readonly pageId: string;
   readonly userId: string;
   readonly otherUserId: string;
@@ -136,7 +139,7 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
     name: 'insert-ready',
     async run(h) {
       const id = randomUUID();
-      const row = await h.repo.insertReady({ id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, readyAt: h.now }, undefined);
+      const row = await h.inTransaction((tx) => h.repo.insertReady({ id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, readyAt: h.now }, tx));
       assert.deepEqual(row, { id, pageId: h.pageId, uploaderId: null, fileName: 'import.csv', contentType: 'text/csv', size: 77, key: `attachments/${id}`, tenantId: 'legacy', status: 'ready', expiresAt: null, createdAt: h.now, readyAt: h.now });
       assert.deepEqual(await h.repo.get('legacy', id), row);
     },

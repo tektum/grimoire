@@ -85,8 +85,8 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
         [now, limit, tenantId],
       )).map(record);
     },
-    async insertReady(row, tx?: Queryable) {
-      const rows = await (tx ?? db).query<Row>(
+    async insertReady(row, tx: Queryable) {
+      const rows = await tx.query<Row>(
         `insert into attachments (id, page_id, uploader_id, file_name, content_type, size, s3_key, status, created_at, ready_at, tenant_id)
          values ($1, $2, $3, $4, $5, $6, $7, 'ready', to_timestamp($8::double precision / 1000.0), to_timestamp($8::double precision / 1000.0), coalesce((select tenant_id from pages where id = $2), 'legacy')) returning ${COLUMNS}`,
         [row.id, row.pageId, row.uploaderId, row.fileName, row.contentType, row.size, row.key, row.readyAt],

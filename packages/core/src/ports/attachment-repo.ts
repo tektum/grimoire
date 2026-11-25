@@ -66,6 +66,6 @@ export interface AttachmentRepo {
   removeIfPending(tenantId: string, id: string): Promise<boolean>;
   /** Pending rows of the tenant that expired before `now`, oldest first, at most `limit`. */
   expiredPending(tenantId: string, now: number, limit: number): Promise<readonly AttachmentRow[]>;
-  /** Stores a ready row, inside the caller's transaction when `tx` is given (the importer's, scoped to its tenant), so it commits or rolls back with the page the importer is writing. */
-  insertReady(row: NewReady, tx?: Queryable): Promise<AttachmentRow>;
+  /** Stores a ready row in the caller's transaction (the importer's, scoped to its tenant), so it commits or rolls back with the page the importer is writing. The transaction is required: under row-level security a statement with no tenant set sees no page and may not insert. */
+  insertReady(row: NewReady, tx: Queryable): Promise<AttachmentRow>;
 }
