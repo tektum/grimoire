@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildIndex, resolveNotionLink } from '../../../src/import/notion/links.js';
+import { buildLinkIndex } from '../../../src/import/link-index.js';
+import { resolveNotionLink } from '../../../src/import/notion/links.js';
+import { idOf as idOfName } from '../../../src/import/notion/names.js';
+import type { IndexedItem } from '../../../src/import/profile.js';
+
+const buildIndex = (items: readonly IndexedItem[]) => buildLinkIndex(items, idOfName);
 import { notionExportFiles } from '../fixtures/notion-synthetic/build.js';
 
 // M7-T06: the link forms of the synthetic export (constructed, not observed) resolve to the page items by normalised path and by id, and to attachments; what is not in the export stays.
@@ -57,6 +62,22 @@ describe('what a resolved link is', () => {
     // even a path that holds a colon is only looked up: it comes back as an item, not as text
     const withColon = buildIndex([{ itemId: 'x', path: 'dir/a:b.md', kind: 'page' }]);
     expect(resolveNotionLink('./a:b.md', 'dir/index.md', withColon)).toEqual({ kind: 'page', itemId: 'x' });
+  });
+});
+
+describe('databases', () => {
+  const DB = '0123456789abcdef0123456789abcdef';
+  it('a link to `X <id>.csv` finds `X <id>_all.csv` when the export holds only that one (as a real export does), and the plain one when it is there', () => {
+    const onlyAll = buildIndex([{ itemId: 'all', path: `Work/Tasks ${DB}_all.csv`, kind: 'attachment' }]);
+    expect(resolveNotionLink(`Tasks%20${DB}.csv`, 'Work/Home.md', onlyAll)).toMatchObject({ itemId: 'all' });
+    const both = buildIndex([{ itemId: 'all', path: `Work/Tasks ${DB}_all.csv`, kind: 'attachment' }, { itemId: 'plain', path: `Work/Tasks ${DB}.csv`, kind: 'attachment' }]);
+    expect(resolveNotionLink(`Tasks%20${DB}.csv`, 'Work/Home.md', both)).toMatchObject({ itemId: 'plain' });
+  });
+
+  it('the id of `X <id>_all.csv` is its id, so a link elsewhere finds it by the id', () => {
+    expect(idOfName(`Work/Tasks ${DB}_all.csv`)).toBe(DB);
+    const index = buildIndex([{ itemId: 'all', path: `Work/Tasks ${DB}_all.csv`, kind: 'attachment' }]);
+    expect(resolveNotionLink(`../Archive/Old%20Tasks%20${DB}.csv`, 'Elsewhere/Home.md', index)).toMatchObject({ itemId: 'all' });
   });
 });
 

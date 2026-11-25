@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ImportBusyError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportSource, ImportStatus } from '@tektum/grimoire-core/ports/import-repo';
+import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import type { EnqueueOptions, JobContext } from '@tektum/grimoire-core/ports/job-queue';
 import type { ConvertResult, MarkdownConverter, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
@@ -31,9 +32,12 @@ class EchoConverter implements MarkdownConverter {
   close(): Promise<void> { return Promise.resolve(); }
 }
 
+/** A file store's settings, so that a page's files become its attachments (without one an import keeps the links and stores nothing). */
+const FILES_CONFIG: FilesConfig = { endpoint: 'http://store.test', publicEndpoint: 'http://store.test', publicOrigin: 'http://store.test', bucket: 'b', region: 'r', addressing: 'path', createOnlyHeader: 'if-none-match', corsMode: 'api', maxBytes: 26_214_400, allowedTypes: ['text/csv', 'image/png'], pendingMaxPerUser: 20 };
+
 const ctx = (over: Partial<JobContext> = {}): JobContext => ({ jobId: 'job-1', attempt: 1, retryLimit: 3, signal: new AbortController().signal, ...over });
 
-async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; source?: ImportSource; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
+async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; source?: ImportSource; files?: boolean; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
   const repo = over.repo ?? new FakeImportRepo();
   repo.seed({ id: IMPORT, tenantId: TENANT, status: over.status ?? 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey(TENANT, IMPORT), ...(over.source === undefined ? {} : { source: over.source }) });
   const files = new FakeFileStorage();
@@ -44,7 +48,7 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
   const logger = new FakeLogger();
   const handle: { queueOverride?: (() => Promise<string | null>) | undefined } = {};
   const handler = createImportHandler({
-    config: makeFakeConfig(), log: createEventLog(logger), clock: { now: () => 1_700_000_000_000 }, imports: repo, files, converter, ordering: { between: (b: string | null) => `${b ?? ''}a` },
+    config: makeFakeConfig(over.files === true ? { files: FILES_CONFIG } : {}), log: createEventLog(logger), clock: { now: () => 1_700_000_000_000 }, imports: repo, files, converter, ordering: { between: (b: string | null) => `${b ?? ''}a` },
     fetcher: undefined, sniff: () => Promise.resolve(undefined), queue: {
       enqueueImport: (payload, options) => { enqueued.push({ name: 'import', payload, options }); return handle.queueOverride?.() ?? Promise.resolve('id'); },
       enqueueImportCleanup: (payload) => { enqueued.push({ name: 'import-cleanup', payload, options: undefined }); return Promise.resolve('id'); },
@@ -199,6 +203,21 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(t.repo.written.map((w) => w.page.title).sort()).toEqual(['Plan', 'Plan', 'Plan', 'Step']); // two pages and the folder's empty page
   });
 
+  it('an export of Notion: a link to a database by its plain CSV name finds the _all.csv the export holds, and a link to a moved page finds it by its id', async () => {
+    const ID3 = '00112233445566778899aabbccddeeff';
+    const t = await setup([
+      md(`Home ${ID1}.md\u0000# Home\n\n[tasks](Tasks%20${ID2}.csv) and [note](Old%20Place/Note%20${ID3}.md)\n`),
+      { name: `Tasks ${ID2}_all.csv`, data: Buffer.from('Name,Done\nOne,Yes\n') },
+      md(`New Place/Note ${ID3}.md\u0000# Note\n`),
+    ], { source: 'notion_md_csv', files: true });
+    await t.run();
+    const home = (await t.items()).find((i) => i.path === `Home ${ID1}.md`);
+    expect(home).toMatchObject({ status: 'ok', warnings: 0 }); // both links found
+    const body = t.repo.written.find((w) => w.page.title === 'Home')?.page.content.markdown ?? '';
+    expect(body).not.toContain('Old%20Place');
+    expect(body).not.toContain(`Tasks%20${ID2}.csv`);
+  });
+
   it('the same archive as a plain Markdown zip (markdown_zip, the default): titles from the first heading, and the folder is an empty page of its own', async () => {
     const t = await setup(exported);
     await t.run();
@@ -323,3 +342,4 @@ describe('a failure of the job', () => {
     expect(cleanup(t)).toHaveLength(1);
   });
 });
+
