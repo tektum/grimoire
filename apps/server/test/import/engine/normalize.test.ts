@@ -11,7 +11,7 @@ describe('a page that seeds and converts back', () => {
   it('stores the converter\'s canonical Markdown and text, the hash of title and that Markdown, and both sizes', async () => {
     const converter = new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array(40) }, convert: { ok: true, markdown: 'Hello w\u00f6rld.\n', text: 'Hello w\u00f6rld.' } });
     const out = await run(converter, '*Hello*   w\u00f6rld\n', 'Title');
-    expect(out).toEqual({ kind: 'ok', markdown: 'Hello w\u00f6rld.\n', text: 'Hello w\u00f6rld.', hash: markdownHash('Title', 'Hello w\u00f6rld.\n'), markdownBytes: Buffer.byteLength('*Hello*   w\u00f6rld\n'), stateBytes: 40 });
+    expect(out).toEqual({ kind: 'ok', markdown: 'Hello w\u00f6rld.\n', text: 'Hello w\u00f6rld.', hash: markdownHash('Title', 'Hello w\u00f6rld.\n'), state: new Uint8Array(40), markdownBytes: Buffer.byteLength('*Hello*   w\u00f6rld\n'), stateBytes: 40 });
     expect(converter.seedKeys).toEqual(['importer']);
   });
 
@@ -42,6 +42,16 @@ describe('what the converter refuses', () => {
   it('a queue-timeout is not the page\'s fault: the item is to be tried again, not failed', async () => {
     expect(await run(new FakeMarkdownConverter({ seed: { ok: false, reason: 'queue-timeout', detail: 'x' } }))).toEqual({ kind: 'retry', reason: 'queue-timeout' });
     expect(await run(new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array(1) }, convert: { ok: false, reason: 'queue-timeout', detail: 'x' } }))).toEqual({ kind: 'retry', reason: 'queue-timeout' });
+  });
+
+  it.each([['queue-full'], ['closed'], ['one-at-a-time']])('the pool refusing as busy (internal, %s) is a retry at the seed and on the way back, not a failed page', async (detail) => {
+    const busy = { ok: false, reason: 'internal', detail } as const;
+    expect(await run(new FakeMarkdownConverter({ seed: busy }))).toEqual({ kind: 'retry', reason: 'internal' });
+    expect(await run(new FakeMarkdownConverter({ seed: { ok: true, state: new Uint8Array(1) }, convert: busy }))).toEqual({ kind: 'retry', reason: 'internal' });
+  });
+
+  it('an internal failure with any other detail is a real failure', async () => {
+    expect(await run(new FakeMarkdownConverter({ seed: { ok: false, reason: 'internal', detail: 'worker-crashed' } }))).toMatchObject({ kind: 'failed', reason: 'internal' });
   });
 
   it('every other failure on the way back is a failed item with its reason', async () => {
