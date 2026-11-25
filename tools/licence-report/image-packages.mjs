@@ -20,7 +20,9 @@ export const COLLECT = [
   ' f=;',
   ' for c in "/usr/share/doc/$p/copyright" "/usr/share/doc/$src/copyright" "$(dpkg -L "$p" 2>/dev/null | grep \'/copyright$\' | head -n 1)"; do',
   ' if [ -n "$c" ] && [ -r "$c" ]; then f=$c; break; fi; done;',
-  ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -); else l=-; fi;',
+  ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -);',
+  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
+  ' else l=-; fi;',
   " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
 ].join('');
 
@@ -44,6 +46,7 @@ const ALLOWED = new Set([...SHIPPED_LICENCES.map((l) => l.id), "Zlib", "Public-D
 
 /** The names in one `License:` value that stop it being permitted: `a and b` needs both, `a or b` needs one of them, and nothing is judged by its first word. */
 function refusedIn(expression) {
+  if (expression.startsWith("text:")) return expression === "text:Apache License" ? [] : [`free text: ${expression.slice(5)}`];
   return expression.split(/\s+and\s+/).flatMap((group) => {
     const alternatives = group.split(/\s+or\s+/).map((name) => normaliseLicence(name.trim())).filter((name) => name !== "");
     return alternatives.some((name) => ALLOWED.has(name)) ? [] : alternatives;
@@ -76,6 +79,26 @@ export function report({ oldImage, newImage, rows, common }) {
   return `${lines.join("\n")}\n`;
 }
 
+/** The image of a service in the JSON that `docker compose config --format json` prints. Each way it can go wrong is its own message: empty output must not become a parse error. */
+export function imageFromCompose(text, service) {
+  if (text.trim() === "") throw new Error("`docker compose config` printed nothing");
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new Error("`docker compose config` printed something that is not JSON"); }
+  const entry = parsed?.services?.[service];
+  if (entry === undefined) throw new Error(`the Compose files have no service "${service}"`);
+  if (typeof entry.image !== "string" || entry.image === "") throw new Error(`service "${service}" has no image`);
+  return entry.image;
+}
+
+/** The image a set of Compose files gives a service. The example environment is loaded: the files require variables that only a real `.env` has, and only the image is read. */
+function composeImage(files, service) {
+  const args = ["compose", "--env-file", ".env.example", ...files.flatMap((f) => ["-f", f]), "config", "--format", "json"];
+  const r = spawnSync("docker", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  if (r.error) throw new Error(`could not run \`docker compose\`: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`\`docker compose config\` failed (${files.join(", ")}): ${r.stderr.trim()}`);
+  return imageFromCompose(r.stdout, service);
+}
+
 function collect(image) {
   const r = spawnSync("docker", ["run", "--rm", "--entrypoint", "sh", image, "-c", COLLECT], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`could not list the packages of ${image}: ${r.stderr.trim() || "docker failed"}`);
@@ -85,9 +108,11 @@ function collect(image) {
 function main(argv) {
   const opt = (name) => { const i = argv.indexOf(name); return i === -1 ? undefined : argv[i + 1]; };
   const at = argv.indexOf("--compare");
-  const [oldImage, newImage] = at === -1 ? [] : [argv[at + 1], argv[at + 2]];
-  if (!oldImage || !newImage) { console.error("usage: image-packages.mjs --compare OLD NEW [--out FILE] [--exceptions FILE]"); return 2; }
+  const fromCompose = opt("--new-from-compose");
+  const [oldImage, positionalNew] = at === -1 ? [] : [argv[at + 1], argv[at + 2]];
+  if (!oldImage || (!positionalNew && !fromCompose) || (fromCompose && positionalNew?.startsWith("--") === false)) { console.error("usage: image-packages.mjs --compare OLD (NEW | --new-from-compose FILE[,FILE]) [--service NAME] [--out FILE] [--exceptions FILE]"); return 2; }
   try {
+    const newImage = fromCompose ? composeImage(fromCompose.split(","), opt("--service") ?? "postgres") : positionalNew;
     const oldList = parseList(opt("--old-list") ? readFileSync(opt("--old-list"), "utf8") : collect(oldImage));
     const newList = parseList(opt("--new-list") ? readFileSync(opt("--new-list"), "utf8") : collect(newImage));
     const exceptionsPath = opt("--exceptions") ?? fileURLToPath(new URL("image-exceptions.json", import.meta.url));
@@ -98,7 +123,9 @@ function main(argv) {
     const text = report({ oldImage, newImage, rows, common: newList.length - added.length });
     if (opt("--out")) writeFileSync(opt("--out"), text);
     process.stdout.write(text);
-    return rows.every((r) => r.status === "allowed" || r.status === "exception") ? 0 : 1;
+    const failing = rows.filter((r) => r.status !== "allowed" && r.status !== "exception");
+    if (failing.length > 0) console.error(`${String(failing.length)} package(s) fail the audit: ${failing.map((r) => `${r.name} (${r.status})`).join(", ")}`);
+    return failing.length === 0 ? 0 : 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 2;

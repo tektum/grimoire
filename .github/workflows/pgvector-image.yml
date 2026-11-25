@@ -21,7 +21,8 @@ permissions:
 
 env:
   MISE_LOCKED: "1" # an out-of-date mise.lock fails the install instead of being rewritten
-  BASELINE_IMAGE: postgres:17@sha256:b60e90042aa6b8dbecd58e224b3e36114dbf8ad754465264c2476ad58a86e45c
+  # The same Debian release as the image under audit (bookworm), so that what is listed as added is what pgvector adds, not a different release's names for the base libraries.
+  BASELINE_IMAGE: postgres:17-bookworm@sha256:1eff563f6c868b9b433566e9f3cf6e5c79fbd3b95bf70ec7277d376cdbfc50d7
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -42,20 +43,18 @@ jobs:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
           install_args: node
-      - name: List the packages of the database image of compose.yaml and of the baseline, and compare them (exit 1 on a new package that is not permitted and has no exception)
+      - name: Audit the database image of compose.yaml against the baseline (exit 1 on a new package that is not permitted and has no exception)
         run: |
           mkdir -p proof
-          # The image under audit is the one compose.yaml names (the baseline is the image it replaced, kept here as the point of comparison).
-          NEW_IMAGE="$(docker compose --env-file .env.example -f compose.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
           status=0
-          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$NEW_IMAGE" --out proof/m7-pgvector-image.md || status=$?
+          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" --new-from-compose compose.yaml --out proof/m7-pgvector-image.md || status=$?
           cat proof/m7-pgvector-image.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: The same audit for the second image of the semantic tests (compose.pgvector087.yaml)
+        if: ${{ !cancelled() }}
         run: |
-          IMAGE="$(docker compose --env-file .env.example -f compose.yaml -f compose.pgvector087.yaml config --format json | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).services.postgres.image)})')"
           status=0
-          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" "$IMAGE" --out proof/m7-pgvector-image-087.md || status=$?
+          node tools/licence-report/image-packages.mjs --compare "$BASELINE_IMAGE" --new-from-compose compose.yaml,compose.pgvector087.yaml --out proof/m7-pgvector-image-087.md || status=$?
           cat proof/m7-pgvector-image-087.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: Upload the audit

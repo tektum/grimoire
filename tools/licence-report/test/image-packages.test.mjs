@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { COLLECT, addedPackages, evaluate, normaliseLicence, parseList, report } from "../image-packages.mjs";
+import { COLLECT, addedPackages, evaluate, imageFromCompose, normaliseLicence, parseList, report } from "../image-packages.mjs";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "image-packages.mjs");
 
@@ -132,6 +132,33 @@ test("an exception from the file passes the package, and a package that is new a
 test("the report separates what both images have from what the new one adds", () => {
   const text = report({ oldImage: "old", newImage: "new", rows: [], common: 3 });
   assert.match(text, /3 package\(s\) are in both images/);
+});
+
+test("the image of a service is read from the resolved Compose JSON, and every way that can fail says what failed", () => {
+  const json = JSON.stringify({ services: { postgres: { image: "img@sha256:aa" }, app: {} } });
+  assert.equal(imageFromCompose(json, "postgres"), "img@sha256:aa");
+  assert.throws(() => imageFromCompose("", "postgres"), /printed nothing/);
+  assert.throws(() => imageFromCompose("not json", "postgres"), /not JSON/);
+  assert.throws(() => imageFromCompose(json, "missing"), /service "missing"/);
+  assert.throws(() => imageFromCompose(json, "app"), /service "app" has no image/);
+});
+
+test("a copyright file in free text is read by the licences it names, not as having none", () => {
+  const rows = evaluate(parseList(["free\t1\ttext:GNU General Public License", "apache\t1\ttext:Apache License", "none\t1\t"].join("\n")));
+  assert.deepEqual(rows.map((r) => [r.name, r.status]), [["free", "not-allowed"], ["apache", "allowed"], ["none", "unparsable"]]);
+  assert.match(rows[0].detail, /free text: GNU General Public License/);
+});
+
+test("the command says why it failed, once, when it exits 1", () => {
+  const r = cli(OLD, `${NEW}\nbad\t1\tGPL-3+`);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /1 package\(s\) fail the audit: bad \(not-allowed\)/);
+});
+
+test("the command exits 2, saying what it could not run, when Compose cannot be run (no docker on the path: nothing is started here)", () => {
+  const r = spawnSync(process.execPath, [script, "--compare", "old", "--new-from-compose", "compose.yaml", "--old-list", "/dev/null"], { encoding: "utf8", env: { PATH: "" } });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /could not run `docker compose`/);
 });
 
 test("the command exits 2 on a missing argument", () => {
