@@ -55,9 +55,15 @@ jobs:
         with:
           version: 2026.11.9
           sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: actionlint zizmor
+          install_args: actionlint zizmor shellcheck
+      # With the pinned shellcheck named, as `mise run lint-workflows` does on a checkout: actionlint skips the shell scripts silently when it finds none.
       - name: Run actionlint
-        run: actionlint
+        run: actionlint -shellcheck "$(mise which shellcheck)"
+      # The test of this very step: a bare `!` fails it with the pinned shellcheck. The tools are installed here, so a missing one is a failure and not a skip.
+      - name: Test the workflow lint
+        env:
+          REQUIRE_LINT_TOOLS: '1'
+        run: node --test tools/ci/test/workflow-lint.test.mjs
       - name: Run zizmor
         env:
           GH_TOKEN: ${{ github.token }}
