@@ -92,9 +92,11 @@ test.describe('the signal rows the real server cannot produce, on a scripted ser
   test('session-expired: a development token cannot be refreshed, so the session ends: the person is sent to sign in again, with the page to come back to', async ({ browser, baseURL }) => {
     await withPage(browser, baseURL, {}, async ({ page, collab }) => {
       await expect.poll(() => collab.tokens.length).toBe(1);
+      // The address follows the title of the page record ("Scripted page"): the page is on its own address before the session ends, so the person comes back to that one (an old address is brought to it a moment after opening).
+      await expect(page).toHaveURL(/\/p\/scripted-page-abc123$/);
       collab.closeAll(4401, 'session-expired');
       await page.clock.runFor(5_000);
-      await expect(page).toHaveURL(/\/login\?return=%2Fp%2Fscripted-abc123&reason=expired/);
+      await expect(page).toHaveURL(/\/login\?return=%2Fp%2Fscripted-page-abc123&reason=expired/);
       await expect.poll(() => collab.sockets(), { message: 'the page is gone and its socket with it' }).toBe(0);
       expect(collab.tokens, 'no attempt with a token that is known to be expired').toHaveLength(1);
     });

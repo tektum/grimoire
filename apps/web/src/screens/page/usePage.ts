@@ -5,6 +5,9 @@ import type { PageMeta } from './PageView';
 
 export type PageResult = { kind: 'found'; page: PageMeta } | { kind: 'missing' };
 
+/** True for the cache entries that hold a page record (the page by the id in its address): what the page screen is drawn from. */
+export const isPageRecordQuery = (query: { readonly queryKey: readonly unknown[] }): boolean => query.queryKey[0] === 'GET' && query.queryKey[1] === '/v1/pages/by-url-id/{urlId}';
+
 /** The cached answer with only the title changed: whatever else a re-read has brought in since (the permission, the stale flag) is kept. A missing page, or none, stays as it is. */
 export const titled = (cached: PageResult | undefined, title: string): PageResult | undefined => (cached?.kind === 'found' ? { kind: 'found', page: { ...cached.page, title } } : cached);
 

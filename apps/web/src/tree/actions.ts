@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import type { ApiLike } from '../api/query';
 import type { FlatPage } from './model';
 import { applyCreate, applyDelete, applyMove, applyRename, type Placement } from './moves';
+import { isPageRecordQuery, titled, type PageResult } from '../screens/page/usePage';
 import { treeKey } from './useTree';
 
 export type Outcome<T = unknown> = { readonly ok: true; readonly data: T } | { readonly ok: false; readonly status: number; readonly code: string | undefined };
@@ -22,6 +23,7 @@ const moveBody = (to: Placement) => ({ parentId: to.parentId, ...(to.beforeId !=
 export interface TreeActions {
   /** A new, untitled page under `parentId` (null for the top level), last among its siblings. */
   create(parentId: string | null): Promise<Outcome>;
+  /** Renames a page. What is shown is what the server holds once the page record is read again, whatever order overlapping renames were answered in. */
   rename(id: string, title: string): Promise<Outcome>;
   /** Moves a page: under `to.parentId`, after the sibling `to.afterId`, before `to.beforeId`, or last when neither is set. */
   move(id: string, to: Placement): Promise<Outcome>;
@@ -53,8 +55,25 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
           () => api.POST('/v1/pages' as never, { body: { collectionId, parentId } } as never),
           (page) => { local((pages) => applyCreate(pages, page)); },
         ),
-      rename: (id, title) =>
-        settle(() => api.PATCH('/v1/pages/{id}' as never, { params: { path: { id } }, body: { title } } as never), undefined, () => { local((pages) => applyRename(pages, id, title)); }),
+      rename: async (id, title) => {
+        // Shown at once, in the tree and in the page record of the open page; the answers decide nothing: the page record is read again whatever the order they come in, so the heading and the address follow the server's title.
+        let before: { tree: string | undefined; record: string | undefined } = { tree: undefined, record: undefined };
+        const outcome = await settle(() => api.PATCH('/v1/pages/{id}' as never, { params: { path: { id } }, body: { title } } as never), undefined, () => {
+          before = {
+            tree: client.getQueryData<readonly FlatPage[]>(key)?.find((p) => p.id === id)?.title,
+            record: client.getQueriesData<PageResult>({ predicate: isPageRecordQuery }).map(([, r]) => (r?.kind === 'found' && r.page.id === id ? r.page.title : undefined)).find((t) => t !== undefined),
+          };
+          local((pages) => applyRename(pages, id, title));
+          client.setQueriesData<PageResult>({ predicate: isPageRecordQuery }, (cached) => (cached?.kind === 'found' && cached.page.id === id ? titled(cached, title) : cached));
+        });
+        if (!outcome.ok) {
+          // Refused: what was shown at once is taken back now, from the cache, without waiting for a read (and only where it is still the title this rename showed: a later rename may have changed it since).
+          if (before.tree !== undefined) local((pages) => pages.map((p) => (p.id === id && p.title === title ? { ...p, title: before.tree! } : p)));
+          if (before.record !== undefined) client.setQueriesData<PageResult>({ predicate: isPageRecordQuery }, (cached) => (cached?.kind === 'found' && cached.page.id === id && cached.page.title === title ? titled(cached, before.record!) : cached));
+        }
+        await client.invalidateQueries({ predicate: isPageRecordQuery });
+        return outcome;
+      },
       move: (id, to) =>
         settle(
           () => api.POST('/v1/pages/{id}/move' as never, { params: { path: { id } }, body: moveBody(to) } as never),

@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
+import { SessionContext, type Session } from '../../src/auth/session';
+import { usePage } from '../../src/screens/page/usePage';
 import { useTreeActions } from '../../src/tree/actions';
 import type { FlatPage } from '../../src/tree/model';
 import { treeKey, useCollectionTree } from '../../src/tree/useTree';
@@ -105,5 +107,86 @@ describe('useTreeActions', () => {
     expect(outcome).toEqual({ ok: false, status: 0, code: undefined });
     await waitFor(() => { expect((view.result.current.tree.data ?? []).map((x) => x.id)).toEqual(['a', 'b', 'a1']); }); // the page that was shown as gone is back
     expect(calls.filter((c) => c.startsWith('GET /v1/collections/{id}/tree'))).toHaveLength(2);
+  });
+
+  describe('renames of one page from the page head and from the tree, racing', () => {
+    // A server that keeps the title the last PATCH it was given set, and that answers each PATCH only when the test lets it. The open page reads its record through `usePage`.
+    const race = (options: { refuse?: boolean } = {}) => {
+      let serverTitle = 'Start';
+      const holds = new Map<string, () => void>();
+      const gates = new Map<string, Promise<void>>();
+      for (const title of ['From the head', 'From the tree']) gates.set(title, new Promise<void>((resolve) => holds.set(title, resolve)));
+      const record = () => ({ id: 'a', urlId: 'a', collectionId: 'c1', title: serverTitle, parentId: null, myPermission: 'read-write' });
+      const answer = (data: unknown) => ({ data, response: new Response(null, { status: 200 }) });
+      const api = {
+        GET: async (path: string) => (path === '/v1/pages/by-url-id/{urlId}' ? answer(record()) : answer({ pages: SERVER.pages.map((p) => (p.id === 'a' ? { ...p, title: serverTitle } : p)) })),
+        PATCH: async (_path: string, init: { body: { title: string } }) => {
+          await gates.get(init.body.title);
+          if (options.refuse) return { error: { error: { code: 'invalid' } }, response: new Response(null, { status: 422 }) };
+          serverTitle = init.body.title;
+          return answer({});
+        },
+      } as unknown as ApiLike;
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const session = { auth: {}, api, collabUrl: 'ws://x', apiUrl: 'http://x' } as unknown as Session;
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <SessionContext.Provider value={session}>
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        </SessionContext.Provider>
+      );
+      // The page screen reads the record; its head and the tree each have their own actions, over the same client.
+      const open = renderHook(() => ({ page: usePage('a'), tree: useCollectionTree(api, 'c1') }), { wrapper });
+      const head = renderHook(() => useTreeActions(api, 'c1'), { wrapper });
+      const tree = renderHook(() => useTreeActions(api, 'c1'), { wrapper });
+      const shown = () => (open.result.current.page.data?.kind === 'found' ? open.result.current.page.data.page.title : undefined);
+      return { open, head, tree, shown, release: (title: string) => holds.get(title)?.(), server: () => serverTitle, client };
+    };
+
+    it.each([
+      ['the head answered first, the tree last', ['From the head', 'From the tree'], 'From the tree'],
+      ['the tree answered first, the head last', ['From the tree', 'From the head'], 'From the head'],
+    ])('ends with the page record, the open page and the tree all on the server title (%s)', async (_name, order, finalTitle) => {
+      const t = race();
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect(t.open.result.current.tree.data).toBeDefined());
+      await act(async () => {
+        const fromHead = t.head.result.current.rename('a', 'From the head');
+        const fromTree = t.tree.result.current.rename('a', 'From the tree');
+        // Each answer is let in only after the one before it has been handled: the PATCH of the one released is awaited through its own rename, not guessed with a pause.
+        const done: Record<string, Promise<unknown>> = { 'From the head': fromHead, 'From the tree': fromTree };
+        for (const title of order) {
+          t.release(title);
+          await done[title];
+        }
+      });
+      expect(t.server()).toBe(finalTitle);
+      await waitFor(() => expect(t.shown()).toBe(finalTitle)); // what the open page draws from
+      const inTree = (t.client.getQueryData<readonly FlatPage[]>(treeKey('c1')) ?? []).find((p) => p.id === 'a')?.title;
+      expect(inTree).toBe(finalTitle);
+    });
+
+    it('shows the new title at once, before any answer, and keeps it when the server accepts it', async () => {
+      const t = race();
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      let pending: Promise<unknown> = Promise.resolve();
+      await act(async () => { pending = t.head.result.current.rename('a', 'From the head'); });
+      await waitFor(() => expect(t.shown(), 'at once').toBe('From the head'));
+      await act(async () => { t.release('From the head'); await pending; });
+      await waitFor(() => expect(t.shown()).toBe('From the head'));
+    });
+
+    it('rolls the shown title back when the server refuses the rename: the page record and the tree end on the title they had, and the outcome says it was refused', async () => {
+      const t = race({ refuse: true });
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect(t.open.result.current.tree.data).toBeDefined());
+      let pending: Promise<{ ok: boolean }> = Promise.resolve({ ok: true });
+      await act(async () => { pending = t.head.result.current.rename('a', 'From the head'); });
+      await waitFor(() => expect(t.shown(), 'at once').toBe('From the head'));
+      let outcome: { ok: boolean } = { ok: true };
+      await act(async () => { t.release('From the head'); outcome = await pending; });
+      expect(outcome.ok).toBe(false);
+      await waitFor(() => expect(t.shown()).toBe('Start'));
+      await waitFor(() => expect((t.client.getQueryData<readonly FlatPage[]>(treeKey('c1')) ?? []).find((p) => p.id === 'a')?.title).toBe('Start'));
+    });
   });
 });
