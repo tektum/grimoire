@@ -103,6 +103,19 @@ describe('runImportSweep', () => {
     expect(w.started).toEqual([]);
   });
 
+  it('leaves an upload that waits for its turn with a live job alone while it is young, and abandons it by age even though its job is live (a tenant that is busy for ever ends)', async () => {
+    const w = world();
+    w.row('young', 'T-a', 'uploaded', 2);
+    w.row('old', 'T-b', 'uploaded', 25);
+    w.liveJobs.add(importSingletonKey('young'));
+    w.liveJobs.add(importSingletonKey('old'));
+    expect(await runImportSweep(w, live)).toEqual({ requeued: 0, abandoned: 1 });
+    expect((await w.imports.get('T-a', 'young'))?.status).toBe('uploaded');
+    expect(await w.imports.get('T-b', 'old')).toMatchObject({ status: 'failed', error: 'abandoned' });
+    expect(w.started).toEqual([]); // nothing is enqueued for an upload: its own job comes back on its own (it is not `running`)
+    expect(w.cleaned).toEqual([{ tenantId: 'T-b', importId: 'old' }]);
+  });
+
   it('goes on with the other tenants when one fails, and then fails', async () => {
     const w = world();
     w.row('a', 'T-a', 'running');
