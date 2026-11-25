@@ -14,6 +14,8 @@ export interface ImportCounts {
   readonly skipped: number;
   readonly failed: number;
   readonly warnings: number;
+  /** Remote images copied into the tool so far (the import's budget of them, kept across runs). */
+  readonly remote?: number;
 }
 
 export const NO_IMPORT_COUNTS: ImportCounts = { pagesTotal: 0, pagesDone: 0, attachments: 0, skipped: 0, failed: 0, warnings: 0 };
@@ -74,6 +76,8 @@ export interface ImportItem {
   readonly attempts: number;
   /** Warnings this item raised (a cut title, a link that matched nothing), kept on the row so the import's count is worked out from the rows and survives a resumed or overlapping run. */
   readonly warnings: number;
+  /** Remote images of this page that were not copied, a count per reason code (`blocked_address`, `timeout`, `scheme`, ...), never an address: where a report reads why a warning was raised. */
+  readonly remoteImageFailures: Readonly<Record<string, number>>;
 }
 
 /** How an item ends without a page: left out on purpose (`skipped`) or not readable (`failed`), with the reason as its message. */
@@ -84,6 +88,7 @@ export interface ItemOutcome {
   readonly markdownBytes?: number;
   readonly stateBytes?: number;
   readonly warnings?: number;
+  readonly remoteImageFailures?: Readonly<Record<string, number>>;
 }
 
 /** The longest message an item row keeps (archive-controlled text, contracts section 4, step 8). */
@@ -108,6 +113,8 @@ export interface NewImportedPage {
   readonly markdownBytes: number;
   readonly stateBytes: number;
   readonly warnings?: number;
+  /** Remote images of the page that were not copied, a count per reason code (never an address): kept with the item's warnings. */
+  readonly remoteImageFailures?: Readonly<Record<string, number>>;
   readonly attachments: readonly Omit<NewReady, 'pageId'>[];
   /** The file items the attachments were made from: settled `ok` in the same transaction as the page and its rows, so a crash cannot leave a used file to be swept as unreferenced. */
   readonly attachmentItemIds?: readonly string[];

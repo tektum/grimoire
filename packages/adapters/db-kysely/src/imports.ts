@@ -13,12 +13,12 @@ interface ImportRow {
 
 interface ItemRow {
   id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
-  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number;
+  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; remote_failures: Record<string, number>;
 }
 
 const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error, bytes::text as bytes, s3_key,
   (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
-const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings';
+const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
 
 const ms = (value: string | null): number | null => (value === null ? null : Number(value));
 
@@ -28,7 +28,7 @@ const record = (r: ImportRow): ImportRecord => ({
 });
 
 const item = (r: ItemRow): ImportItem => ({
-  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings,
+  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings, remoteImageFailures: r.remote_failures,
 });
 
 /** The partial unique index of migration 0012: a tenant has one `running` import. */
@@ -71,9 +71,9 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async settle(tenantId, importId, itemId, outcome) {
       const rows = await scoped(db, tenantId).query(
-        `update import_items set status = $4, message = case when $4 = 'ok' then null else $5 end, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 then jsonb_build_object('warnings', $8::int) end, page_id = null, url_id = null
+        `update import_items set status = $4, message = case when $4 = 'ok' then null else $5 end, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb) end, page_id = null, url_id = null
          where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' and ($4 <> 'ok' or kind <> 'page') returning 1`,
-        [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null, outcome.warnings ?? 0],
+        [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null, outcome.warnings ?? 0, JSON.stringify(outcome.remoteImageFailures ?? {})],
       );
       return rows.length === 1;
     },
@@ -130,8 +130,8 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
           await tx.query(`update import_items set status = 'ok', message = null where tenant_id = $1 and import_id = $2 and id = any($3::bigint[]) and kind = 'attachment' and status = 'pending'`, [tenantId, importId, page.attachmentItemIds]);
         }
         await tx.query(
-          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 then jsonb_build_object('warnings', $8::int) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
-          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0],
+          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
+          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {})],
         );
         return { kind: 'ok', pageId: row.id, urlId: row.url_id };
       });

@@ -62,7 +62,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'attachment', 10), [], 'the second a.md did not replace the first');
       const first = items[0];
       assert.ok(typeof first?.pageId === 'string' && first.pageId !== '' && typeof first.urlId === 'string' && first.urlId !== '', 'a pending page item has both ids');
-      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0 });
+      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} });
     },
   },
   {
@@ -111,6 +111,21 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       const done = await h.repo.getItem(h.tenantId, made.id, file.id);
       assert.deepEqual([done?.status, done?.message, done?.pageId], ['ok', null, null]);
       assert.equal(await h.repo.settle(h.tenantId, made.id, file.id, { status: 'skipped', message: 'unreferenced' }), false, 'it is no longer pending');
+    },
+  },
+  {
+    name: 'the-reasons-remote-images-failed-are-kept-with-the-warnings',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'b.md', 'c.md'));
+      const [a, b, c] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(a && b && c);
+      const out = await h.repo.writePage(h.tenantId, made.id, pageOf(h, a.id, { collectionId: made.targetCollectionId, warnings: 3, remoteImageFailures: { timeout: 2, scheme: 1 } }), limits, h.now);
+      assert.equal(out.kind, 'ok');
+      await h.repo.settle(h.tenantId, made.id, b.id, { status: 'failed', message: 'invalid-markdown', warnings: 1, remoteImageFailures: { blocked_address: 1 } });
+      await h.repo.settle(h.tenantId, made.id, c.id, { status: 'skipped', message: 'too_large' });
+      const rows = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(rows.map((i) => [i.path, i.warnings, i.remoteImageFailures]), [['a.md', 3, { timeout: 2, scheme: 1 }], ['b.md', 1, { blocked_address: 1 }], ['c.md', 0, {}]]);
     },
   },
   {

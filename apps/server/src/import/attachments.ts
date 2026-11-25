@@ -7,6 +7,7 @@ import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import { readEntry } from './read-entry.js';
 import type { EntryOpener } from './read-entry.js';
+import type { RemoteBudget, RemoteResult } from './remote-images/index.js';
 import type { ZipEntry } from './zip-reader.js';
 
 /** The namespace of the ids of imported attachments (a fixed v4, so the same import, page and file always give the same id). */
@@ -67,15 +68,56 @@ export async function stageAttachment(ctx: StageContext, entry: ZipEntry, pagePa
   if (read.kind === 'failed') return { kind: 'rejected', status: 'failed', reason: read.reason };
   if (isCheckedType(judged.contentType) && (await ctx.settings.sniff(read.bytes.subarray(0, 512))) !== judged.contentType) return { kind: 'rejected', status: 'skipped', reason: 'type_mismatch' };
 
-  const id = attachmentIdFor(ctx.importId, pagePath, entry.path);
-  const key = attachmentKey(id, ctx.tenantId);
   const fileName = cleanFileName(entry.path.split('/').at(-1) ?? 'file');
+  return putObject(ctx, attachmentIdFor(ctx.importId, pagePath, entry.path), read.bytes, judged.contentType, fileName);
+}
+
+/** Puts the bytes create-only under the tenant's prefix (an object that is there from an earlier attempt must be of the same size) and answers the row and the address of the attachment. */
+async function putObject(ctx: StageContext, id: string, bytes: Buffer, contentType: string, fileName: string): Promise<Staged> {
+  const key = attachmentKey(id, ctx.tenantId);
   try {
-    await ctx.files.put(key, read.bytes, { size: read.bytes.length, contentType: judged.contentType, ifNoneMatch: true });
+    await ctx.files.put(key, bytes, { size: bytes.length, contentType, ifNoneMatch: true });
   } catch (e) {
     if (!(e instanceof FileStorageError) || e.kind !== 'already-exists') throw e;
     // An earlier attempt put it: it is the file when it has the same size.
-    if ((await ctx.files.head(key)).size !== read.bytes.length) return { kind: 'rejected', status: 'failed', reason: 'size_mismatch', scope: 'page' };
+    if ((await ctx.files.head(key)).size !== bytes.length) return { kind: 'rejected', status: 'failed', reason: 'size_mismatch', scope: 'page' };
   }
-  return { kind: 'ok', row: { id, uploaderId: ctx.uploaderId, fileName, contentType: judged.contentType, size: read.bytes.length, key, readyAt: ctx.now() }, url: markdownPathFor(id, fileName) };
+  return { kind: 'ok', row: { id, uploaderId: ctx.uploaderId, fileName, contentType, size: bytes.length, key, readyAt: ctx.now() }, url: markdownPathFor(id, fileName) };
+}
+
+const EXTENSION: Readonly<Record<string, string>> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' };
+
+/** The name a copied image is given: the last segment of the URL's path, or `image` and the type's extension when the URL names none. */
+function remoteFileName(url: string, contentType: string): string {
+  let last = '';
+  try { last = decodeURIComponent(new URL(url).pathname.split('/').filter((x) => x !== '').at(-1) ?? ''); } catch { last = ''; }
+  const name = cleanFileName(last === '' ? `image.${EXTENSION[contentType] ?? 'bin'}` : last);
+  return name;
+}
+
+export type RemoteStaged = StagedFile | { readonly kind: 'failed'; readonly reason: string };
+
+/**
+ * Copies a remote image into the tool before its page is written (M7 contracts section 5): the fetcher does the network and the checks of the address, the type and the size; what comes
+ * back is read to the end (at most the files limit), must be of a type an upload may be, non-empty, and must show that type in its first 512 bytes, and is put as an attachment of the
+ * page under an id made of the import, the page and the URL. Any refusal is a failure of this image only.
+ */
+export async function stageRemoteImage(ctx: StageContext, fetcher: { fetch(url: string, budget: RemoteBudget): Promise<RemoteResult> }, budget: RemoteBudget, url: string, pagePath: string): Promise<RemoteStaged> {
+  const got = await fetcher.fetch(url, budget);
+  if (!got.ok) return { kind: 'failed', reason: got.reason };
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of got.bytes) {
+    total += chunk.length;
+    if (total > ctx.settings.maxBytes) return { kind: 'failed', reason: 'too_large' };
+    chunks.push(Buffer.from(chunk));
+  }
+  const contentType = got.contentType.toLowerCase();
+  const meta = validateAttachmentMeta({ size: total, contentType }, { maxBytes: ctx.settings.maxBytes, allowedTypes: ctx.settings.allowedTypes });
+  if (!meta.ok) return { kind: 'failed', reason: meta.reason === 'too_large' ? 'too_large' : 'type' };
+  if (total === 0) return { kind: 'failed', reason: 'empty' };
+  const bytes = Buffer.concat(chunks);
+  if (isCheckedType(contentType) && (await ctx.settings.sniff(bytes.subarray(0, 512))) !== contentType) return { kind: 'failed', reason: 'type' };
+  const put = await putObject(ctx, attachmentIdFor(ctx.importId, pagePath, url), bytes, contentType, remoteFileName(url, contentType));
+  return put.kind === 'ok' ? put : { kind: 'failed', reason: put.reason };
 }

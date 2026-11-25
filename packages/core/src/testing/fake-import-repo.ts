@@ -56,7 +56,7 @@ export class FakeImportRepo implements ImportRepo {
       const id = String(this.next++);
       const pending = item.status === undefined;
       const ids = pending && item.kind === 'page' ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
-      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0 } });
+      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} } });
       added += 1;
     }
     return Promise.resolve(added);
@@ -75,7 +75,7 @@ export class FakeImportRepo implements ImportRepo {
     const at = this.stored.findIndex((s) => s.tenantId === tenantId && s.importId === importId && s.item.id === itemId && s.item.status === 'pending');
     const found = this.stored[at];
     if (found === undefined || (outcome.status === 'ok' && found.item.kind === 'page')) return Promise.resolve(false);
-    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, pageId: null, urlId: null, warnings: outcome.warnings ?? 0, message: outcome.status === 'ok' ? null : clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
+    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, pageId: null, urlId: null, warnings: outcome.warnings ?? 0, remoteImageFailures: outcome.remoteImageFailures ?? {}, message: outcome.status === 'ok' ? null : clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
     return Promise.resolve(true);
   }
 
@@ -94,7 +94,7 @@ export class FakeImportRepo implements ImportRepo {
     const position = page.position(lastOfParent, null);
     const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
     const urlId = found.item.urlId ?? `u${pageId}`;
-    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, remoteImageFailures: page.remoteImageFailures ?? {}, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
     for (const fileId of page.attachmentItemIds ?? []) {
       const f = this.stored.findIndex((x) => x.tenantId === tenantId && x.importId === importId && x.item.id === fileId && x.item.status === 'pending' && x.item.kind === 'attachment');
       const file = this.stored[f];
