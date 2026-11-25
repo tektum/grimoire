@@ -51,7 +51,7 @@ describe('what only the database does', () => {
     const repo = createImportRepo(t.app);
     const made = await seed('running');
     // The id is a bigserial that the API shows as text: a sort on the text column would put "10" before "9". Cross the digit boundary on purpose.
-    await t.app.query(`select setval('import_items_id_seq', 5)`);
+    await t.admin.query(`select setval('import_items_id_seq', 5)`);
     await repo.addItems('legacy', made.id, Array.from({ length: 12 }, (_, i) => ({ path: `p${String(i).padStart(2, '0')}.md`, kind: 'page' as const })));
     const ids = (await repo.scanItems('legacy', made.id, { limit: 50 })).map((i) => i.id);
     expect(ids).toEqual(Array.from({ length: 12 }, (_, i) => String(6 + i)));
