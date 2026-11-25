@@ -49,7 +49,9 @@ export function ImportForm({ onStarted, send }: { readonly onStarted: (id: strin
       try {
         await startImport(api, job.created.id);
       } catch (error) {
-        if (error instanceof ImportError && (error.code === 'upload_missing' || error.code === 'size_mismatch')) job.uploaded = false; // it did not arrive whole: send it again, to the same import
+        if (error instanceof ImportError && error.code === 'upload_missing') job.uploaded = false; // nothing arrived: send it again, to the same import
+        // Something did arrive, and not whole: the address is create-only, so a second PUT to it is refused, and the next try makes a new import with an address of its own.
+        if (error instanceof ImportError && error.code === 'size_mismatch') made.current = null;
         // The import is ours: a 409 on it is the start that did reach the server before the answer was lost, so it is running, and the person goes on to watch it.
         if (error instanceof ImportError && error.code === 'already_started') {
           made.current = null;
