@@ -24,6 +24,7 @@ const PINS: Readonly<Record<string, string>> = {
   cmdk: '1.1.1',
   sonner: '2.0.8',
   'react-arborist': '4.0.1',
+  'react-dnd-html5-backend': '16.0.1', // declared because the drag-image replacement imports it (src/vendor), not left to react-arborist's peer
   'lucide-react': '1.77.0',
   diff: '9.0.0',
   dompurify: '3.5.0',
