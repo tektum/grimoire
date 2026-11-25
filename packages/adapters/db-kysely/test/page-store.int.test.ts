@@ -224,6 +224,19 @@ describe('store', () => {
     expect(Buffer.from(loaded?.markdownHash ?? '')).toEqual(expectedHash('', 'M'));
     expect(await store.load('legacy', randomUUID())).toBeUndefined();
   });
+
+  it('a page of another tenant is no row: load, seed, store and repairMarkdown neither read nor write it', async () => {
+    const id = await newRow();
+    await sqlAdmin(DB, `update pages set markdown = 'M', ydoc = '\\x01', markdown_stale_since = now() where id = '${id}'`);
+    const store = createPageStore(db, ops, clock);
+    let built = 0;
+    expect(await store.load('T-a', id)).toBeUndefined();
+    expect(await store.seed('T-a', id, () => { built++; return Promise.resolve(new Uint8Array([2])); })).toEqual({ state: null, seeded: false, epoch: 0 });
+    expect(await store.store('T-a', id, converted())).toEqual({ written: false, reason: 'no-row' });
+    expect(await store.repairMarkdown('T-a', id, { state: new Uint8Array([1]), epoch: 0 }, { markdown: 'X', text: 'X' })).toBe('skipped');
+    expect(built).toBe(0);
+    expect(await row(id)).toMatchObject({ ydoc: Buffer.from([1]), markdown: 'M' });
+  });
 });
 
 describe('review fixes', () => {
