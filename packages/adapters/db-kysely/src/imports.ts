@@ -173,14 +173,14 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async scanItems(tenantId, importId, options) {
       const rows = await db.query<ItemRow>(
-        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and ($3::bigint is null or id > $3::bigint) order by id limit $4`,
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
         [tenantId, importId, options.afterId ?? null, options.limit],
       );
       return rows.map(item);
     },
     async listItems(tenantId, importId, options) {
       const rows = await db.query<ItemRow>(
-        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by id limit $4`,
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
         [tenantId, importId, options.afterId ?? null, options.limit],
       );
       return rows.map(item);

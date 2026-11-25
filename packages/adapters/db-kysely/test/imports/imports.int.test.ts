@@ -47,6 +47,34 @@ describe('the PostgreSQL ImportRepo meets the conformance cases', () => {
 });
 
 describe('what only the database does', () => {
+  it('scanItems and listItems order by the numeric id, not by the text of it (ids 9, 10, 11 are in that order)', async () => {
+    const repo = createImportRepo(t.app);
+    const made = await seed('running');
+    // The id is a bigserial that the API shows as text: a sort on the text column would put "10" before "9". Cross the digit boundary on purpose.
+    await t.app.query(`select setval('import_items_id_seq', 5)`);
+    await repo.addItems('legacy', made.id, Array.from({ length: 12 }, (_, i) => ({ path: `p${String(i).padStart(2, '0')}.md`, kind: 'page' as const })));
+    const ids = (await repo.scanItems('legacy', made.id, { limit: 50 })).map((i) => i.id);
+    expect(ids).toEqual(Array.from({ length: 12 }, (_, i) => String(6 + i)));
+    const paged: string[] = [];
+    for (let after: string | undefined; ;) {
+      const batch = await repo.scanItems('legacy', made.id, after === undefined ? { limit: 5 } : { limit: 5, afterId: after });
+      if (batch.length === 0) break;
+      paged.push(...batch.map((i) => i.id));
+      after = batch.at(-1)?.id;
+    }
+    expect(paged).toEqual(ids);
+    const settled = await repo.pending('legacy', made.id, 'page', 12);
+    for (const i of settled) await repo.settle('legacy', made.id, i.id, { status: 'skipped', message: 'ignored' });
+    const listed: string[] = [];
+    for (let after: string | undefined; ;) {
+      const batch = await repo.listItems('legacy', made.id, after === undefined ? { limit: 5 } : { limit: 5, afterId: after });
+      if (batch.length === 0) break;
+      listed.push(...batch.map((i) => i.id));
+      after = batch.at(-1)?.id;
+    }
+    expect(listed).toEqual(ids);
+  });
+
   it('two batches that race on the same paths add each path once', async () => {
     const repo = createImportRepo(t.app);
     const made = await seed('running');
