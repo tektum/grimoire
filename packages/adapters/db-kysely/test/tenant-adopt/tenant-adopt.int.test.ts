@@ -94,3 +94,27 @@ describe('tenant-adopt into a tenant that already exists', () => {
     expect(await t.admin.query(`select name, domain from tenants where id = 'early'`)).toEqual([{ name: 'early', domain: 'early' }]);
   });
 });
+
+describe('the tables adopt moves are the ones the database says carry a tenant', () => {
+  it('are the tables the test helpers list, so that a table added with a tenant_id is added in both or this fails', async () => {
+    const rows = await t.admin.query<{ table_name: string }>(`select c.table_name from information_schema.columns c join information_schema.tables x on x.table_schema = c.table_schema and x.table_name = c.table_name
+      where c.table_schema = 'public' and c.column_name = 'tenant_id' and x.table_type = 'BASE TABLE' and c.table_name <> 'tenants' order by 1`);
+    expect(rows.map((r) => r.table_name)).toEqual([...TENANT_TABLES].sort());
+  });
+
+  it('moves the rows of a tenant table it was never told about, and refuses a target that holds one (a later migration adds tables with a tenant_id: a table left behind would fail the composite keys at the commit)', async () => {
+    await run(`create table adopt_extra (id serial primary key, tenant_id text not null default 'legacy' references tenants (id))`);
+    try {
+      await addTenant(t.admin, 'extra-from');
+      await addTenant(t.admin, 'extra-busy');
+      await run(`insert into adopt_extra (tenant_id) values ('extra-from'), ('extra-from'), ('extra-busy')`);
+      expect(await adoptTenant(t.admin, { from: 'extra-from', to: 'extra-busy' })).toEqual({ kind: 'refused', reason: 'target-not-empty' });
+      await addTenant(t.admin, 'extra-to');
+      const result = await adoptTenant(t.admin, { from: 'extra-from', to: 'extra-to' });
+      expect(result).toMatchObject({ kind: 'done', moved: { adopt_extra: 2 } });
+      expect(await run(`select tenant_id, count(*)::int as n from adopt_extra group by 1 order by 1`)).toEqual([{ tenant_id: 'extra-busy', n: 1 }, { tenant_id: 'extra-to', n: 2 }]);
+    } finally {
+      await run(`drop table adopt_extra`);
+    }
+  });
+});
