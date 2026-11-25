@@ -122,7 +122,7 @@ export function createRecheck(o: RecheckOptions): Recheck {
   /** The decision for each distinct (user, page), in bounded batches; `undefined` when the database could not answer. */
   const decide = async (live: readonly (readonly [Connection, Tracked])[]): Promise<Map<string, PageAccess> | undefined> => {
     const requests = new Map<string, AccessRequest>();
-    for (const [, t] of live) requests.set(keyOf(t), { userId: t.userId, pageId: t.documentName });
+    for (const [, t] of live) requests.set(keyOf(t), { tenantId: t.tenantId ?? 'legacy', userId: t.userId, pageId: t.documentName });
     const keys = [...requests.keys()];
     const out = new Map<string, PageAccess>();
     // A query that timed out is still running in the database: the next round does not start another one on top of it (that would stack calls while the

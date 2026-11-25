@@ -79,7 +79,7 @@ router.openapi(search, async (c) => {
     }
   }
   // What the person may read is settled here and applied inside the query, so ranking, the limit and the cursor only ever see readable pages.
-  const visible = (await authorizer.visibleCollections(user.id)).map((v) => v.collectionId);
+  const visible = (await authorizer.visibleCollections(callerTenant(c), user.id)).map((v) => v.collectionId);
   const started = clock.now();
   try {
     const request = { tenantId: callerTenant(c), collectionIds: visible, query: q, limit, ...(cursor === undefined ? {} : { cursor }), ...(collectionId === undefined ? {} : { collectionId }) };

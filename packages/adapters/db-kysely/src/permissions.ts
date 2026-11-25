@@ -1,11 +1,14 @@
 import { DummyDriver, Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, sql } from 'kysely';
 import type { Compilable } from 'kysely';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import { scoped } from './index.js';
+import type { KyselyDatabase } from './index.js';
 import type { AccessFacts, AccessOptions, AccessRequest, AccessStore, CollectionAccessRequest, CollectionFacts, Permission } from '@tektum/grimoire-core/ports/access-store';
 import type { Role } from '@tektum/grimoire-core/ports/user-store';
 
-// The SQL form of R8.9 (decision 128: the server enforces access; there is no row-level security). The decision itself is `decide` in the core;
-// this file only reads facts (one statement per call, however many requests) and, for `visibleCollections`, repeats the same rule as a set query.
+// The SQL form of R8.9 (decision 128: the server enforces access; row-level security is only the backstop of docs/tenancy.md section 3.2). The decision
+// itself is `decide` in the core; this file only reads facts (one statement per tenant per call, however many requests, each scoped to the tenant of the
+// person asking) and, for `visibleCollections`, repeats the same rule as a set query.
 // The differential test in test/permissions compares both forms on random worlds.
 
 interface AccessTables {
@@ -54,14 +57,32 @@ interface Common { role: string | null; suspended_at: Date | null; user_found: b
 const userOf = (r: Common): { role: Role; suspended: boolean; tenantId?: string } | undefined => (r.user_found && r.role !== null && isRole(r.role) ? { role: r.role, suspended: r.suspended_at !== null, ...(r.user_tenant === null ? {} : { tenantId: r.user_tenant }) } : undefined);
 const entriesFrom = (v: readonly string[] | null): Permission[] => (v ?? []).flatMap((p) => asPermission(p) ?? []);
 
-export function createAccessStore(db: Queryable): AccessStore {
+/**
+ * Runs `read` once for each tenant the requests name (one, in practice), scoped to that tenant, and pairs each row with the request it answers: a row's
+ * `ord` is its request's place among the requests of its tenant.
+ */
+async function byTenant<Request extends { readonly tenantId: string }, Row extends { ord: unknown }>(
+  db: KyselyDatabase, valid: readonly { request: Request; i: number }[], read: (q: Queryable, part: readonly { request: Request }[]) => Promise<readonly Row[]>,
+): Promise<{ hit: { request: Request; i: number }; row: Row }[]> {
+  const out: { hit: { request: Request; i: number }; row: Row }[] = [];
+  for (const tenantId of new Set(valid.map((v) => v.request.tenantId))) {
+    const part = valid.filter((v) => v.request.tenantId === tenantId);
+    for (const row of await read(scoped(db, tenantId), part)) {
+      const hit = part[Number(row.ord) - 1];
+      if (hit) out.push({ hit, row });
+    }
+  }
+  return out;
+}
+
+export function createAccessStore(db: KyselyDatabase): AccessStore {
   return {
     async facts(requests: readonly AccessRequest[]): Promise<readonly AccessFacts[]> {
       const valid = requests.flatMap((request, i) => (UUID.test(request.userId) && UUID.test(request.pageId) ? [{ request, i }] : []));
       const out: AccessFacts[] = requests.map((request) => ({ request }));
       if (valid.length === 0) return out;
-      const rows = await run(db, builder
-        .with('r', () => sql<{ user_id: string; page_id: string; ord: number }>`(select * from unnest(${valid.map((v) => v.request.userId)}::uuid[], ${valid.map((v) => v.request.pageId)}::uuid[]) with ordinality as t(user_id, page_id, ord))`)
+      const found = await byTenant(db, valid, (q, part) => run(q, builder
+        .with('r', () => sql<{ user_id: string; page_id: string; ord: number }>`(select * from unnest(${part.map((v) => v.request.userId)}::uuid[], ${part.map((v) => v.request.pageId)}::uuid[]) with ordinality as t(user_id, page_id, ord))`)
         .selectFrom('r')
         .leftJoin('users as u', 'u.id', 'r.user_id')
         .leftJoin('pages as p', 'p.id', 'r.page_id')
@@ -72,10 +93,8 @@ export function createAccessStore(db: Queryable): AccessStore {
           sql<boolean>`c.id is not null`.as('page_found'),
           entriesOf('c.id', 'r.user_id').as('entries'),
         ])
-        .orderBy('r.ord'));
-      for (const row of rows) {
-        const hit = valid[Number(row.ord) - 1];
-        if (!hit) continue;
+        .orderBy('r.ord')));
+      for (const { hit, row } of found) {
         const user = userOf(row);
         const collection = { deleted: row.collection_deleted_at !== null, defaultPermission: asPermission(row.default_permission) ?? null, entries: entriesFrom(row.entries) };
         out[hit.i] = {
@@ -91,8 +110,8 @@ export function createAccessStore(db: Queryable): AccessStore {
       const valid = requests.flatMap((request, i) => (UUID.test(request.userId) && UUID.test(request.collectionId) ? [{ request, i }] : []));
       const out: CollectionFacts[] = requests.map((request) => ({ request }));
       if (valid.length === 0) return out;
-      const rows = await run(db, builder
-        .with('r', () => sql<{ user_id: string; collection_id: string; ord: number }>`(select * from unnest(${valid.map((v) => v.request.userId)}::uuid[], ${valid.map((v) => v.request.collectionId)}::uuid[]) with ordinality as t(user_id, collection_id, ord))`)
+      const found = await byTenant(db, valid, (q, part) => run(q, builder
+        .with('r', () => sql<{ user_id: string; collection_id: string; ord: number }>`(select * from unnest(${part.map((v) => v.request.userId)}::uuid[], ${part.map((v) => v.request.collectionId)}::uuid[]) with ordinality as t(user_id, collection_id, ord))`)
         .selectFrom('r')
         .leftJoin('users as u', 'u.id', 'r.user_id')
         .leftJoin('collections as c', 'c.id', 'r.collection_id')
@@ -102,10 +121,8 @@ export function createAccessStore(db: Queryable): AccessStore {
           sql<boolean>`c.id is not null`.as('collection_found'),
           entriesOf('c.id', 'r.user_id').as('entries'),
         ])
-        .orderBy('r.ord'));
-      for (const row of rows) {
-        const hit = valid[Number(row.ord) - 1];
-        if (!hit) continue;
+        .orderBy('r.ord')));
+      for (const { hit, row } of found) {
         const user = userOf(row);
         out[hit.i] = {
           request: hit.request,
@@ -116,7 +133,7 @@ export function createAccessStore(db: Queryable): AccessStore {
       return out;
     },
 
-    async visibleCollections(userId: string, opts?: AccessOptions) {
+    async visibleCollections(tenantId: string, userId: string, opts?: AccessOptions) {
       if (!UUID.test(userId)) return [];
       const includeDeleted = opts?.includeDeleted === true;
       // v: the best grant of the default permission and the user's entries (own and groups) per live collection; w: the role applied to it; then the filter.
@@ -126,11 +143,12 @@ export function createAccessStore(db: Queryable): AccessStore {
           union all
           select ca.permission from group_members gm join collection_access ca on ca.collection_id = c.id and ca.group_id = gm.group_id where gm.user_id = u.id
         ) e))`;
-      const rows = await run(db, builder
+      const rows = await run(scoped(db, tenantId), builder
         .with('v', (qc) => qc
           .selectFrom('users as u')
           .crossJoin('collections as c')
           .where('u.id', '=', userId)
+          .where('u.tenant_id', '=', tenantId)
           .whereRef('c.tenant_id', '=', 'u.tenant_id') // a collection of another tenant is not there (docs/tenancy.md, 3.3)
           .where('u.suspended_at', 'is', null)
           .$if(!includeDeleted, (q) => q.where('c.deleted_at', 'is', null))

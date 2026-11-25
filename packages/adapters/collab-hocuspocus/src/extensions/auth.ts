@@ -59,7 +59,7 @@ async function resolve(deps: CollabDeps, token: string, v: Extract<Verified, { k
   if (user.suspended !== false) return { kind: 'refused', refusal: new Refusal('forbidden', 'suspended') };
   // The provider's claim and our row must agree (docs/tenancy.md, section 6): a row of another tenant than the token names is a possible fault, refused and logged, not repaired.
   if (v.tenant?.kind === 'one' && user.tenantId !== undefined && user.tenantId !== v.tenant.id) return { kind: 'refused', refusal: new Refusal('forbidden', 'tenant-mismatch') };
-  const access = await deps.access.pageAccess({ userId: user.id, pageId });
+  const access = await deps.access.pageAccess({ tenantId: user.tenantId ?? 'legacy', userId: user.id, pageId });
   if (access.result !== 'allowed' || (access.access !== 'read-write' && access.access !== 'read-only')) return { kind: 'refused', refusal: new Refusal('not-found') };
   return { kind: 'allowed', user, access };
 }

@@ -41,11 +41,11 @@ async function failuresOfStore(store: AccessStore): Promise<number> {
   for (const [i, c] of accessCases.entries()) {
     const id = ids[i];
     if (!id) { bad++; continue; }
-    const d = await a.check({ userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
+    const d = await a.check({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
     if ((d.access === 'none' ? d.reason : d.access) !== c.expect) bad++;
     const want = collectionExpectOf(c);
     if (want !== 'skip') {
-      const k = await a.checkCollection({ userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
+      const k = await a.checkCollection({ tenantId: 'legacy', userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
       if ((k.access === 'none' ? k.reason : k.access) !== want) bad++;
     }
   }

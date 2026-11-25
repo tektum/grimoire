@@ -7,7 +7,7 @@ import type { AccessFacts, AccessRequest, AccessStore } from '../../src/ports/ac
 // tenant is refused as a page that is not there (never as a forbidden one), by the same decision the collaboration handshake, its re-check and the page routes use.
 const collection = { deleted: false, defaultPermission: 'read_write' as const, entries: [] };
 const facts = (user: string | undefined, page: string | undefined, role: 'admin' | 'member' | 'viewer' = 'member'): AccessFacts => ({
-  request: { userId: 'u', pageId: 'p' },
+  request: { tenantId: 'legacy', userId: 'u', pageId: 'p' },
   user: { role, suspended: false, ...(user === undefined ? {} : { tenantId: user }) },
   page: { deleted: false, epoch: 3, collection, ...(page === undefined ? {} : { tenantId: page }) },
 });
@@ -18,7 +18,7 @@ describe('a person and a page of different tenants', () => {
   });
 
   it('is the same answer however generous the collection is (a default of read and write, an administrator)', () => {
-    const noPage: AccessFacts = { request: { userId: 'u', pageId: 'p' }, user: facts('A', 'B', 'admin').user! };
+    const noPage: AccessFacts = { request: { tenantId: 'legacy', userId: 'u', pageId: 'p' }, user: facts('A', 'B', 'admin').user! };
     expect(decide(facts('A', 'B', 'admin'))).toEqual(decide(noPage));
   });
 
@@ -43,7 +43,7 @@ describe('a person and a page of different tenants', () => {
 
   it('keeps the other refusals first in their order: a suspended person is suspended, a missing user is no user, whatever the tenants', () => {
     expect(decide({ ...facts('A', 'B'), user: { role: 'member', suspended: true, tenantId: 'A' } })).toEqual({ access: 'none', reason: 'suspended' });
-    expect(decide({ request: { userId: 'u', pageId: 'p' }, page: facts('A', 'B').page! })).toEqual({ access: 'none', reason: 'no-user' });
+    expect(decide({ request: { tenantId: 'legacy', userId: 'u', pageId: 'p' }, page: facts('A', 'B').page! })).toEqual({ access: 'none', reason: 'no-user' });
   });
 });
 
@@ -53,22 +53,22 @@ describe('the collapsed answer the host and the routes use', () => {
     collectionFacts: async () => [],
     visibleCollections: async () => [],
   });
-  const access = createPageAccess(store({ 'a:pa': { ...facts('A', 'A'), request: { userId: 'a', pageId: 'pa' } }, 'a:pb': { ...facts('A', 'B'), request: { userId: 'a', pageId: 'pb' } } }));
+  const access = createPageAccess(store({ 'a:pa': { ...facts('A', 'A'), request: { tenantId: 'legacy', userId: 'a', pageId: 'pa' } }, 'a:pb': { ...facts('A', 'B'), request: { tenantId: 'legacy', userId: 'a', pageId: 'pb' } } }));
 
   it('says not-found for the page of another tenant, as for no page at all, and allowed for the own', async () => {
-    expect(await access.pageAccess({ userId: 'a', pageId: 'pb' })).toEqual({ result: 'not-found' });
-    expect(await access.pageAccess({ userId: 'a', pageId: 'nothing' })).toEqual({ result: 'not-found' });
-    expect(await access.pageAccess({ userId: 'a', pageId: 'pa' })).toEqual({ result: 'allowed', access: 'read-write', epoch: 3 });
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: 'a', pageId: 'pb' })).toEqual({ result: 'not-found' });
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: 'a', pageId: 'nothing' })).toEqual({ result: 'not-found' });
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: 'a', pageId: 'pa' })).toEqual({ result: 'allowed', access: 'read-write', epoch: 3 });
   });
 
   it('takes the same one round trip for the re-check of many, and drops only the page of the other tenant', async () => {
-    expect(await access.pageAccessMany([{ userId: 'a', pageId: 'pa' }, { userId: 'a', pageId: 'pb' }])).toEqual([{ result: 'allowed', access: 'read-write', epoch: 3 }, { result: 'not-found' }]);
+    expect(await access.pageAccessMany([{ tenantId: 'legacy', userId: 'a', pageId: 'pa' }, { tenantId: 'legacy', userId: 'a', pageId: 'pb' }])).toEqual([{ result: 'allowed', access: 'read-write', epoch: 3 }, { result: 'not-found' }]);
   });
 });
 
 describe('a collection of another tenant (docs/tenancy.md, 3.3)', () => {
   const inCollection = (user: string | undefined, collection: string | undefined, role: 'admin' | 'member' | 'viewer' = 'member') => ({
-    request: { userId: 'u', collectionId: 'c' },
+    request: { tenantId: 'legacy', userId: 'u', collectionId: 'c' },
     user: { role, suspended: false, ...(user === undefined ? {} : { tenantId: user }) },
     collection: { deleted: false, defaultPermission: 'read_write' as const, entries: [], ...(collection === undefined ? {} : { tenantId: collection }) },
   });

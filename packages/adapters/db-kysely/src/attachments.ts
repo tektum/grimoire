@@ -1,5 +1,6 @@
 import type { AttachmentRepo, AttachmentRow, CreatePendingResult } from '@tektum/grimoire-core/ports/attachment-repo';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import { scoped } from './index.js';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -27,12 +28,15 @@ const record = (r: Row): AttachmentRow => ({
 const isForeignKeyViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23503';
 /** `deleted_at` is set by the trash purge on a row whose object it already removed but whose page was restored in between: `get` and `getMany` do not return such a row. */
 
-/** The PostgreSQL AttachmentRepo over `attachments`. */
+/**
+ * The PostgreSQL AttachmentRepo over `attachments`. Every method but `insertReady` runs scoped to the tenant it is given and filters on it (docs/tenancy.md
+ * section 3.2); `insertReady` runs on the caller's transaction (the importer's, scoped already).
+ */
 export function createAttachments(db: KyselyDatabase): AttachmentRepo {
   return {
     async createPending(input, cap, now) {
       try {
-        return await db.transaction(async (tx): Promise<CreatePendingResult> => {
+        return await scoped(db, input.tenantId).transaction(async (tx): Promise<CreatePendingResult> => {
           // One user's creates run one after the other: the user's row is locked for the count and the insert (a lock that leaves other readers and the row's
           // own foreign-key checks alone), so parallel creates cannot all see room for one more.
           const user = await tx.query(`select 1 from users where id = $1 for no key update`, [input.uploaderId]);
@@ -44,8 +48,8 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
           if ((counted[0]?.n ?? 0) >= cap) return { kind: 'cap' };
           const rows = await tx.query<Row>(
             `insert into attachments (id, page_id, uploader_id, file_name, content_type, size, s3_key, status, expires_at, tenant_id)
-             values ($1, $2, $3, $4, $5, $6, $7, 'pending', to_timestamp($8::double precision / 1000.0), coalesce($9::text, (select tenant_id from pages where id = $2), 'legacy')) returning ${COLUMNS}`,
-            [input.id, input.pageId, input.uploaderId, input.fileName, input.contentType, input.size, input.key, input.expiresAt, input.tenantId ?? null],
+             values ($1, $2, $3, $4, $5, $6, $7, 'pending', to_timestamp($8::double precision / 1000.0), $9) returning ${COLUMNS}`,
+            [input.id, input.pageId, input.uploaderId, input.fileName, input.contentType, input.size, input.key, input.expiresAt, input.tenantId],
           );
           return { kind: 'created', row: record(rows[0] as Row) };
         });
@@ -54,29 +58,29 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
         throw e;
       }
     },
-    async get(id) {
-      const rows = await db.query<Row>(`select ${COLUMNS} from attachments where id = $1 and deleted_at is null`, [id]);
+    async get(tenantId, id) {
+      const rows = await scoped(db, tenantId).query<Row>(`select ${COLUMNS} from attachments where id = $1 and tenant_id = $2 and deleted_at is null`, [id, tenantId]);
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
-    async getMany(ids) {
+    async getMany(tenantId, ids) {
       if (ids.length === 0) return [];
-      return (await db.query<Row>(`select ${COLUMNS} from attachments where id = any($1::uuid[]) and deleted_at is null`, [ids])).map(record);
+      return (await scoped(db, tenantId).query<Row>(`select ${COLUMNS} from attachments where id = any($1::uuid[]) and tenant_id = $2 and deleted_at is null`, [ids, tenantId])).map(record);
     },
-    async markReady(id, now) {
-      const rows = await db.query<Row>(
-        `update attachments set status = 'ready', ready_at = to_timestamp($2::double precision / 1000.0), expires_at = null where id = $1 and status = 'pending' and deleted_at is null and expires_at > to_timestamp($2::double precision / 1000.0) returning ${COLUMNS}`,
-        [id, now],
+    async markReady(tenantId, id, now) {
+      const rows = await scoped(db, tenantId).query<Row>(
+        `update attachments set status = 'ready', ready_at = to_timestamp($2::double precision / 1000.0), expires_at = null where id = $1 and tenant_id = $3 and status = 'pending' and deleted_at is null and expires_at > to_timestamp($2::double precision / 1000.0) returning ${COLUMNS}`,
+        [id, now, tenantId],
       );
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
-    async remove(id) {
-      await db.query(`delete from attachments where id = $1`, [id]);
+    async remove(tenantId, id) {
+      await scoped(db, tenantId).query(`delete from attachments where id = $1 and tenant_id = $2`, [id, tenantId]);
     },
-    async removeIfPending(id) {
-      return (await db.query(`delete from attachments where id = $1 and status = 'pending' returning id`, [id])).length > 0;
+    async removeIfPending(tenantId, id) {
+      return (await scoped(db, tenantId).query(`delete from attachments where id = $1 and tenant_id = $2 and status = 'pending' returning id`, [id, tenantId])).length > 0;
     },
     async expiredPending(tenantId, now, limit) {
-      return (await db.query<Row>(
+      return (await scoped(db, tenantId).query<Row>(
         `select ${COLUMNS} from attachments where tenant_id = $3 and status = 'pending' and expires_at < to_timestamp($1::double precision / 1000.0) order by expires_at, id limit $2`,
         [now, limit, tenantId],
       )).map(record);

@@ -71,9 +71,9 @@ export async function addTenant(db: KyselyDatabase, id: string): Promise<void> {
 }
 
 /** `d` with every statement of the connections `scoped(d, tenant)` takes passed to `around`, which runs it (or not) with `run`. Its own `query` and `transaction` are unchanged. */
-export function aroundScoped(d: KyselyDatabase, around: (sql: string, run: () => Promise<QueryResult<unknown>>) => Promise<QueryResult<unknown>>): KyselyDatabase {
+export function aroundScoped(d: KyselyDatabase, around: (sql: string, run: () => Promise<QueryResult<unknown>>, params: readonly unknown[]) => Promise<QueryResult<unknown>>): KyselyDatabase {
   const wrap = (one: Kysely<GrimoireTables>) => new Proxy(one, {
-    get: (k, p) => (p === 'executeQuery' ? (q: CompiledQuery) => around(q.sql, () => k.executeQuery(q)) : Reflect.get(k, p)) as unknown,
+    get: (k, p) => (p === 'executeQuery' ? (q: CompiledQuery) => around(q.sql, () => k.executeQuery(q), q.parameters) : Reflect.get(k, p)) as unknown,
   });
   const connection = () => ({ execute: <T>(fn: (one: Kysely<GrimoireTables>) => Promise<T>) => d.kysely.connection().execute((one) => fn(wrap(one))) });
   return { ...d, kysely: new Proxy(d.kysely, { get: (k, p) => (p === 'connection' ? connection : Reflect.get(k, p)) as unknown }) };

@@ -7,7 +7,10 @@ import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAdmin } from '../src/admin.js';
+import { createAttachments } from '../src/attachments.js';
 import { createAudit } from '../src/audit.js';
+import { scoped } from '../src/index.js';
+import { createAccessStore } from '../src/permissions.js';
 import { createCollections } from '../src/collections.js';
 import { createEmbeddingStore } from '../src/embeddings.js';
 import { createIdempotency } from '../src/idempotency.js';
@@ -72,7 +75,7 @@ const place = (before: string | null, after: string | null) => ordering.between(
 const last = (l: string | null) => ordering.between(l, null);
 const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 let t: TestDatabase;
-let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined; importId: string; item?: string | undefined; skipped?: string | undefined; hash?: Uint8Array | undefined };
+let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined; importId: string; item?: string | undefined; skipped?: string | undefined; attachment?: string; hash?: Uint8Array | undefined };
 
 beforeAll(async () => {
   t = await createTestDatabase('scopedrepos');
@@ -118,6 +121,8 @@ const vector = Float32Array.from([1, 0, 0]);
 const pageState = () => createPageState(t.app);
 const imports = () => createImportRepo(t.app);
 const search = () => createSearchRepo(t.app, { statementTimeoutMs: 5000 });
+const access = () => createAccessStore(t.app);
+const attachments = () => createAttachments(t.app);
 const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>> = {
   admin: {
     listUsers: (tn) => admin().listUsers(tn, { q: 'guard', limit: 10, after: ['a@example.com', s.boss] }),
@@ -210,6 +215,26 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
   search: {
     search: (tn) => search().search({ tenantId: tn, collectionIds: [s.collection], query: 'imported', limit: 10 }),
   },
+  access: {
+    facts: (tn) => access().facts([{ tenantId: tn, userId: s.boss, pageId: s.page }]),
+    collectionFacts: (tn) => access().collectionFacts([{ tenantId: tn, userId: s.boss, collectionId: s.collection }]),
+    visibleCollections: (tn) => access().visibleCollections(tn, s.boss),
+  },
+  attachments: {
+    createPending: async (tn) => {
+      const id = randomUUID();
+      const made = await attachments().createPending({ id, pageId: s.page, uploaderId: s.boss, fileName: 'a.png', contentType: 'image/png', size: 1, key: `tenants/${tn}/attachments/${id}`, tenantId: tn, expiresAt: Date.now() + 60_000 }, 10, Date.now());
+      if (made.kind === 'created') s.attachment = id;
+    },
+    get: (tn) => attachments().get(tn, s.attachment ?? ''),
+    getMany: (tn) => attachments().getMany(tn, [s.attachment ?? '']),
+    markReady: (tn) => attachments().markReady(tn, s.attachment ?? '', Date.now()),
+    removeIfPending: (tn) => attachments().removeIfPending(tn, s.attachment ?? ''),
+    remove: (tn) => attachments().remove(tn, s.attachment ?? ''),
+    expiredPending: (tn) => attachments().expiredPending(tn, Date.now(), 10),
+    // Runs on the caller's transaction: the importer's, scoped to its tenant.
+    insertReady: (tn) => scoped(t.app, tn).transaction((tx) => attachments().insertReady({ id: randomUUID(), pageId: s.page, uploaderId: s.boss, fileName: 'b.png', contentType: 'image/png', size: 1, key: `tenants/${tn}/attachments/b`, readyAt: Date.now() }, tx)),
+  },
 };
 // The methods that cross tenants, on the operator connection (docs/tenancy.md section 3.2): each runs every statement in an operator transaction.
 const operatorCalls: Record<string, Record<string, () => Promise<unknown>>> = {
@@ -231,7 +256,7 @@ const crossTenant: Record<string, readonly string[]> = {
 
 describe('the tenant-scoped repositories', () => {
   it('list every method here, as scoped, on the operator connection, or as crossing tenants', () => {
-    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), pageState: pageState(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings(), imports: imports(), search: search() };
+    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), pageState: pageState(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings(), imports: imports(), search: search(), access: access(), attachments: attachments() };
     for (const [name, repo] of Object.entries(repos)) {
       const listed = new Set([...Object.keys(calls[name] ?? {}), ...Object.keys(operatorCalls[name] ?? {}), ...(crossTenant[name] ?? [])]);
       expect(Object.keys(repo).sort(), name).toEqual([...listed].sort());

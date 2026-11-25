@@ -111,7 +111,7 @@ const router = createRouter();
 
 router.openapi(listCollections, async (c) => {
   const { authorizer, collections } = c.get('deps');
-  const visible = await authorizer.visibleCollections(caller(c).id);
+  const visible = await authorizer.visibleCollections(callerTenant(c), caller(c).id);
   const levels = new Map(visible.map((v) => [v.collectionId, v.access] as const));
   const rows = await collections.listLive(callerTenant(c), [...levels.keys()]);
   return c.json({ items: rows.map((row) => present(row, levels.get(row.id) as Level)) }, 200);

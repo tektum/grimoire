@@ -36,7 +36,7 @@ describe('cleanupExpiredAttachments', () => {
 
   it('removes an object whose row is already gone, and does not count a row that completed in the meantime', async () => {
     const w = await world();
-    const racing = { ...w.repo, expiredPending: w.repo.expiredPending.bind(w.repo), removeIfPending: (id: string) => (id === 'e1' ? Promise.resolve(false) : w.repo.removeIfPending(id)) } as unknown as typeof w.repo;
+    const racing = { ...w.repo, expiredPending: w.repo.expiredPending.bind(w.repo), removeIfPending: (tenantId: string, id: string) => (id === 'e1' ? Promise.resolve(false) : w.repo.removeIfPending(tenantId, id)) } as unknown as typeof w.repo;
     expect(await cleanupExpiredAttachments({ repo: racing, files: w.files, tenantId: 'legacy', now: () => NOW, batch: 100 })).toBe(1);
   });
 

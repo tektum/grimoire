@@ -92,7 +92,7 @@ describe(`SQL form against the pure decision (seed ${String(SEED)})`, () => {
       const absentUser = uuidOf('absent', 1), absentPage = uuidOf('absent', 2), absentCollection = uuidOf('absent', 3);
       const users = [...world.users.map((u) => u.id), absentUser];
       const pages = [...world.pages.map((p) => p.id), absentPage];
-      const requests = users.flatMap((userId) => pages.map((pageId) => ({ userId, pageId })));
+      const requests = users.flatMap((userId) => pages.map((pageId) => ({ tenantId: 'legacy', userId, pageId })));
       const fromSql = await sqlAuth.checkMany(requests);
       const fromFake = await fakeAuth.checkMany(requests);
       requests.forEach((r, i) => {
@@ -106,7 +106,7 @@ describe(`SQL form against the pure decision (seed ${String(SEED)})`, () => {
           triples++;
         }
         const collections = [...world.collections.map((c) => c.id), absentCollection];
-        const cReqs = users.flatMap((userId) => collections.map((collectionId) => ({ userId, collectionId })));
+        const cReqs = users.flatMap((userId) => collections.map((collectionId) => ({ tenantId: 'legacy', userId, collectionId })));
         const cFacts = await createAccessStore(db).collectionFacts(cReqs);
         expect(cFacts.length).toBe(cReqs.length);
         for (const r of cReqs) {
@@ -116,7 +116,7 @@ describe(`SQL form against the pure decision (seed ${String(SEED)})`, () => {
         }
         for (const userId of users) {
           const where = `seed ${String(SEED)} world ${String(n)} includeDeleted ${String(includeDeleted)} visibleCollections of ${userId}`;
-          expect(await sqlAuth.visibleCollections(userId, { includeDeleted }), where).toEqual(await fakeAuth.visibleCollections(userId, { includeDeleted }));
+          expect(await sqlAuth.visibleCollections('legacy', userId, { includeDeleted }), where).toEqual(await fakeAuth.visibleCollections('legacy', userId, { includeDeleted }));
           triples++;
         }
       }

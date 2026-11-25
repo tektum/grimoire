@@ -6,7 +6,8 @@ import type { AccessFacts, AccessOptions, AccessRequest, AccessStore, Collection
 const accessStore: AccessStore = {
   facts: async (requests: readonly AccessRequest[]) => requests.map((request): AccessFacts => ({ request })),
   collectionFacts: async (requests: readonly CollectionAccessRequest[]) => requests.map((request): CollectionFacts => ({ request })),
-  async visibleCollections(userId: string, opts?: AccessOptions): Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]> {
+  async visibleCollections(tenantId: string, userId: string, opts?: AccessOptions): Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]> {
+    void tenantId;
     void userId;
     void opts;
     return [];
@@ -27,18 +28,18 @@ const verifier: AuthVerifier = {
 };
 
 const collectionFacts: CollectionFacts = {
-  request: { userId: 'u', collectionId: 'c' },
+  request: { tenantId: 'legacy', userId: 'u', collectionId: 'c' },
   collection: { deleted: false, defaultPermission: null, entries: [permission] },
 };
 const options: AccessOptions = { includeDeleted: true };
 
 it('imports every AccessStore port name and checks its exact query signatures', async () => {
-  expectTypeOf(accessStore.facts([{ userId: 'u', pageId: 'p' }])).toEqualTypeOf<Promise<readonly AccessFacts[]>>();
+  expectTypeOf(accessStore.facts([{ tenantId: 'legacy', userId: 'u', pageId: 'p' }])).toEqualTypeOf<Promise<readonly AccessFacts[]>>();
   expectTypeOf(accessStore.collectionFacts([collectionFacts.request])).toEqualTypeOf<Promise<readonly CollectionFacts[]>>();
-  expectTypeOf(accessStore.visibleCollections('u', options)).toEqualTypeOf<Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]>>();
-  expect(await accessStore.facts([{ userId: 'u', pageId: 'p' }])).toEqual([{ request: { userId: 'u', pageId: 'p' } }]);
+  expectTypeOf(accessStore.visibleCollections('legacy', 'u', options)).toEqualTypeOf<Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]>>();
+  expect(await accessStore.facts([{ tenantId: 'legacy', userId: 'u', pageId: 'p' }])).toEqual([{ request: { tenantId: 'legacy', userId: 'u', pageId: 'p' } }]);
   expect(await accessStore.collectionFacts([collectionFacts.request])).toEqual([{ request: collectionFacts.request }]);
-  expect(await accessStore.visibleCollections('u', options)).toEqual([]);
+  expect(await accessStore.visibleCollections('legacy', 'u', options)).toEqual([]);
   expectTypeOf<keyof AccessFacts>().toEqualTypeOf<'request' | 'user' | 'page'>();
   expectTypeOf<keyof CollectionFacts>().toEqualTypeOf<'request' | 'user' | 'collection'>();
 });

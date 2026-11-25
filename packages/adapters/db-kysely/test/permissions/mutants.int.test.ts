@@ -8,6 +8,7 @@ import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { accessCases, collectionExpectOf, worldOfCases } from '@tektum/grimoire-core/testing/access-cases';
 import { createFakeAccessStore } from '@tektum/grimoire-core/testing/fake-access-store';
 import type { AccessStore } from '@tektum/grimoire-core/ports/access-store';
+import * as handles from '../../src/index.js';
 import { createDatabase } from '../../src/index.js';
 import type { KyselyDatabase } from '../../src/index.js';
 import { createAccessStore } from '../../src/permissions.js';
@@ -27,14 +28,14 @@ async function failures(store: AccessStore): Promise<number> {
   for (const [i, c] of accessCases.entries()) {
     const id = ids[i];
     if (!id) { bad++; continue; }
-    const d = await a.check({ userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
+    const d = await a.check({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
     if ((d.access === 'none' ? d.reason : d.access) !== c.expect) bad++;
     if (collectionExpectOf(c) !== 'skip') {
-      const k = await a.checkCollection({ userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
+      const k = await a.checkCollection({ tenantId: 'legacy', userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
       if ((k.access === 'none' ? k.reason : k.access) !== collectionExpectOf(c)) bad++;
     }
-    const listed = (await a.visibleCollections(id.userId, { includeDeleted: c.includeDeleted })).filter((r) => r.collectionId !== UNFILED); // the migration's own collection is not in the table's world
-    if (JSON.stringify(listed) !== JSON.stringify(await fake.visibleCollections(id.userId, { includeDeleted: c.includeDeleted }))) bad++;
+    const listed = (await a.visibleCollections('legacy', id.userId, { includeDeleted: c.includeDeleted })).filter((r) => r.collectionId !== UNFILED); // the migration's own collection is not in the table's world
+    if (JSON.stringify(listed) !== JSON.stringify(await fake.visibleCollections('legacy', id.userId, { includeDeleted: c.includeDeleted }))) bad++;
   }
   return bad;
 }
@@ -49,7 +50,8 @@ function mutant(name: string, edits: readonly (readonly [string, string])[]): Ac
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const fn: unknown = runInThisContext(`(function (module, exports, require) {${js}\n})`, { filename: `mutant-${name}.js` });
   const mod: { exports: { createAccessStore?: typeof createAccessStore } } = { exports: {} };
-  Reflect.apply(fn as (...a: unknown[]) => unknown, undefined, [mod, mod.exports, (id: string) => (id === 'kysely' ? kysely : {})]);
+  // Its runtime imports: kysely, and `scoped` from the package's own index.
+  Reflect.apply(fn as (...a: unknown[]) => unknown, undefined, [mod, mod.exports, (id: string) => (id === 'kysely' ? kysely : id === './index.js' ? handles : {})]);
   if (!mod.exports.createAccessStore) throw new Error(`mutant ${name}: no createAccessStore`);
   return mod.exports.createAccessStore(db);
 }

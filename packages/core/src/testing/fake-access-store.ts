@@ -45,10 +45,10 @@ export function createFakeAccessStore(world: World): AccessStore {
   return {
     facts: (rs) => Promise.resolve(rs.map(pageFacts)),
     collectionFacts: (rs) => Promise.resolve(rs.map(collectionFacts)),
-    visibleCollections(userId: string, opts?: AccessOptions) {
+    visibleCollections(tenantId: string, userId: string, opts?: AccessOptions) {
       const out: { collectionId: string; access: 'read-write' | 'read-only' }[] = [];
       for (const c of world.collections) {
-        const d = decideCollection(collectionFacts({ userId, collectionId: c.id }), opts);
+        const d = decideCollection(collectionFacts({ tenantId, userId, collectionId: c.id }), opts);
         if (d.access !== 'none') out.push({ collectionId: c.id, access: d.access });
       }
       return Promise.resolve(out);

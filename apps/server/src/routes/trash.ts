@@ -81,13 +81,13 @@ router.openapi(listTrash, async (c) => {
   let scope: readonly string[] | null;
   if (collectionId !== undefined) {
     // One collection: it must be writable by the caller (an administrator: any), or it is not there for them.
-    const decision = await authorizer.checkCollection({ userId: user.id, collectionId }, { includeDeleted: true });
+    const decision = await authorizer.checkCollection({ tenantId: callerTenant(c), userId: user.id, collectionId }, { includeDeleted: true });
     if (user.role !== 'admin' && decision.access !== 'read-write') return fail('not_found');
     scope = [collectionId];
   } else if (user.role === 'admin') {
     scope = null;
   } else {
-    const visible = await authorizer.visibleCollections(user.id, { includeDeleted: true });
+    const visible = await authorizer.visibleCollections(callerTenant(c), user.id, { includeDeleted: true });
     scope = visible.filter((v) => v.access === 'read-write').map((v) => v.collectionId);
   }
   const keys = decodeCursor('trash', cursor, 2);
@@ -113,7 +113,7 @@ router.openapi(restoreFromTrash, async (c) => {
   const root = await trash.rootOf(callerTenant(c), id);
   if (root === undefined) return fail('not_found');
   // Write access on the collection of the page, deleted or not. A reader without write, and anyone who cannot read, get the same 404.
-  const decision = await authorizer.checkCollection({ userId: user.id, collectionId: root.collectionId }, { includeDeleted: true });
+  const decision = await authorizer.checkCollection({ tenantId: callerTenant(c), userId: user.id, collectionId: root.collectionId }, { includeDeleted: true });
   if (decision.access !== 'read-write') return fail('not_found');
   // The restore is bound to the collection that was checked: a page that moved since is not restored on that check.
   const result = await trash.restore(callerTenant(c), id, root.collectionId, addLimits(c), (before, after) => ordering.between(before, after));

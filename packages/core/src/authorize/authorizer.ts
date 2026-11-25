@@ -6,7 +6,7 @@ export interface Authorizer {
   check(r: AccessRequest, opts?: AccessOptions): Promise<AccessDecision>;
   checkMany(rs: readonly AccessRequest[]): Promise<readonly AccessDecision[]>;
   checkCollection(r: CollectionAccessRequest, opts?: AccessOptions): Promise<CollectionDecision>;
-  visibleCollections(userId: string, opts?: AccessOptions): Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]>;
+  visibleCollections(tenantId: string, userId: string, opts?: AccessOptions): Promise<readonly { collectionId: string; access: 'read-write' | 'read-only' }[]>;
 }
 
 /**
@@ -35,8 +35,8 @@ export function createAuthorizer(store: AccessStore): Authorizer {
       const own = f !== undefined && f.request.userId === r.userId && f.request.collectionId === r.collectionId;
       return decideCollection(own ? f : { request: r }, opts);
     },
-    async visibleCollections(userId, opts) {
-      const rows = await store.visibleCollections(userId, opts);
+    async visibleCollections(tenantId, userId, opts) {
+      const rows = await store.visibleCollections(tenantId, userId, opts);
       return rows.filter((row) => row.access === 'read-write' || row.access === 'read-only');
     },
   };

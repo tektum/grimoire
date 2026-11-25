@@ -22,7 +22,7 @@ export const callerTenant = (c: Context<AppEnv>): string => caller(c).tenantId ?
 export async function guardCollection(c: Context<AppEnv>, collectionId: string, need: 'read' | 'write' | 'admin'): Promise<Level> {
   const user = caller(c);
   if ((await c.get('deps').collections.get(callerTenant(c), collectionId)) === undefined) return fail('not_found');
-  const decision = await c.get('deps').authorizer.checkCollection({ userId: user.id, collectionId });
+  const decision = await c.get('deps').authorizer.checkCollection({ tenantId: callerTenant(c), userId: user.id, collectionId });
   if (decision.access === 'none') return fail('not_found');
   if (need === 'admin' && user.role !== 'admin') return fail('forbidden');
   if (need === 'write' && decision.access !== 'read-write') return fail('forbidden');
