@@ -631,6 +631,15 @@ describe('cancelling an import', () => {
     expect(await screen.findByText('docs/a.md')).toBeTruthy();
   });
 
+  it('is offered while the import waits for its turn too, and cancelling it says it is cancelled', async () => {
+    const t = fake({ states: [state({ status: 'uploaded' }), state({ status: 'cancelled' })] });
+    show(t.api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Waiting to start…'));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel import' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Cancelled. The pages it created were moved to the trash.'));
+    expect(t.calls).toContain('POST /v1/imports/{id}/cancel');
+  });
+
   it('is not offered for an import that has not started or has ended', async () => {
     show(fake({ states: [ended()] }).api, '/import?import=imp1');
     await screen.findByRole('status');

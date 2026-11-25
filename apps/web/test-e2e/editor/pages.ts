@@ -6,6 +6,8 @@ export interface MadePage {
   readonly id: string;
   readonly urlId: string;
   readonly collectionId: string;
+  /** The name of the collection (what the import screen lists it as). */
+  readonly collectionName: string;
   /** The address of the page in the app. */
   readonly path: string;
 }
@@ -38,9 +40,23 @@ async function call<T>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string
  * for everyone else: `read_write` lets the e2e users edit, `read` makes them readers.
  */
 export async function makePage(markdown: string, options: { title?: string; permission?: 'read' | 'read_write' } = {}): Promise<MadePage> {
-  const collection = await call<{ id: string }>('POST', '/v1/collections', { name: `e2e ${randomUUID().slice(0, 8)}`, defaultPermission: options.permission ?? 'read_write' });
+  const name = `e2e ${randomUUID().slice(0, 8)}`;
+  const collection = await call<{ id: string }>('POST', '/v1/collections', { name, defaultPermission: options.permission ?? 'read_write' });
   const page = await call<{ id: string; urlId: string }>('POST', '/v1/pages', { collectionId: collection.id, markdown, title: options.title ?? 'Editor page' });
-  return { id: page.id, urlId: page.urlId, collectionId: collection.id, path: `/p/page-${page.urlId}` };
+  return { id: page.id, urlId: page.urlId, collectionId: collection.id, collectionName: name, path: `/p/page-${page.urlId}` };
+}
+
+/** `count` pages in one new collection, each with the title and the Markdown `make` gives for its number: for a specification that needs more results than a page of a list holds. */
+export async function makePagesIn(count: number, make: (n: number) => { title: string; markdown: string }, options: { permission?: 'read' | 'read_write' } = {}): Promise<{ collectionId: string; collectionName: string; pages: { id: string; urlId: string; title: string }[] }> {
+  const name = `e2e ${randomUUID().slice(0, 8)}`;
+  const collection = await call<{ id: string }>('POST', '/v1/collections', { name, defaultPermission: options.permission ?? 'read_write' });
+  const pages: { id: string; urlId: string; title: string }[] = [];
+  for (let n = 0; n < count; n += 1) {
+    const { title, markdown } = make(n);
+    const page = await call<{ id: string; urlId: string }>('POST', '/v1/pages', { collectionId: collection.id, markdown, title });
+    pages.push({ id: page.id, urlId: page.urlId, title });
+  }
+  return { collectionId: collection.id, collectionName: name, pages };
 }
 
 /** Changes what everyone without an entry of their own may do in a collection (`null`: nothing), as an administrator. The open editors of its pages learn of it at the server's next access check. */

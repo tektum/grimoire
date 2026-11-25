@@ -66,7 +66,8 @@ function Importing() {
               The progress can&rsquo;t be read right now. <Button onClick={() => void state.refetch()}>Try again</Button>
             </p>
           ) : null}
-          {state.data.status === 'running' ? (
+          {/* Running, or accepted and waiting for its turn (`uploaded`): both can be cancelled (R6.43). */}
+          {state.data.status === 'running' || state.data.status === 'uploaded' ? (
             <Button
               disabled={cancelling}
               onClick={() => {
@@ -76,7 +77,7 @@ function Importing() {
               Cancel import
             </Button>
           ) : null}
-          {cancelFailed && state.data.status === 'running' ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
+          {cancelFailed && (state.data.status === 'running' || state.data.status === 'uploaded') ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
           {ENDED.includes(state.data.status) && id !== null ? <Report key={id} api={api} id={id} /> : null}
           {state.data.status === 'running' || state.data.status === 'created' || state.data.status === 'uploaded' ? null : (
             <Button
