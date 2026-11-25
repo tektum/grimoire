@@ -1,5 +1,5 @@
-import { cleanItemText as clean, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
-import type { ImportCounts, ImportItem, ImportItemKind, ImportRecord, ImportRepo, ItemOutcome, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
+import { cleanItemText as clean, ImportBusyError, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
+import type { ImportCounts, ImportItem, ImportItemKind, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
 
@@ -11,8 +11,8 @@ export class FakeImportRepo implements ImportRepo {
   private readonly stored: Stored[] = [];
   private next = 1;
 
-  seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy'> & Partial<ImportRecord>): ImportRecord {
-    const full: ImportRecord = { source: 'markdown_zip', targetCollectionId: 'c', createdBy: null, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, ...row };
+  seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy' | 'bytes' | 's3Key'> & Partial<ImportRecord>): ImportRecord {
+    const full: ImportRecord = { bytes: null, s3Key: null, source: 'markdown_zip', targetCollectionId: 'c', createdBy: null, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, ...row };
     this.rows.push(full);
     return full;
   }
@@ -90,6 +90,7 @@ export class FakeImportRepo implements ImportRepo {
     const at = this.find(tenantId, id);
     const row = this.rows[at];
     if (row === undefined || (row.status !== 'uploaded' && row.status !== 'running')) return Promise.resolve(undefined);
+    if (row.status === 'uploaded' && this.rows.some((r) => r.tenantId === tenantId && r.status === 'running')) return Promise.reject(new ImportBusyError());
     return Promise.resolve(this.replace(at, { status: 'running', startedAt: row.startedAt ?? now }));
   }
 
@@ -105,5 +106,32 @@ export class FakeImportRepo implements ImportRepo {
     if (this.rows[at]?.status !== 'running') return Promise.resolve(false);
     this.replace(at, { status, error, finishedAt: now });
     return Promise.resolve(true);
+  }
+
+  // What the routes use.
+  create(tenantId: string, row: NewImport): Promise<ImportRecord> {
+    const made: ImportRecord = { id: row.id, tenantId, status: 'created', source: row.source, targetCollectionId: row.targetCollectionId, createdBy: row.createdBy, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, bytes: row.bytes, s3Key: row.s3Key };
+    this.rows.push(made);
+    return Promise.resolve(made);
+  }
+
+  markUploaded(tenantId: string, id: string): Promise<boolean> {
+    const at = this.find(tenantId, id);
+    const row = this.rows[at];
+    if (row === undefined || (row.status !== 'created' && row.status !== 'uploaded')) return Promise.resolve(false);
+    this.replace(at, { status: 'uploaded' });
+    return Promise.resolve(true);
+  }
+
+  listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]> {
+    const after = options.afterId === undefined ? -1n : BigInt(options.afterId);
+    const items = this.stored.filter((s) => s.tenantId === tenantId && s.importId === importId && s.item.status !== 'pending' && BigInt(s.item.id) > after).map((s) => s.item);
+    return Promise.resolve(items.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)).slice(0, options.limit));
+  }
+
+  cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined> {
+    const at = this.find(tenantId, id);
+    if (this.rows[at]?.status !== 'running') return Promise.resolve(undefined);
+    return Promise.resolve(this.replace(at, { status: 'cancelled', finishedAt: now }));
   }
 }

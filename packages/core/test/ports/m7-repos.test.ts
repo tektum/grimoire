@@ -14,11 +14,22 @@ describe('FakeImportRepo', () => {
     expect(await repo.get('a', 'missing')).toBeUndefined();
   });
 
+  it('lets the imports of two tenants run at the same time: the rule is one running import for each tenant', async () => {
+    const repo = new FakeImportRepo();
+    repo.seed({ id: 'a1', tenantId: 'a', status: 'uploaded' });
+    repo.seed({ id: 'a2', tenantId: 'a', status: 'uploaded' });
+    repo.seed({ id: 'b1', tenantId: 'b', status: 'uploaded' });
+    const results = await Promise.allSettled([repo.start('a', 'a1', 1), repo.start('b', 'b1', 1), repo.start('a', 'a2', 1)]);
+    expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled', 'rejected']);
+    expect((await repo.get('b', 'b1'))?.status).toBe('running');
+    expect((await repo.get('a', 'a2'))?.status).toBe('uploaded');
+  });
+
   for (const c of importRepoConformance) {
     it(`meets the conformance case ${c.name}`, async () => {
       const repo = new FakeImportRepo();
       let n = 0;
-      await c.run({ repo, tenantId: 'a', otherTenantId: 'b', userId: 'u', now: 1_700_000_000_000, seedStatus: (id, status) => { repo.setStatus(id, status); return Promise.resolve(); }, seed: (status) => Promise.resolve(repo.seed({ id: `imp${String(++n)}`, tenantId: 'a', status })) });
+      await c.run({ repo, tenantId: 'a', otherTenantId: 'b', userId: 'u', collectionId: 'c1', now: 1_700_000_000_000, seedStatus: (id, status) => { repo.setStatus(id, status); return Promise.resolve(); }, seed: (status) => Promise.resolve(repo.seed({ id: `imp${String(++n)}`, tenantId: 'a', status })) });
     });
   }
 });

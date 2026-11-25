@@ -30,6 +30,27 @@ export interface ImportRecord {
   /** Milliseconds since the epoch; null until the import starts (and finishes). */
   readonly startedAt: number | null;
   readonly finishedAt: number | null;
+  /** The size the person declared for the zip, and where the zip is kept (`tenants/<tenant>/imports/<id>/source.zip`); null on a row that has neither. */
+  readonly bytes: number | null;
+  readonly s3Key: string | null;
+}
+
+/** What `create` needs: the import starts as `created`. */
+export interface NewImport {
+  readonly id: string;
+  readonly targetCollectionId: string;
+  readonly createdBy: string;
+  readonly source: ImportSource;
+  readonly bytes: number;
+  readonly s3Key: string;
+}
+
+/** Thrown by `start` when another import of the tenant is running (decision 6: a workspace has one running import at a time). The import stays `uploaded` and its job is tried again later. */
+export class ImportBusyError extends Error {
+  constructor() {
+    super('another import of the tenant is running');
+    this.name = 'ImportBusyError';
+  }
 }
 
 export interface NewImportItem {
@@ -107,10 +128,23 @@ export interface ImportRepo {
    * attachment rows and the item as `ok` are written together: a failure anywhere leaves no page, no revision, no attachment row, and the item pending.
    */
   writePage(tenantId: string, importId: string, page: NewImportedPage, limits: TenantPageLimits, now: number): Promise<WriteImportedPageResult>;
-  /** `uploaded` or `running` becomes `running` (and `startedAt` is set once); any other status is left as it is and nothing is returned. */
+  /**
+   * `uploaded` or `running` becomes `running` (and `startedAt` is set once); any other status is left as it is and nothing is returned. A tenant has one running import at a time: the database
+   * holds it, and when another import of the tenant is running this rejects with `ImportBusyError` and leaves the import `uploaded`, for the job to try again later.
+   */
   start(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
   /** Writes the counts of a running import; `false` when it is not running (a cancelled import keeps the counts it had). */
   setCounts(tenantId: string, id: string, counts: ImportCounts): Promise<boolean>;
   /** A running import ends as `done` or `failed` (`error` is a code); `false` when it is not running (a cancelled one stays cancelled). */
   finish(tenantId: string, id: string, status: 'done' | 'failed', error: string | null, now: number): Promise<boolean>;
+
+  // What the routes of M7-T05 use. Everything above is the engine's and stays as it is.
+  /** Makes an import row, `created`, for the tenant. */
+  create(tenantId: string, row: NewImport): Promise<ImportRecord>;
+  /** `created` or `uploaded` becomes `uploaded`; `false` for any other status (and for another tenant's import). */
+  markUploaded(tenantId: string, id: string): Promise<boolean>;
+  /** The settled items (`ok`, `skipped` or `failed`: not the ones still `pending`), in ascending id, after `afterId` when given, at most `limit`. Ids compare as whole numbers. */
+  listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;
+  /** `running` becomes `cancelled` (`finishedAt` set) and the row is returned; any other status is left as it is and nothing is returned. */
+  cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
 }

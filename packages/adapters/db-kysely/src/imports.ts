@@ -1,4 +1,4 @@
-import { cleanItemText, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, ImportBusyError, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportCounts, ImportItem, ImportRecord, ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import { createAttachments } from './attachments.js';
@@ -8,7 +8,7 @@ import { openPagesOfTenant } from './pages.js';
 
 interface ImportRow {
   id: string; tenant_id: string; status: ImportRecord['status']; source: ImportRecord['source']; target_collection_id: string; created_by: string | null;
-  counts: Partial<ImportCounts> | null; error: string | null; started_ms: string | null; finished_ms: string | null;
+  counts: Partial<ImportCounts> | null; error: string | null; started_ms: string | null; finished_ms: string | null; bytes: string | null; s3_key: string | null;
 }
 
 interface ItemRow {
@@ -16,7 +16,7 @@ interface ItemRow {
   markdown_bytes: number | null; state_bytes: number | null; attempts: number;
 }
 
-const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error,
+const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error, bytes::text as bytes, s3_key,
   (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
 const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts';
 
@@ -24,12 +24,15 @@ const ms = (value: string | null): number | null => (value === null ? null : Num
 
 const record = (r: ImportRow): ImportRecord => ({
   id: r.id, tenantId: r.tenant_id, status: r.status, source: r.source, targetCollectionId: r.target_collection_id, createdBy: r.created_by,
-  counts: { ...NO_IMPORT_COUNTS, ...(r.counts ?? {}) }, error: r.error, startedAt: ms(r.started_ms), finishedAt: ms(r.finished_ms),
+  counts: { ...NO_IMPORT_COUNTS, ...(r.counts ?? {}) }, error: r.error, startedAt: ms(r.started_ms), finishedAt: ms(r.finished_ms), bytes: ms(r.bytes), s3Key: r.s3_key,
 });
 
 const item = (r: ItemRow): ImportItem => ({
   id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts,
 });
+
+/** The partial unique index of migration 0012: a tenant has one `running` import. */
+const busy = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'imports_one_running_per_tenant';
 
 /** The PostgreSQL ImportRepo over `imports` and `import_items`: every statement names the tenant. */
 export function createImportRepo(db: KyselyDatabase): ImportRepo {
@@ -125,12 +128,18 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       });
     },
     async start(tenantId, id, now) {
-      const rows = await db.query<ImportRow>(
-        `update imports set status = 'running', started_at = coalesce(started_at, to_timestamp($3::double precision / 1000.0))
-         where tenant_id = $1 and id = $2 and status in ('uploaded', 'running') returning ${IMPORT_COLUMNS}`,
-        [tenantId, id, now],
-      );
-      return rows[0] === undefined ? undefined : record(rows[0]);
+      try {
+        const rows = await db.query<ImportRow>(
+          `update imports set status = 'running', started_at = coalesce(started_at, to_timestamp($3::double precision / 1000.0))
+           where tenant_id = $1 and id = $2 and status in ('uploaded', 'running') returning ${IMPORT_COLUMNS}`,
+          [tenantId, id, now],
+        );
+        return rows[0] === undefined ? undefined : record(rows[0]);
+      } catch (e) {
+        // The index decides when two imports of a tenant try to run: the later one's statement fails, its row is untouched, and its job tries again.
+        if (busy(e)) throw new ImportBusyError();
+        throw e;
+      }
     },
     async setCounts(tenantId, id, counts) {
       const rows = await db.query(`update imports set counts = $3::jsonb where tenant_id = $1 and id = $2 and status = 'running' returning 1`, [tenantId, id, JSON.stringify(counts)]);
@@ -142,6 +151,35 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         [tenantId, id, status, error, now],
       );
       return rows.length === 1;
+    },
+
+    // What the routes use.
+    async create(tenantId, row) {
+      const rows = await db.query<ImportRow>(
+        `insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
+         returning ${IMPORT_COLUMNS}`,
+        [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, row.s3Key, row.bytes],
+      );
+      return record(rows[0] as ImportRow);
+    },
+    async markUploaded(tenantId, id) {
+      const rows = await db.query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);
+      return rows.length === 1;
+    },
+    async listItems(tenantId, importId, options) {
+      const rows = await db.query<ItemRow>(
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by id limit $4`,
+        [tenantId, importId, options.afterId ?? null, options.limit],
+      );
+      return rows.map(item);
+    },
+    async cancel(tenantId, id, now) {
+      const rows = await db.query<ImportRow>(
+        `update imports set status = 'cancelled', finished_at = to_timestamp($3::double precision / 1000.0)
+         where tenant_id = $1 and id = $2 and status = 'running' returning ${IMPORT_COLUMNS}`,
+        [tenantId, id, now],
+      );
+      return rows[0] === undefined ? undefined : record(rows[0]);
     },
   };
 }
