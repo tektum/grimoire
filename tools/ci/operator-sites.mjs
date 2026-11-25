@@ -12,4 +12,5 @@ export const OPERATOR_SITES = [
   { module: 'packages/adapters/db-kysely/src/tenants.ts', reason: 'the jobs list every tenant, then do each tenant\'s work through scoped()' },
   { module: 'packages/adapters/db-kysely/src/revisions.ts', reason: 'the revision catch-up finds the due pages of every tenant' },
   { module: 'packages/adapters/db-kysely/src/page-store.ts', reason: 'the stale-Markdown sweep lists the stale pages of every tenant' },
+  { module: 'packages/adapters/db-kysely/src/embeddings.ts', reason: 'the embedding counts for the server\'s statistics span every tenant' },
 ];

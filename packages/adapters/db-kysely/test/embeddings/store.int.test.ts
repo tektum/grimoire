@@ -27,7 +27,7 @@ const chunk = (i: number, v: Float32Array | undefined, h = i + 1): ChunkRow => (
 
 beforeAll(async () => {
   t = await createTestDatabase('embeddings');
-  store = createEmbeddingStore(t.app);
+  store = createEmbeddingStore(t.app, t.ops);
   user = await insertUser(run);
   open = await insertCollection(run, { created_by: user });
   hidden = await insertCollection(run, { created_by: user });
