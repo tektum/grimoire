@@ -269,6 +269,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   /** Files judged unfit for any page that uses them (a property of the file), decided once. */
   const rejected = new Map<string, Rejection>();
   const processInner = async (item: ImportItem, staged: Map<string, StagedFile>, copied: Map<string, StagedFile>): Promise<Step> => {
+    const takenBefore = budget?.taken ?? 0;
     let original: Buffer | undefined;
     let markdown = '';
     let titleSource = '';
@@ -332,7 +333,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
 
     const bytes = original?.length ?? 0;
     const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);
-    if (outcome.kind === 'retry') return { stop: 'busy', bytes };
+    // The copies made for this page are removed and the page is tried again later: they are not charged to the import's budget.
+    if (outcome.kind === 'retry') { if (budget !== undefined) budget.taken = takenBefore; return { stop: 'busy', bytes }; }
     if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes, warnings: own, remoteImageFailures: failures }); return { bytes }; }
     if (outcome.kind === 'failed') {
       // The original, not the rewritten text: what the person wrote, to take elsewhere.
@@ -362,7 +364,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     const copied = new Map<string, StagedFile>();
     const step = await processInner(item, staged, copied);
     // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
-    if (step.wrote === undefined && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
+    if (step.wrote !== 'here' && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
       for (const f of [...staged.values(), ...copied.values()]) await deps.files.delete(f.row.key);
     }
     return step;
@@ -380,11 +382,14 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     if ((await repo.get(tenantId, importId))?.status !== 'running') return finish((c) => ({ kind: 'stopped', reason: 'not_running', counts: c }));
     let pages = 0;
     let bytes = 0;
+    let persistedTaken = budget?.taken ?? 0;
     while (at < queue.length && pages < batchPages && bytes < batchBytes) {
       const step = await processItem(queue[at] as ImportItem);
       at++;
       pages++;
       bytes += step.bytes;
+      // The copies of this page are counted before the next page starts, so a run that dies mid-batch resumes from them, not from the count of the last batch.
+      if (budget !== undefined && budget.taken !== persistedTaken && step.stop === undefined) { await repo.setCounts(tenantId, importId, counts()); persistedTaken = budget.taken; }
       if (step.stop === 'busy') return finish((c) => ({ kind: 'busy', counts: c }));
       if (step.stop !== undefined) return finish((c) => ({ kind: 'stopped', reason: step.stop as PassTwoStop, counts: c }));
     }

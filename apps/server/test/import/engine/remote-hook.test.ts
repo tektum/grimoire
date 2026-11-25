@@ -20,7 +20,12 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
 
 class EchoConverter implements MarkdownConverter {
   fail: ((markdown: string) => boolean) | undefined;
-  seed(markdown: string): Promise<SeedResult> { return Promise.resolve(this.fail?.(markdown) === true ? { ok: false, reason: 'invalid-markdown', detail: 'x' } : { ok: true, state: text(markdown.length === 0 ? ' ' : markdown) }); }
+  busy: ((markdown: string) => boolean) | undefined;
+  boom: ((markdown: string) => boolean) | undefined;
+  seed(markdown: string): Promise<SeedResult> {
+    if (this.boom?.(markdown) === true) return Promise.reject(new Error('the process died'));
+    if (this.busy?.(markdown) === true) return Promise.resolve({ ok: false, reason: 'internal', detail: 'queue-full' });
+    return Promise.resolve(this.fail?.(markdown) === true ? { ok: false, reason: 'invalid-markdown', detail: 'x' } : { ok: true, state: text(markdown.length === 0 ? ' ' : markdown) }); }
   toMarkdown(state: Uint8Array): Promise<ConvertResult> { const markdown = new TextDecoder().decode(state).replace(/^ $/, ''); return Promise.resolve({ ok: true, markdown, text: markdown }); }
   reseed(): Promise<SeedResult> { return Promise.reject(new Error('not used')); }
   close(): Promise<void> { return Promise.resolve(); }
@@ -195,5 +200,38 @@ describe('the budget', () => {
     expect(t.page('c')?.attachments).toEqual([]); // the third image met the budget of the first run: 2 of 2 taken
     expect(t.page('c')?.content.markdown).toContain('https://img.example/c.png');
     expect(second.kind === 'done' && second.counts.remote).toBe(2);
+  });
+});
+
+describe('review findings on the budget and the copies', () => {
+  const pagesWithImage = (names: string[]) => names.map((n) => md(`${n}.md\u0000# ${n}\n![x](https://img.example/${n}.png)\n`));
+  const attachmentObjects = async (t: Awaited<ReturnType<typeof setup>>) => (await t.files.list('tenants/')).items.filter((i) => i.key.includes('/attachments/'));
+
+  it('the copies of a written page are in the import\'s count before the next page starts, so a run that dies mid-batch resumes from them', async () => {
+    const t = await setup(pagesWithImage(['a', 'b', 'c']), { fetcher: new ScriptedFetcher() });
+    t.converter.boom = (m) => m.startsWith('# b');
+    await expect(t.run()).rejects.toThrow('the process died');
+    expect((await t.repo.get(TENANT, 'imp'))?.counts.remote).toBe(1); // page a was written with its copy
+  });
+
+  it('a page that loses the race to a run that then failed it leaves no copied object behind', async () => {
+    const t = await setup(pagesWithImage(['a']), { fetcher: new ScriptedFetcher() });
+    t.repo.writePage = async () => {
+      const item = await t.byPath('a.md');
+      await t.repo.settle(TENANT, 'imp', (item as { id: string }).id, { status: 'failed', message: 'invalid_markdown' });
+      return { kind: 'not-pending' };
+    };
+    await t.run();
+    expect(await attachmentObjects(t)).toEqual([]);
+  });
+
+  it('copies thrown away because the converter is busy are not charged to the budget: the next run fetches them again within it', async () => {
+    const t = await setup(pagesWithImage(['a']), { fetcher: new ScriptedFetcher(), maxImages: 1 });
+    t.converter.busy = (m) => m.startsWith('# a');
+    expect(await t.run()).toMatchObject({ kind: 'busy', counts: { remote: 0 } });
+    expect((await t.repo.get(TENANT, 'imp'))?.counts.remote).toBe(0);
+    t.converter.busy = undefined;
+    await t.run();
+    expect(t.page('a')?.attachments).toHaveLength(1); // the one image of the budget was still there
   });
 });
