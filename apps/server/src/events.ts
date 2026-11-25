@@ -19,6 +19,9 @@ export type RequestMethod = string; // an HTTP method token, as Hono reports it
 /** What a job event says: the queue's name for it, the job's id, the run (1 for the first) and the milliseconds it took (0 at the start). */
 export type JobEvent = { name: string; jobId: string; attempt: number; ms: number };
 
+/** A failed run: the class of the error, its SQLSTATE or errno when it has one, and its message with quoted literals, URLs and email-like tokens replaced, cut to 200 characters. Never the payload. */
+export type JobFailureEvent = JobEvent & { errorName: string; errorCode?: string; errorMessage: string };
+
 export interface DebugEvents {
   /** A search: how long it took and how many pages it found. Never the query text. */
   'search.query': { ms: number; results: number };
@@ -86,7 +89,7 @@ export interface InfoEvents {
 }
 
 export interface WarnEvents {
-  'jobs.retrying': JobEvent;
+  'jobs.retrying': JobFailureEvent;
   /** `grimoire migrate` replaced a queue made with another policy (pg-boss cannot change one): the jobs it held were dropped, and the scheduler sends the next runs again at start. */
   'jobs.queue_recreated': { queue: string; from: string; to: string; pending: number; finished: number };
   /** The stale-Markdown sweep could not convert a page (at most once an hour for each): the page's id and the converter's failure code, never content. */
@@ -117,7 +120,7 @@ export interface WarnEvents {
 }
 
 export interface ErrorEvents {
-  'jobs.failed': JobEvent;
+  'jobs.failed': JobFailureEvent;
   /** The embedder cannot embed, raised once for each streak. A ticket in the alarm table; `/readyz` does not depend on it. */
   'semantic.unavailable': { reason: 'model-missing' | 'model-hash-mismatch' | 'load-failed' | 'runtime-failed' };
   /** The queue could not be started after every try: the server serves without background jobs (imports, sweeps) until it is restarted. `/readyz` says so in a header. */

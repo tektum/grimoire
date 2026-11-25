@@ -20,7 +20,7 @@ function asDatabase(tx: Queryable): PgBossDatabase {
   return { executeSql: async (text: string, values?: unknown[]) => ({ rows: [...(await tx.query(text, values))] }) };
 }
 
-const scheduleKey = (name: string): string => `sched:${name}`;
+export const scheduleKey = (name: string): string => `sched:${name}`;
 /** The first time of a five-field UTC cron after `after`. */
 const nextRun = (cron: string, after: Date): Date => CronExpressionParser.parse(cron, { currentDate: after, tz: 'UTC' }).next().toDate();
 /** Whether `at` is a time of the cron (cron times fall on whole minutes). */

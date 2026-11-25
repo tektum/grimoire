@@ -1,7 +1,7 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
-import { PGBOSS_SCHEMA, queueOptions } from './index.js';
+import { PGBOSS_SCHEMA, queueOptions, scheduleKey } from './index.js';
 
 /**
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
@@ -36,6 +36,12 @@ export interface MigrateOptions {
   readonly runtimeRole: string;
   /** Queues to create (in this order) after the migration and before the grants, so the runtime role gets their partitions. */
   readonly queues?: readonly QueueDefinition[];
+  /**
+   * Queues that were scheduled by an earlier version and are not any more: the run of the chain that still waits in each (created or retry, under the schedule's own key) is deleted, so the
+   * first start of the new version does not hand a stale run to a handler that is not meant to get it. A run that is running is left to finish. Naming a queue that is scheduled is harmless
+   * (the server sends its first run again at start) but needless: take the name out when the job is scheduled again.
+   */
+  readonly dropScheduledRuns?: readonly string[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
   readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
   /** Called for each queue that was recreated because it had another policy: pg-boss cannot change a policy, and the scheduled queues keep no state worth keeping (they are sent again at start). */
@@ -85,6 +91,9 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
   await boss.start();
   try {
     for (const queue of options.queues ?? []) await reconcileQueue(boss, options.database, queue, options);
+    for (const name of options.dropScheduledRuns ?? []) {
+      await options.database.query(`delete from ${PGBOSS_SCHEMA}.job where name = $1 and singleton_key = $2 and state in ('created', 'retry')`, [name, scheduleKey(name)]);
+    }
   } finally {
     await boss.stop({ graceful: true, close: true, timeout: 2000 });
   }
