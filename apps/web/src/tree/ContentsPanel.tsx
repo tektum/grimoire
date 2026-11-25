@@ -15,7 +15,7 @@ import './tree.css';
 const PAGE_PATH = '/v1/pages/by-url-id/{urlId}';
 
 /** The collection a page is in, from the address of the page (the page screen reads the same page, under the same key). */
-function usePageCollection(api: ApiLike, urlId: string | undefined): string | undefined {
+function usePageCollection(api: ApiLike, urlId: string | undefined): { readonly collectionId: string | undefined; readonly pending: boolean } {
   const page = useQuery<{ collectionId: string }, HttpError>({
     enabled: urlId !== undefined,
     queryKey: queryKey('GET', PAGE_PATH, { params: { path: { urlId } } }),
@@ -25,7 +25,7 @@ function usePageCollection(api: ApiLike, urlId: string | undefined): string | un
       return data as { collectionId: string };
     },
   });
-  return page.data?.collectionId;
+  return { collectionId: page.data?.collectionId, pending: urlId !== undefined && page.isPending };
 }
 
 function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { readonly hereKey: RefObject<string>; readonly api: ApiLike; readonly collectionId: string; readonly currentUrlId: string | undefined }) {
@@ -80,22 +80,22 @@ function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { read
  * (`/p/:slug`, read through the page's address), or else the collection that was read last. Nothing but its name where there is none.
  */
 /** The collection the person is in: the one in the address (`/c/:id`), the one of the page that is open, or else the one read last; with the `urlId` of the open page, if any. */
-export function useOpenCollection(api: ApiLike, storage?: ClientStorage): { readonly collectionId: string | undefined; readonly urlId: string | undefined } {
+export function useOpenCollection(api: ApiLike, storage?: ClientStorage): { readonly collectionId: string | undefined; readonly urlId: string | undefined; readonly pending: boolean } {
   const inCollection = useMatch('/c/:collectionId');
   const inPage = useMatch('/p/:slug/*');
   const urlId = inPage?.params.slug === undefined ? undefined : urlIdOf(inPage.params.slug);
   const remembered = useMemo(() => storage ?? createClientStorage(), [storage]);
   const ofPage = usePageCollection(api, urlId);
-  return { collectionId: inCollection?.params.collectionId ?? (urlId === undefined ? (remembered.get(LAST_COLLECTION_KEY) ?? undefined) : ofPage), urlId };
+  return { collectionId: inCollection?.params.collectionId ?? (urlId === undefined ? (remembered.get(LAST_COLLECTION_KEY) ?? undefined) : ofPage.collectionId), urlId, pending: inCollection === null && ofPage.pending };
 }
 
 export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonly storage?: ClientStorage }) {
-  const { collectionId: open, urlId } = useOpenCollection(api, storage);
-  // The collection whose tree was shown, kept while the page that is being opened says which collection it is in: a new page opens from a tree, and a tree that is taken down for that moment takes the
+  const { collectionId: open, urlId, pending } = useOpenCollection(api, storage);
+  // The collection whose tree was shown, kept only while the page that is being opened says which collection it is in (not after its lookup failed: a page that is not found or not allowed has no tree of the collection before it): a new page opens from a tree, and a tree that is taken down for that moment takes the
   // row being renamed (and its title field) with it. A page opened with no tree before it has none until its collection is known.
   const shown = useRef<string | undefined>(undefined);
   if (open !== undefined) shown.current = open;
-  const collectionId = open ?? (urlId === undefined ? undefined : shown.current);
+  const collectionId = open ?? (pending ? shown.current : undefined);
   // Kept here, in the part that stays when the screen changes: the key of the location now, for `CollectionContents` to compare with the one where a page was asked for.
   const { key } = useLocation();
   const hereKey = useRef(key);

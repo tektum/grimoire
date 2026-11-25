@@ -31,10 +31,10 @@ test('a rename that is open keeps its field, its focus and its text when the tre
   await expect(field).toBeFocused();
   await field.pressSequentially('Pla');
 
-  const readsBefore = reads;
+  const reread = page.waitForResponse('**/v1/collections/c1/tree');
   release(); // the tree is read again now, with the field open and a part of the title typed
-  await expect.poll(() => reads).toBeGreaterThanOrEqual(readsBefore);
-  await page.waitForLoadState('networkidle');
+  await reread; // and the answer is here: what follows is checked after it, not before
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))); // and painted
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('Pla');
   await field.pressSequentially('n');
