@@ -37,6 +37,25 @@ describe('the thread backend', () => {
     expect(await b.embed('query', ['a'])).toEqual({ ok: false, reason: 'unavailable' });
   });
 
+  it('answers internal, and does not throw, when the tokenizer fails, and the next call is served', async () => {
+    let fail = true;
+    const b = createThreadBackend({
+      workerUrl,
+      threads: 1,
+      dims: 4,
+      maxTokens: 16,
+      encode: (text) => {
+        if (fail) throw new Error('tokenizer broke');
+        return encode(text);
+      },
+    });
+    await b.start(files('ok'));
+    expect(await b.embed('passage', ['a'])).toEqual({ ok: false, reason: 'internal' });
+    fail = false;
+    expect(await b.embed('passage', ['a'])).toMatchObject({ ok: true });
+    await b.close();
+  });
+
   it('rejects the start when the thread says it cannot load and when it dies before it is ready', async () => {
     const failing = make();
     await expect(failing.start(files('load-fails'))).rejects.toThrow('load-failed');

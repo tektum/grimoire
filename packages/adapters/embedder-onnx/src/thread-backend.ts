@@ -54,7 +54,13 @@ export function createThreadBackend(options: { readonly workerUrl: URL; readonly
     embed(kind, texts) {
       const w = worker;
       if (w === undefined || closed) return Promise.resolve<EmbedResult>({ ok: false, reason: 'unavailable' });
-      const prepared = prepare(kind, texts, options.encode, options.maxTokens);
+      // The tokenizer runs here, on the caller's thread: a throw of it is `internal`, not an exception that would leave the embedder's queue waiting for an answer that never comes (`embed` never rejects).
+      let prepared: ReturnType<typeof prepare>;
+      try {
+        prepared = prepare(kind, texts, options.encode, options.maxTokens);
+      } catch {
+        return Promise.resolve<EmbedResult>({ ok: false, reason: 'internal' });
+      }
       if (!prepared.ok) return Promise.resolve<EmbedResult>(prepared);
       return new Promise<EmbedResult>((resolve) => {
         nextId += 1;
