@@ -14,8 +14,10 @@ class RecordingQueue implements JobQueue {
   enqueue(): Promise<string | null> { return Promise.resolve('id'); }
   isLive(): Promise<boolean> { return Promise.resolve(false); }
   failWork = false;
-  work(name: string): Promise<void> { if (this.failWork) return Promise.reject(new Error('no queue')); this.worked.push(name); return Promise.resolve(); }
-  schedule(name: string): Promise<void> { this.scheduled.push(name); return Promise.resolve(); }
+  work(name: string): Promise<void> { if (this.failWork) return Promise.reject(new Error('no queue')); this.worked.push(name); this.order.push(`work ${name}`); return Promise.resolve(); }
+  failSchedule = false;
+  readonly order: string[] = [];
+  schedule(name: string, cron: string): Promise<void> { if (this.failSchedule) return Promise.reject(new Error('no send')); this.scheduled.push(`${name} ${cron}`); this.order.push(`schedule ${name}`); return Promise.resolve(); }
   stop(o: { graceMs: number }): Promise<{ inFlight: number }> { this.stopped.push(o); return Promise.resolve({ inFlight: this.inFlight }); }
 }
 
@@ -50,10 +52,26 @@ describe('the job runner', () => {
     expect(queue.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
   });
 
-  it('does not schedule anything yet: whether the runtime role may run the cron loop is settled by M7-T02', async () => {
+  it('schedules each job that has a cron, once its handler is registered, so no run is sent to a queue nobody works', async () => {
     const queue = new RecordingQueue();
     await make(queue).runner.start();
-    expect(queue.scheduled).toEqual([]);
+    expect(queue.scheduled).toEqual(['import-sweep */5 * * * *']);
+    expect(queue.order.indexOf('schedule import-sweep')).toBeGreaterThan(queue.order.indexOf('work import-sweep'));
+  });
+
+  it('counts a schedule that cannot be sent as a failed start: the queue is stopped and the start is tried again', async () => {
+    vi.useFakeTimers();
+    const queue = new RecordingQueue();
+    queue.failSchedule = true;
+    const { runner, logger } = make(queue);
+    await runner.start();
+    expect(runner.state()).toBe('starting');
+    expect(queue.stopped).toEqual([{ graceMs: 0 }]);
+    expect(logger.entries.filter((e) => e.event === 'jobs.failed')).toHaveLength(1);
+    queue.failSchedule = false;
+    await vi.advanceTimersByTimeAsync(START_RETRY_MS);
+    expect(runner.state()).toBe('up');
+    expect(queue.scheduled).toEqual(['import-sweep */5 * * * *']);
   });
 
   it('stops with the grace of the settings and logs how many jobs were still running', async () => {

@@ -50,4 +50,13 @@ describe('the job runner and the registry', () => {
     expect(logger.entries.map((e) => e.event)).toEqual(['jobs.started', 'jobs.completed']);
     expect((logger.entries[1]?.fields as { ms: number }).ms).toBeGreaterThanOrEqual(0);
   });
+
+  it('schedules every job of the registry that carries a cron, with that cron', async () => {
+    const scheduled: string[] = [];
+    const { queue } = queueStub();
+    const jobs = [{ name: 'purge', schedule: '17 3 * * *', handler: () => Promise.resolve() }, { name: 'import', handler: () => Promise.resolve() }, { name: 'markdown-sweep', schedule: '* * * * *', handler: () => Promise.resolve() }];
+    const runner = createJobRunner({ config, log: createEventLog(new FakeLogger()), make: () => Promise.resolve({ ...queue, schedule: (name: string, cron: string) => { scheduled.push(`${name} ${cron}`); return Promise.resolve(); } }), jobs });
+    await runner.start();
+    expect(scheduled).toEqual(['purge 17 3 * * *', 'markdown-sweep * * * * *']);
+  });
 });
