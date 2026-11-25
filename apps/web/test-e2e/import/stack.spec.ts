@@ -43,7 +43,12 @@ async function explained(store: { readonly seen: string[] }, check: () => Promis
   try {
     await check();
   } catch (error) {
-    throw new Error(`${(error as Error).message}\nwhat the browser did with the zip: ${JSON.stringify(store.seen)}`);
+    // The store origin the application says it serves to the browser, to set beside the address it signed.
+    const config = await fetch(`${apiUrl()}/v1/config`).then(
+      async (r) => `config ${String(r.status)} fileStoreOrigin ${String(((await r.json().catch(() => ({}))) as { fileStoreOrigin?: unknown }).fileStoreOrigin)}`,
+      () => 'config unreachable',
+    );
+    throw new Error(`${(error as Error).message}\nwhat the browser did with the zip: ${JSON.stringify(store.seen)}\n${config}`);
   }
 }
 
