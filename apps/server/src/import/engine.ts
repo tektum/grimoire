@@ -59,21 +59,24 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     if (kind === 'page') pagePaths.push(e.path);
   });
 
-  // The folders that have a page of their own, and the folders above pages that have none: those get a container.
-  const hasPage = new Set(pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined));
-  const containers = new Set<string>();
+  // The folders that have a page of their own, and the folders above pages that have none: those get a container. Folders are the same folder by the key duplicate detection uses (NFC,
+  // lower case, `.` and empty segments dropped), so `Dir` and `dir` are one; a container keeps the spelling it was first seen under.
+  const key = (folder: string): string => canonical(folder).normalize('NFC').toLowerCase();
+  const hasPage = new Set(pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key));
+  const containers = new Map<string, string>();
   for (const path of pagePaths) {
-    for (let folder = profile.parentPathOf(path, lowerPaths); folder !== null && !hasPage.has(folder) && !containers.has(folder); ) {
-      containers.add(folder);
-      const above = folder.split('/').slice(0, -1).join('/');
+    for (let folder = profile.parentPathOf(path, lowerPaths); folder !== null && !hasPage.has(key(folder)) && !containers.has(key(folder)); ) {
+      containers.set(key(folder), canonical(folder));
+      const above = canonical(folder).split('/').slice(0, -1).join('/');
       folder = above === '' ? null : above;
     }
   }
-  const containerPaths = new Set([...containers].map((f) => `${f}/`));
+  const containerPaths = new Set([...containers.values()].map((f) => `${f}/`));
   const pagesTotal = pagePaths.length + containers.size;
   if (pagesTotal > options.maxPages) return { ok: false, reason: 'collection_full', pagesTotal };
 
-  const kept = rows.filter((r) => !(r.status === 'skipped' && r.message === 'ignored' && containerPaths.has(canonical(r.path) === '' ? r.path : `${canonical(r.path)}/`)));
+  const containerKeys = new Set(containers.keys());
+  const kept = rows.filter((r) => !(r.status === 'skipped' && r.message === 'ignored' && r.path.endsWith('/') && containerKeys.has(key(r.path))));
   const all = [...kept, ...[...containerPaths].map((path): NewImportItem => ({ path, kind: 'page' }))];
   for (let from = 0; from < all.length; from += BATCH) await repo.addItems(tenantId, importId, all.slice(from, from + BATCH));
 

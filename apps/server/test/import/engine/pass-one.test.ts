@@ -88,6 +88,28 @@ describe('pages get their ids now, and a folder with no page of its own gets an 
     expect(rows[0]).toMatchObject({ kind: 'page', status: 'pending' });
   });
 
+  it('folders are the same folder when they differ only by case or by NFC/NFD, as duplicate detection says: one container, or the index page', async () => {
+    const withIndex = await run(entries('Dir/index.md', 'dir/b.md'));
+    expect(withIndex.items.some((i) => i.path.endsWith('/'))).toBe(false); // b.md goes under the index page, no container
+    const two = await run(entries('Dir/a.md', 'dir/b.md'));
+    expect(two.items.filter((i) => i.path.endsWith('/')).map((i) => i.path)).toEqual(['Dir/']); // one container, under the first spelling
+    expect(two.result).toMatchObject({ ok: true, pagesTotal: 3 });
+    const nfc = await run(entries('caf\u00e9/a.md', 'cafe\u0301/b.md'));
+    expect(nfc.items.filter((i) => i.path.endsWith('/'))).toHaveLength(1);
+    expect(nfc.result).toMatchObject({ pagesTotal: 3 });
+  });
+
+  it('the directory entry of a container folder is that container whatever its case', async () => {
+    const { items } = await run(entries('DIR/', 'dir/a.md'));
+    expect(items.filter((i) => i.path.toLowerCase() === 'dir/')).toHaveLength(1);
+    expect(items.find((i) => i.path.toLowerCase() === 'dir/')).toMatchObject({ kind: 'page', status: 'pending' });
+  });
+
+  it('the spellings of a folder do not push an archive over the cap', async () => {
+    const list = entries('Dir/a.md', 'dir/b.md', 'DIR/c.md');
+    expect((await run(list, { maxPages: 4 })).result).toMatchObject({ ok: true, pagesTotal: 4 });
+  });
+
   it('a README beside an index.md is an ordinary page of the folder, which has the index as its page', async () => {
     const { items } = await run(entries('dir/index.md', 'dir/README.md'));
     expect(items.some((i) => i.path === 'dir/')).toBe(false);
