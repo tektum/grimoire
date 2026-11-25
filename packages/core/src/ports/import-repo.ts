@@ -1,3 +1,6 @@
+import type { NewReady } from './attachment-repo.js';
+import type { TenantPageLimits } from './page-repo.js';
+
 /** `imports.status` (M7 contracts section 4): `created` then `uploaded` then `running`, which ends as `done`, `failed` or `cancelled`. */
 export type ImportStatus = 'created' | 'uploaded' | 'running' | 'done' | 'failed' | 'cancelled';
 export type ImportSource = 'notion_md_csv' | 'markdown_zip';
@@ -59,8 +62,30 @@ export interface ItemOutcome {
 export const MAX_ITEM_TEXT = 300;
 
 /** A message as an item row keeps it: control characters removed, at most `MAX_ITEM_TEXT` characters. */
-// eslint-disable-next-line no-control-regex -- the point is to remove them
 export const cleanItemText = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').slice(0, MAX_ITEM_TEXT);
+
+/** What a page of an import is written with. The attachments are those the page uses (their `pageId` is the new page's, set by the repo). */
+export interface NewImportedPage {
+  /** The `pending` page item this page settles. */
+  readonly itemId: string;
+  readonly collectionId: string;
+  readonly parentId: string | null;
+  /** The fractional position among the siblings; the engine keeps the last one per parent. */
+  readonly position: string;
+  readonly title: string;
+  /** The importer: `created_by`, `last_edited_by` and the author of the `import` revision. */
+  readonly createdBy: string;
+  /** What `normalizePage` made: the seeded state with the canonical Markdown, its text and hash (R10.13, R7.13: never Markdown without state). */
+  readonly content: { readonly state: Uint8Array; readonly markdown: string; readonly text: string; readonly hash: Buffer };
+  readonly markdownBytes: number;
+  readonly stateBytes: number;
+  readonly attachments: readonly Omit<NewReady, 'pageId'>[];
+}
+
+/** `not-pending`: the item was settled already (a resumed run, a duplicate), so nothing is written. The rest are the refusals of a page create. */
+export type WriteImportedPageResult =
+  | { readonly kind: 'ok'; readonly pageId: string; readonly urlId: string }
+  | { readonly kind: 'not-pending' | 'collection-deleted' | 'no-parent' | 'too-deep' | 'collection-full' | 'tenant-pages-full' };
 
 /**
  * The imports of a workspace (M7 contracts section 4). Every call names the tenant: another tenant's import is not found (`undefined`, `false`, `0` or no rows, never an error).
@@ -76,6 +101,12 @@ export interface ImportRepo {
   getItem(tenantId: string, importId: string, itemId: string): Promise<ImportItem | undefined>;
   /** Ends a `pending` item as `skipped` or `failed`; `false` when it was not pending. */
   settle(tenantId: string, importId: string, itemId: string, outcome: ItemOutcome): Promise<boolean>;
+  /**
+   * One page of the import in ONE transaction (contract stage 4e): the collection row is locked, the item must still be `pending` (a resumed run never writes a page twice), the
+   * parent must be live in the collection, the depth, the collection's page count and the tenant's cap are checked, then the page (with its state), the `import` revision, the
+   * attachment rows and the item as `ok` are written together: a failure anywhere leaves no page, no revision, no attachment row, and the item pending.
+   */
+  writePage(tenantId: string, importId: string, page: NewImportedPage, limits: TenantPageLimits, now: number): Promise<WriteImportedPageResult>;
   /** `uploaded` or `running` becomes `running` (and `startedAt` is set once); any other status is left as it is and nothing is returned. */
   start(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
   /** Writes the counts of a running import; `false` when it is not running (a cancelled import keeps the counts it had). */
