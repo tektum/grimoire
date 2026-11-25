@@ -51,11 +51,11 @@ async function seedData(admin) {
     update pages p set parent_id = r.prev from r where r.id = p.id and r.rn % 4 <> 1`);
   // 14 chunks of 768 dimensions per page (140k rows), with the storage the chunk table gets in migration 0013 so the vectors stay in the heap.
   await q('alter table page_chunks alter column embedding set storage main');
-  await q(`create table bench_vectors as select g as id, (select array_agg((random() - 0.5 + 0 * g)::real) from generate_series(1, 768))::vector as v from generate_series(1, 500) g`);
+  await q(`create table bench_vectors as select g as id, x.a::vector as v from generate_series(1, 500) g cross join lateral (select array_agg((random() - 0.5 + 0 * g)::real) as a from generate_series(1, 768)) x`);
   await q(`
     insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding)
     select p.id, p.tenant_id, n, 'multilingual-e5-base', decode(repeat('ab', 32), 'hex'), n * 100, n * 100 + 100, 100, v.v
-      from pages p cross join generate_series(0, 13) n join bench_vectors v on v.id = 1 + (abs(hashtext(p.id::text)) + n) % 500`);
+      from pages p cross join generate_series(0, 13) n join bench_vectors v on v.id = 1 + (abs(hashtext(p.id::text)::bigint) + n) % 500`);
   await q('drop table bench_vectors');
   await q('vacuum analyze');
   const [{ c, p }] = await q(`select (select count(*) from collections where tenant_id <> 'legacy')::int as c, (select count(*) from pages)::int as p`);
