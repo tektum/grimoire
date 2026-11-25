@@ -2,7 +2,7 @@ import { EMBED_MAX_ATTEMPTS, type ChunkHit, type ChunkRow, type EmbeddingStore }
 
 /** A chunk as stored: the embedding is always there. */
 type StoredChunk = ChunkRow & { readonly embedding: Float32Array };
-interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean; text: string }
+interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean; text: string; title: string; urlId: string }
 interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
 /** The chunks the store looks at for one search, before it keeps the best of each page (the SQL's `limit` of its inner query). */
@@ -21,8 +21,8 @@ export class FakeEmbeddingStore implements EmbeddingStore {
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
-  seedPage(page: { readonly id: string; readonly collectionId: string; readonly markdownHash: Uint8Array | null; readonly tenantId?: string; readonly editedAt?: number; readonly text?: string }): void {
-    this.pages.set(page.id, { tenantId: page.tenantId ?? 'legacy', collectionId: page.collectionId, markdownHash: page.markdownHash, editedAt: page.editedAt ?? 0, deleted: false, text: page.text ?? '' });
+  seedPage(page: { readonly id: string; readonly collectionId: string; readonly markdownHash: Uint8Array | null; readonly tenantId?: string; readonly editedAt?: number; readonly text?: string; readonly title?: string; readonly urlId?: string }): void {
+    this.pages.set(page.id, { tenantId: page.tenantId ?? 'legacy', collectionId: page.collectionId, markdownHash: page.markdownHash, editedAt: page.editedAt ?? 0, deleted: false, text: page.text ?? '', title: page.title ?? `Title of ${page.id}`, urlId: page.urlId ?? `url-${page.id}` });
   }
 
   /** The page's Markdown changed (as a save does): its hash and edit time, and its text when given. */
@@ -108,7 +108,7 @@ export class FakeEmbeddingStore implements EmbeddingStore {
         const similarity = c.embedding.reduce((sum, x, i) => sum + x * (queryVector[i] as number), 0);
         if (similarity >= o.minSimilarity) {
           const text = Array.from(page.text).slice(c.charStart, c.charStart + Math.min(c.charEnd - c.charStart, 4000)).join('');
-          candidates.push({ pageId, chunkIndex: c.chunkIndex, charStart: c.charStart, charEnd: c.charEnd, similarity, text, editedAt: page.editedAt * 1000 });
+          candidates.push({ pageId, chunkIndex: c.chunkIndex, charStart: c.charStart, charEnd: c.charEnd, similarity, text, editedAt: page.editedAt * 1000, title: page.title, urlId: page.urlId, collectionId: page.collectionId });
         }
       }
     }

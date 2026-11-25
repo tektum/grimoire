@@ -80,7 +80,7 @@ export function createEmbeddingStore(db: Database): EmbeddingStore {
     async search(tenantId, queryVector, o) {
       // The 300 nearest chunks the person may read (the access predicate is inside), the nearest of each page, and the text of that chunk and the edit time of the page read from the
       // page's own row in this same statement, so nothing of a page that was filtered out is ever read (R9.32). `substr` counts code points, as the stored offsets do.
-      const rows = await db.query<{ page_id: string; chunk_index: number; char_start: number; char_end: number; similarity: number; text: string | null; edited_us: string }>(
+      const rows = await db.query<{ page_id: string; chunk_index: number; char_start: number; char_end: number; similarity: number; text: string | null; edited_us: string; title: string; url_id: string; collection_id: string }>(
         `with nearest as (
            select c.page_id, c.chunk_index, c.char_start, c.char_end, c.embedding <=> $1::vector as distance
              from page_chunks c join pages p on p.id = c.page_id
@@ -93,13 +93,14 @@ export function createEmbeddingStore(db: Database): EmbeddingStore {
          best as (select distinct on (page_id) * from nearest order by page_id, distance, chunk_index)
          select b.page_id, b.chunk_index, b.char_start, b.char_end, 1 - b.distance as similarity,
                 substr(p.text_content, b.char_start + 1, least(b.char_end - b.char_start, 4000)) as text,
-                (extract(epoch from coalesce(p.last_edited_at, p.updated_at)) * 1000000)::bigint as edited_us
+                (extract(epoch from coalesce(p.last_edited_at, p.updated_at)) * 1000000)::bigint as edited_us, p.title, p.url_id, p.collection_id
            from best b join pages p on p.id = b.page_id
           order by b.distance, b.page_id
           limit $7`,
         [vectorText(queryVector), o.model, [...o.collectionIds], o.collectionId ?? null, o.minSimilarity, tenantId, o.limit]);
       return rows.map((r): ChunkHit => ({
         pageId: r.page_id, chunkIndex: r.chunk_index, charStart: r.char_start, charEnd: r.char_end, similarity: Number(r.similarity), text: r.text ?? '', editedAt: Number(r.edited_us),
+        title: r.title, urlId: r.url_id, collectionId: r.collection_id,
       }));
     },
 

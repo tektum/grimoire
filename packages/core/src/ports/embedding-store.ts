@@ -26,6 +26,10 @@ export interface ChunkHit {
   readonly text: string;
   /** The page's last edit in microseconds, as the full-text search orders by it. */
   readonly editedAt: number;
+  /** What a result of the search needs of the page, from the same row as the text: a page found only by meaning has no full-text row to take them from. */
+  readonly title: string;
+  readonly urlId: string;
+  readonly collectionId: string;
 }
 
 /**

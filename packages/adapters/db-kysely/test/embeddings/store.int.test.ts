@@ -225,6 +225,8 @@ describe('search', () => {
     expect(mine?.text).toBe('the matching passage is here');
     const expected = ((await t.admin.query(`select (extract(epoch from coalesce(last_edited_at, updated_at)) * 1000000)::bigint as us from pages where id = '${emoji}'`)) as { us: string }[])[0];
     expect(mine?.editedAt).toBe(Number(expected?.us));
+    const meta = ((await t.admin.query(`select title, url_id, collection_id from pages where id = '${emoji}'`)) as { title: string; url_id: string; collection_id: string }[])[0];
+    expect([mine?.title, mine?.urlId, mine?.collectionId]).toEqual([meta?.title, meta?.url_id, meta?.collection_id]); // from the same row as the text
     expect(JSON.stringify(hits)).not.toContain(MARK);
     await store.replacePage(TENANT, emoji, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: 0, charEnd: 99_999 }]);
     expect((await ask({ minSimilarity: 0.99 })).find((h) => h.pageId === emoji)?.text).toBe('🙂🙂 intro words. the matching passage is here. tail'); // never past the text

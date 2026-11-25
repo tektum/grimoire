@@ -172,13 +172,13 @@ describe('FakeEmbeddingStore, what a hit carries', () => {
   it('gives the text of the chunk, read by code points from the page, and the edit time of the page in microseconds, only for the pages it returns', async () => {
     const store = new FakeEmbeddingStore(() => NOW);
     const text = '🙂 first part of the page. second part here.';
-    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 1234, text });
+    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 1234, text, title: 'Plans', urlId: 'plans-1' });
     store.seedPage({ id: 'p2', collectionId: 'closed', markdownHash: hash(2), editedAt: 1, text: 'secret chunk text' });
     const start = Array.from('🙂 first part of the page. ').length; // code points, not UTF-16 units
     await store.replacePage('legacy', 'p1', hash(1), 'm', [{ ...chunk(0, 'x'), charStart: 0, charEnd: 25 }, { ...chunk(1, 'second part here'), charStart: start, charEnd: start + 17 }]);
     await store.replacePage('legacy', 'p2', hash(2), 'm', [{ ...chunk(0, 'second part here'), charStart: 0, charEnd: 17 }]);
     const hits = await store.search('legacy', vectorOf('passage: second part here', 8), { model: 'm', collectionIds: ['open'], limit: 5, minSimilarity: 0 });
-    expect(hits.map((h) => [h.pageId, h.chunkIndex, h.text, h.editedAt])).toEqual([['p1', 1, 'second part here.', 1_234_000]]);
+    expect(hits.map((h) => [h.pageId, h.chunkIndex, h.text, h.editedAt, h.title, h.urlId, h.collectionId])).toEqual([['p1', 1, 'second part here.', 1_234_000, 'Plans', 'plans-1', 'open']]);
     expect(JSON.stringify(hits)).not.toContain('secret'); // the text of a page that was filtered out is never read
   });
 });
