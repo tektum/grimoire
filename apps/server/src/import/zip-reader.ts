@@ -32,6 +32,15 @@ export type OpenResult =
   | { readonly kind: 'refused'; readonly reason: HeaderRefusal | 'not_a_zip'; readonly index?: number };
 
 /** A yauzl random-access reader over ranged `get` calls of the file store: no temporary file, a read-ahead window for the small reads. */
+/** Resolves when `out` has drained or closed, and leaves neither listener behind (one per chunk would pile up over a long read). */
+function drainedOrClosed(out: Readable): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => { out.off('drain', done); out.off('close', done); resolve(); };
+    out.once('drain', done);
+    out.once('close', done);
+  });
+}
+
 class StorageReader extends yauzl.RandomAccessReader {
   calls = 0;
   private window: { start: number; bytes: Buffer } | undefined;
@@ -62,7 +71,7 @@ class StorageReader extends yauzl.RandomAccessReader {
       for await (const chunk of await this.fetch(start, end)) {
         // A consumer that destroys `out` (yauzl tearing down after an abort, a caller that stops reading) is never going to drain it: stop, and leaving the loop returns the storage body.
         if (out.destroyed) return;
-        if (!out.write(chunk)) await new Promise<void>((resolve) => { out.once('drain', resolve); out.once('close', resolve); });
+        if (!out.write(chunk)) await drainedOrClosed(out);
       }
       if (!out.destroyed) out.end();
     };

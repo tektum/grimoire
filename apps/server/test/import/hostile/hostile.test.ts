@@ -126,6 +126,23 @@ describe('a consumer that walks away from an entry', () => {
   });
 });
 
+describe('a long read', () => {
+  it('leaves no listener behind on the stream it feeds: reading a 6 MiB entry (many drains) raises no max-listeners warning', async () => {
+    const warnings: string[] = [];
+    const onWarning = (w: Error): void => { warnings.push(w.name); };
+    process.on('warning', onWarning);
+    try {
+      const s = store([{ name: 'big.bin', data: Buffer.alloc(6 * MiB, 7) }]);
+      const { reader, entries } = await ok(s);
+      expect(await read(reader, entries[0]!)).toEqual({ bytes: 6 * MiB });
+      await new Promise<void>((resolve) => { setImmediate(resolve); }); // warnings are emitted on the next tick
+      expect(warnings).toEqual([]);
+    } finally {
+      process.off('warning', onWarning);
+    }
+  });
+});
+
 describe('the lying archive', () => {
   it('an entry that declares 100 bytes and holds 5 MB is aborted as size_mismatch after the declared bytes plus one chunk', async () => {
     const s = store([{ name: 'lies.bin', data: Buffer.alloc(5 * MiB, 7), method: 'deflate', declaredSize: 100 }]);
