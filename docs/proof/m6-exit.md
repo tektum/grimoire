@@ -167,10 +167,10 @@ The build step `bun run --filter apps/web check:build` is part of the run, befor
 | Admin (M6-T12) | Axe reports no serious or critical violation on the three admin screens. (Firefox leaves this out: Chromium and WebKit only) | `apps/web/test-e2e/admin/axe.spec.ts` | proved |
 | Admin (M6-T12) | The first call shows the stale warning, nothing is sent until the admin confirms, the second call carries confirmStale: true, and the result line says the page was reset. | `apps/web/test-e2e/admin/reset-stale.spec.ts` | proved |
 | Admin (M6-T12) | The users screen offers no element named 'Delete' for a user (role query), only 'Suspend' or 'Reinstate'. | `apps/web/test-e2e/admin/no-delete.spec.ts` | proved |
-| Import (M6-T12a) | Progress 0, 40 and 100 percent render as progressbar values. | `apps/web/test/import/import.test.tsx` | pending M6-T12a |
+| Import (M6-T12a) | Progress 0, 40 and 100 percent render as progressbar values. | `apps/web/test/import/import.test.tsx` | proved |
 | Import (M6-T12a) | A small generated zip imports; the report row count equals the number of files; cancelling a second import while running shows "Cancelled. The pages it created were. | `apps/web/test-e2e/import/import.spec.ts` | pending M6-T12a |
-| Import (M6-T12a) | Only writers see /import (a viewer gets the not-found screen). | `apps/web/test-e2e/import/writers.spec.ts` | pending M6-T12a |
-| Import (M6-T12a) | Axe reports no serious or critical violation on the screen in each state. (Firefox leaves this out: Chromium and WebKit only) | `apps/web/test-e2e/import/axe.spec.ts` | pending M6-T12a |
+| Import (M6-T12a) | Only writers see /import (a viewer gets the not-found screen). | `apps/web/test-e2e/import/writers.spec.ts` | proved |
+| Import (M6-T12a) | Axe reports no serious or critical violation on the screen in each state. (Firefox leaves this out: Chromium and WebKit only) | `apps/web/test-e2e/import/axe.spec.ts` | proved |
 | Browsers and exit (M6-T13) | A real sign-in of the existing test user through the Descope component on login.html, GET /v1/me returns that user, a page created in the local test database by the. | `apps/web/test-e2e/live/signin.spec.ts` | pending M6-T13 |
 | Browsers and exit (M6-T13) | Live-workflow.test.mjs is the model; live-workflow.test.mjs (run by test:tools) parses .github/workflows/descope-live-web.yml and. | `tools/m3-live/test/live-workflow.test.mjs`<br>`tools/m6-live/test/live-workflow.test.mjs` | pending M6-T13 |
 | Browsers and exit (M6-T13) | The web origin (4173) differs from the API origin (8080) in every request log of the suite, and no request carries a cookie header. | `apps/web/test-e2e/m6/origins.spec.ts` | proved |

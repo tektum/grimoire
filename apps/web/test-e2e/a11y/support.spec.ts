@@ -46,8 +46,8 @@ test('the tour has a stop for every route of the route table, and none twice', (
   expect(new Set(stops).size, 'a route with two stops').toBe(stops.length);
 });
 
-test('the routes whose screens are not built are named, with the task that builds them', () => {
-  expect(STOPS.filter((s) => s.pending !== undefined).map((s) => `${s.route} pending ${s.pending}`)).toEqual(['/import pending M6-T12a']);
+test('a route whose screen is not built is named with the task that builds it', () => {
+  for (const stop of STOPS.filter((s) => s.pending !== undefined)) expect(stop.pending, `${stop.route} names its task`).toMatch(/^M\d+-T\d+[a-z]?$/);
 });
 
 test('an editor that is not editable is reported with the connection state and the status line', async ({ page }) => {

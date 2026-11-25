@@ -1,0 +1,39 @@
+import { expect, test } from '@playwright/test';
+import { mockApi } from '../collections/mock-api';
+import { expectNoAxeViolations } from '../support/axe';
+import { signInAs } from '../support/sign-in';
+import { scriptedImports, type ScriptedState } from './support';
+
+// Axe on the import screen in each state, in both schemes. Against the stand-in of the API and a scripted import.
+const STATES: readonly [string, ScriptedState][] = [
+  ['running at 40 percent', { status: 'running', total: 10, done: 4 }],
+  ['done', { status: 'done', total: 10, done: 9, skipped: 1 }],
+  ['failed', { status: 'failed', total: 10, done: 3, error: 'internal' }],
+  ['cancelled', { status: 'cancelled', total: 10, done: 3 }],
+];
+
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`${scheme} scheme`, () => {
+    test.beforeEach(async ({ page, context }) => {
+      await signInAs(context, 'e2e-alice', 'member', { check: false });
+      await page.emulateMedia({ colorScheme: scheme });
+      await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [] });
+    });
+
+    test('idle, with the duplicate warning, has no serious or critical violation', async ({ page }) => {
+      await scriptedImports(page, []);
+      await page.goto('/import');
+      await expect(page.getByRole('note')).toBeVisible();
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    for (const [name, state] of STATES) {
+      test(`${name} has none`, async ({ page }) => {
+        await scriptedImports(page, [state]);
+        await page.goto('/import?import=imp1');
+        await expect(page.getByRole('progressbar')).toBeVisible();
+        await expectNoAxeViolations(page, { minImpact: 'serious' });
+      });
+    }
+  });
+}

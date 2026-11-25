@@ -13,7 +13,7 @@ What was checked, how, and what is left for a person with the tools. The automat
 | forced colours | `forced-colors.spec.ts` | With forced colours on, every route shows where the focus is and has no serious or critical violation. |
 | this report | `proof.spec.ts` | Both manual sections are here, and every `fail` row has a task id. |
 
-The tour runs in Chromium in the job; Firefox and WebKit are the exit test's (M6-T13). The search results, the palette and the import screen are added to the tour when their screens land (M6-T09, M6-T12a): the tour names them as pending until then.
+The tour runs in Chromium in the job; Firefox and WebKit are the exit test's (M6-T13). The search results, the palette and the import screen are on the tour now that their screens have landed (M6-T09, M6-T12a); a screen that is not built yet is named on the tour as pending, with its task, until it lands.
 
 ## Findings of the automated passes
 
