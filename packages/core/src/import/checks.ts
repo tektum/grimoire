@@ -15,8 +15,12 @@ export interface ArchiveEntry {
 export type HeaderRefusal = 'unsafe_path' | 'symlink' | 'non_regular' | 'too_many_entries' | 'too_large' | 'ratio';
 export type HeaderCheck = { readonly ok: true } | { readonly ok: false; readonly reason: HeaderRefusal; readonly index?: number };
 
-/** The longest entry path kept, in characters. A Notion export puts a 32-character id in every segment and nests as deep as the page tree allows, which stays well under this. */
-export const MAX_ENTRY_PATH_LENGTH = 4096;
+/**
+ * The longest entry path kept, in bytes of UTF-8. The path is half of the unique index `(import_id, path)`, and a btree entry holds about 2,700 bytes (less than that for a path
+ * that does not compress); this leaves room for the import id and the entry's header. A Notion export puts a 32-character id in every segment and nests as deep as the page tree
+ * allows, which stays well under it.
+ */
+export const MAX_ENTRY_PATH_BYTES = 2048;
 /** The longest a reported name is, in characters. */
 export const MAX_REPORTED_NAME_LENGTH = 300;
 // eslint-disable-next-line no-control-regex -- the point is to find them: C0, DEL, C1, and the line and paragraph separators
@@ -25,10 +29,13 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const CONTROL_GLOBAL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 
 /**
- * A name that cannot be kept and shown as it is: a control character or a line separator, or a path longer than `MAX_ENTRY_PATH_LENGTH`. It is one failed item
+ * A name that cannot be kept and shown as it is: a control character or a line separator, or a path longer than `MAX_ENTRY_PATH_BYTES` bytes of UTF-8. It is one failed item
  * (`bad_name`), never a refused archive: an odd name in a large export must not lose the import. The item is stored under `reportedName`, because it is never looked up as an entry.
  */
-export const isBadName = (path: string): boolean => path.length > MAX_ENTRY_PATH_LENGTH || CONTROL.test(path);
+export const isBadName = (path: string): boolean => CONTROL.test(path) || tooLong(path);
+
+// A UTF-16 unit is at most three bytes of UTF-8, so a short string is not measured.
+const tooLong = (path: string): boolean => path.length * 3 > MAX_ENTRY_PATH_BYTES && new TextEncoder().encode(path).length > MAX_ENTRY_PATH_BYTES;
 
 /** What is kept of a bad name to report it: control characters removed, at most `MAX_REPORTED_NAME_LENGTH` characters. */
 export const reportedName = (path: string): string => path.replace(CONTROL_GLOBAL, '').slice(0, MAX_REPORTED_NAME_LENGTH);

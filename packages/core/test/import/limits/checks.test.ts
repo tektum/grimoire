@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_LENGTH, reportedName } from '../../../src/import/checks.js';
+import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_BYTES, reportedName } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
 import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
@@ -26,11 +26,20 @@ describe('a name that cannot be kept and shown as it is is one failed item (bad_
     expect(isBadName(name)).toBe(true);
   });
 
-  it('a name over MAX_ENTRY_PATH_LENGTH characters is bad, one of exactly that length is not, and neither refuses the archive', () => {
-    const exact = `${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 3)}.md`;
-    const over = `${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 2)}.md`;
+  it('a name over MAX_ENTRY_PATH_BYTES bytes of UTF-8 is bad, one of exactly that many is not, and neither refuses the archive (the unique index on the path holds about 2.7 KB)', () => {
+    const exact = `${'a'.repeat(MAX_ENTRY_PATH_BYTES - 3)}.md`;
+    const over = `${'a'.repeat(MAX_ENTRY_PATH_BYTES - 2)}.md`;
     expect([isBadName(exact), isBadName(over)]).toEqual([false, true]);
     expect(check([file('ok.md'), file(over)])).toEqual({ ok: true });
+  });
+
+  it('the limit counts bytes, not characters: three-byte characters reach it at a third of the length, and four-byte ones (a surrogate pair) at a quarter', () => {
+    const three = '\u65e5'; // 3 bytes
+    const four = '\u{1f600}'; // 4 bytes, 2 UTF-16 units
+    const fits3 = `${three.repeat(Math.floor((MAX_ENTRY_PATH_BYTES - 3) / 3))}.md`;
+    expect([isBadName(fits3), isBadName(`${fits3}${three}`)]).toEqual([false, true]);
+    const fits4 = `${four.repeat(Math.floor((MAX_ENTRY_PATH_BYTES - 3) / 4))}.md`;
+    expect([isBadName(fits4), isBadName(`${fits4}${four}`)]).toEqual([false, true]);
   });
 
   it('a Notion-shaped name (32-character ids in every segment, nested deeply) and ordinary non-ASCII names are fine', () => {
