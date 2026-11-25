@@ -79,6 +79,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
           GRIMOIRE_S3_BUCKET: files.name,
           GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual',
           GRIMOIRE_S3_CORS_MODE: 'external',
+          GRIMOIRE_SEMANTIC_SEARCH: 'off', // the model needs about 3 GiB: on goes with a larger task, for every stage alike
         },
         // The runtime role, and the operator role for the call sites that cross tenants: the schema owner's credentials stay with the `migrate` step.
         ssm: {
