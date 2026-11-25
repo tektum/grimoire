@@ -8,8 +8,15 @@ bun = "1.4.4" # the package manager (Node stays the runtime)
 gitleaks = "8.30.1"
 actionlint = "1.7.12"
 zizmor = "1.30.1"
+shellcheck = "0.11.0"
 
 [settings]
 lockfile = true
 # every platform variant mise may add on install, so that `mise install` leaves mise.lock unchanged; CI sets MISE_LOCKED=1 (an out-of-date lock fails there).
 lockfile_platforms = ["linux-x64", "linux-x64-baseline", "linux-x64-musl", "linux-x64-musl-baseline", "linux-arm64", "linux-arm64-musl", "macos-arm64", "macos-x64", "macos-x64-baseline"]
+
+# The workflow lint, one command for CI and for a checkout: actionlint hands every `run:` script to shellcheck, but only when it finds one, and without one it says nothing and
+# exits 0 (a bare `! cmd`, which skips errexit, passed on a machine that had no shellcheck on its PATH). `tools/ci/actionlint.sh` names the pinned shellcheck, and a missing one is an error.
+[tasks.lint-workflows]
+description = "actionlint with the pinned shellcheck, then zizmor"
+run = ["tools/ci/actionlint.sh", "zizmor --format=plain ."]
