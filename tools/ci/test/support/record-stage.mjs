@@ -62,7 +62,8 @@ export function recordProgram(run) {
   g.sst = namespace('sst'); g.aws = namespace('aws'); g.random = namespace('random'); g.descope = namespace('descope');
   g.$interpolate = tag;
   g.$output = (v) => placeholder(`output(${typeof v === 'string' ? v : 'value'})`);
-  g.$resolve = (v) => placeholder(`resolve(${Object.keys(v ?? {}).join(',')})`);
+  // A value that comes from a resource is named with its source (`host=Db.host`), so a test sees which database a connection string points at.
+  g.$resolve = (v) => placeholder(`resolve(${Object.entries(v ?? {}).map(([k, x]) => (PATHS.has(x) ? `${k}=${PATHS.get(x)}` : k)).join(',')})`);
   g.$util = {};
   let returned;
   try { returned = run(); } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete g[k]; else g[k] = v; } }

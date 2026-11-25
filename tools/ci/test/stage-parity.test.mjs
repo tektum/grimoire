@@ -57,6 +57,12 @@ test('the settings of a stage come from variables named for no stage, and a miss
   assert.throws(() => stageSettings('dev', { ...env, GRIMOIRE_ALLOWED_EMAIL_DOMAINS: undefined }), /GRIMOIRE_ALLOWED_EMAIL_DOMAINS must be set/);
   for (const bad of ['localhost', 'https://x.test', 'x.test:8443', 'a b.test']) assert.throws(() => stageSettings('dev', { ...env, GRIMOIRE_DOMAIN: bad }), /GRIMOIRE_DOMAIN must be the host name/, bad);
   assert.equal(stageSettings('dev', { GRIMOIRE_DOMAIN: 'x.test', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'a.test' }).firstAdminEmails.length, 0);
+  const snapshot = 'arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-dev-to-aurora';
+  assert.equal(stageSettings('dev', { ...env, GRIMOIRE_AURORA_SNAPSHOT: snapshot }).auroraSnapshot, snapshot);
+  assert.equal('auroraSnapshot' in stageSettings('dev', { ...env, GRIMOIRE_AURORA_SNAPSHOT: '' }), false);
+  for (const bad of ['grimoire-dev-to-aurora', 'arn:aws:rds:us-east-1:123456789012:cluster-snapshot:grimoire-dev', 'arn:aws:rds:us-east-1:1234:snapshot:grimoire-dev']) {
+    assert.throws(() => stageSettings('staging', { ...env, GRIMOIRE_AURORA_SNAPSHOT: bad }), /GRIMOIRE_AURORA_SNAPSHOT must be the ARN of a snapshot of the stage's RDS instance.*\(a variable of the environment "staging"\)/, bad);
+  }
 });
 
 const record = (name, domain, extra = {}) => recordProgram(() => stage(stageConfig(name), { domain, allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: ['omer@descope.com'], ...extra })).calls;
@@ -102,6 +108,29 @@ test('every stage runs one pinned Postgres minor, never below 17.3, so no stage 
   for (const name of NAMES) {
     const versions = record(name, 'any.example.test').filter((c) => c.type === 'sst.aws:Postgres').map((c) => c.args.version);
     assert.deepEqual(versions, [POSTGRES_VERSION], `${name} declares the pinned version`);
+  }
+});
+
+test('a stage given a snapshot of its instance gets an always-on Aurora Serverless v2 cluster restored from it in the stage\'s database group, every connection goes to the cluster, and the instance stays, protected', () => {
+  const snapshot = 'arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-dev-to-aurora';
+  const urls = (calls) => Object.fromEntries(calls.filter((c) => /^(Admin|Migrator|App|Ops)Url$/.test(c.name)).map((c) => [c.name, c.args.value]));
+  for (const name of NAMES) {
+    const before = record(name, 'any.example.test');
+    assert.equal(before.filter((c) => c.type === 'sst.aws:Aurora').length, 0, `${name}: no cluster without a snapshot`);
+    assert.equal(Object.keys(urls(before)).length, 4);
+    for (const url of Object.values(urls(before))) assert.match(url, /host=Db\.host,port=Db\.port,name=Db\.database\)/);
+    const { calls, raw } = recordProgram(() => stage(stageConfig(name), { domain: 'any.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [], auroraSnapshot: snapshot }));
+    assert.deepEqual(calls.filter((c) => c.type === 'sst.aws:Aurora'), [
+      { type: 'sst.aws:Aurora', name: 'DbCluster', args: { engine: 'postgres', version: POSTGRES_VERSION, vpc: '<Vpc>', scaling: { min: '0.5 ACU', max: '2 ACU' }, transform: { cluster: '<function>' } } },
+    ]);
+    for (const url of Object.values(urls(calls))) assert.match(url, /host=DbCluster\.host,port=DbCluster\.port,name=DbCluster\.database\)/);
+    assert.match(urls(calls).AdminUrl, /\(user=DbCluster\.username,secret=DbCluster\.password,/, 'db-setup signs in as the cluster\'s own administrator');
+    const args = {};
+    const opts = {};
+    raw.find((c) => c.type === 'sst.aws:Aurora').args.transform.cluster(args, opts);
+    assert.deepEqual(JSON.parse(JSON.stringify(args)), { vpcSecurityGroupIds: ['<DbSecurityGroup.id>'], snapshotIdentifier: snapshot, deletionProtection: true, backupRetentionPeriod: 7 });
+    assert.deepEqual(opts.ignoreChanges, ['snapshotIdentifier'], 'the snapshot only seeds the cluster: a later value must never replace it');
+    assert.deepEqual(calls.find((c) => c.name === 'Db').args.transform.instance, { vpcSecurityGroupIds: ['<DbSecurityGroup.id>'], deletionProtection: true }, 'the instance is the way back until a later change removes it');
   }
 });
 
