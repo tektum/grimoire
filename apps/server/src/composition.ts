@@ -143,6 +143,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
     ordering: createOrdering(), converter, search: createSearchRepo(db, { statementTimeoutMs: config.search.statementTimeoutMs }), imports: createImportRepo(db),
     enqueueImport: (payload, options) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImport(payload, options)),
+    enqueueImportCleanup: (payload) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImportCleanup(payload)),
     idempotency: createIdempotency(db, ops), collections: createCollections(db), audit: createAudit(db, ops),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db, ops), admin: createAdmin(db), pageState: createPageState(db),
     attachments: createAttachments(db),
@@ -173,9 +174,9 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
-    jobs: registerJobs({
+    jobs: (queue) => registerJobs({
       config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
-      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
+      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }), imports: http.imports, queue,
     }),
     onError: (error) => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0, ...reasonOf(error) }); } });
   const shutdownHooks: ShutdownHook[] = [

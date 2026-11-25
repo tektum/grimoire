@@ -60,6 +60,10 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
       enqueued.push({ name: 'import', payload, options });
       return Promise.resolve('job-1');
     },
+    enqueueImportCleanup: (payload) => {
+      enqueued.push({ name: 'import-cleanup', payload, options: undefined });
+      return Promise.resolve('job-2');
+    },
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
     pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), attachments: new FakeAttachmentRepo(), deleteFiles: () => Promise.resolve(),
   };

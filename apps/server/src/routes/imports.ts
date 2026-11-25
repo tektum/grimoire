@@ -15,6 +15,7 @@ import { createRouter, defineRoute } from '../http/factory.js';
 import { guardImport } from '../http/import-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
 import { ZIP_MAGIC } from '../import/zip-reader.js';
+import { importSingletonKey } from '../jobs/types.js';
 import type { ErrorEvents } from '../events.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { 'application/json': { schema } } });
@@ -223,7 +224,7 @@ router.openapi(startImport, async (c) => {
   if (record.status === 'created') await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });
   // The job moves the import to `running` when its turn comes: a workspace has one running import at a time, held by the database, so a second one waits as `uploaded` and its job tries again.
   try {
-    await deps.enqueueImport({ importId: id, tenantId: tenant }, { singletonKey: id });
+    await deps.enqueueImport({ importId: id, tenantId: tenant }, { singletonKey: importSingletonKey(id) });
   } catch {
     // The work could not be queued: the import stays `uploaded`, and the person may start it again.
     deps.log.error('files.unavailable', { operation: 'import-enqueue' });
@@ -305,6 +306,8 @@ router.openapi(cancelImport, async (c) => {
   if (cancelled === undefined) return fail('not_running');
   await deps.audit.append({ actorId: user.id, action: 'import.cancelled', targetType: 'import', targetId: id, tenantId: tenant });
   deps.log.info('import.cancelled', { importId: id });
+  // The pages it created go to the trash and its zip is deleted by the cleanup job. The cancel is done whatever the queue says: a job that stops on the cancel hands over the same cleanup.
+  await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
   noStore(c);
   return c.json(present(cancelled), 200);
 });

@@ -23,7 +23,7 @@ describe('two replicas starting the job runner', () => {
       expect(runners.map((r) => r.state())).toEqual(['up', 'up']);
       const rows = (await db.sql(`select name, singleton_key, count(*)::int as n from pgboss.job where state = 'created' and singleton_key like 'sched:%' group by name, singleton_key order by name`)) as { name: string; singleton_key: string; n: number }[];
       expect(rows).toEqual(jobs.filter((j) => j.schedule !== undefined).map((j) => ({ name: j.name, singleton_key: `sched:${j.name}`, n: 1 })).sort((a, b) => (a.name < b.name ? -1 : 1)));
-      expect(rows.map((r) => r.name)).toEqual(['markdown-sweep', 'purge', 'revision-catchup', 'upload-cleanup']); // the stubs are not scheduled
+      expect(rows.map((r) => r.name)).toEqual(['import-sweep', 'markdown-sweep', 'purge', 'revision-catchup', 'upload-cleanup']); // a stub (the `import` job) is not scheduled
     } finally {
       await Promise.all(runners.map((r) => r.hook.run()));
     }

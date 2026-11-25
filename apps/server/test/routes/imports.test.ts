@@ -42,7 +42,7 @@ const FILES: FilesConfig = {
 };
 const ZIP = buildZip([{ name: 'a.md', data: Buffer.from('# a\n') }]);
 
-function build(options: { files?: boolean; enqueueFails?: boolean } = {}) {
+function build(options: { files?: boolean; enqueueFails?: boolean; cleanupFails?: boolean } = {}) {
   const t = makeContext();
   const world = emptyWorld();
   const rows: UserRecord[] = PEOPLE.map((p, i) => ({
@@ -93,6 +93,11 @@ function build(options: { files?: boolean; enqueueFails?: boolean } = {}) {
         if (options.enqueueFails === true) return Promise.reject(new Error('jobs-unavailable'));
         enqueued.push({ name: 'import', payload, options: opts });
         return Promise.resolve('job-1');
+      },
+      enqueueImportCleanup: (payload) => {
+        if (options.cleanupFails === true) return Promise.reject(new Error('jobs-unavailable'));
+        enqueued.push({ name: 'import-cleanup', payload, options: undefined });
+        return Promise.resolve('job-2');
       },
     },
   });
@@ -179,7 +184,7 @@ describe('POST /v1/imports/{id}/start', () => {
     const res = await t.call('ada', 'POST', `/v1/imports/${id}/start`);
     expect([res.status, await res.json()]).toEqual([202, { status: 'uploaded' }]);
     expect(await t.imports.get('T-a', id)).toMatchObject({ status: 'uploaded' });
-    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: id, tenantId: 'T-a' }, options: { singletonKey: id } }]);
+    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: id, tenantId: 'T-a' }, options: { singletonKey: `import:${id}` } }]);
     expect(t.audit.events).toMatchObject([{ action: 'import.started', targetType: 'import', targetId: id, tenantId: 'T-a', actorId: t.uid('ada') }]);
     // Asking again while it waits is safe (the queue keeps one job for the import); once it runs the start is refused.
     expect((await t.call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(202);
@@ -249,7 +254,7 @@ describe('POST /v1/imports/{id}/start', () => {
     const res = await t.call('ada', 'POST', `/v1/imports/${second}/start`);
     expect([res.status, await res.json()]).toEqual([202, { status: 'uploaded' }]);
     expect((await t.imports.get('T-a', second))?.status).toBe('uploaded');
-    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: second, tenantId: 'T-a' }, options: { singletonKey: second } }]);
+    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: second, tenantId: 'T-a' }, options: { singletonKey: `import:${second}` } }]);
   });
 
   it('two starts at once are both accepted and queued: both wait, and the database lets one run at a time', async () => {
@@ -531,6 +536,23 @@ describe('POST /v1/imports/{id}/cancel', () => {
     expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString() });
     expect(t.audit.events.map((e) => e.action)).toEqual(['import.cancelled']);
     expect(t.audit.events[0]).toMatchObject({ actorId: t.uid('root'), targetId: id, tenantId: 'T-a' });
+  });
+
+  it('hands the cleanup of the import to the queue (its pages go to the trash, its zip is deleted), by ids only', async () => {
+    const t = build();
+    const id = await t.running();
+    expect((await t.call('root', 'POST', `/v1/imports/${id}/cancel`)).status).toBe(200);
+    expect(t.enqueued).toEqual([{ name: 'import-cleanup', payload: { importId: id, tenantId: 'T-a' }, options: undefined }]);
+    expect((await t.call('root', 'POST', `/v1/imports/${id}/cancel`)).status).toBe(409);
+    expect(t.enqueued).toHaveLength(1); // a cancel that changed nothing hands nothing over
+  });
+
+  it('is still cancelled when the queue is not up: 200, and the failure is logged', async () => {
+    const t = build({ cleanupFails: true });
+    const id = await t.running();
+    const res = await t.call('root', 'POST', `/v1/imports/${id}/cancel`);
+    expect([res.status, ((await res.json()) as { status: string }).status]).toEqual([200, 'cancelled']);
+    expect(t.enqueued).toEqual([]);
   });
 
   it('is 409 not_running when it is not running (not started, ended, or cancelled already), and 404 for anyone who may not see it', async () => {

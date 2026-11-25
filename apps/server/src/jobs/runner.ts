@@ -10,14 +10,21 @@ import { instrument, reasonOf } from './instrument.js';
 /** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
 export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
 
-export interface JobRunner {
+/** What the code that is not a job handler's own reaches the queue by: the import's job and its cleanup, and whether an import's job is live. All reject with `jobs-unavailable` while the queue is not up (not started, given up, or stopping). */
+export interface JobsApi {
+  isLive(name: string, singletonKey: string): Promise<boolean>;
+  /** Hands the job of an import to the queue (the import start, the sweep): its payload is the ids and nothing else (decision 4). */
+  enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
+  /** Hands the cleanup of an import that is over to the queue (a cancel, the sweep): ids only. */
+  enqueueImportCleanup(payload: { readonly importId: string; readonly tenantId: string }): Promise<string | null>;
+}
+
+export interface JobRunner extends JobsApi {
   state(): JobsState;
   /** Starts the queue and registers the handlers; a second call does nothing. It never rejects: a start that fails is logged and tried again (`MAX_START_ATTEMPTS` times), and the server keeps running. */
   start(): Promise<void>;
   /** Stops the queue in the `release-jobs` phase, with the grace of the settings. */
   readonly hook: ShutdownHook;
-  /** Adds a job for a route to hand work to (the import start). Rejects with `jobs-unavailable` while the queue is not up (not started yet, given up, or stopping): the route answers that it cannot take the work now. */
-  enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
 }
 
 /** What the queue is started with: the part of the adapter's options this module sets. */
@@ -33,8 +40,8 @@ export interface JobRunnerOptions {
   /** Constructs and starts the queue: `createJobQueue` of the pg-boss adapter (only the composition root constructs adapters), or a test's own. */
   readonly make: (options: QueueStart) => Promise<JobQueue>;
   readonly onError?: (error: Error) => void;
-  /** The jobs to register: `registerJobs` of the composition root. Without it only the import jobs are. */
-  readonly jobs?: readonly RegisteredJob[];
+  /** The jobs to register: `registerJobs` of the composition root, given the queue's `JobsApi` (a job that asks about or adds another job reaches the queue through it). Without it only the `import` job is. */
+  readonly jobs?: readonly RegisteredJob[] | ((queue: JobsApi) => readonly RegisteredJob[]);
   /** The time of the run log (`jobs.started` and the rest carry the milliseconds a run took). */
   readonly clock?: Clock;
 }
@@ -54,7 +61,6 @@ export const MAX_START_ATTEMPTS = 20;
  */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const { config, log } = options;
-  const jobs = options.jobs ?? importJobs();
   const clock = options.clock ?? { now: () => Date.now() };
   let queue: JobQueue | undefined;
   let running = false;
@@ -63,6 +69,16 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   let abandoned = false;
   let attempts = 0;
   let state: JobsState = 'starting';
+  const up = (): JobQueue => {
+    if (queue === undefined || state !== 'up') throw new Error('jobs-unavailable');
+    return queue;
+  };
+  const api: JobsApi = {
+    isLive: (name, key) => Promise.resolve().then(() => up().isLive(name, key)),
+    enqueueImport: (payload, enqueueOptions) => Promise.resolve().then(() => up().enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, enqueueOptions)),
+    enqueueImportCleanup: (payload) => Promise.resolve().then(() => up().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId })),
+  };
+  const jobs = typeof options.jobs === 'function' ? options.jobs(api) : (options.jobs ?? importJobs());
   let timer: NodeJS.Timeout | undefined;
   let inFlight: Promise<void> | undefined;
   /** True while an attempt is running (the stop then waits for it, and that wait is taken out of the grace). */
@@ -105,7 +121,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   };
   return {
     state: () => state,
-    enqueueImport: (payload, options) => (queue === undefined || state !== 'up' ? Promise.reject(new Error('jobs-unavailable')) : queue.enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, options)),
+    ...api,
     start: async () => {
       if (running) return;
       running = true;
