@@ -6,6 +6,8 @@ import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
+import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
+import type { SearchRepo } from '@tektum/grimoire-core/ports/search-repo';
 import type { Role, UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
 import type { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import type { IdempotencyStore } from '@tektum/grimoire-core/ports/idempotency-store';
@@ -35,6 +37,10 @@ export interface HttpDeps {
   readonly provisioner: ReturnType<typeof createProvisioner>;
   /** Routes may only seed. The rebuild from stored Markdown belongs to the collaboration host. */
   readonly converter: MarkdownConverter;
+  /** Search over the pages a user may read (M7-T01 fills the adapter). */
+  readonly search: SearchRepo;
+  /** The imports of the caller's tenant (M7-T04 fills the adapter). */
+  readonly imports: ImportRepo;
   /** Sibling ordering on fractional keys. */
   readonly ordering: Ordering;
   readonly idempotency: IdempotencyStore;
