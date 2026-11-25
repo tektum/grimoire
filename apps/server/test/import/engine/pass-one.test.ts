@@ -130,6 +130,14 @@ describe('pages get their ids now, and a folder with no page of its own gets an 
     expect(items.some((i) => i.path === 'dir/')).toBe(false);
   });
 
+  it('a long bad name is cut without leaving half of a surrogate pair (the stored path is valid text)', async () => {
+    const name = `a${'\u{1f600}'.repeat(140)}\n`; // 281 units after the newline goes, the cut at 280 falls inside the last pair
+    const { items } = await run([entry(name, { index: 0 })]);
+    const [row] = items;
+    expect(row?.status).toBe('failed');
+    expect(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(row?.path ?? '')).toBe(false);
+  });
+
   it('a generated row for a bad name or a duplicate never takes the path of a real entry', async () => {
     const real = 'A.md [entry 1]';
     const list = [entry('a.md', { index: 0 }), entry('A.md', { index: 1 }), entry(real, { index: 2 })];

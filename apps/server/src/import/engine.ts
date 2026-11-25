@@ -59,7 +59,7 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
   const rows: NewImportItem[] = [];
   const pagePaths: string[] = [];
   entries.forEach((e, at) => {
-    if (!e.nameValid || isBadName(e.path)) { rows.push({ path: free(reportedName(e.path).slice(0, BAD_NAME_ROOM), e.index), kind: 'other', status: 'failed', message: 'bad_name' }); return; }
+    if (!e.nameValid || isBadName(e.path)) { rows.push({ path: free(reportedName(e.path).slice(0, BAD_NAME_ROOM).replace(/[\uD800-\uDBFF]$/, ''), e.index), kind: 'other', status: 'failed', message: 'bad_name' }); return; }
     if (duplicates.has(at)) { rows.push({ path: free(e.path, e.index), kind: 'other', status: 'skipped', message: 'duplicate_path' }); return; }
     if (isIgnoredEntry(e.path, e.isDirectory)) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'ignored' }); return; }
     if (/\.zip$/i.test(e.path) && !options.allowNestedZips) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'nested_archive' }); return; }
