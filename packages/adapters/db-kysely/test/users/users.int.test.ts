@@ -105,6 +105,7 @@ describe('createUserStore', () => {
     const failing: Database = {
       async query<Row>(source: string): Promise<readonly Row[]> {
         if (source.includes('pg_advisory_xact_lock')) return [];
+        if (source.startsWith('select 1 from users where email')) return []; // the email check finds nobody
         if (source.startsWith('insert ')) throw cause;
         if (source.startsWith('select ') && !readAlreadySupplied) {
           readAlreadySupplied = true;

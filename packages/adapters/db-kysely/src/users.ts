@@ -36,6 +36,10 @@ export function createUserStore(db: Database, maxTenantUsers: number): UserStore
           await tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.tenants.users.' || $1::text, 0))`, [tenantId]);
           // The tenant and the person are one statement, and the tenant is made only when the person row is: a refused person (the email is taken, or the tenant is full) and the loser
           // of a race between two first sign-ins of one subject all leave no tenant behind. The tenant is named after the domain and admits it; its key is checked at the end of the statement.
+          // Judged in this order, as in the fake: a person who has a row is that person (the insert below does nothing and the row is read), then an email another person has is
+          // taken, then the cap. The check is here and not left to the unique index because the cap condition keeps the insert from being tried at all in a full tenant.
+          const taken = await tx.query(`select 1 from users where email = $1 and descope_user_id <> $2`, [input.email, input.descopeUserId]);
+          if (taken.length > 0) return { kind: 'email-taken' };
           const insertUser = `insert into users (descope_user_id, email, name, avatar_url, role, last_seen_at, tenant_id) select $1, $2, $3, $4, $5, now(), $6
             where (select count(*) from users where tenant_id = $6) < $7 on conflict (descope_user_id) do nothing returning descope_user_id`;
           const inserted = await tx.query<{ descope_user_id: string }>(

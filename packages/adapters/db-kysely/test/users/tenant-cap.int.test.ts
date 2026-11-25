@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { userStoreCapCases } from '@tektum/grimoire-core/testing/user-store-cap-conformance';
 import { createUserStore } from '../../src/users.js';
 import { createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
@@ -39,5 +40,11 @@ describe('the cap of people of a tenant', () => {
     expect(results.filter((r) => r.kind === 'created')).toHaveLength(4);
     expect(results.filter((r) => r.kind === 'tenant-full')).toHaveLength(1);
     expect(await count('T-race')).toBe(4);
+  });
+});
+
+describe('the order in which a new person is judged (the cases every store agrees on)', () => {
+  it.each(userStoreCapCases.map((c) => [c.name, c] as const))('%s', async (_name, c) => {
+    await c.run({ store: createUserStore(t.app, 2), tenant: `T-order-${String(Math.random()).slice(2, 10)}` });
   });
 });
