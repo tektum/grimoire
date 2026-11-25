@@ -766,6 +766,7 @@ An importer for Markdown and CSV exports is in version 1. **No sample export is 
 | R10.14 | A second run of the same import is a new import; Grimoire does not match pages to earlier imports. | Planned |  |
 | R10.15 | An import is refused before it creates any page, with a count, if it would take the target collection above 10,000 pages (R5.8, R6.54). | Planned |  |
 | R10.16 | A sweep (a scheduled job) finds imports in state `running` with no live job and re-enqueues them, so a crash between steps cannot leave an import stuck. | Planned |  |
+| R10.17 | **Shaping a plain Markdown zip** (the generic profile, `markdown_zip`). Every `.md` or `.markdown` file is a page, titled by its first heading (a level-one heading before any other, else the first heading of any level) or, with no heading, by its file name; front matter at the top is dropped. Folders are pages too: the page of a folder is an `index.md` or `README.md` inside it (any letter case; `index.md` wins when both exist, and the README then is an ordinary page inside the folder), and a folder with neither becomes an empty page that holds its contents. A page goes under the page of its folder. Relative links between files, and images and files by relative path, are rewritten; every other file in the zip is an attachment only if some page uses it. The Notion export has its own rules (a folder's page is the sibling `<folder>.md`). | Planned | R10.1, R10.2, R10.10 |
 
 ## 11. Client application
 

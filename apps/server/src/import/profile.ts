@@ -23,8 +23,11 @@ export interface ImportProfile {
   readonly source: 'markdown_zip' | 'notion_md_csv';
   classify(entry: { readonly path: string }): ImportItemKind;
   titleOf(path: string, markdown: string): string;
-  /** The path of the folder (or page) this page goes under, or null at the top. */
-  parentPathOf(path: string): string | null;
+  /**
+   * The path of the folder (or page) this page goes under, or null at the top. `lowerPaths` is every path of the archive, lower-cased: a profile whose answer depends on the
+   * other entries (a folder with two candidates for its page) reads it; without it the answer is the one for a folder that has no other candidate.
+   */
+  parentPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | null;
   preprocess(markdown: string, ctx: { readonly path: string }): string;
   resolveLink(url: string, fromPath: string, index: LinkIndex): Target | undefined;
   /** A database export (a CSV) as a Markdown table; only a profile that has such exports provides it. */

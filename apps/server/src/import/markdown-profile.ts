@@ -5,6 +5,7 @@ import type { ImportProfile, LinkIndex, Target } from './profile.js';
 const PAGE = /\.(md|markdown)$/i;
 /** The page file that stands for its folder. */
 const FOLDER_PAGE = /^(index|readme)\.(md|markdown)$/i;
+const INDEX_NAMES = ['index.md', 'index.markdown'];
 
 const lines = (text: string): string[] => text.split('\n');
 
@@ -72,11 +73,16 @@ export const markdownProfile: ImportProfile = {
     if (heading !== undefined) return heading;
     return (path.split('/').at(-1) ?? path).replace(PAGE, '');
   },
-  parentPathOf(path) {
+  parentPathOf(path, lowerPaths) {
     const segments = path.split('/');
     const name = segments.pop() ?? '';
-    // The page file of a folder stands for the folder, so it goes under the folder above.
-    if (FOLDER_PAGE.test(name) && segments.length > 0) segments.pop();
+    // The page file of a folder stands for the folder, so it goes under the folder above. When a folder has both an index file and a README, the index file is its page and the
+    // README is an ordinary page inside it.
+    const folderPage = FOLDER_PAGE.exec(name);
+    if (folderPage !== null && segments.length > 0) {
+      const readmeBesideIndex = folderPage[1]?.toLowerCase() === 'readme' && lowerPaths !== undefined && INDEX_NAMES.some((n) => lowerPaths.has(`${segments.join('/').toLowerCase()}/${n}`));
+      if (!readmeBesideIndex) segments.pop();
+    }
     return segments.length === 0 ? null : segments.join('/');
   },
   preprocess: (markdown) => stripFrontMatter(markdown),

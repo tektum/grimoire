@@ -53,6 +53,26 @@ describe('parentPathOf: the folder a page lives in, or the folder above the fold
   });
 });
 
+describe('parentPathOf when a folder has both an index.md and a README.md', () => {
+  const paths = (...names: string[]): ReadonlySet<string> => new Set(names.map((n) => n.toLowerCase()));
+
+  it('index.md is the folder\'s page and README.md is an ordinary child of the folder', () => {
+    const all = paths('a/dir/index.md', 'a/dir/README.md', 'a/other/README.md');
+    expect(p.parentPathOf('a/dir/index.md', all)).toBe('a');
+    expect(p.parentPathOf('a/dir/README.md', all)).toBe('a/dir');
+    expect(p.parentPathOf('a/other/README.md', all)).toBe('a'); // no index.md beside it: it stands for its folder
+  });
+
+  it('the match is case-insensitive and takes either extension', () => {
+    expect(p.parentPathOf('dir/readme.md', paths('dir/INDEX.markdown', 'dir/readme.md'))).toBe('dir');
+    expect(p.parentPathOf('dir/INDEX.markdown', paths('dir/INDEX.markdown', 'dir/readme.md'))).toBeNull();
+  });
+
+  it('without the list of paths a README.md stands for its folder', () => {
+    expect(p.parentPathOf('dir/README.md')).toBeNull();
+  });
+});
+
 describe('preprocess: front matter is stripped (R10.10)', () => {
   const ctx = { path: 'a.md' };
   it('strips a YAML block at the start, and a BOM before it', () => {
