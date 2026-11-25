@@ -1,17 +1,27 @@
 import assert from 'node:assert/strict';
 import { MAX_ITEM_TEXT, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
-import type { ImportRecord, ImportRepo, ImportStatus } from '../ports/import-repo.js';
+import type { ImportRecord, ImportRepo, ImportStatus, NewImportedPage } from '../ports/import-repo.js';
 
 /** What a case needs besides the repository: a way to make an import row (the routes of M7-T05 own creation) and a tenant that is not the one used. */
 export interface ImportRepoHarness {
   readonly repo: ImportRepo;
   readonly tenantId: string;
   readonly otherTenantId: string;
+  /** A user that exists, as the importer of a written page. */
+  readonly userId: string;
   seed(status: ImportStatus): Promise<ImportRecord>;
+  /** Sets the status of a seeded import (a cancel, which the routes of M7-T05 own). */
+  seedStatus(id: string, status: ImportStatus): Promise<void>;
   readonly now: number;
 }
 
 export interface ImportRepoCase { readonly name: string; run(h: ImportRepoHarness): Promise<void> }
+
+const limits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
+const content = { state: new Uint8Array([1, 2, 3]), markdown: 'Hello\n', text: 'Hello', hash: Buffer.alloc(32, 1) };
+const pageOf = (h: ImportRepoHarness, itemId: string, over: Partial<NewImportedPage> = {}): NewImportedPage => ({
+  itemId, collectionId: 'c', parentId: null, position: (before) => `${before ?? ''}a`, title: 'T', createdBy: h.userId, content, markdownBytes: 6, stateBytes: 3, attachments: [], ...over,
+});
 
 const pages = (...paths: string[]) => paths.map((path) => ({ path, kind: 'page' as const }));
 
@@ -105,6 +115,50 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.equal(await h.repo.finish(h.tenantId, made.id, 'failed', 'internal', h.now + 10), false, 'it already ended');
       assert.equal(await h.repo.setCounts(h.tenantId, made.id, NO_IMPORT_COUNTS), false);
       assert.deepEqual((await h.repo.get(h.tenantId, made.id))?.counts, counts, 'an ended import keeps its counts');
+    },
+  },
+  {
+    name: 'write-page-settles-its-item-once',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md'));
+      const [item] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(item);
+      const first = await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now);
+      assert.equal(first.kind, 'ok');
+      if (first.kind !== 'ok') return;
+      const settled = await h.repo.getItem(h.tenantId, made.id, item.id);
+      assert.deepEqual({ ...settled }, { ...item, status: 'ok', pageId: first.pageId, urlId: first.urlId, markdownBytes: 6, stateBytes: 3 });
+      assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'page', 10), []);
+      const again = await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now);
+      assert.deepEqual(again, { kind: 'not-pending' }, 'a resumed run does not write the page twice');
+    },
+  },
+  {
+    name: 'write-page-only-while-the-import-runs',
+    async run(h) {
+      for (const status of ['cancelled', 'done', 'failed'] as const) {
+        const made = await h.seed('running');
+        await h.repo.addItems(h.tenantId, made.id, pages('a.md'));
+        const [item] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+        assert.ok(item);
+        if (status === 'cancelled') await h.seedStatus(made.id, 'cancelled');
+        else await h.repo.finish(h.tenantId, made.id, status === 'done' ? 'done' : 'failed', null, h.now);
+        assert.deepEqual(await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now), { kind: 'not-running' }, status);
+        assert.equal((await h.repo.getItem(h.tenantId, made.id, item.id))?.status, 'pending');
+      }
+    },
+  },
+  {
+    name: 'write-page-in-another-tenant-writes-nothing',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md'));
+      const [item] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(item);
+      const result = await h.repo.writePage(h.otherTenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now);
+      assert.notEqual(result.kind, 'ok');
+      assert.equal((await h.repo.getItem(h.tenantId, made.id, item.id))?.status, 'pending');
     },
   },
   {

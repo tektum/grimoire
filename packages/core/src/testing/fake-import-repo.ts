@@ -1,5 +1,5 @@
 import { cleanItemText as clean, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
-import type { ImportCounts, ImportItem, ImportItemKind, ImportRecord, ImportRepo, ItemOutcome, NewImportItem } from '../ports/import-repo.js';
+import type { ImportCounts, ImportItem, ImportItemKind, ImportRecord, ImportRepo, ItemOutcome, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
 
@@ -25,6 +25,12 @@ export class FakeImportRepo implements ImportRepo {
     const row = { ...(this.rows[index] as ImportRecord), ...patch };
     this.rows[index] = row;
     return row;
+  }
+
+  /** Moves a seeded import to a status (what a cancel does). */
+  setStatus(id: string, status: ImportRecord['status']): void {
+    const at = this.rows.findIndex((r) => r.id === id);
+    if (at !== -1) this.replace(at, { status });
   }
 
   get(tenantId: string, id: string): Promise<ImportRecord | undefined> {
@@ -58,6 +64,26 @@ export class FakeImportRepo implements ImportRepo {
     if (found === undefined) return Promise.resolve(false);
     this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, message: clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
     return Promise.resolve(true);
+  }
+
+  /** The pages written, in order. */
+  readonly written: { tenantId: string; importId: string; page: NewImportedPage; position: string }[] = [];
+
+  /** Settles the item as `ok` and records the page; the limits and the tree are not modelled (the PostgreSQL repo checks them). */
+  writePage(tenantId: string, importId: string, page: NewImportedPage): Promise<WriteImportedPageResult> {
+    const owner = this.find(tenantId, importId);
+    if (owner === -1) return Promise.resolve({ kind: 'collection-deleted' });
+    if (this.rows[owner]?.status !== 'running') return Promise.resolve({ kind: 'not-running' });
+    const at = this.stored.findIndex((s) => s.tenantId === tenantId && s.importId === importId && s.item.id === page.itemId && s.item.status === 'pending');
+    const found = this.stored[at];
+    if (found === undefined) return Promise.resolve({ kind: 'not-pending' });
+    const lastOfParent = this.written.filter((w) => w.importId === importId && w.page.collectionId === page.collectionId && w.page.parentId === page.parentId).map((w) => w.position).sort().at(-1) ?? null;
+    const position = page.position(lastOfParent, null);
+    const pageId = `page-${String(this.next++)}`;
+    const urlId = `u${pageId}`;
+    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    this.written.push({ tenantId, importId, page, position });
+    return Promise.resolve({ kind: 'ok', pageId, urlId });
   }
 
   start(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined> {
