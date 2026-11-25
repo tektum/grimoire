@@ -11,7 +11,7 @@ beforeAll(async () => {
   requireBuild();
   await sqlAdmin('postgres', `drop database if exists ${DB} with (force)`);
   await sqlAdmin('postgres', `create database ${DB} template template0`); // owned by the administrator
-  await sqlAdmin(DB, `revoke all on database ${DB} from public; grant connect on database ${DB} to grimoire_migrator; alter schema public owner to grimoire_migrator; create extension citext`);
+  await sqlAdmin(DB, `revoke all on database ${DB} from public; grant connect on database ${DB} to grimoire_migrator; alter schema public owner to grimoire_migrator; create schema pgboss authorization grimoire_migrator; create extension citext`); // as `db-setup` leaves it: the job queue's schema belongs to the migration role too
 }, 60_000);
 afterAll(async () => { await dropTestDatabase(DB); });
 
@@ -26,7 +26,8 @@ describe('migration 0010 on a database that db-setup has not set up again', () =
 
   it('goes through once the administrator has made the extension, as db-setup does', async () => {
     await sqlAdmin(DB, 'create extension pg_trgm');
-    expect((await migrate()).code).toBe(0);
+    const run = await migrate();
+    expect(run.code, run.output).toBe(0);
     expect(await sqlAdmin(DB, `select indexname from pg_indexes where indexname = 'pages_title_trgm_idx'`)).toEqual([{ indexname: 'pages_title_trgm_idx' }]);
   }, 120_000);
 });
