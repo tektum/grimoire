@@ -175,10 +175,10 @@ export class FakeImportRepo implements ImportRepo {
   }
 
   /** The fake keeps no page tree: it moves the pages the items name, and a page added under one has nowhere to be here (the database case checks descendants). */
-  trashImported(tenantId: string, id: string): Promise<{ readonly batch: string | null; readonly pages: number } | undefined> {
+  trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined> {
     if (this.find(tenantId, id) === -1) return Promise.resolve(undefined);
     const live = this.stored.filter((s) => s.tenantId === tenantId && s.importId === id && s.item.kind === 'page' && s.item.status === 'ok' && s.item.pageId !== null && !this.trashed.has(s.item.pageId));
     for (const s of live) this.trashed.add(s.item.pageId as string);
-    return Promise.resolve(live.length === 0 ? { batch: null, pages: 0 } : { batch: `batch-${String(this.next++)}`, pages: live.length });
+    return Promise.resolve({ batches: live.map((s) => s.item.pageId as string), pages: live.length });
   }
 }

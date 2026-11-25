@@ -164,8 +164,8 @@ export interface ImportRepo {
   abandon(tenantId: string, id: string, now: number): Promise<boolean>;
   /**
    * Moves the pages the import created to the trash, as deleting a page does: every live page of an `ok` page item, with its live descendants (a page a person added under an imported one goes with
-   * it, so one restore brings them back together), in one new `deleted_batch`, deleted by the importer. Pages already in the trash are left as they are, so a second call finds nothing (`pages: 0`,
-   * `batch: null`). `undefined` when the tenant has no such import. The status is not looked at: the job that calls it decides.
+   * it, so one restore brings them back together), each subtree in a batch of its own named by its root's id (as a page delete does: one restore checks what it must), deleted by the importer.
+   * Pages already in the trash are left as they are, so a second call finds nothing (`pages: 0`, `batches: []`). `undefined` when the tenant has no such import. The status is not looked at: the job that calls it decides.
    */
-  trashImported(tenantId: string, id: string): Promise<{ readonly batch: string | null; readonly pages: number } | undefined>;
+  trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined>;
 }

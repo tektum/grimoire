@@ -445,8 +445,8 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       await h.seedStatus(made.id, 'cancelled');
       const first = await h.repo.trashImported(h.tenantId, made.id);
       assert.equal(first?.pages, 2, 'the two written pages; a failed or skipped item has none');
-      assert.equal(typeof first?.batch, 'string');
-      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batch: null, pages: 0 }, 'a second call finds nothing left to move');
+      assert.equal(first?.batches.length, 2, 'each imported root is a batch of its own');
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'a second call finds nothing left to move');
     },
   },
   {
@@ -455,7 +455,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       const made = await h.seed('cancelled');
       assert.equal(await h.repo.trashImported(h.otherTenantId, made.id), undefined);
       assert.equal(await h.repo.trashImported(h.tenantId, '00000000-0000-4000-8000-000000000000'), undefined);
-      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batch: null, pages: 0 }, 'an import with no pages is found, and has nothing to move');
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'an import with no pages is found, and has nothing to move');
     },
   },
 ];

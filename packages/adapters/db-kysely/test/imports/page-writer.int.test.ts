@@ -258,10 +258,12 @@ describe('moving the pages of an import to the trash', () => {
   const deleted = (collectionId: string) =>
     t.app.query<{ id: string; deleted_batch: string | null; deleted_by: string | null; deleted_at: Date | null }>(`select id, deleted_batch, deleted_by, deleted_at from pages where collection_id = $1 order by id`, [collectionId]);
 
-  it('moves the pages of ok items, and the pages under them that a person added, in one batch by the importer, and a second call finds nothing', async () => {
-    const s = await started(['a.md', 'a/b.md']);
+  it('moves the pages of ok items, and the pages under them that a person added, each subtree in a batch named by its root, by the importer, and a second call finds nothing', async () => {
+    const s = await started(['a.md', 'a/b.md', 'z.md']);
     const repo = createImportRepo(t.app);
     const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
+    const z = await repo.writePage('legacy', s.importId, page(s.items.get('z.md') as string, s.collectionId), LIMITS, NOW);
+    if (z.kind !== 'ok') throw new Error('page z');
     if (a.kind !== 'ok') throw new Error('page a');
     const b = await repo.writePage('legacy', s.importId, page(s.items.get('a/b.md') as string, s.collectionId, { parentId: a.pageId }), LIMITS, NOW);
     if (b.kind !== 'ok') throw new Error('page b');
@@ -276,16 +278,18 @@ describe('moving the pages of an import to the trash', () => {
     if (child.kind !== 'ok' || beside.kind !== 'ok') throw new Error('pages of the other import');
 
     const moved = await repo.trashImported('legacy', s.importId);
-    expect(moved?.pages).toBe(3);
+    expect(moved?.pages).toBe(4);
+    expect([...(moved?.batches ?? [])].sort()).toEqual([a.pageId, z.pageId].sort());
     const rows = new Map((await deleted(s.collectionId)).map((r) => [r.id, r]));
+    expect(rows.get(z.pageId)?.deleted_batch).toBe(z.pageId);
     for (const id of [a.pageId, b.pageId, child.pageId]) {
-      expect(rows.get(id)?.deleted_batch, id).toBe(moved?.batch);
+      expect(rows.get(id)?.deleted_batch, id).toBe(a.pageId);
       expect(rows.get(id)?.deleted_by, id).toBe(userId);
       expect(rows.get(id)?.deleted_at, id).not.toBeNull();
     }
     expect(rows.get(beside.pageId)?.deleted_at).toBeNull();
-    expect(await repo.trashImported('legacy', s.importId)).toEqual({ batch: null, pages: 0 });
-    expect((await deleted(s.collectionId)).filter((r) => r.deleted_batch === moved?.batch)).toHaveLength(3);
+    expect(await repo.trashImported('legacy', s.importId)).toEqual({ batches: [], pages: 0 });
+    expect((await deleted(s.collectionId)).filter((r) => r.deleted_batch === a.pageId)).toHaveLength(3);
   });
 
   it('does not touch a page of another tenant that an import names', async () => {
