@@ -103,6 +103,21 @@ describe('instrument', () => {
       expect(said(`${'y'.repeat(300)}`).errorMessage).toHaveLength(200);
     });
 
+    it('does not spend seconds on a huge message with no spaces and no at sign: only a bounded head of it is read', () => {
+      for (const body of ['x'.repeat(500_000), 'a.b'.repeat(200_000), `"${'q'.repeat(500_000)}`, 'h://'.repeat(100_000)]) {
+        const began = performance.now();
+        const r = said(body);
+        expect(performance.now() - began).toBeLessThan(250);
+        expect(r.errorMessage.length).toBeLessThanOrEqual(200);
+      }
+    });
+
+    it('still redacts a value that begins before the cut of 200 and ends after it', () => {
+      expect(said(`${'z'.repeat(190)} "secret value that goes on and on for a while"`).errorMessage).toBe(`${'z'.repeat(190)} <value>`.slice(0, 200)); // the value never shows, only the placeholder, cut like the rest
+      expect(said(`${'z'.repeat(190)} "secret value that goes on and on for a while"`).errorMessage).not.toContain('secret');
+      expect(said(`${'z'.repeat(150)} user@example.com ${'w'.repeat(400)}`).errorMessage).toBe(`${'z'.repeat(150)} <email> ${'w'.repeat(41)}`);
+    });
+
     it('gives the SQLSTATE or the errno when there is one, and nothing for a code that is not one', () => {
       expect(said('invalid input', { code: '22P02' }).errorCode).toBe('22P02');
       expect(said('connect', { code: 'ECONNREFUSED' }).errorCode).toBe('ECONNREFUSED');

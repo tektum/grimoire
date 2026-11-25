@@ -3,6 +3,8 @@ import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { EventLog } from '../events.js';
 
 const MESSAGE_LIMIT = 200;
+/** How much of a message is read before it is cut to `MESSAGE_LIMIT`: well above it, so a value that starts inside the limit and ends after it is still taken out, and small enough that the patterns cannot be made to cost seconds by a message of a few hundred KB with no spaces. */
+const REDACT_WINDOW = 8 * MESSAGE_LIMIT;
 
 // eslint-disable-next-line no-control-regex -- the point is to take control characters out of a log line
 const CONTROL = /[\u0000-\u001f\u007f]+/g;
@@ -26,9 +28,10 @@ const PLACEHOLDER = { url: '<url>', email: '<email>', value: '<value>' } as cons
 /**
  * A message with the values taken out: pg and the drivers echo what they refused (`invalid input syntax for type uuid: "<value>"`), a connection error names its URL with the credentials,
  * and some of our own errors interpolate what a person typed. URLs, email-like tokens and quoted literals become a placeholder; what is left says which rule was broken.
+ * Only the first `REDACT_WINDOW` characters are read (the rest is never logged anyway).
  */
 function redact(message: string): string {
-  return message.replace(URL_LIKE, PLACEHOLDER.url).replace(EMAIL_LIKE, PLACEHOLDER.email).replace(QUOTED, PLACEHOLDER.value).replace(UNCLOSED, PLACEHOLDER.value);
+  return message.slice(0, REDACT_WINDOW).replace(URL_LIKE, PLACEHOLDER.url).replace(EMAIL_LIKE, PLACEHOLDER.email).replace(QUOTED, PLACEHOLDER.value).replace(UNCLOSED, PLACEHOLDER.value);
 }
 
 /** An SQLSTATE (`22P02`) or an errno name (`ECONNREFUSED`): capitals, digits and underscores only, so a code that carries anything else is not logged. */
