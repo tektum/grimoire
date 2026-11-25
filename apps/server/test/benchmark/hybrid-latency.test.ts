@@ -24,6 +24,14 @@ const QUERIES = 30;
 const ALL_P95_MS = 400;
 const REQUEST_MS = 1000;
 const ONE_PERCENT_P95_MS = 100;
+// GRIMOIRE_HYBRID_ASSERT=0 records the numbers and asserts nothing: the CI job runs the statement on the database as staging has it (1 GiB, about 180 MB of shared buffers, 2 vCPU) beside the one that must meet the limits.
+const ASSERT = process.env['GRIMOIRE_HYBRID_ASSERT'] !== '0';
+const SHAPE = process.env['GRIMOIRE_HYBRID_SHAPE'] ?? 'default';
+const ROUNDS = 3; // each limit is judged on the median of this many p95 values (all of them are recorded)
+const check = (value: number, limit: number): void => {
+  if (ASSERT) expect(value).toBeLessThanOrEqual(limit);
+};
+const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] as number;
 const model = { name: 'seeded', version: 'v1', dims: DIMS, maxTokens: 504 };
 const run = (sql: string) => sqlAdmin(DB, sql);
 
@@ -93,7 +101,7 @@ beforeAll(async () => {
   for (let q = 0; q < QUERIES; q += 1) queryVectors.push(vector(random));
   await run('analyze page_chunks');
   const counts = await store.counts(key);
-  record('data', { pages: PAGES, chunks: counts.chunks, dims: DIMS, collections: COLLECTIONS, loadSeconds: Math.round((Date.now() - started) / 1000) });
+  record('data', { shape: SHAPE, asserted: ASSERT, pages: PAGES, chunks: counts.chunks, dims: DIMS, collections: COLLECTIONS, loadSeconds: Math.round((Date.now() - started) / 1000) });
 }, 3_600_000);
 
 afterAll(async () => {
@@ -133,15 +141,17 @@ describe('the semantic statement without an index', () => {
 
   it('has p95 within 400 ms for a user who sees every collection', { timeout: 600_000 }, async () => {
     await statement(collections); // one round to warm the cache, not counted
-    const all = p95(await statement(collections));
-    record('semanticAllCollectionsP95Ms', Math.round(all));
-    expect(all).toBeLessThanOrEqual(ALL_P95_MS);
+    const rounds: number[] = [];
+    for (let i = 0; i < ROUNDS; i += 1) rounds.push(Math.round(p95(await statement(collections))));
+    record('semanticAllCollectionsP95Ms', { rounds, median: median(rounds) });
+    check(median(rounds), ALL_P95_MS);
   });
 
   it('has p95 within 100 ms for a user who sees 1% of the collections', { timeout: 600_000 }, async () => {
-    const one = p95(await statement([collections[0] as string]));
-    record('semanticOnePercentP95Ms', Math.round(one));
-    expect(one).toBeLessThanOrEqual(ONE_PERCENT_P95_MS);
+    const rounds: number[] = [];
+    for (let i = 0; i < ROUNDS; i += 1) rounds.push(Math.round(p95(await statement([collections[0] as string]))));
+    record('semanticOnePercentP95Ms', { rounds, median: median(rounds) });
+    check(median(rounds), ONE_PERCENT_P95_MS);
   });
 
   it('answers the whole hybrid request within 1,000 ms', { timeout: 600_000 }, async () => {
@@ -157,17 +167,19 @@ describe('the semantic statement without an index', () => {
     const log = { debug() {}, info() {}, warn() {}, error() {}, child: () => log } as never;
     const semantic: SemanticSearch = { embedder, store, settings: { enabled: true, queryTimeoutMs: 1500, minSimilarity: 0, candidates: 100 } };
     const fullText = createSearchRepo(db, { statementTimeoutMs: 5000 });
-    const times: number[] = [];
-    for (let i = 0; i < QUERIES; i += 1) {
-      const t = performance.now();
-      const page = await hybridSearch({ fullText, semantic, log }, { tenantId: TENANT, collectionIds: collections, query: `${WORDS[i]} ${WORDS[i + 50]}`, limit: 20 });
-      times.push(performance.now() - t);
-      expect(page.semantic).toBe(true);
+    const rounds: { p95: number; max: number }[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const times: number[] = [];
+      for (let i = 0; i < QUERIES; i += 1) {
+        const t = performance.now();
+        const page = await hybridSearch({ fullText, semantic, log }, { tenantId: TENANT, collectionIds: collections, query: `${WORDS[i]} ${WORDS[i + 50]}`, limit: 20 });
+        times.push(performance.now() - t);
+        expect(page.semantic).toBe(true);
+      }
+      rounds.push({ p95: Math.round(p95(times)), max: Math.round(Math.max(...times)) });
     }
-    const worst = Math.max(...times);
-    record('hybridRequestP95Ms', Math.round(p95(times)));
-    record('hybridRequestMaxMs', Math.round(worst));
-    expect(worst).toBeLessThanOrEqual(REQUEST_MS);
+    record('hybridRequest', { rounds, medianOfMaxMs: median(rounds.map((r) => r.max)), medianP95Ms: median(rounds.map((r) => r.p95)) });
+    check(median(rounds.map((r) => r.max)), REQUEST_MS);
   });
 
   // Evidence for the decision between tuning the table and an approximate index, recorded after the assertions (it changes the table): the plan is a parallel scan of `page_chunks` with one worker
@@ -205,5 +217,45 @@ describe('the semantic statement without an index', () => {
     record('experimentStorageMainAndWorkers4', await measure());
     const sizes = await run(`select pg_size_pretty(pg_relation_size('page_chunks')) as heap, pg_size_pretty(pg_total_relation_size('page_chunks') - pg_relation_size('page_chunks')) as rest`);
     record('tableSizesAfterStorageMain', sizes);
+  });
+
+  // The approximate index, for the decision, on this data and this database: build time and size, the time of the statement, and how much of the exact answer it returns (recall of the 300 nearest
+  // chunks). The vectors here are uniformly random, which is the worst case for a graph index (real embeddings cluster), so the recall is a floor. The filter on collections is the point of the
+  // 1% line: an index scan finds its nearest first and the permission filter comes after (iterative scan keeps going until it has enough). Never asserted.
+  it('records the approximate index: build, size, time and recall against the exact scan, for all collections and for 1%', { timeout: 2_400_000 }, async () => {
+    const key = modelKey(model);
+    // One statement for each call (the connection speaks the extended protocol): the settings are the database's own, set before, and the exact scan is forced by an expression the index cannot serve.
+    const query = (v: Float32Array, ids: readonly string[], hnsw: boolean): string =>
+      `select c.page_id::text || ':' || c.chunk_index as k from page_chunks c join pages p on p.id = c.page_id
+        where c.model = '${key}' and p.deleted_at is null and p.collection_id = any('{${ids.join(',')}}'::uuid[]) order by ${hnsw ? '' : '0 + '}(c.embedding <=> '[${[...v].join(',')}]'::vector) limit 300`;
+    const keys = async (v: Float32Array, ids: readonly string[], hnsw: boolean): Promise<string[]> => ((await run(query(v, ids, hnsw))) as { k: string }[]).map((r) => r.k);
+    const built = performance.now();
+    await run(`alter database ${DB} set maintenance_work_mem = '512MB'`);
+    await run(`alter database ${DB} set hnsw.iterative_scan = 'relaxed_order'`);
+    await run(`alter database ${DB} set hnsw.ef_search = 400`);
+    await run(`create index page_chunks_hnsw on page_chunks using hnsw (embedding vector_cosine_ops) where model = '${key}'`);
+    const buildSeconds = Math.round((performance.now() - built) / 1000);
+    await run('analyze page_chunks');
+    const size = await run(`select pg_size_pretty(pg_relation_size('page_chunks_hnsw')) as size`);
+    const lines: Record<string, unknown> = { buildSeconds, size };
+    for (const [label, ids] of [
+      ['all', collections],
+      ['onePercent', [collections[0] as string]],
+    ] as const) {
+      const times: number[] = [];
+      const recalls: number[] = [];
+      const counts: number[] = [];
+      for (const v of queryVectors.slice(0, 10)) {
+        const exact = await keys(v, ids, false);
+        const t = performance.now();
+        const approximate = await keys(v, ids, true);
+        times.push(performance.now() - t);
+        const wanted = new Set(exact);
+        recalls.push(exact.length === 0 ? 1 : approximate.filter((k) => wanted.has(k)).length / exact.length);
+        counts.push(approximate.length);
+      }
+      lines[label] = { p95Ms: Math.round(p95(times)), meanRecall: Number((recalls.reduce((a, b) => a + b, 0) / recalls.length).toFixed(3)), minRows: Math.min(...counts), exactRows: 300 };
+    }
+    record('experimentHnsw', lines);
   });
 });

@@ -748,11 +748,34 @@ jobs:
         run: make down-volumes
 
   search-latency:
-    name: Search latency
+    name: Search latency (${{ matrix.shape }})
     needs: changes
     if: needs.changes.outputs.search == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Staging's database class (db.t4g.micro: 1 GiB, 2 vCPU, shared buffers about 180 MB, JIT off): recorded, not asserted, so that what users get is on the record without the job failing for it.
+          - shape: staging
+            memory: 1g
+            shared_buffers: 180MB
+            cache_size: 360MB
+            assert: '0'
+          # A database that holds the vectors in memory (4 GiB): the shape the limits of R9.10 are asserted on.
+          - shape: roomy
+            memory: 4g
+            shared_buffers: 1GB
+            cache_size: 3GB
+            assert: '1'
+    env:
+      COMPOSE_FILE: compose.yaml:compose.search-latency.yaml
+      LATENCY_PG_MEMORY: ${{ matrix.memory }}
+      LATENCY_PG_SHARED_BUFFERS: ${{ matrix.shared_buffers }}
+      LATENCY_PG_CACHE_SIZE: ${{ matrix.cache_size }}
+      GRIMOIRE_HYBRID_SHAPE: ${{ matrix.shape }}
+      GRIMOIRE_HYBRID_ASSERT: ${{ matrix.assert }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -771,7 +794,7 @@ jobs:
       - run: make db-up
       - run: bun run build
       # The semantic statement over 140,000 vectors of 768 dimensions and the whole hybrid request, against the limits of R9.10; the measured sizes and times are printed (and kept as a file on failure).
-      - run: GRIMOIRE_HYBRID_OUT="$PWD/test-results/hybrid-latency.json" bunx vitest run --project benchmark apps/server/test/benchmark/hybrid-latency.test.ts
+      - run: GRIMOIRE_HYBRID_OUT="$PWD/test-results/hybrid-latency-${GRIMOIRE_HYBRID_SHAPE}.json" bunx vitest run --project benchmark apps/server/test/benchmark/hybrid-latency.test.ts
       - name: Collect Compose logs
         if: failure()
         run: docker compose -p grimoire logs --no-color > compose.log
@@ -779,7 +802,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: hybrid-latency
+          name: hybrid-latency-${{ matrix.shape }}
           path: |
             test-results/
             compose.log

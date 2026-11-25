@@ -1,0 +1,18 @@
+# The database of the `Search latency` job, shaped as a managed database of a given class is: its memory, its processors and the planner's idea of the cache. The staging database is 1 GiB and
+# 2 vCPU with 180 MB of shared buffers and JIT off (RDS defaults of its class); the values come from the job's matrix (LATENCY_PG_*), so the same test measures each shape.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${LATENCY_PG_SHARED_BUFFERS:-180MB}
+      - -c
+      - effective_cache_size=${LATENCY_PG_CACHE_SIZE:-360MB}
+      - -c
+      - work_mem=4MB
+      - -c
+      - jit=off
+      - -c
+      - max_parallel_workers_per_gather=2
+    mem_limit: ${LATENCY_PG_MEMORY:-1g}
+    cpus: ${LATENCY_PG_CPUS:-2}
