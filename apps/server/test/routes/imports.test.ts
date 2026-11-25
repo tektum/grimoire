@@ -401,7 +401,22 @@ describe('GET /v1/imports/{id}/items', () => {
       ['img/c.png', 'failed', 'type_mismatch', 'attachment', false],
     ]);
     expect(body.items[0]).toMatchObject({ id: items[0]!.id, pageId: null, markdownBytes: 10, stateBytes: 20 });
-    expect(Object.keys(body.items[0]!).sort()).toEqual(['hasSource', 'id', 'kind', 'markdownBytes', 'message', 'pageId', 'path', 'stateBytes', 'status']);
+    expect(Object.keys(body.items[0]!).sort()).toEqual(['hasSource', 'id', 'kind', 'markdownBytes', 'message', 'pageId', 'path', 'remoteImageFailures', 'stateBytes', 'status']);
+  });
+
+  it('says, for each file, how many remote pictures were not copied and why, as a count for each reason code and never an address; a file with none says {}', async () => {
+    const t = build();
+    const id = await t.running();
+    await t.imports.addItems('T-a', id, [{ path: 'a.md', kind: 'page' }, { path: 'b.md', kind: 'page' }]);
+    const [a, b] = await t.imports.pending('T-a', id, 'page', 10);
+    // What an engine stores: codes and counts. A key that is not a code (it could carry an address) and a count that is not a whole number are not passed on.
+    await t.imports.settle('T-a', id, a!.id, { status: 'failed', message: 'content-lost', remoteImageFailures: { blocked_address: 2, timeout: 1, 'http://10.0.0.1/x.png': 3, too_large: -1, status: 1.5 } });
+    await t.imports.settle('T-a', id, b!.id, { status: 'skipped', message: 'too_large' });
+    const body = (await (await t.call('ada', 'GET', `/v1/imports/${id}/items`)).json()) as { items: { path: string; remoteImageFailures: Record<string, number> }[] };
+    expect(body.items.map((i) => [i.path, i.remoteImageFailures])).toEqual([
+      ['a.md', { blocked_address: 2, timeout: 1 }],
+      ['b.md', {}],
+    ]);
   });
 
   it('says a failed page has a source only when its original was kept', async () => {

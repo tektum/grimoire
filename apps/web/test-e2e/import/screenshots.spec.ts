@@ -73,3 +73,23 @@ test('a cancelled import', async ({ page, context, browserName }) => {
   await settledScreen(page);
   await shots(page, TASK, 'cancelled');
 });
+
+const WITH_PICTURES: readonly ScriptedItem[] = [
+  { id: 'i1', path: 'handbook/welcome.md', status: 'ok' },
+  { id: 'i2', path: 'handbook/guides/setup.md', status: 'ok', remoteImageFailures: { blocked_address: 2, timeout: 1 } },
+  { id: 'i3', path: 'handbook/notes/roadmap.md', status: 'ok', remoteImageFailures: { too_large: 1, type: 1, network: 3 } },
+  { id: 'i4', path: 'handbook/notes/broken.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
+];
+
+test('the report with the pictures from the web that were not copied', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await openShots(page, context, [p('a', null, 'p0000', 'Welcome')]);
+  await scriptedImports(page, [{ status: 'done', total: 4, done: 3, failed: 1 }], { items: WITH_PICTURES });
+  await page.goto('/import?import=imp1');
+  const list = page.getByRole('list', { name: 'Files of the import' });
+  await expect(list.getByRole('listitem')).toHaveCount(4);
+  await expect(list).toContainText('Pictures from the web that were not copied: 2 were at an address this tool may not fetch from, 1 took too long to answer.');
+  await expect(list).not.toContainText('blocked_address');
+  await settledScreen(page);
+  await shots(page, TASK, 'report-pictures');
+});

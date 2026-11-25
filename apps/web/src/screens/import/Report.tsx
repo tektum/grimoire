@@ -5,7 +5,7 @@ import type { ApiLike } from '../../api/query';
 import { isSafeHref } from '../../safety';
 import { Button } from '../../ui/primitives';
 import { useApiQuery } from '../../api/query';
-import { importLimitsOf, reasonText } from './messages';
+import { importLimitsOf, reasonText, remoteImageText } from './messages';
 
 const STATUS: Record<ImportItem['status'], string> = { ok: 'Imported', skipped: 'Skipped', failed: 'Failed' };
 
@@ -48,6 +48,7 @@ export function Report({ api, id }: { readonly api: ApiLike; readonly id: string
           <li key={item.id} data-status={item.status}>
             <span className="import-report-path">{item.path}</span> <span className="import-report-status">{STATUS[item.status]}</span>
             {reasonText(item, limits) === null ? null : <span className="import-report-message"> {reasonText(item, limits)}</span>}
+            {remoteImageText(item.remoteImageFailures) === null ? null : <span className="import-report-images"> {remoteImageText(item.remoteImageFailures)}</span>}
             {item.status === 'failed' && item.hasSource ? (
               <Button
                 aria-label={`Download source of ${item.path}`}

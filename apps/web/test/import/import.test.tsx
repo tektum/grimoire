@@ -401,6 +401,28 @@ describe('the report of an ended import', () => {
     expect(list.querySelector('b, img')).toBeNull();
   });
 
+  it('says, for a page, how many pictures from the web were not copied and why, in words and never with an address; a file with none has no such line', async () => {
+    const t = fake({
+      states: [ended()],
+      items: [
+        [
+          item({ id: 'a', remoteImageFailures: { blocked_address: 2, timeout: 1 } }),
+          item({ id: 'b' }),
+          item({ id: 'c', status: 'failed', message: 'content-lost', remoteImageFailures: { too_large: 1, brand_new_code: 3, 'http://10.0.0.1/x.png': 4 } }),
+        ],
+      ],
+    });
+    show(t.api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(3));
+    const [a, b, c] = within(list).getAllByRole('listitem');
+    expect(within(a!).getByText(/Pictures from the web that were not copied:/).textContent?.trim()).toBe('Pictures from the web that were not copied: 2 were at an address this tool may not fetch from, 1 took too long to answer.');
+    expect(within(b!).queryByText(/Pictures from the web/)).toBeNull();
+    expect(within(c!).getByText(/Pictures from the web that were not copied:/).textContent?.trim()).toBe('Pictures from the web that were not copied: 1 was too large, 3 for a reason this version of the screen does not know.');
+    expect(list.textContent).not.toContain('10.0.0.1'); // a key that is an address is not a reason, and is not shown
+    expect(list.textContent).not.toContain('blocked_address');
+  });
+
   it('asks nothing of the report while the import is running, and says when there is nothing to list', async () => {
     const t = fake({ states: [state()], items: [[]] });
     show(t.api, '/import?import=imp1');

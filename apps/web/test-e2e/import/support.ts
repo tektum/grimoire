@@ -18,6 +18,7 @@ export interface ScriptedItem {
   readonly status: 'ok' | 'skipped' | 'failed';
   readonly message?: string;
   readonly hasSource?: boolean;
+  readonly remoteImageFailures?: Readonly<Record<string, number>>;
 }
 
 export const stateOf = (s: ScriptedState) => ({
@@ -76,7 +77,7 @@ export async function scriptedImports(
       return json(202, { status: 'cancelled' });
     }
     if (request.method() === 'GET' && /^\/v1\/imports\/[^/]+\/items$/.test(path)) {
-      return json(200, { items: (options.items ?? []).map((i) => ({ kind: 'page', pageId: null, markdownBytes: null, stateBytes: null, message: null, hasSource: false, ...i })), nextCursor: null });
+      return json(200, { items: (options.items ?? []).map((i) => ({ kind: 'page', pageId: null, markdownBytes: null, stateBytes: null, message: null, hasSource: false, remoteImageFailures: {}, ...i })), nextCursor: null });
     }
     const source = /^\/v1\/imports\/[^/]+\/items\/([^/]+)\/source$/.exec(path);
     if (request.method() === 'GET' && source) {
