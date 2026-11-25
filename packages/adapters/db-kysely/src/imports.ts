@@ -1,9 +1,88 @@
+import { cleanItemText, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import type { ImportCounts, ImportItem, ImportRecord, ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
-import { RepoUnavailableError } from './search.js';
 
-/** The imports table lands in M7-T04. */
+interface ImportRow {
+  id: string; tenant_id: string; status: ImportRecord['status']; source: ImportRecord['source']; target_collection_id: string; created_by: string | null;
+  counts: Partial<ImportCounts> | null; error: string | null; started_ms: string | null; finished_ms: string | null;
+}
+
+interface ItemRow {
+  id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
+  markdown_bytes: number | null; state_bytes: number | null; attempts: number;
+}
+
+const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error,
+  (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
+const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts';
+
+const ms = (value: string | null): number | null => (value === null ? null : Number(value));
+
+const record = (r: ImportRow): ImportRecord => ({
+  id: r.id, tenantId: r.tenant_id, status: r.status, source: r.source, targetCollectionId: r.target_collection_id, createdBy: r.created_by,
+  counts: { ...NO_IMPORT_COUNTS, ...(r.counts ?? {}) }, error: r.error, startedAt: ms(r.started_ms), finishedAt: ms(r.finished_ms),
+});
+
+const item = (r: ItemRow): ImportItem => ({
+  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts,
+});
+
+/** The PostgreSQL ImportRepo over `imports` and `import_items`: every statement names the tenant. */
 export function createImportRepo(db: Queryable): ImportRepo {
-  void db;
-  return { get: () => Promise.reject(new RepoUnavailableError('imports', 'M7-T04')) };
+  return {
+    async get(tenantId, id) {
+      const rows = await db.query<ImportRow>(`select ${IMPORT_COLUMNS} from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
+      return rows[0] === undefined ? undefined : record(rows[0]);
+    },
+    async addItems(tenantId, importId, items) {
+      if (items.length === 0) return 0;
+      const rows = await db.query(
+        `insert into import_items (tenant_id, import_id, path, kind)
+         select i.tenant_id, i.id, p.path, p.kind from imports i, unnest($3::text[], $4::text[]) as p (path, kind)
+         where i.tenant_id = $1 and i.id = $2
+         on conflict (import_id, path) do nothing returning 1`,
+        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind)],
+      );
+      return rows.length;
+    },
+    async pending(tenantId, importId, kind, limit) {
+      const rows = await db.query<ItemRow>(
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and kind = $3 and status = 'pending'
+         order by cardinality(string_to_array(path, '/')), path collate "C" limit $4`,
+        [tenantId, importId, kind, limit],
+      );
+      return rows.map(item);
+    },
+    async getItem(tenantId, importId, itemId) {
+      const rows = await db.query<ItemRow>(`select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint`, [tenantId, importId, itemId]);
+      return rows[0] === undefined ? undefined : item(rows[0]);
+    },
+    async settle(tenantId, importId, itemId, outcome) {
+      const rows = await db.query(
+        `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7
+         where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' returning 1`,
+        [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null],
+      );
+      return rows.length === 1;
+    },
+    async start(tenantId, id, now) {
+      const rows = await db.query<ImportRow>(
+        `update imports set status = 'running', started_at = coalesce(started_at, to_timestamp($3::double precision / 1000.0))
+         where tenant_id = $1 and id = $2 and status in ('uploaded', 'running') returning ${IMPORT_COLUMNS}`,
+        [tenantId, id, now],
+      );
+      return rows[0] === undefined ? undefined : record(rows[0]);
+    },
+    async setCounts(tenantId, id, counts) {
+      const rows = await db.query(`update imports set counts = $3::jsonb where tenant_id = $1 and id = $2 and status = 'running' returning 1`, [tenantId, id, JSON.stringify(counts)]);
+      return rows.length === 1;
+    },
+    async finish(tenantId, id, status, error, now) {
+      const rows = await db.query(
+        `update imports set status = $3, error = $4, finished_at = to_timestamp($5::double precision / 1000.0) where tenant_id = $1 and id = $2 and status = 'running' returning 1`,
+        [tenantId, id, status, error, now],
+      );
+      return rows.length === 1;
+    },
+  };
 }
