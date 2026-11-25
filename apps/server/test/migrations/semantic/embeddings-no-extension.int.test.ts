@@ -19,7 +19,9 @@ describe('grimoire migrate without pgvector', () => {
     expect(run.code).toBe(1);
     expect(run.output).toMatch(/vector extension/i);
     expect(run.output).toMatch(/db-setup/);
-    expect(await sqlAdmin(BARE, `select 1 from information_schema.tables where table_schema = 'public'`)).toEqual([]); // not even `pages`
+    const tables = await sqlAdmin<{ table_name: string }>(BARE, `select table_name from information_schema.tables where table_schema = 'public' order by 1`);
+    expect(tables.map((t) => t.table_name)).toEqual(['kysely_migration', 'kysely_migration_lock']); // Kysely's own two, made before the batch; not even `pages`
+    expect(await sqlAdmin(BARE, 'select 1 from kysely_migration')).toEqual([]);
     expect(await sqlAdmin(BARE, `select 1 from information_schema.tables where table_name in ('page_chunks', 'page_embedding_state')`)).toEqual([]);
   }, 120_000);
 
