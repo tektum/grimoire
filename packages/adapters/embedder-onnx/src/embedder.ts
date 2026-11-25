@@ -29,7 +29,7 @@ export interface OnnxEmbedderOptions {
   /** The compiled `worker.js` of the default backend (default: the one next to this file, which is right when this file is compiled too). */
   readonly workerUrl?: URL;
   /** What runs the model (default: a worker thread). */
-  readonly makeBackend?: (threads: number, dims: number) => Backend;
+  readonly makeBackend?: (threads: number, dims: number, tokens: TokenCounter) => Backend;
   readonly loadTokenCounter?: (file: string) => TokenCounter;
   readonly now?: () => number;
 }
@@ -53,7 +53,8 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
   const retryMs = options.retryMs ?? MINUTE_MS;
   const now = options.now ?? Date.now;
   const lockFile = options.lockFile ?? path.join(config.modelDir, 'models.lock.json');
-  const makeBackend = options.makeBackend ?? ((threads, d) => createThreadBackend({ workerUrl: options.workerUrl ?? new URL('./worker.js', import.meta.url), threads, dims: d, maxTokens: MAX_TOKENS }));
+  const makeBackend =
+    options.makeBackend ?? ((threads, d, tokens) => createThreadBackend({ workerUrl: options.workerUrl ?? new URL('./worker.js', import.meta.url), threads, dims: d, maxTokens: MAX_TOKENS, encode: tokens.encode }));
   const makeCounter = options.loadTokenCounter ?? loadTokenCounter;
 
   let status: 'loading' | 'ready' | 'unavailable' = 'loading';
@@ -81,9 +82,14 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
     const verified = await verifyFiles(config.modelDir, config.model, locked);
     if (closed) return;
     if (!verified.ok) return fail(verified.reason);
-    const next = makeBackend(config.threads, dims);
+    // The tokenizer is loaded here, once, and the model's thread gets ids from it: only this thread holds it.
     try {
       counter = makeCounter(verified.tokenizer);
+    } catch {
+      return closed ? undefined : fail('load-failed');
+    }
+    const next = makeBackend(config.threads, dims, counter);
+    try {
       await next.start({ weights: verified.weights, tokenizer: verified.tokenizer });
     } catch {
       await next.close();

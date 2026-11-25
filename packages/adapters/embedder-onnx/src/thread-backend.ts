@@ -1,12 +1,13 @@
 import { Worker } from 'node:worker_threads';
 import type { EmbedResult } from '@tektum/grimoire-core/ports/embedder';
 import type { Backend, FromWorker, ToWorker, WorkerData } from './backend.js';
+import { prepare } from './engine.js';
 
 /**
- * The model in one worker thread of its own: it loads the weights and the tokenizer, answers one batch at a time, and takes nothing of the server's environment (secrets live there) or
+ * The model in one worker thread of its own: it loads the weights, answers one batch of ids at a time (the texts are prefixed and tokenized here, on the embedder's thread), and takes nothing of the server's environment (secrets live there) or
  * flags. `workerUrl` is the compiled `worker.js`; the tests give it a stand-in that speaks the same messages.
  */
-export function createThreadBackend(options: { readonly workerUrl: URL; readonly threads: number; readonly dims: number; readonly maxTokens: number }): Backend {
+export function createThreadBackend(options: { readonly workerUrl: URL; readonly threads: number; readonly dims: number; readonly maxTokens: number; readonly encode: (text: string) => readonly number[] }): Backend {
   let worker: Worker | undefined;
   let nextId = 0;
   let stopped: (() => void) | undefined;
@@ -21,7 +22,7 @@ export function createThreadBackend(options: { readonly workerUrl: URL; readonly
   return {
     start(files) {
       return new Promise<void>((resolve, reject) => {
-        const data: WorkerData = { ...files, threads: options.threads, dims: options.dims, maxTokens: options.maxTokens };
+        const data: WorkerData = { weights: files.weights, threads: options.threads, dims: options.dims };
         const w = new Worker(options.workerUrl, { workerData: data, env: {}, execArgv: [] });
         worker = w;
         let started = false;
@@ -53,10 +54,18 @@ export function createThreadBackend(options: { readonly workerUrl: URL; readonly
     embed(kind, texts) {
       const w = worker;
       if (w === undefined || closed) return Promise.resolve<EmbedResult>({ ok: false, reason: 'unavailable' });
+      // The tokenizer runs here, on the caller's thread: a throw of it is `internal`, not an exception that would leave the embedder's queue waiting for an answer that never comes (`embed` never rejects).
+      let prepared: ReturnType<typeof prepare>;
+      try {
+        prepared = prepare(kind, texts, options.encode, options.maxTokens);
+      } catch {
+        return Promise.resolve<EmbedResult>({ ok: false, reason: 'internal' });
+      }
+      if (!prepared.ok) return Promise.resolve<EmbedResult>(prepared);
       return new Promise<EmbedResult>((resolve) => {
         nextId += 1;
         waiting.set(nextId, resolve);
-        const message: ToWorker = { id: nextId, kind, texts };
+        const message: ToWorker = { id: nextId, rows: prepared.rows };
         w.postMessage(message);
       });
     },

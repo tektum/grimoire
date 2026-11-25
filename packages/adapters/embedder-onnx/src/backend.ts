@@ -13,8 +13,8 @@ export interface Backend {
   close(): Promise<void>;
 }
 
-/** The messages between the embedder's thread and the model's thread. */
-export type ToWorker = { readonly id: number; readonly kind: TextKind; readonly texts: readonly string[] };
+/** The messages between the embedder's thread and the model's thread: the model's thread gets ids, not text (the one tokenizer is on the embedder's thread, so its memory is paid once). */
+export type ToWorker = { readonly id: number; readonly rows: (readonly number[])[] };
 export type FromWorker =
   | { readonly type: 'ready' }
   | { readonly type: 'load-failed' }
@@ -22,8 +22,6 @@ export type FromWorker =
 
 export interface WorkerData {
   readonly weights: string;
-  readonly tokenizer: string;
   readonly threads: number;
   readonly dims: number;
-  readonly maxTokens: number;
 }
