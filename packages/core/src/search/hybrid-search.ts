@@ -1,6 +1,5 @@
 import type { Embedder } from '../ports/embedder.js';
 import type { EmbeddingStore } from '../ports/embedding-store.js';
-import type { Logger } from '../ports/logger.js';
 import type { SearchHit, SearchRepo, SearchRequest } from '../ports/search-repo.js';
 import { modelKey } from '../semantic/model-key.js';
 import { decodeHybridCursor, encodeHybridCursor } from './cursor.js';
@@ -16,7 +15,8 @@ export interface SemanticSearch {
 export interface HybridDeps {
   readonly fullText: SearchRepo;
   readonly semantic?: SemanticSearch;
-  readonly log: Logger;
+  /** Only the one event it raises: a debug line with the reason and never the text of the search. The server's event log and a core `Logger` both fit. */
+  readonly log: { debug(event: 'search.semantic_fallback', fields: { reason: string }): void };
 }
 
 /** A result: a page of the full-text search, or one found only by meaning (its snippet is the start of the passage, with no ranges). */

@@ -143,10 +143,12 @@ describe('a search that matches nothing', () => {
   });
 });
 
+type Mutable = { semantic?: SemanticSearch };
+
 describe('when the semantic part cannot answer', () => {
   const cases: [string, (s: ReturnType<typeof setup>) => void, string][] = [
-    ['the setting is off', (s) => void (s.deps.semantic = { ...(s.deps.semantic as SemanticSearch), settings: { ...(s.deps.semantic as SemanticSearch).settings, enabled: false } }), 'off'],
-    ['there is no embedder', (s) => void ((s.deps as { semantic?: SemanticSearch }).semantic = undefined), 'off'],
+    ['the setting is off', (s) => void ((s.deps as Mutable).semantic = { ...(s.deps.semantic as SemanticSearch), settings: { ...(s.deps.semantic as SemanticSearch).settings, enabled: false } }), 'off'],
+    ['there is no embedder', (s) => void delete (s.deps as Mutable).semantic, 'off'],
     ['the model is not ready', (s) => s.embedder.setStatus('loading'), 'not-ready'],
     ['the model is gone', (s) => s.embedder.setStatus('unavailable'), 'not-ready'],
     ['the query is not embedded in time', (s) => s.embedder.failNext('timeout'), 'embed-failed'],
