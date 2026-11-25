@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { defaultImportConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { duplicateIndexes } from '@tektum/grimoire-core/import/checks';
 import { EntryAbort, openArchive } from '../../../src/import/zip-reader.js';
@@ -72,6 +72,10 @@ describe.each([
   ['backslash', [{ name: 'a\\b.txt', data: Buffer.from('x') }], 'unsafe_path', 0],
   ['symlink', [{ name: 'l', data: Buffer.from('/etc/passwd'), mode: 0o120777 }], 'symlink', 0],
   ['device', [{ name: 'dev', data: Buffer.alloc(0), mode: 0o020666 }], 'non_regular', 0],
+  ['device named as a directory', [{ name: 'dev/', data: Buffer.alloc(0), mode: 0o020666 }], 'non_regular', 0],
+  ['fifo named as a directory', [{ name: 'a/fifo/', data: Buffer.alloc(0), mode: 0o010644 }], 'non_regular', 0],
+  ['socket named as a directory', [{ name: 'sock/', data: Buffer.alloc(0), mode: 0o140755 }], 'non_regular', 0],
+  ['regular file named as a directory', [{ name: 'file/', data: Buffer.from('x'), mode: 0o100644 }], 'non_regular', 0],
 ] as const)('the %s archive', (_n, entries, reason, index) => {
   it(`fails the whole import with ${reason}, naming the entry's index, before any entry is read`, async () => {
     const big = [...entries, { name: 'pad.bin', data: Buffer.alloc(2 * MiB, 1) }] as BuilderEntry[];
@@ -102,6 +106,23 @@ describe('the bomb', () => {
     expect(result).toMatchObject({ aborted: 'entry_too_large' });
     expect(result.bytes).toBeLessThanOrEqual(limits.maxEntryBytes);
     expect(Date.now() - t).toBeLessThan(2000);
+  });
+});
+
+describe('a consumer that walks away from an entry', () => {
+  it('breaking out of the entry stream releases the storage body, and the read stops (a big range, more than the read-ahead window)', async () => {
+    const s = store([{ name: 'big.bin', data: Buffer.alloc(6 * MiB, 7) }]);
+    const { reader, entries } = await ok(s);
+    for await (const chunk of await reader.openEntry(entries[0]!, limits)) { expect((chunk as Buffer).length).toBeGreaterThan(0); break; }
+    await vi.waitFor(() => { expect(s.openBodies).toBe(0); }, { timeout: 3000 });
+    const gets = s.ranges.length;
+    await new Promise<void>((resolve) => { setTimeout(resolve, 200); }); // a read that went on would fetch more
+    expect(s.ranges.length).toBe(gets);
+  });
+
+  it('a directory entry is still a directory: a trailing slash with no mode, or the directory mode, is not refused', async () => {
+    const s = store([{ name: 'dir/', mode: 0o040755 }, { name: 'other/', mode: 0 }, { name: 'dir/a.md', data: Buffer.from('x') }]);
+    expect(await open(s)).toMatchObject({ kind: 'ok' });
   });
 });
 

@@ -59,8 +59,12 @@ class StorageReader extends yauzl.RandomAccessReader {
         out.end(have.bytes.subarray(start - have.start, end - have.start));
         return;
       }
-      for await (const chunk of await this.fetch(start, end)) if (!out.write(chunk)) await new Promise<void>((resolve) => out.once('drain', resolve));
-      out.end();
+      for await (const chunk of await this.fetch(start, end)) {
+        // A consumer that destroys `out` (yauzl tearing down after an abort, a caller that stops reading) is never going to drain it: stop, and leaving the loop returns the storage body.
+        if (out.destroyed) return;
+        if (!out.write(chunk)) await new Promise<void>((resolve) => { out.once('drain', resolve); out.once('close', resolve); });
+      }
+      if (!out.destroyed) out.end();
     };
     pump().catch((e: unknown) => { out.destroy(e instanceof Error ? e : new Error('read failed')); });
     return out;
@@ -77,10 +81,12 @@ function describe(raw: yauzl.Entry, index: number): ZipEntry {
   const path = lenient.decode(nameBytes);
   const unix = (raw.versionMadeBy >>> 8) === 3;
   const type = unix ? (raw.externalFileAttributes >>> 16) & 0xf000 : 0;
-  const isDirectory = path.endsWith('/') || type === 0x4000;
+  // A trailing slash is a directory only when the mode (if the archive has one) agrees: `dev/` with the mode of a device is a device, which the header check refuses.
+  const named = path.endsWith('/');
+  const isDirectory = type === 0x4000 || (named && type === 0);
   return {
     index, path, nameValid, size: raw.uncompressedSize, compressedSize: raw.compressedSize, isCompressed: raw.compressionMethod !== 0, raw,
-    isSymlink: type === 0xa000, isDirectory, isRegular: !isDirectory && (type === 0x8000 || type === 0),
+    isSymlink: type === 0xa000, isDirectory, isRegular: !isDirectory && !named && (type === 0x8000 || type === 0),
   };
 }
 
@@ -113,6 +119,8 @@ export class ZipReader {
         let seen = 0;
         const out = new PassThrough();
         const abort = (reason: EntryAbortReason): void => { stream.destroy(); out.destroy(new EntryAbort(reason)); };
+        // A consumer that stops reading (a `break`, its own limit) destroys `out`: the source stream goes with it, or it would wait for a drain that never comes.
+        out.once('close', () => { stream.destroy(); });
         stream.on('data', (chunk: Buffer) => {
           seen += chunk.length;
           if (seen > entry.size) { abort('size_mismatch'); return; }

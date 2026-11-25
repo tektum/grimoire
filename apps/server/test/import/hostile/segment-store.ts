@@ -9,6 +9,8 @@ const ZEROS = Buffer.alloc(CHUNK);
 /** A read-only file store over segments of bytes and runs of zeros (the zeros are not held), recording every ranged `get`. Only `head` and `get` are used by the reader. */
 export class SegmentStore implements FileStorage {
   readonly ranges: { start: number; end: number }[] = [];
+  /** Bodies handed out whose iteration has started and not yet finished or been returned: a reader that walks away from a body leaves it open. */
+  openBodies = 0;
   readonly size: number;
   constructor(private readonly segments: readonly Segment[], private readonly key = 'imports/x.zip') {
     this.size = segments.reduce((n, s) => n + ('zeros' in s ? s.zeros : s.bytes.length), 0);
@@ -26,7 +28,10 @@ export class SegmentStore implements FileStorage {
     if (start < 0 || end >= this.size || start > end) return Promise.reject(new FileStorageError('range-not-satisfiable', 'outside the object'));
     this.ranges.push({ start, end });
     const segments = this.segments;
+    const counter = this;
     async function* body(): AsyncGenerator<Uint8Array> {
+      counter.openBodies++;
+      try {
       let at = 0;
       for (const segment of segments) {
         const length = 'zeros' in segment ? segment.zeros : segment.bytes.length;
@@ -39,6 +44,7 @@ export class SegmentStore implements FileStorage {
         at += length;
         if (at > end) break;
       }
+      } finally { counter.openBodies--; }
     }
     return Promise.resolve({ body: body(), size: end - start + 1, contentType: 'application/zip' });
   }
