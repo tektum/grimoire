@@ -14,6 +14,7 @@ import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { createApp } from '../../src/app.js';
 import { importFailedKey, importZipKey } from '../../src/import/keys.js';
+import { buildZip } from '../import/hostile/zip-builder.js';
 import { makeContext } from '../server/support/context.js';
 
 // The import routes (R6.39 to R6.43): who may see and change an import (the creator, an administrator of the same workspace, nobody of another), the zip's trip through the file
@@ -39,7 +40,7 @@ const FILES: FilesConfig = {
   allowedTypes: ['text/plain'],
   pendingMaxPerUser: 3,
 };
-const ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...new Array<number>(60).fill(7)]);
+const ZIP = buildZip([{ name: 'a.md', data: Buffer.from('# a\n') }]);
 
 function build(options: { files?: boolean; enqueueFails?: boolean } = {}) {
   const t = makeContext();
@@ -182,6 +183,7 @@ describe('POST /v1/imports/{id}/start', () => {
     expect(t.audit.events).toMatchObject([{ action: 'import.started', targetType: 'import', targetId: id, tenantId: 'T-a', actorId: t.uid('ada') }]);
     // Asking again while it waits is safe (the queue keeps one job for the import); once it runs the start is refused.
     expect((await t.call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(202);
+    expect(t.audit.events, 'one import is audited as started once, however often it is asked').toHaveLength(1);
     await t.imports.start('T-a', id, t.clock.now());
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('already_started');
   });
@@ -191,13 +193,31 @@ describe('POST /v1/imports/{id}/start', () => {
     const a = (await t.made()).id;
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${a}/start`))).toBe('upload_missing');
     const b = (await t.made()).id;
-    await t.sent(b, 'T-a', new Uint8Array([0x50, 0x4b, 3, 4, 1]));
+    await t.sent(b, 'T-a', new Uint8Array(ZIP.length + 1).fill(7));
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${b}/start`))).toBe('size_mismatch');
     const c = (await t.made()).id;
     await t.sent(c, 'T-a', new Uint8Array(ZIP.length).fill(0x41));
     const bad = await t.call('ada', 'POST', `/v1/imports/${c}/start`);
     expect([bad.status, await code(bad)]).toEqual([422, 'not_a_zip']);
     for (const id of [a, b, c]) expect((await t.imports.get('T-a', id))?.status).toBe('created');
+    expect(t.enqueued).toEqual([]);
+  });
+
+  it('checks the signature the archive reader requires, not just PK: a file that starts with PK and is not a zip is 422 not_a_zip, one that is a zip the import cannot take is 422 invalid_archive; both stay as they were', async () => {
+    const t = build();
+    const headerOfAnother = Buffer.from(ZIP);
+    headerOfAnother[2] = 0x01; // `PK\x01\x02`: the signature of a central directory entry, not of an archive's start
+    const unsafe = buildZip([{ name: '../outside.md', data: Buffer.from('x') }]);
+    for (const [bytes, wanted] of [
+      [headerOfAnother, 'not_a_zip'],
+      [unsafe, 'invalid_archive'],
+    ] as const) {
+      const { id } = await t.made({ size: bytes.length });
+      await t.sent(id, 'T-a', bytes);
+      const res = await t.call('ada', 'POST', `/v1/imports/${id}/start`);
+      expect([res.status, await code(res)], wanted).toEqual([422, wanted]);
+      expect((await t.imports.get('T-a', id))?.status).toBe('created');
+    }
     expect(t.enqueued).toEqual([]);
   });
 
@@ -251,7 +271,9 @@ describe('POST /v1/imports/{id}/start', () => {
     await t.sent(id);
     expect((await t.call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(503);
     expect((await t.imports.get('T-a', id))?.status).toBe('uploaded');
-    expect(t.audit.events).toEqual([]);
+    expect(t.audit.events, 'the import was accepted, once').toHaveLength(1);
+    // A queue failure has an operation of its own: it does not read as the file store's (`import-start` is where the store was being looked at).
+    expect(t.logs.entries.filter((e) => e.event === 'files.unavailable').map((e) => e.fields?.['operation'])).toEqual(['import-enqueue']);
   });
 });
 
@@ -307,6 +329,21 @@ describe('the start, where the store or the repository does not do what is expec
     vi.spyOn(t.imports, 'markUploaded').mockResolvedValueOnce(false);
     expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/start`))).toBe('already_started');
     expect(t.enqueued).toEqual([]);
+  });
+});
+
+describe('cancelling an import that waits for its turn', () => {
+  it('withdraws an accepted import that waits as uploaded, for its creator or an administrator of the workspace: 200, cancelled, audited, and no start follows', async () => {
+    const t = build();
+    await t.running();
+    const { id } = await t.made();
+    await t.sent(id);
+    expect((await t.call('ada', 'POST', `/v1/imports/${id}/start`)).status).toBe(202);
+    const res = await t.call('root', 'POST', `/v1/imports/${id}/cancel`);
+    expect([res.status, ((await res.json()) as { status: string }).status]).toEqual([200, 'cancelled']);
+    expect(t.audit.events.map((e) => e.action)).toEqual(['import.started', 'import.cancelled']);
+    expect(await t.imports.start('T-a', id, t.clock.now())).toBeUndefined();
+    expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/cancel`))).toBe('not_running');
   });
 });
 

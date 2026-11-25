@@ -21,6 +21,7 @@ import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
 import { createApp } from '../../src/app.js';
 import { makeContext } from '../server/support/context.js';
 import { importFailedKey, importZipKey } from '../../src/import/keys.js';
+import { buildZip } from '../import/hostile/zip-builder.js';
 import type { Operation } from './document.js';
 
 /** Who the walk signs in as. The token is the name; `garbage` and `expired` are tokens the verifier refuses. */
@@ -99,7 +100,7 @@ export async function buildWorld() {
   const imports = new FakeImportRepo();
   const importOf = (n: number): string => `00000000-0000-4000-8000-0000000007${String(n).padStart(2, '0')}`;
   const importRows = { import: importOf(1), hiddenImport: importOf(2) };
-  const ZIP_BYTES = new Uint8Array([0x50, 0x4b, 3, 4, 0, 0, 0, 0]);
+  const ZIP_BYTES = buildZip([{ name: 'a.md', data: Buffer.from('# a\n') }]);
   const items: Record<string, string> = {};
   const seedImport = async (id: string, who: 'member' | 'admin', status: 'created' | 'running' | 'done'): Promise<void> => {
     imports.seed({ id, tenantId: 'legacy', status, createdBy: USER_ID[who], targetCollectionId: open.id, bytes: ZIP_BYTES.length, s3Key: importZipKey('legacy', id) });

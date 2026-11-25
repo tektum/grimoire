@@ -14,6 +14,7 @@ import type { AppEnv } from '../http/env.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { guardImport } from '../http/import-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
+import { openArchive } from '../import/zip-reader.js';
 import type { ErrorEvents } from '../events.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { 'application/json': { schema } } });
@@ -25,7 +26,6 @@ const ItemParam = IdParam.extend({ itemId: z.string().regex(/^[0-9]{1,18}$/).ope
 const UPLOAD_TTL_SECONDS = 3600;
 /** How long the address of a failed original works: it is fetched at once. */
 const SOURCE_TTL_SECONDS = 300;
-const ZIP_MAGIC = [0x50, 0x4b];
 
 const CreateBody = z
   .object({
@@ -86,7 +86,7 @@ export const startImport = defineRoute({
     202: json(Started, 'The import is accepted and its job queued'),
     404: json(ErrorBody, 'Not found, not the caller\'s, or the caller can no longer write in the collection'),
     409: json(ErrorBody, '`upload_missing`, `size_mismatch` or `already_started`'),
-    422: json(ErrorBody, '`not_a_zip`: the file is not a zip archive'),
+    422: json(ErrorBody, '`not_a_zip` (the file is not a zip archive) or `invalid_archive` (a zip the import cannot take)'),
     503: json(ErrorBody, 'The file store does not answer, or the job queue is not up'),
   },
 });
@@ -167,13 +167,6 @@ const present = (r: ImportRecord) => ({
   error: r.error,
 });
 
-async function firstBytes(files: FileStorage, key: string, n: number): Promise<number[]> {
-  const out: number[] = [];
-  const { body } = await files.get(key, { range: { start: 0, end: n - 1 } });
-  for await (const chunk of body) out.push(...chunk);
-  return out;
-}
-
 const router = createRouter();
 
 router.openapi(createImport, async (c) => {
@@ -208,19 +201,22 @@ router.openapi(startImport, async (c) => {
   const head = await ifThere(c, 'import-start', () => files.head(key));
   if (head === undefined) return fail('upload_missing');
   if (head.size !== record.bytes) return fail('size_mismatch');
-  const magic = await ifThere(c, 'import-start', () => firstBytes(files, key, 2));
-  if (magic === undefined) return fail('upload_missing');
-  if (magic[0] !== ZIP_MAGIC[0] || magic[1] !== ZIP_MAGIC[1]) return fail('not_a_zip');
+  // The archive reader's own first look (the signature, the central directory, the header checks): what it would refuse later, in the job, is refused now with the documented answer.
+  const opened = await ifThere(c, 'import-start', () => openArchive(files, key, head.size, deps.config.import));
+  if (opened === undefined) return fail('upload_missing');
+  if (opened.kind === 'refused') return fail(opened.reason === 'not_a_zip' ? 'not_a_zip' : 'invalid_archive');
+  opened.reader.close();
   if (!(await deps.imports.markUploaded(tenant, id))) return fail('already_started');
+  // Accepted: audited once, by the start that moved it from `created`; asking again while it waits (or after the job could not be queued) is a retry, not another start.
+  if (record.status === 'created') await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });
   // The job moves the import to `running` when its turn comes: a workspace has one running import at a time, held by the database, so a second one waits as `uploaded` and its job tries again.
   try {
     await deps.enqueueImport({ importId: id, tenantId: tenant }, { singletonKey: id });
   } catch {
     // The work could not be queued: the import stays `uploaded`, and the person may start it again.
-    deps.log.error('files.unavailable', { operation: 'import-start' });
+    deps.log.error('files.unavailable', { operation: 'import-enqueue' });
     return fail('unavailable');
   }
-  await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });
   deps.log.info('import.started', { importId: id });
   noStore(c);
   return c.json({ status: 'uploaded' as const }, 202);
