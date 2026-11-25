@@ -7,10 +7,17 @@ describe('readCsv', () => {
     expect(readCsv(Buffer.from('\ufeffName,Status\n"Write, plan",Done\n'), { maxFieldBytes: 1000 })).toEqual({ ok: true, rows: [['Name', 'Status'], ['Write, plan', 'Done']] });
   });
 
-  it('refuses a field over the limit, unbalanced quotes, and rows of different widths, by reason', () => {
+  it('refuses a field over the limit and a quote that is never closed, by reason', () => {
     expect(readCsv(Buffer.from(`a,${'x'.repeat(2000)}\n`), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'csv_field_too_large' });
     expect(readCsv(Buffer.from('a,"b\nc,d\n'), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'csv_malformed' });
-    expect(readCsv(Buffer.from('a,b\nc\n'), { maxFieldBytes: 1000 })).toEqual({ ok: false, reason: 'csv_malformed' });
+  });
+
+  it('reads rows of different widths (ragged rows are relaxed, contracts section 4) as they are', () => {
+    expect(readCsv(Buffer.from('a,b\nc\nd,e,f\n'), { maxFieldBytes: 1000 })).toEqual({ ok: true, rows: [['a', 'b'], ['c'], ['d', 'e', 'f']] });
+  });
+
+  it('reads a quote inside a cell as text, as a real export writes it (M7-T08): after a quoted value, and inside a value that is not quoted', () => {
+    expect(readCsv(Buffer.from('Name,Note\n"Ada" Lovelace,said "hi" twice\n'), { maxFieldBytes: 1000 })).toEqual({ ok: true, rows: [['Name', 'Note'], ['"Ada" Lovelace', 'said "hi" twice']] });
   });
 
   it('judges the limit in bytes, not characters: 400 characters of CJK text are 1,200 bytes', () => {
@@ -26,6 +33,10 @@ describe('readCsv', () => {
 describe('csvToMarkdownTable', () => {
   it('writes a header, a separator and a line per row; a formula stays the text it is', () => {
     expect(csvToMarkdownTable([['Name', 'Value'], ['a', '=SUM(A1)'], ['b', '2']])).toBe('| Name | Value |\n| --- | --- |\n| a | =SUM(A1) |\n| b | 2 |\n');
+  });
+
+  it('makes every row as wide as the widest, so that no cell of a ragged CSV is lost (a Markdown table drops the cells past its header)', () => {
+    expect(csvToMarkdownTable([['H1', 'H2'], ['a'], ['b', 'c', 'd']])).toBe('| H1 | H2 |  |\n| --- | --- | --- |\n| a |  |  |\n| b | c | d |\n');
   });
 
   it('escapes what would break a cell: a pipe, a newline, a backslash', () => {
