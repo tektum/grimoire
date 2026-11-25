@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '../auth/session';
 import { quietApiOf } from '../editor/attachments/quiet-api';
 import type { ApiLike } from '../api/query';
 import { queryKey } from '../api/query';
 import { storeFetch } from '../api/store';
-import { ENDED, type CreatedImport, type ImportState } from './types';
+import { ENDED, type CreatedImport, type ImportItem, type ImportItems, type ImportState } from './types';
 
 /**
  * The API client of the import screens: the session's own, with its notices turned off. The screens tell every refusal and failure once, in their own words (a file that is not a zip, a collection that is
@@ -23,7 +23,7 @@ export function useQuietApi(): ApiLike {
 /** An answer the API gave that is not a success: its status and its error code. */
 export class ImportError extends Error {
   constructor(
-    readonly step: 'create' | 'upload' | 'start' | 'read',
+    readonly step: 'create' | 'upload' | 'start' | 'read' | 'cancel' | 'items' | 'source',
     readonly status: number,
     readonly code: string | undefined,
   ) {
@@ -83,4 +83,57 @@ export function useImportState(api: ApiLike, id: string | null) {
     // Not once it has ended, and not while the last read failed: a failure is shown with a way to try again (`refetch`), which goes on polling when it works.
     refetchInterval: (query) => (query.state.status === 'error' || (query.state.data !== undefined && ENDED.includes(query.state.data.status)) ? false : POLL_MS),
   });
+}
+
+/** Cancels a running import (R6.40): its pages are moved to the trash. A 409 `not_running` is an import that has ended since the person looked. */
+export async function cancelImport(api: ApiLike, id: string): Promise<void> {
+  okOr('cancel', await api.POST('/v1/imports/{id}/cancel' as never, { params: { path: { id } } } as never));
+}
+
+/** One page of the report of an import (R6.41). */
+export async function readItems(api: ApiLike, id: string, cursor: string | undefined): Promise<ImportItems> {
+  return okOr('items', await api.GET('/v1/imports/{id}/items' as never, { params: { path: { id }, query: cursor === undefined ? {} : { cursor } } } as never)) as ImportItems;
+}
+
+/** The address a failed page's original file can be fetched from, for a short time (R6.41). */
+export async function sourceUrl(api: ApiLike, id: string, itemId: string): Promise<string> {
+  const answer = okOr('source', await api.GET('/v1/imports/{id}/items/{itemId}/source' as never, { params: { path: { id, itemId } } } as never)) as { url?: unknown };
+  if (typeof answer.url !== 'string') throw new ImportError('source', 200, undefined);
+  return answer.url;
+}
+
+/**
+ * The report of an ended import, a page at a time. Held in the component and not in the query cache: it has the names of the person's files and the reasons, which are not kept anywhere
+ * but on this screen. `retry` and `more` read the page after the last one that came.
+ */
+export function useImportReport(api: ApiLike, id: string) {
+  const [items, setItems] = useState<readonly ImportItem[]>([]);
+  const [next, setNext] = useState<string | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const load = useCallback(
+    async (cursor: string | undefined): Promise<void> => {
+      setPhase('loading');
+      try {
+        const page = await readItems(api, id, cursor);
+        if (!alive.current) return;
+        setItems((before) => (cursor === undefined ? page.items : [...before, ...page.items]));
+        setNext(page.nextCursor);
+        setPhase('ready');
+      } catch {
+        if (alive.current) setPhase('error');
+      }
+    },
+    [api, id],
+  );
+  useEffect(() => {
+    void load(undefined);
+  }, [load]);
+  return { items, hasMore: next !== null, phase, more: () => void load(next ?? undefined) };
 }

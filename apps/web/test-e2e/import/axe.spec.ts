@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
 import { expectNoAxeViolations } from '../support/axe';
 import { signInAs } from '../support/sign-in';
-import { scriptedImports, type ScriptedState } from './support';
+import { scriptedImports, type ScriptedItem, type ScriptedState } from './support';
 
 // Axe on the import screen in each state, in both schemes. Against the stand-in of the API and a scripted import.
 const STATES: readonly [string, ScriptedState][] = [
@@ -10,6 +10,12 @@ const STATES: readonly [string, ScriptedState][] = [
   ['done', { status: 'done', total: 10, done: 9, skipped: 1 }],
   ['failed', { status: 'failed', total: 10, done: 3, error: 'internal' }],
   ['cancelled', { status: 'cancelled', total: 10, done: 3 }],
+];
+
+const REPORT: readonly ScriptedItem[] = [
+  { id: 'i1', path: 'docs/welcome.md', status: 'imported' },
+  { id: 'i2', path: 'docs/big.md', status: 'skipped', message: 'too_large: the page is over the limit of 1 MB' },
+  { id: 'i3', path: 'docs/odd.md', status: 'failed', message: 'The file could not be read as markdown.', hasSource: true },
 ];
 
 for (const scheme of ['light', 'dark'] as const) {
@@ -24,6 +30,20 @@ for (const scheme of ['light', 'dark'] as const) {
       await scriptedImports(page, []);
       await page.goto('/import');
       await expect(page.getByRole('note')).toBeVisible();
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    test('done, with its report (a skipped and a failed file with a source to download), has none', async ({ page }) => {
+      await scriptedImports(page, [{ status: 'done', total: 3, done: 1, skipped: 1, failed: 1 }], { items: REPORT });
+      await page.goto('/import?import=imp1');
+      await expect(page.getByRole('list', { name: 'Files of the import' }).getByRole('listitem')).toHaveCount(3);
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    test('running, with its Cancel button, has none', async ({ page }) => {
+      await scriptedImports(page, [{ status: 'running', total: 10, done: 4 }]);
+      await page.goto('/import?import=imp1');
+      await expect(page.getByRole('button', { name: 'Cancel import' })).toBeVisible();
       await expectNoAxeViolations(page, { minImpact: 'serious' });
     });
 

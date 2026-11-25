@@ -19,3 +19,23 @@ export interface ImportState {
 
 /** The statuses after which nothing changes: the polling stops. */
 export const ENDED: readonly ImportStatus[] = ['done', 'failed', 'cancelled'];
+
+/** One file of the zip as the report says it (R6.41, `GET /v1/imports/{id}/items`). `message` is plain text of at most 300 characters. */
+export interface ImportItem {
+  readonly id: string;
+  readonly path: string;
+  readonly kind: string;
+  readonly pageId: string | null;
+  readonly status: 'imported' | 'skipped' | 'failed';
+  readonly message: string | null;
+  readonly markdownBytes: number | null;
+  readonly stateBytes: number | null;
+  /** Whether the original file of a failed page can be downloaded. */
+  readonly hasSource: boolean;
+}
+
+/** One page of the report. */
+export interface ImportItems {
+  readonly items: readonly ImportItem[];
+  readonly nextCursor: string | null;
+}
