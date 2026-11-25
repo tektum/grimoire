@@ -40,10 +40,10 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await t?.drop(); });
 
-interface PageOptions { readonly collection?: string; readonly tenant?: string; readonly hashByte?: number | null; readonly deleted?: boolean; readonly editedSecondsAgo?: number }
+interface PageOptions { readonly text?: string; readonly collection?: string; readonly tenant?: string; readonly hashByte?: number | null; readonly deleted?: boolean; readonly editedSecondsAgo?: number }
 async function page(o: PageOptions = {}): Promise<string> {
   return insertPage(run, {
-    collection_id: o.collection ?? open, created_by: user, tenant_id: o.tenant ?? TENANT, title: 'T', text_content: 'text',
+    collection_id: o.collection ?? open, created_by: user, tenant_id: o.tenant ?? TENANT, title: 'T', text_content: o.text ?? 'text',
     markdown_hash: o.hashByte === null ? null : raw(`decode('${hex(o.hashByte ?? 1)}', 'hex')`),
     last_edited_at: raw(`now() - interval '${String(o.editedSecondsAgo ?? 600)} seconds'`),
     ...(o.deleted === true ? { deleted_at: raw('now()'), deleted_batch: randomUUID() } : {}),
@@ -182,9 +182,9 @@ describe('search', () => {
     await store.replacePage('T-other', foreign, hash(1), M, [chunk(0, q)]);
   });
 
-  it('returns the nearest chunks by cosine similarity, best first, with their offsets', async () => {
+  it('returns one hit for each page, its nearest chunk, best first by cosine similarity, with the offsets', async () => {
     const hits = await ask();
-    expect(hits.map((h) => [h.pageId, h.chunkIndex])).toEqual([[near, 0], [far, 0], [near, 1]]);
+    expect(hits.map((h) => [h.pageId, h.chunkIndex])).toEqual([[near, 0], [far, 0]]);
     expect(hits[0]?.similarity).toBeGreaterThan(0.99);
     expect(hits[1]?.similarity).toBeCloseTo(Math.SQRT1_2, 4);
     expect(hits[0]).toMatchObject({ charStart: 0, charEnd: 9 });
@@ -211,6 +211,25 @@ describe('search', () => {
     expect(indexes.map((i) => i.indexdef).join('\n')).not.toMatch(/hnsw|ivfflat/i);
     const plan = (await t.admin.query(`explain select c.page_id from page_chunks c join pages p on p.id = c.page_id where c.model = '${M}' order by c.embedding <=> '[1,0,0,0]'::vector limit 10`)) as Record<string, string>[];
     expect(plan.map((r) => Object.values(r)[0]).join('\n')).not.toMatch(/hnsw|ivfflat/i);
+  });
+
+  it('reads the text of the best chunk by code points, and the edit time of the page, in the same statement; a page that was filtered out has no text in the answer', async () => {
+    const MARK = 'hiddenmarker-5531';
+    const emoji = await page({ text: `🙂🙂 intro words. the matching passage is here. tail`, editedSecondsAgo: 120 });
+    const start = Array.from('🙂🙂 intro words. ').length; // code points: PostgreSQL's substr counts them, not UTF-16 units
+    await store.replacePage(TENANT, emoji, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: start, charEnd: start + 30 }]);
+    const secretPage = await page({ collection: hidden, text: `${MARK} should never be read` });
+    await store.replacePage(TENANT, secretPage, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: 0, charEnd: 20 }]);
+    const hits = await ask({ minSimilarity: 0.99 });
+    const mine = hits.find((h) => h.pageId === emoji);
+    expect(mine?.text).toBe('the matching passage is here');
+    const expected = ((await t.admin.query(`select (extract(epoch from coalesce(last_edited_at, updated_at)) * 1000000)::bigint as us from pages where id = '${emoji}'`)) as { us: string }[])[0];
+    expect(mine?.editedAt).toBe(Number(expected?.us));
+    expect(JSON.stringify(hits)).not.toContain(MARK);
+    await store.replacePage(TENANT, emoji, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: 0, charEnd: 99_999 }]);
+    expect((await ask({ minSimilarity: 0.99 })).find((h) => h.pageId === emoji)?.text).toBe('🙂🙂 intro words. the matching passage is here. tail'); // never past the text
+    await run(`update pages set text_content = null where id = '${emoji}'`);
+    expect((await ask({ minSimilarity: 0.99 })).find((h) => h.pageId === emoji)?.text).toBe(''); // a page with no text has an empty passage
   });
 });
 

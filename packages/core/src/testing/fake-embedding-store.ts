@@ -5,6 +5,8 @@ type StoredChunk = ChunkRow & { readonly embedding: Float32Array };
 interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean; text: string }
 interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
+/** The chunks the store looks at for one search, before it keeps the best of each page (the SQL's `limit` of its inner query). */
+const SEARCH_CANDIDATES = 300;
 const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
@@ -97,17 +99,24 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     queryVector: Float32Array,
     o: { readonly model: string; readonly collectionIds: readonly string[]; readonly collectionId?: string; readonly limit: number; readonly minSimilarity: number },
   ): Promise<readonly ChunkHit[]> {
-    const hits: ChunkHit[] = [];
+    const candidates: ChunkHit[] = [];
     for (const pageId of this.chunks.keys()) {
       const page = this.page(tenantId, pageId);
       if (page === undefined || page.deleted || !o.collectionIds.includes(page.collectionId) || (o.collectionId !== undefined && page.collectionId !== o.collectionId)) continue;
       for (const c of this.rowsOf(pageId, o.model)) {
         if (c.embedding.length !== queryVector.length) continue; // another dimension is another model's
         const similarity = c.embedding.reduce((sum, x, i) => sum + x * (queryVector[i] as number), 0);
-        if (similarity >= o.minSimilarity) hits.push({ pageId, chunkIndex: c.chunkIndex, charStart: c.charStart, charEnd: c.charEnd, similarity });
+        if (similarity >= o.minSimilarity) {
+          const text = Array.from(page.text).slice(c.charStart, c.charStart + Math.min(c.charEnd - c.charStart, 4000)).join('');
+          candidates.push({ pageId, chunkIndex: c.chunkIndex, charStart: c.charStart, charEnd: c.charEnd, similarity, text, editedAt: page.editedAt * 1000 });
+        }
       }
     }
-    return Promise.resolve(hits.sort((a, b) => b.similarity - a.similarity || (a.pageId < b.pageId ? -1 : a.pageId > b.pageId ? 1 : a.chunkIndex - b.chunkIndex)).slice(0, o.limit));
+    const order = (a: ChunkHit, b: ChunkHit): number => b.similarity - a.similarity || (a.pageId < b.pageId ? -1 : a.pageId > b.pageId ? 1 : a.chunkIndex - b.chunkIndex);
+    const nearest = candidates.sort(order).slice(0, SEARCH_CANDIDATES);
+    const best = new Map<string, ChunkHit>();
+    for (const h of nearest) if (!best.has(h.pageId)) best.set(h.pageId, h);
+    return Promise.resolve([...best.values()].slice(0, o.limit));
   }
 
   counts(model: string): Promise<{ readonly chunks: number; readonly pagesReady: number; readonly pagesFailed: number; readonly pagesPending: number }> {

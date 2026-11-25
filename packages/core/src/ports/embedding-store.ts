@@ -6,7 +6,7 @@ export interface ChunkRow {
   readonly chunkIndex: number;
   /** SHA-256 of the chunk's text (32 bytes): an unchanged chunk keeps its vector when the page is embedded again. */
   readonly contentHash: Uint8Array;
-  /** Offsets of the chunk in the page's text, in UTF-16 code units. */
+  /** Offsets of the chunk in the page's text, in Unicode code points (as PostgreSQL's `substr` counts, which is how the text of a hit is read). */
   readonly charStart: number;
   readonly charEnd: number;
   readonly tokenCount: number;
@@ -14,6 +14,7 @@ export interface ChunkRow {
   readonly embedding?: Float32Array;
 }
 
+/** The best chunk of one page for a query. */
 export interface ChunkHit {
   readonly pageId: string;
   readonly chunkIndex: number;
@@ -21,6 +22,10 @@ export interface ChunkHit {
   readonly charEnd: number;
   /** Cosine similarity, 1 for the same direction. */
   readonly similarity: number;
+  /** The chunk's text, read from the page's own row in the same statement that applied the access filter (R9.32), at most 4,000 characters. */
+  readonly text: string;
+  /** The page's last edit in microseconds, as the full-text search orders by it. */
+  readonly editedAt: number;
 }
 
 /**
@@ -47,8 +52,8 @@ export interface EmbeddingStore {
    */
   pagesNeedingEmbedding(tenantId: string, model: string, o: { readonly olderThanSeconds: number; readonly limit: number }): Promise<readonly { readonly pageId: string; readonly markdownHash: Uint8Array }[]>;
   /**
-   * The chunks nearest to `queryVector`, best first, of the pages the person may read: the collections are applied inside the query (R9.8), pages in the trash are left out, and
-   * chunks under `minSimilarity` are not returned.
+   * The pages nearest to `queryVector`, best first, one hit each (its best chunk, with that chunk's text and the page's edit time): of the 300 nearest chunks the person may read,
+   * at most `limit` pages. The collections are applied inside the query (R9.8), pages in the trash are left out, and chunks under `minSimilarity` are not counted.
    */
   search(
     tenantId: string,

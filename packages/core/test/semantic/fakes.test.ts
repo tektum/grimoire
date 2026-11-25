@@ -97,9 +97,9 @@ describe('FakeEmbeddingStore', () => {
     await store.replacePage('other', 'x1', hash(9), 'm', [chunk(0, 'quarterly planning notes')]);
     const q = vectorOf('passage: quarterly planning notes', 8);
     const ask = (over: object = {}) => store.search('legacy', q, { model: 'm', collectionIds: ['open', 'closed'], limit: 10, minSimilarity: 0, ...over });
-    expect((await ask()).map((h) => `${h.pageId}:${String(h.chunkIndex)}`)).toEqual(['p1:0', 'p2:0', 'p1:1']);
+    expect((await ask()).map((h) => `${h.pageId}:${String(h.chunkIndex)}`)).toEqual(['p1:0', 'p2:0']); // one hit for each page: its best chunk
     expect((await ask())[0]).toMatchObject({ charStart: 0, charEnd: 24, similarity: expect.closeTo(1, 5) });
-    expect((await ask({ collectionIds: ['open'] })).map((h) => h.pageId)).toEqual(['p1', 'p1']);
+    expect((await ask({ collectionIds: ['open'] })).map((h) => h.pageId)).toEqual(['p1']);
     expect((await ask({ collectionId: 'closed' })).map((h) => h.pageId)).toEqual(['p2']);
     expect((await ask({ collectionIds: ['open'], collectionId: 'closed' }))).toEqual([]);
     expect((await ask({ minSimilarity: 0.99 })).map((h) => h.pageId)).toEqual(['p1', 'p2']);
@@ -165,5 +165,20 @@ describe('FakeEmbeddingStore, one state per page', () => {
     expect(await store.pagesNeedingEmbedding('legacy', 'm1', { olderThanSeconds: 1, limit: 5 })).toHaveLength(1);
     expect(await store.search('legacy', vectorOf('passage: beta', 8), { model: 'm1', collectionIds: ['open'], limit: 5, minSimilarity: 0 })).toEqual([]);
     expect(await store.counts('m2')).toMatchObject({ chunks: 1, pagesReady: 1 });
+  });
+});
+
+describe('FakeEmbeddingStore, what a hit carries', () => {
+  it('gives the text of the chunk, read by code points from the page, and the edit time of the page in microseconds, only for the pages it returns', async () => {
+    const store = new FakeEmbeddingStore(() => NOW);
+    const text = '🙂 first part of the page. second part here.';
+    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 1234, text });
+    store.seedPage({ id: 'p2', collectionId: 'closed', markdownHash: hash(2), editedAt: 1, text: 'secret chunk text' });
+    const start = Array.from('🙂 first part of the page. ').length; // code points, not UTF-16 units
+    await store.replacePage('legacy', 'p1', hash(1), 'm', [{ ...chunk(0, 'x'), charStart: 0, charEnd: 25 }, { ...chunk(1, 'second part here'), charStart: start, charEnd: start + 17 }]);
+    await store.replacePage('legacy', 'p2', hash(2), 'm', [{ ...chunk(0, 'second part here'), charStart: 0, charEnd: 17 }]);
+    const hits = await store.search('legacy', vectorOf('passage: second part here', 8), { model: 'm', collectionIds: ['open'], limit: 5, minSimilarity: 0 });
+    expect(hits.map((h) => [h.pageId, h.chunkIndex, h.text, h.editedAt])).toEqual([['p1', 1, 'second part here.', 1_234_000]]);
+    expect(JSON.stringify(hits)).not.toContain('secret'); // the text of a page that was filtered out is never read
   });
 });
