@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHeader, duplicateIndexes, MAX_ENTRY_PATH_LENGTH } from '../../../src/import/checks.js';
+import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_LENGTH, reportedName } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
 import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
@@ -20,23 +20,32 @@ describe('an entry name that could write outside the import', () => {
   });
 });
 
-describe('a name that cannot be stored and shown as it is (the item path is the archive path, exactly)', () => {
-  it.each([['a\nb.md'], ['a\tb.md'], ['a\u001bb.md'], ['a\u007fb.md'], ['a\u0085b.md'], ['a\u2028b.md'], ['a\u2029b.md'], ['dir/\u009fx.md']])('%j (a control or line separator character) is refused as unsafe_path', (name) => {
-    expect(check([file('ok.md'), file(name)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
+describe('a name that cannot be kept and shown as it is is one failed item (bad_name), not a refused archive', () => {
+  it.each([['a\nb.md'], ['a\tb.md'], ['a\u001bb.md'], ['a\u007fb.md'], ['a\u0085b.md'], ['a\u2028b.md'], ['a\u2029b.md'], ['dir/\u009fx.md']])('%j (a control or line separator character): the archive passes, the name is bad', (name) => {
+    expect(check([file('ok.md'), file(name)])).toEqual({ ok: true });
+    expect(isBadName(name)).toBe(true);
   });
 
-  it('refuses a name over MAX_ENTRY_PATH_LENGTH characters, and accepts one of exactly that length', () => {
-    expect(check([file(`${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 3)}.md`)])).toEqual({ ok: true });
-    expect(check([file('ok.md'), file(`${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 2)}.md`)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
+  it('a name over MAX_ENTRY_PATH_LENGTH characters is bad, one of exactly that length is not, and neither refuses the archive', () => {
+    const exact = `${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 3)}.md`;
+    const over = `${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 2)}.md`;
+    expect([isBadName(exact), isBadName(over)]).toEqual([false, true]);
+    expect(check([file('ok.md'), file(over)])).toEqual({ ok: true });
   });
 
-  it('accepts what a Notion export looks like: 32-character ids in every segment, nested deeply', () => {
+  it('a Notion-shaped name (32-character ids in every segment, nested deeply) and ordinary non-ASCII names are fine', () => {
     const segment = `Some page title ${'0123456789abcdef'.repeat(2)}`;
-    expect(check([file(`${Array.from({ length: 32 }, () => segment).join('/')}.md`)])).toEqual({ ok: true });
+    expect([`${Array.from({ length: 32 }, () => segment).join('/')}.md`, 'caf\u00e9/\u65e5\u672c\u8a9e a.md', 'a b/c d.md'].map(isBadName)).toEqual([false, false, false]);
   });
 
-  it('accepts ordinary non-ASCII names and a space', () => {
-    expect(check([file('caf\u00e9/\u65e5\u672c\u8a9e a.md')])).toEqual({ ok: true });
+  it('what is kept of a bad name, to report it, has no control character and is at most 300 characters', () => {
+    expect(reportedName('a\u001b[31m\nb.md')).toBe('a[31mb.md');
+    expect(reportedName(`${'x'.repeat(400)}\u0007`)).toBe('x'.repeat(300));
+    expect(reportedName('plain/name.md')).toBe('plain/name.md');
+  });
+
+  it('a NUL, a backslash, a drive, an absolute path or a .. segment are still attacks and still refuse the archive', () => {
+    for (const name of ['a\0b', '\0', 'a\\b', 'C:/x', '/abs', 'a/../b']) expect(check([file('ok.md'), file(name)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
   });
 });
 
