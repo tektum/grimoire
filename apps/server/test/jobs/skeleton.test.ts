@@ -35,7 +35,8 @@ describe('the registry of jobs', () => {
 });
 
 describe('the remote image fetcher', () => {
-  it('is absent until M7-T09', () => {
-    expect(createRemoteImageFetcher(makeFakeConfig())).toBeUndefined();
+  it('exists when remote images are to be fetched, and not when they are not (M7-T09)', () => {
+    expect(createRemoteImageFetcher(makeFakeConfig())).toBeDefined();
+    expect(createRemoteImageFetcher(makeFakeConfig({ import: { fetchRemoteImages: false } }))).toBeUndefined();
   });
 });

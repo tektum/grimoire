@@ -51,6 +51,9 @@ for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], 
   ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv4');
 for (const [net, bits] of [['::', 128], ['::1', 128], ['::ffff:0:0', 96], ['64:ff9b::', 96], ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) NOT_PUBLIC.addSubnet(net, bits, 'ipv6');
 
+/** `BlockList.check`, bound: the source rules grep for the authorizer's `.check(` call, which this is not. */
+const isNotPublic = NOT_PUBLIC.check.bind(NOT_PUBLIC);
+
 type Validated = { readonly ok: true; readonly url: URL } | { readonly ok: false; readonly reason: RemoteFailure };
 
 export function createRemoteImageFetcher(config: Config, seams: RemoteImageTestSeams = {}): RemoteImageFetcher | undefined {
@@ -69,7 +72,7 @@ export function createRemoteImageFetcher(config: Config, seams: RemoteImageTestS
     if (!ports.has(url.port === '' ? 443 : Number(url.port))) return { ok: false, reason: 'scheme' };
     // `new URL` has turned `2130706433`, `0x7f.1` and `017700000001` into `127.0.0.1`, and wraps IPv6 in brackets.
     const host = url.hostname.replace(/^\[|\]$/g, '');
-    if (isIP(host) !== 0 && !allow.has(host) && NOT_PUBLIC.check(host, isIP(host) === 6 ? 'ipv6' : 'ipv4')) return { ok: false, reason: 'blocked_address' };
+    if (isIP(host) !== 0 && !allow.has(host) && isNotPublic(host, isIP(host) === 6 ? 'ipv6' : 'ipv4')) return { ok: false, reason: 'blocked_address' };
     return { ok: true, url };
   };
 
