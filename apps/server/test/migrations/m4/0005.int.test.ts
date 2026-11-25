@@ -40,7 +40,7 @@ describe('migrations 0005 and 0006', () => {
   it('apply on an empty database, and a second run applies nothing', async () => {
     const first = await migrate(EMPTY);
     expect(first.code, first.output).toBe(0);
-    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 10 }]);
+    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: readdirSync(path.join(repoRoot, 'db/migrations')).filter((n) => /^\d{4}_.*\.ts$/.test(n)).length }]); // every migration there is
     const second = await migrate(EMPTY);
     expect(second.code, second.output).toBe(0);
     expect(second.output).toContain('migrate.nothing_pending');
