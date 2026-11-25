@@ -194,11 +194,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
     async running(tenantId) {
-      const rows = await db.query<{ id: string }>(`select id from imports where tenant_id = $1 and status = 'running' order by id`, [tenantId]);
+      const rows = await scoped(db, tenantId).query<{ id: string }>(`select id from imports where tenant_id = $1 and status = 'running' order by id`, [tenantId]);
       return rows.map((r) => r.id);
     },
     async stale(tenantId, createdBefore, limit) {
-      const rows = await db.query<{ id: string }>(
+      const rows = await scoped(db, tenantId).query<{ id: string }>(
         `select id from imports where tenant_id = $1 and status in ('created', 'uploaded') and created_at <= to_timestamp($2::double precision / 1000.0)
          order by created_at, id limit $3`,
         [tenantId, createdBefore, limit],
@@ -206,7 +206,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows.map((r) => r.id);
     },
     async abandon(tenantId, id, now) {
-      const rows = await db.query(
+      const rows = await scoped(db, tenantId).query(
         `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
          where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`,
         [tenantId, id, now],
@@ -214,7 +214,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows.length === 1;
     },
     async trashImported(tenantId, id) {
-      const found = await db.query<{ created_by: string | null }>(`select created_by from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
+      const found = await scoped(db, tenantId).query<{ created_by: string | null }>(`select created_by from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
       if (found[0] === undefined) return undefined;
       return scoped(db, tenantId).transaction(async (tx) => {
         // The live pages the import's `ok` page items name, and below them every live page (one a person added under an imported page too). Each subtree is deleted under its own root's id as the batch, as a

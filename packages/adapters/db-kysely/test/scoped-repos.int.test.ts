@@ -202,6 +202,10 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     finish: (tn) => imports().finish(tn, s.importId, 'done', null, Date.now()),
     cancel: (tn) => imports().cancel(tn, s.importId, Date.now()),
     get: (tn) => imports().get(tn, s.importId),
+    running: (tn) => imports().running(tn),
+    stale: (tn) => imports().stale(tn, Date.now(), 10),
+    abandon: (tn) => imports().abandon(tn, s.importId, Date.now()),
+    trashImported: (tn) => imports().trashImported(tn, s.importId),
   },
   search: {
     search: (tn) => search().search({ tenantId: tn, collectionIds: [s.collection], query: 'imported', limit: 10 }),
