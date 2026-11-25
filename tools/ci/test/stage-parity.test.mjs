@@ -199,6 +199,7 @@ test('the VPC logs all its traffic: the owner of the VPC makes a flow log to an 
   assert.match(doc, /logs:CreateLogStream/);
   assert.match(doc, /logs:PutLogEvents/);
   assert.doesNotMatch(doc, /"resources":\["\*"\]|logs:\*|iam:/, 'only this log group, only writing');
+  assert.deepEqual(flow.opts?.dependsOn, ['<VpcFlowLogsRolePolicy>'], 'the flow log is made after its role may write the group, or its first records fail');
   const dev = record('dev', 'dev.example.test').map((c) => c.type);
   for (const type of ['aws.ec2:FlowLog', 'aws.kms:Key', 'aws.cloudwatch:LogGroup', 'aws.iam:Role', 'aws.iam:RolePolicy']) assert.ok(!dev.includes(type), `${type} belongs to the stage that owns the VPC`);
 });

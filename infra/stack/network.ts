@@ -40,7 +40,7 @@ export function vpcFlowLogs(vpc: sst.aws.Vpc) {
       }],
     }).json,
   });
-  new aws.iam.RolePolicy('VpcFlowLogsRolePolicy', {
+  const policy = new aws.iam.RolePolicy('VpcFlowLogsRolePolicy', {
     role: role.name,
     policy: aws.iam.getPolicyDocumentOutput({
       statements: [{ effect: 'Allow', actions: ['logs:CreateLogStream', 'logs:PutLogEvents', 'logs:DescribeLogStreams'], resources: [group.arn, $interpolate`${group.arn}:*`] }],
@@ -53,7 +53,7 @@ export function vpcFlowLogs(vpc: sst.aws.Vpc) {
     logDestination: group.arn,
     iamRoleArn: role.arn,
     maxAggregationInterval: 60,
-  });
+  }, { dependsOn: [policy] }); // delivery starts at once: the role must be allowed to write the group first
 }
 
 /**

@@ -276,6 +276,11 @@
         "logDestination": "<VpcFlowLogs.arn>",
         "iamRoleArn": "<VpcFlowLogsRole.arn>",
         "maxAggregationInterval": 60
+      },
+      "opts": {
+        "dependsOn": [
+          "<VpcFlowLogsRolePolicy>"
+        ]
       }
     },
     {
