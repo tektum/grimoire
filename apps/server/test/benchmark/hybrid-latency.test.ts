@@ -1,13 +1,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createDatabase, createEmbeddingStore, createSearchRepo } from '@tektum/grimoire-adapter-db-kysely';
-import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createDatabase, createEmbeddingStore, createOpsDatabase, createSearchRepo } from '@tektum/grimoire-adapter-db-kysely';
+import type { KyselyDatabase, OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Embedder, EmbedResult } from '@tektum/grimoire-core/ports/embedder';
 import type { EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import { hybridSearch, type SemanticSearch } from '@tektum/grimoire-core/search/hybrid-search';
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
-import { insertCollection, insertPage, insertUser, raw } from '@tektum/grimoire-test-support/database';
+import { insertCollection, insertPage, insertUser, opsUrl, raw } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
 // M7-T14 (R9.10), in the benchmark project (not the integration one: loading the vectors takes minutes, which every pull request would pay): the `Search latency` job of CI runs it when a change touches
@@ -60,6 +60,7 @@ const WORDS = Array.from({ length: 400 }, (_, i) => `w${i.toString(36)}`);
 const sentence = (random: () => number, n: number): string => Array.from({ length: n }, () => WORDS[Math.floor(random() * WORDS.length)]).join(' ');
 
 let db: KyselyDatabase;
+let ops: OperatorDatabase;
 let store: EmbeddingStore;
 const collections: string[] = [];
 const queryVectors: Float32Array[] = [];
@@ -78,7 +79,8 @@ beforeAll(async () => {
   requireBuild();
   await createTestDatabase(DB, true);
   db = createDatabase(appUrl(DB));
-  store = createEmbeddingStore(db);
+  ops = createOpsDatabase(opsUrl(DB));
+  store = createEmbeddingStore(db, ops);
   const user = await insertUser(run, {});
   for (let c = 0; c < COLLECTIONS; c += 1) collections.push(await insertCollection(run, { created_by: user, default_permission: 'read' }));
   const random = seeded(7);
@@ -106,6 +108,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.close();
+  await ops.close();
   await dropTestDatabase(DB);
 });
 

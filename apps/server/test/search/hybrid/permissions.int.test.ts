@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createAccessStore, createDatabase, createEmbeddingStore, createSearchRepo, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
-import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createDatabase, createEmbeddingStore, createOpsDatabase, createSearchRepo, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
+import type { KyselyDatabase, OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
@@ -11,7 +11,7 @@ import type { SemanticSearch } from '@tektum/grimoire-core/search/hybrid-search'
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
-import { insertCollection, insertPage, insertUser, raw } from '@tektum/grimoire-test-support/database';
+import { insertCollection, insertPage, insertUser, opsUrl, raw } from '@tektum/grimoire-test-support/database';
 import { createApp } from '../../../src/app.js';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../../server/support/harness.js';
 import { makeContext } from '../../server/support/context.js';
@@ -39,6 +39,7 @@ const embedder: Embedder = {
 };
 
 let db: KyselyDatabase;
+let ops: OperatorDatabase;
 let store: EmbeddingStore;
 let open: string;
 let hidden: string;
@@ -58,7 +59,7 @@ function appOver() {
   const t = makeContext();
   const config = makeFakeConfig({ allowedEmailDomains: ['example.com'] });
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
-  const users = createUserStore(db, 1000);
+  const users = createUserStore(db, ops, 1000);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const access = createAccessStore(db);
   const hybrid: SemanticSearch = { embedder, store, settings: { enabled: true, queryTimeoutMs: 1500, minSimilarity: 0, candidates: 100 } };
@@ -87,7 +88,8 @@ beforeAll(async () => {
   requireBuild();
   await createTestDatabase(DB, true);
   db = createDatabase(appUrl(DB));
-  store = createEmbeddingStore(db);
+  ops = createOpsDatabase(opsUrl(DB));
+  store = createEmbeddingStore(db, ops);
   await insertUser(run, { descope_user_id: 'd-member', email: 'member@example.com', role: 'member' });
   open = await insertCollection(run, { default_permission: 'read' });
   hidden = await insertCollection(run, {}); // no default permission and no grant: the member cannot read it
@@ -102,6 +104,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.close();
+  await ops.close();
   await dropTestDatabase(DB);
 });
 
