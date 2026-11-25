@@ -103,6 +103,22 @@ describe('R10.15: the collection cap', () => {
     expect(items).toEqual([]);
   });
 
+  it('the first example of R10.15: 10,001 pages into the default cap are refused before any item exists, 10,000 are accepted', async () => {
+    const make = (n: number) => Array.from({ length: n }, (_, i) => entry(`p${String(i)}.md`, { index: i }));
+    const refused = await run(make(10_001), { maxPages: 10_000 });
+    expect(refused.result).toEqual({ ok: false, reason: 'collection_full', pagesTotal: 10_001 });
+    expect(refused.items).toEqual([]);
+    expect((await run(make(10_000), { maxPages: 10_000 })).result).toMatchObject({ ok: true, pagesTotal: 10_000 });
+  });
+
+  it('the second example: 20 pages fit the cap on their own, so pass one accepts them whatever the collection already holds; each write answers collection_full (the page transaction tests)', async () => {
+    // Pass one does not know how many pages the collection has: 9,990 live pages and these 20 are decided one write at a time, 10 created and 10 failed `collection_full`.
+    const list = Array.from({ length: 20 }, (_, i) => entry(`p${String(i)}.md`, { index: i }));
+    const { result, items } = await run(list, { maxPages: 10_000 });
+    expect(result).toMatchObject({ ok: true, pagesTotal: 20 });
+    expect(items.filter((i) => i.status === 'pending')).toHaveLength(20);
+  });
+
   it('exactly the cap is accepted (container pages count)', async () => {
     expect((await run(entries('d/a.md', 'd/b.md', 'c.md'), { maxPages: 4 })).result).toMatchObject({ ok: true, pagesTotal: 4 });
     expect((await run(entries('d/a.md', 'd/b.md', 'c.md'), { maxPages: 3 })).result).toEqual({ ok: false, reason: 'collection_full', pagesTotal: 4 });
