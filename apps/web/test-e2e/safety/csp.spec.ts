@@ -7,7 +7,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 // @ts-expect-error plain .mjs script without types
 import { createServer } from '../../scripts/serve.mjs';
-import { scriptedApi, useScriptedApi } from '../editor/scripted';
+import { SCRIPTED_PAGE_ID, scriptedApi, useScriptedApi } from '../editor/scripted';
 import { scriptedCollabServer } from '../support/collab-server';
 import { signInAs } from '../support/sign-in';
 
@@ -29,18 +29,28 @@ test('the built app, under the rendered content security policy, signs in and op
     await signInAs(context, 'e2e-csp', 'member', { check: false });
     const page = await context.newPage();
     const errors: string[] = [];
-    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
       (window as unknown as { __violations: string[] }).__violations = [];
       document.addEventListener('securitypolicyviolation', (event) => (window as unknown as { __violations: string[] }).__violations.push(`${event.violatedDirective} ${event.blockedURI}`));
     });
     await useScriptedApi(page, api);
-    // The scripted API answers what the page screen reads; the side tree asks for the collections too, which it does not know: an empty answer, so that a 404 of the stand-in is not mistaken for a fault of the policy.
-    await page.route(`${api.url}/v1/collections**`, (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: JSON.stringify({ items: [] }) }));
+    // The scripted API answers what the page screen reads; the side tree asks for the collections too, which it does not know. It is answered with a collection and a page in it, so that the tree
+    // draws a row: a row that can be dragged is the part of the page that asks the browser for a drag image, which must not be loaded from a `data:` address (`img-src` has none).
+    const json = (route: import('@playwright/test').Route, body: unknown) =>
+      route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: JSON.stringify(body) });
+    await page.route(`${api.url}/v1/collections**`, (route) =>
+      new URL(route.request().url()).pathname.endsWith('/tree')
+        ? json(route, { pages: [{ id: '22222222-2222-4222-8222-222222222222', urlId: 'row0001', parentId: null, position: 'p1', title: 'A page in the tree', icon: null }] })
+        : json(route, { items: [{ id: SCRIPTED_PAGE_ID, name: 'Dev', myPermission: 'read-write' }] }),
+    );
     const response = await page.goto('/p/scripted-abc123');
     expect(response?.headers()['content-security-policy'], 'the document carries the policy').toContain("script-src 'self'");
     await expect(page.getByTestId('editor-root')).toBeVisible();
+    await expect(page.getByRole('treeitem', { name: /A page in the tree/ }), 'the side tree has a row that can be dragged').toBeVisible();
     await expect.poll(() => collab.tokens.length, { message: 'the page connected to the collaboration server, which its policy allows' }).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(500); // a late report, if any, has come
     // The notices' styles are in a stylesheet of the app, not written into the page by the library (which `style-src 'self'` would block).
