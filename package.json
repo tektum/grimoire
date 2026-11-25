@@ -29,7 +29,7 @@
     "build:server": "tsc -b apps/server",
     "licence": "node tools/licence-report/run.mjs",
     "licence:check-images": "node tools/licence-report/run.mjs --check-images",
-    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/ tools/m3-live/test/",
+    "test:tools": "node --test tools/licence-report/test/ tools/ci/test/ tools/m3-live/test/ tools/bench/test/",
     "licence:pending": "node tools/licence-report/run.mjs --allow-pending",
     "openapi": "node apps/server/dist/openapi/emit.js && openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/schema.d.ts",
     "openapi:surface": "bun run build && node apps/server/dist/openapi/emit.js --write-surface",

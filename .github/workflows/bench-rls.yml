@@ -1,0 +1,45 @@
+name: Benchmark row-level security
+# BENCHMARK, by manual dispatch only: no pull-request or push trigger, nothing requires it. It measures what scoped() and the row-level security policies
+# (docs/tenancy.md step 4) add to page-open and tree-read, on the pgvector image of the integration job started with the staging database parameters
+# (tools/bench/compose.bench.yaml). The result is the log of the "Run the benchmark" step. Rerun it for the policies pull request.
+on:
+  workflow_dispatch:
+    inputs:
+      requests:
+        description: "Requests measured per case (after 500 warm-up)"
+        required: false
+        default: "5000"
+
+permissions:
+  contents: read
+
+env:
+  MISE_LOCKED: "1"
+
+jobs:
+  bench:
+    name: Benchmark RLS overhead
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Start PostgreSQL with the staging parameters
+        run: |
+          cp .env.example .env
+          docker compose -p grimoire -f compose.yaml -f tools/bench/compose.bench.yaml up -d --wait --wait-timeout 120 postgres
+      - name: Run the benchmark
+        env:
+          BENCH_REQUESTS: ${{ inputs.requests }}
+        run: node tools/bench/rls-overhead.mjs
+      - name: Stop PostgreSQL
+        if: always()
+        run: docker compose -p grimoire down --volumes
