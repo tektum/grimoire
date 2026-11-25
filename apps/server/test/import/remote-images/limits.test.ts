@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRemoteBudget } from '../../../src/import/remote-images/index.js';
 import { drain, fetcherFor, PNG, png, startServer } from './support.js';
 import type { TestServer } from './support.js';
@@ -91,8 +91,7 @@ describe('a refusal ends the connection', () => {
     const f = fetcher({ maxBytes: 100_000 });
     const result = await f.fetch(url(path), createRemoteBudget(cfg()));
     expect(result.ok).toBe(path === '/endless-302'); // a 404 is refused; the redirect leads on to the image
-    await new Promise((r) => setTimeout(r, 300));
-    expect(closed).toContain(path);
+    await vi.waitFor(() => { expect(closed).toContain(path); }, { timeout: 2000, interval: 20 });
   });
 });
 
