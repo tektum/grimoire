@@ -31,6 +31,7 @@ describe('the PostgreSQL ImportRepo meets the conformance cases', () => {
     it(c.name, async () => {
       await c.run({
         repo: createImportRepo(t.app), tenantId: 'legacy', otherTenantId: 'other', now: NOW,
+        seedStatus: async (id, status) => { await t.app.query('update imports set status = $2 where id = $1', [id, status]); },
         seed: async (status) => {
           const made = await seed(status);
           const row = await createImportRepo(t.app).get('legacy', made.id);

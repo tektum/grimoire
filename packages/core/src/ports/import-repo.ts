@@ -70,8 +70,8 @@ export interface NewImportedPage {
   readonly itemId: string;
   readonly collectionId: string;
   readonly parentId: string | null;
-  /** The fractional position among the siblings; the engine keeps the last one per parent. */
-  readonly position: string;
+  /** The fractional position among the siblings, computed inside the locked transaction from the last live sibling under the parent (`before`) and `null` (`after`), so a page made by someone else in the meantime cannot collide with it. */
+  readonly position: (before: string | null, after: string | null) => string;
   readonly title: string;
   /** The importer: `created_by`, `last_edited_by` and the author of the `import` revision. */
   readonly createdBy: string;
@@ -82,10 +82,10 @@ export interface NewImportedPage {
   readonly attachments: readonly Omit<NewReady, 'pageId'>[];
 }
 
-/** `not-pending`: the item was settled already (a resumed run, a duplicate), so nothing is written. The rest are the refusals of a page create. */
+/** `not-running`: the import was cancelled, failed or finished, so nothing is written (a late page would escape the trash batch of a cancelled or failed import). `not-pending`: the item was settled already (a resumed run, a duplicate), so nothing is written. The rest are the refusals of a page create. */
 export type WriteImportedPageResult =
   | { readonly kind: 'ok'; readonly pageId: string; readonly urlId: string }
-  | { readonly kind: 'not-pending' | 'collection-deleted' | 'no-parent' | 'too-deep' | 'collection-full' | 'tenant-pages-full' };
+  | { readonly kind: 'not-running' | 'not-pending' | 'collection-deleted' | 'no-parent' | 'too-deep' | 'collection-full' | 'tenant-pages-full' };
 
 /**
  * The imports of a workspace (M7 contracts section 4). Every call names the tenant: another tenant's import is not found (`undefined`, `false`, `0` or no rows, never an error).
@@ -102,7 +102,7 @@ export interface ImportRepo {
   /** Ends a `pending` item as `skipped` or `failed`; `false` when it was not pending. */
   settle(tenantId: string, importId: string, itemId: string, outcome: ItemOutcome): Promise<boolean>;
   /**
-   * One page of the import in ONE transaction (contract stage 4e): the collection row is locked, the item must still be `pending` (a resumed run never writes a page twice), the
+   * One page of the import in ONE transaction (contract stage 4e): the collection row is locked, the import must still be `running` (its row is locked in share mode, so a cancel or a finish waits for the write and a write after one finds the status changed), the item must still be `pending` (a resumed run never writes a page twice), the
    * parent must be live in the collection, the depth, the collection's page count and the tenant's cap are checked, then the page (with its state), the `import` revision, the
    * attachment rows and the item as `ok` are written together: a failure anywhere leaves no page, no revision, no attachment row, and the item pending.
    */

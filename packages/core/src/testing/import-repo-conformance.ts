@@ -8,6 +8,8 @@ export interface ImportRepoHarness {
   readonly tenantId: string;
   readonly otherTenantId: string;
   seed(status: ImportStatus): Promise<ImportRecord>;
+  /** Sets the status of a seeded import (a cancel, which the routes of M7-T05 own). */
+  seedStatus(id: string, status: ImportStatus): Promise<void>;
   readonly now: number;
 }
 
@@ -16,7 +18,7 @@ export interface ImportRepoCase { readonly name: string; run(h: ImportRepoHarnes
 const limits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 const content = { state: new Uint8Array([1, 2, 3]), markdown: 'Hello\n', text: 'Hello', hash: Buffer.alloc(32, 1) };
 const pageOf = (itemId: string, over: Partial<NewImportedPage> = {}): NewImportedPage => ({
-  itemId, collectionId: 'c', parentId: null, position: 'a0', title: 'T', createdBy: 'u', content, markdownBytes: 6, stateBytes: 3, attachments: [], ...over,
+  itemId, collectionId: 'c', parentId: null, position: (before) => `${before ?? ''}a`, title: 'T', createdBy: 'u', content, markdownBytes: 6, stateBytes: 3, attachments: [], ...over,
 });
 
 const pages = (...paths: string[]) => paths.map((path) => ({ path, kind: 'page' as const }));
@@ -128,6 +130,21 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'page', 10), []);
       const again = await h.repo.writePage(h.tenantId, made.id, pageOf(item.id, { collectionId: made.targetCollectionId }), limits, h.now);
       assert.deepEqual(again, { kind: 'not-pending' }, 'a resumed run does not write the page twice');
+    },
+  },
+  {
+    name: 'write-page-only-while-the-import-runs',
+    async run(h) {
+      for (const status of ['cancelled', 'done', 'failed'] as const) {
+        const made = await h.seed('running');
+        await h.repo.addItems(h.tenantId, made.id, pages('a.md'));
+        const [item] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+        assert.ok(item);
+        if (status === 'cancelled') await h.seedStatus(made.id, 'cancelled');
+        else await h.repo.finish(h.tenantId, made.id, status === 'done' ? 'done' : 'failed', null, h.now);
+        assert.deepEqual(await h.repo.writePage(h.tenantId, made.id, pageOf(item.id, { collectionId: made.targetCollectionId }), limits, h.now), { kind: 'not-running' }, status);
+        assert.equal((await h.repo.getItem(h.tenantId, made.id, item.id))?.status, 'pending');
+      }
     },
   },
   {

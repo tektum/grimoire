@@ -75,6 +75,10 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         // The collection first (as a page create does): a delete of the collection and other writes take it too, so the checks and counts below hold to the end of the transaction.
         const locked = await tx.query(`select 1 from collections where id = $1 and tenant_id = $2 and deleted_at is null for no key update`, [page.collectionId, tenantId]);
         if (locked.length === 0) return { kind: 'collection-deleted' };
+        // The import, still running: its row is locked in share mode, so a cancel or a finish (which update it) wait for this write, and a write that comes after one finds the status gone.
+        // A page created after the trash batch of a cancelled or failed import would stay live and escape it.
+        const running = await tx.query(`select 1 from imports where tenant_id = $1 and id = $2 and status = 'running' for share`, [tenantId, importId]);
+        if (running.length === 0) return { kind: 'not-running' };
         // The item, still pending and of this import: the row lock makes two writers of one item take turns, and the second finds it settled.
         const item = await tx.query(`select 1 from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' for update`, [tenantId, importId, page.itemId]);
         if (item.length === 0) return { kind: 'not-pending' };
@@ -92,13 +96,19 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         if (Number(count[0]?.n) >= limits.maxPages) return { kind: 'collection-full' };
         if ((await openPagesOfTenant(tx, tenantId)) >= limits.maxTenantPages) return { kind: 'tenant-pages-full' };
 
+        // The place among the live siblings, read under the collection lock (as a page create does): the last one's key and the open end.
+        const last = await tx.query<{ position: string }>(
+          `select position from pages where collection_id = $1 and parent_id is not distinct from $2::uuid and deleted_at is null order by position desc limit 1`, [page.collectionId, page.parentId],
+        );
+        const position = page.position(last[0]?.position ?? null, null);
+
         const c = page.content;
         if (c.state.length === 0) throw new Error('the editor state of an imported page cannot be empty');
         const made = await tx.query<{ id: string; url_id: string }>(
           `insert into pages (collection_id, parent_id, position, title, created_by, last_edited_by, last_edited_at, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch, tenant_id)
            values ($1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $5::uuid, to_timestamp($6::double precision / 1000.0), $7::bytea, $8::integer, $9::text, $10::text, $11::bytea, 0, $12::text)
            returning id, url_id`,
-          [page.collectionId, page.parentId, page.position, page.title, page.createdBy, now, Buffer.from(c.state), c.state.length, c.markdown, c.text, c.hash, tenantId],
+          [page.collectionId, page.parentId, position, page.title, page.createdBy, now, Buffer.from(c.state), c.state.length, c.markdown, c.text, c.hash, tenantId],
         );
         const row = made[0] as { id: string; url_id: string };
         await tx.query(

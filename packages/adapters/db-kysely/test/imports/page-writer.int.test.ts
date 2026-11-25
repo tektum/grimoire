@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import type { NewImportedPage } from '@tektum/grimoire-core/ports/import-repo';
 import { createCollections } from '../../src/collections.js';
+import { createPages } from '../../src/pages.js';
 import { createImportRepo } from '../../src/imports.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
@@ -36,7 +37,7 @@ async function started(paths: readonly string[]): Promise<{ importId: string; co
 }
 
 const page = (itemId: string, collectionId: string, over: Partial<NewImportedPage> = {}): NewImportedPage => ({
-  itemId, collectionId, parentId: null, position: 'a0', title: 'Imported', createdBy: userId,
+  itemId, collectionId, parentId: null, position: (before, after) => ordering.between(before, after), title: 'Imported', createdBy: userId,
   content: { state: new Uint8Array([1, 2, 3, 4]), markdown: 'Body text\n', text: 'Body text', hash: Buffer.alloc(32, 9) }, markdownBytes: 10, stateBytes: 4, attachments: [], ...over,
 });
 
@@ -52,7 +53,7 @@ describe('writing a page of an import', () => {
     expect(out.kind).toBe('ok');
     if (out.kind !== 'ok') return;
     const [row] = await pagesOf(s.collectionId);
-    expect(row).toMatchObject({ id: out.pageId, markdown: 'Body text\n', text_content: 'Body text', created_by: userId, last_edited_by: userId, parent_id: null, position: 'a0', tenant_id: 'legacy' });
+    expect(row).toMatchObject({ id: out.pageId, markdown: 'Body text\n', text_content: 'Body text', created_by: userId, last_edited_by: userId, parent_id: null, position: expect.any(String), tenant_id: 'legacy' });
     expect(Buffer.from(row?.ydoc ?? []).equals(Buffer.from([1, 2, 3, 4]))).toBe(true);
     expect(Buffer.from(row?.markdown_hash ?? []).equals(Buffer.alloc(32, 9))).toBe(true);
     const revisions = await t.app.query<{ reason: string; markdown: string; last_author_id: string; tenant_id: string }>('select reason, markdown, last_author_id, tenant_id from revisions where page_id = $1', [out.pageId]);
@@ -95,10 +96,10 @@ describe('writing a page of an import', () => {
     const s = await started(['a.md', 'b.md', 'c.md']);
     const repo = createImportRepo(t.app);
     const [a, b, c] = ['a.md', 'b.md', 'c.md'].map((p) => s.items.get(p) as string) as [string, string, string];
-    expect((await repo.writePage('legacy', s.importId, page(a, s.collectionId, { position: 'a0' }), { ...LIMITS, maxPages: 2 }, NOW)).kind).toBe('ok');
-    expect((await repo.writePage('legacy', s.importId, page(b, s.collectionId, { position: 'a1' }), { ...LIMITS, maxPages: 2 }, NOW)).kind).toBe('ok');
-    expect(await repo.writePage('legacy', s.importId, page(c, s.collectionId, { position: 'a2' }), { ...LIMITS, maxPages: 2 }, NOW)).toEqual({ kind: 'collection-full' });
-    expect(await repo.writePage('legacy', s.importId, page(c, s.collectionId, { position: 'a2' }), { ...LIMITS, maxTenantPages: 1 }, NOW)).toEqual({ kind: 'tenant-pages-full' });
+    expect((await repo.writePage('legacy', s.importId, page(a, s.collectionId), { ...LIMITS, maxPages: 2 }, NOW)).kind).toBe('ok');
+    expect((await repo.writePage('legacy', s.importId, page(b, s.collectionId), { ...LIMITS, maxPages: 2 }, NOW)).kind).toBe('ok');
+    expect(await repo.writePage('legacy', s.importId, page(c, s.collectionId), { ...LIMITS, maxPages: 2 }, NOW)).toEqual({ kind: 'collection-full' });
+    expect(await repo.writePage('legacy', s.importId, page(c, s.collectionId), { ...LIMITS, maxTenantPages: 1 }, NOW)).toEqual({ kind: 'tenant-pages-full' });
     expect((await repo.getItem('legacy', s.importId, c))?.status).toBe('pending');
     expect(await pagesOf(s.collectionId)).toHaveLength(2);
     const parent = (await pagesOf(s.collectionId))[0]?.id as string;
@@ -111,14 +112,14 @@ describe('writing a page of an import', () => {
     const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), { ...LIMITS, maxPages: 1 }, NOW);
     if (a.kind !== 'ok') throw new Error(a.kind);
     await t.app.query('update pages set deleted_at = now() where id = $1', [a.pageId]);
-    expect((await repo.writePage('legacy', s.importId, page(s.items.get('b.md') as string, s.collectionId, { position: 'a1' }), { ...LIMITS, maxPages: 1 }, NOW)).kind).toBe('ok');
+    expect((await repo.writePage('legacy', s.importId, page(s.items.get('b.md') as string, s.collectionId), { ...LIMITS, maxPages: 1 }, NOW)).kind).toBe('ok');
   });
 
   it('writers racing for the last place of a collection fill it exactly', async () => {
     const paths = Array.from({ length: 8 }, (_, i) => `p${String(i)}.md`);
     const s = await started(paths);
     const repo = createImportRepo(t.app);
-    const results = await Promise.all(paths.map((p, i) => repo.writePage('legacy', s.importId, page(s.items.get(p) as string, s.collectionId, { position: `a${String(i)}` }), { ...LIMITS, maxPages: 5 }, NOW)));
+    const results = await Promise.all(paths.map((p) => repo.writePage('legacy', s.importId, page(s.items.get(p) as string, s.collectionId), { ...LIMITS, maxPages: 5 }, NOW)));
     expect(results.filter((r) => r.kind === 'ok')).toHaveLength(5);
     expect(results.filter((r) => r.kind === 'collection-full')).toHaveLength(3);
     expect(await pagesOf(s.collectionId)).toHaveLength(5);
@@ -132,6 +133,61 @@ describe('writing a page of an import', () => {
     await t.app.query('update collections set deleted_at = now() where id = $1', [s.collectionId]);
     expect(await repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW)).toEqual({ kind: 'collection-deleted' });
     expect((await repo.getItem('legacy', s.importId, id))?.status).toBe('pending');
+  });
+});
+
+describe('the import must be running', () => {
+  it.each([['cancelled'], ['done'], ['failed']])('a %s import takes no page: nothing is written and the item stays pending', async (status) => {
+    const s = await started(['a.md']);
+    const repo = createImportRepo(t.app);
+    await t.app.query('update imports set status = $2 where id = $1', [s.importId, status]);
+    const id = s.items.get('a.md') as string;
+    expect(await repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW)).toEqual({ kind: 'not-running' });
+    expect(await pagesOf(s.collectionId)).toEqual([]);
+    expect((await repo.getItem('legacy', s.importId, id))?.status).toBe('pending');
+  });
+
+  it('a cancel waits for a write in progress, and every write after it is refused: no page escapes the trash batch', async () => {
+    const paths = Array.from({ length: 6 }, (_, i) => `p${String(i)}.md`);
+    const s = await started(paths);
+    const repo = createImportRepo(t.app);
+    const writes = paths.map((p) => repo.writePage('legacy', s.importId, page(s.items.get(p) as string, s.collectionId), LIMITS, NOW));
+    const cancel = t.app.query(`update imports set status = 'cancelled' where id = $1 and status = 'running'`, [s.importId]);
+    const results = await Promise.all([...writes, cancel]);
+    const written = (results.slice(0, 6) as { kind: string }[]).filter((r) => r.kind === 'ok').length;
+    // Whatever interleaving happened, every page that exists was written before the status changed, and none after: the pages the trash batch will find are all of them.
+    expect(await pagesOf(s.collectionId)).toHaveLength(written);
+    const late = await repo.writePage('legacy', s.importId, page(s.items.get('p0.md') as string, s.collectionId), LIMITS, NOW);
+    expect(late.kind === 'not-running' || late.kind === 'not-pending').toBe(true);
+    expect(await pagesOf(s.collectionId)).toHaveLength(written);
+  });
+});
+
+describe('the position among the siblings', () => {
+  it('is computed in the transaction from the last live sibling: pages made by someone else around it do not collide', async () => {
+    const s = await started(['a.md', 'b.md', 'c.md', 'd.md']);
+    const repo = createImportRepo(t.app);
+    const pages = createPages(t.app);
+    const mine = ['a.md', 'b.md', 'c.md', 'd.md'].map((p) => s.items.get(p) as string);
+    const user = Array.from({ length: 4 }, () => pages.create('legacy', { collectionId: s.collectionId, parentId: null, afterId: null, title: 'mine', createdBy: userId }, LIMITS, (a, b) => ordering.between(a, b)));
+    const imported = mine.map((id) => repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW));
+    const results = [...(await Promise.all(user)), ...(await Promise.all(imported))];
+    expect(results.map((r) => r.kind)).toEqual(Array(8).fill('created').fill('ok', 4));
+    const positions = (await pagesOf(s.collectionId)).map((r) => r.position);
+    expect(new Set(positions).size).toBe(8);
+  });
+
+  it('appends after the last live sibling of the parent, and starts a new parent at the front', async () => {
+    const s = await started(['a.md', 'b.md', 'a/c.md']);
+    const repo = createImportRepo(t.app);
+    const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
+    const b = await repo.writePage('legacy', s.importId, page(s.items.get('b.md') as string, s.collectionId), LIMITS, NOW);
+    if (a.kind !== 'ok' || b.kind !== 'ok') throw new Error('write');
+    const c = await repo.writePage('legacy', s.importId, page(s.items.get('a/c.md') as string, s.collectionId, { parentId: a.pageId }), LIMITS, NOW);
+    expect(c.kind).toBe('ok');
+    const rows = await pagesOf(s.collectionId);
+    const at = (id: string) => rows.find((r) => r.id === id)?.position as string;
+    expect(at(a.pageId) < at(b.pageId)).toBe(true);
   });
 });
 
