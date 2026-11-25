@@ -47,9 +47,9 @@ export interface AppContext {
   /** First sign-in rules; `allowDevRole` is `config.local`. The `GET /v1/me` route provisions with it. */
   readonly signInPolicy: SignInPolicy;
   readonly shutdown: Shutdown;
-  /** The collaboration host and what it needs; absent when the role has none (`api`). */
   /** The semantic search: built in the roles `api` and `all` when `GRIMOIRE_SEMANTIC_SEARCH` is on. The store and the routes that use it come with M7-T13 and M7-T14. */
   readonly semantic?: { readonly embedder: Embedder };
+  /** The collaboration host and what it needs; absent when the role has none (`api`). */
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
   /** Every port the routes use, built here and nowhere else. */
   readonly http: HttpDeps;
