@@ -17,6 +17,16 @@ export async function settled(page: Page, tree: number): Promise<void> {
   await expect(page.getByRole('treeitem')).toHaveCount(tree);
   await expect(page.getByText('Alice Archer')).toBeVisible();
   if (COLLAB !== undefined) await expect(page.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'synced');
+  await shotFont(page);
+}
+
+/** A screen that is not a page (no tree to count, no editor): the person's name is shown, and the font is the stand-in. */
+export async function settledScreen(page: Page): Promise<void> {
+  await expect(page.getByText('Alice Archer')).toBeVisible();
+  await shotFont(page);
+}
+
+async function shotFont(page: Page): Promise<void> {
   const font = process.env['E2E_SHOT_FONT'];
   if (font !== undefined) await page.addStyleTag({ content: `:root { --font-ui: ${font}; }` });
 }
