@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
+import { createWebApi } from '../../src/api/client';
+import { guardedFetch, markClientOutdated } from '../../src/gate/outdated';
+import { notify, Toaster } from '../../src/ui/primitives';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { POLL_MS } from '../../src/import/api';
 import type { ImportState } from '../../src/import/types';
@@ -82,7 +85,7 @@ const Where = () => {
   return <div data-testid="where">{l.pathname + l.search}</div>;
 };
 function show(api: ApiLike, at = '/import') {
-  const session = { auth: {}, api, collabUrl: 'ws://x', apiUrl: 'http://x' } as unknown as Session;
+  const session = { auth: {}, api, collabUrl: 'ws://x' } as unknown as Session; // no API address: the form uses this client as it is (a fake)
   return render(
     <SessionContext.Provider value={session}>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -201,6 +204,55 @@ describe('the import screen', () => {
       expect(t.calls).not.toContain('POST /v1/imports/{id}/start');
       cleanup();
     }
+  });
+});
+
+describe('one message for a refusal', () => {
+  it("shows the screen's own words for a refused start and no generic notice beside them (the real client, whose notices the form turns off)", async () => {
+    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Request | string, init?: RequestInit) => {
+        const request = typeof input === 'string' ? new Request(input, init) : input;
+        const { pathname } = new URL(request.url);
+        if (request.method === 'PUT') return new Response(null, { status: 200 });
+        if (pathname === '/v1/me') return json(200, { id: 'u', name: 'Alice', email: 'a@x', role: 'member' });
+        if (pathname === '/v1/collections') return json(200, { items: COLLECTIONS });
+        if (pathname === '/v1/imports') return json(201, { id: 'imp1', upload: { method: 'PUT', url: 'https://files.test/z', headers: {}, expiresAt: 'x' } });
+        if (pathname.endsWith('/start')) return json(422, { error: { code: 'not_a_zip', message: 'No' } });
+        return json(404, {});
+      }),
+    );
+    const auth = { getToken: async () => 'token', refresh: async () => false, signOut: async () => undefined } as unknown as Session['auth'];
+    const api = createWebApi({
+      baseUrl: 'http://api.test',
+      getToken: () => auth.getToken(),
+      refresh: () => auth.refresh(),
+      signOut: (r) => auth.signOut(r),
+      notify,
+      reload: markClientOutdated,
+      fetch: guardedFetch,
+    }) as unknown as ApiLike;
+    const session = { auth, api, collabUrl: 'ws://x', apiUrl: 'http://api.test' } as unknown as Session;
+    render(
+      <SessionContext.Provider value={session}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={['/import']}>
+            <Toaster />
+            <Routes>
+              <Route path="/import" element={<ImportScreen />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </SessionContext.Provider>,
+    );
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('That is not a zip file.');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    }); // a notice, if one were sent, is drawn by now
+    expect(document.body.textContent).not.toContain('Something went wrong');
   });
 });
 

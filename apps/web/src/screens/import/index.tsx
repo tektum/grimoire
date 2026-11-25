@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router';
 import { useApi } from '../../api/context';
 import { useApiQuery } from '../../api/query';
-import { useImportState } from '../../import/api';
+import { useImportState, useQuietApi } from '../../import/api';
 import { Button } from '../../ui/primitives';
 import NotFoundScreen from '../notfound';
 import { ImportForm } from './ImportForm';
@@ -25,7 +25,7 @@ export default function ImportScreen() {
 }
 
 function Importing() {
-  const api = useApi();
+  const api = useQuietApi();
   const [params, setParams] = useSearchParams();
   // The import is in the address, so that a reload goes on watching it.
   const id = params.get('import');

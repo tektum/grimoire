@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useApi } from '../../api/context';
-import { createImport, startImport, uploadZip } from '../../import/api';
+import { createImport, startImport, uploadZip, useQuietApi } from '../../import/api';
 import { useCollections } from '../collections/useCollections';
 import { Button } from '../../ui/primitives';
 import { refusal } from './messages';
@@ -13,7 +12,7 @@ const PHASE_TEXT: Record<Exclude<Phase, 'idle'>, string> = { creating: 'Creating
 
 /** Choose a zip and a collection, then make the import, send the file and start it (R6.39, R6.40). `onStarted` gets the id of the import that is running. */
 export function ImportForm({ onStarted, send }: { readonly onStarted: (id: string) => void; readonly send?: typeof fetch }) {
-  const api = useApi();
+  const api = useQuietApi();
   const collections = useCollections(api);
   const writable = (collections.data ?? []).filter((c) => c.myPermission === 'read-write');
   const [collectionId, setCollectionId] = useState('');

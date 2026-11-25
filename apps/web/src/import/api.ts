@@ -1,8 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useSession } from '../auth/session';
+import { quietApiOf } from '../editor/attachments/quiet-api';
 import type { ApiLike } from '../api/query';
 import { queryKey } from '../api/query';
 import { storeFetch } from '../api/store';
 import { ENDED, type CreatedImport, type ImportState } from './types';
+
+/**
+ * The API client of the import screens: the session's own, with its notices turned off. The screens tell every refusal and failure once, in their own words (a file that is not a zip, a collection that is
+ * full, a read that failed), so the client must not also toast "Something went wrong" beside them. Token, refresh, sign-out and the version header are the session's. A session with no API address (a test
+ * with a fake client) uses its client as it is.
+ */
+export function useQuietApi(): ApiLike {
+  const session = useSession();
+  return useMemo(() => {
+    if (session === null) throw new Error('useQuietApi needs the session of the app');
+    return (quietApiOf(session) as ApiLike | undefined) ?? session.api;
+  }, [session]);
+}
 
 /** An answer the API gave that is not a success: its status and its error code. */
 export class ImportError extends Error {
