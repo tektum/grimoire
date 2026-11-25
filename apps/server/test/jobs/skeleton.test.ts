@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
+import type { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
+import { importZipKey } from '../../src/import/keys.js';
 import { createRemoteImageFetcher } from '../../src/import/remote-images/index.js';
 import { isImportPayload, isStubHandler } from '../../src/jobs/types.js';
 import { importJobs, registerJobs, type JobDeps } from '../../src/jobs/index.js';
+import { buildZip } from '../import/hostile/zip-builder.js';
 import { fakeJobDeps } from './deps.js';
 
 // M7-T00: the job registry and its payloads (decision 4: every payload carries the tenant, and the ids are UUIDs; nothing else).
@@ -36,17 +39,30 @@ describe('the registry of jobs', () => {
     expect(jobs.map((j) => j.name)).not.toContain('upload-cleanup');
   });
 
-  it('schedules only jobs that are real: a handler that is a stub (it rejects until its task lands) is never given a schedule, so it cannot retry and dead-letter every few minutes', () => {
+  it('schedules only jobs that are real: a handler that is a stub (it rejects) is never given a schedule, so it cannot retry and dead-letter every few minutes', () => {
     const jobs = registerJobs(fakeJobDeps().deps);
     const scheduled = jobs.filter((j) => j.schedule !== undefined);
     expect(scheduled.map((j) => j.name)).toEqual(['import-sweep', 'import-cleanup', 'purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
     for (const j of scheduled) expect(isStubHandler(j.handler), j.name).toBe(false);
-    expect(jobs.filter((j) => isStubHandler(j.handler)).map((j) => j.name)).toEqual(['import']);
+    expect(jobs.filter((j) => isStubHandler(j.handler)).map((j) => j.name)).toEqual([]);
   });
 
-  it('the import handlers refuse to run until the import exists (M7-T04), so no job is silently dropped', async () => {
-    const [first] = registerJobs(fakeJobDeps().deps);
-    await expect(first?.handler({ tenantId: 't', importId: UUID }, { jobId: 'j', attempt: 1, retryLimit: 1, signal: new AbortController().signal })).rejects.toThrow(/not available/);
+  it('runs an import: the import job takes an uploaded import through both passes to its end (M7-T04)', async () => {
+    const { deps } = fakeJobDeps();
+    const imports = deps.imports as FakeImportRepo;
+    imports.seed({ id: UUID, tenantId: 'T-a', status: 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey('T-a', UUID) });
+    const zip = buildZip([{ name: 'Home.md', data: Buffer.from('# Home\n\nHello.\n') }]);
+    await deps.files?.put(importZipKey('T-a', UUID), zip, { size: zip.length, contentType: 'application/zip' });
+    await registerJobs(deps).find((j) => j.name === 'import')?.handler({ tenantId: 'T-a', importId: UUID }, { jobId: 'j', attempt: 1, retryLimit: 1, signal: new AbortController().signal });
+    expect(await imports.get('T-a', UUID)).toMatchObject({ status: 'done', counts: { pagesTotal: 1, pagesDone: 1 } });
+  });
+
+  it('without a file store no import can exist: the import job is the stub, which refuses a stray job rather than dropping it', async () => {
+    const noFiles: { -readonly [K in keyof JobDeps]?: JobDeps[K] } = { ...fakeJobDeps().deps };
+    delete noFiles.files;
+    const job = registerJobs(noFiles as JobDeps).find((j) => j.name === 'import');
+    expect(job !== undefined && isStubHandler(job.handler)).toBe(true);
+    await expect(job?.handler({ tenantId: 't', importId: UUID }, { jobId: 'j', attempt: 1, retryLimit: 1, signal: new AbortController().signal })).rejects.toThrow(/not available/);
   });
 
   it('runs the cron jobs against their dependencies: the purge logs what it removed, the clean-up what it cleaned', async () => {

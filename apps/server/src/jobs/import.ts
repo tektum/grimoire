@@ -16,7 +16,7 @@ import { notionProfile } from '../import/notion/profile.js';
 import type { ImportProfile } from '../import/profile.js';
 import type { RemoteImageFetcher } from '../import/remote-images/index.js';
 import { openArchive } from '../import/zip-reader.js';
-import { isImportPayload, notImplemented } from './types.js';
+import { importSingletonKey, isImportPayload, notImplemented } from './types.js';
 
 export interface ImportJobDeps {
   readonly config: Config;
@@ -65,7 +65,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
   return async (payload, ctx) => {
     if (!isImportPayload(payload)) { log.warn('import.failed', { importId: 'unknown', reason: 'bad_payload' }); return; }
     const { tenantId, importId } = payload;
-    const key = `import:${importId}`;
+    const key = importSingletonKey(importId);
     const continueLater = async (delaySeconds?: number): Promise<void> => {
       // `null` is a queue that added no job: returning then would leave the import running (or waiting) with no job to go on, so the job fails and is retried instead.
       if ((await deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) })) === null) throw new Error('the continuation of the import was not enqueued');
