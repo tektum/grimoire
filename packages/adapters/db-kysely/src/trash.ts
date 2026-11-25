@@ -107,7 +107,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
     },
 
     async expiredBatches(tenantId, deletedBefore, limit) {
-      const rows = await db.query<{ batch: string }>(
+      const rows = await scoped(db, tenantId).query<{ batch: string }>(
         `select p.deleted_batch as batch from pages p
           where p.tenant_id = $1 and p.deleted_at is not null and p.deleted_batch is not null and p.deleted_at < to_timestamp($2::double precision / 1000.0)
           group by p.deleted_batch order by min(p.deleted_at), p.deleted_batch limit $3`,

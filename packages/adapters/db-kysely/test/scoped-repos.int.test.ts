@@ -124,6 +124,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     rootOf: (tn) => trash().rootOf(tn, s.child),
     restore: (tn) => trash().restore(tn, s.child, s.collection, limits, place),
     purge: (tn) => trash().purge(tn, s.batch ?? '', s.boss, []),
+    expiredBatches: (tn) => trash().expiredBatches(tn, Date.now(), 10),
   },
 };
 // The methods with no tenant to scope by: the operator connection of step 3 takes them (docs/tenancy.md section 3.2).
