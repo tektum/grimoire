@@ -243,16 +243,27 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     return { pagesTotal: pageItems.length, pagesDone, attachments: record.counts.attachments, skipped, failed, warnings };
   };
+  /** The status another run gave an item this one lost the race for, read back (a written page keeps its ids, a settled one has none). */
+  const adopt = async (item: ImportItem): Promise<void> => {
+    const now = await repo.getItem(tenantId, importId, item.id);
+    if (now === undefined) return;
+    status.set(item.id, now.status);
+    itemById.set(item.id, now);
+    const at = pageItems.findIndex((p) => p.id === item.id);
+    if (at !== -1) pageItems[at] = now;
+  };
   const settle = async (item: ImportItem, s: 'skipped' | 'failed', message: string, sizes: { markdownBytes?: number; stateBytes?: number } = {}): Promise<void> => {
-    if (await repo.settle(tenantId, importId, item.id, { status: s, message, ...sizes })) status.set(item.id, s);
+    if (await repo.settle(tenantId, importId, item.id, { status: s, message, ...sizes })) { status.set(item.id, s); return; }
+    await adopt(item); // another run settled it first: it is what that run made it
   };
   /** The page a child goes under: its folder's page if that was written, else the nearest ancestor that was. */
   const parentPageId = (item: ImportItem): string | null => {
-    for (let p = parentOf(item); p !== undefined; p = parentOf(p)) if (status.get(p.id) === 'ok') return p.pageId;
+    for (let p = parentOf(item); p !== undefined; p = parentOf(p)) if (status.get(p.id) === 'ok') return itemById.get(p.id)?.pageId ?? p.pageId;
     return null;
   };
 
-  type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number };
+  /** `warnings` are the page's own, added only once the page is settled or written, so an item that stays pending (a busy converter) is not counted again on its retry. */
+  type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number; readonly warnings?: number };
   const processItem = async (item: ImportItem): Promise<Step> => {
     let original: Buffer | undefined;
     let markdown = '';
@@ -272,7 +283,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       name = profile.titleOf(item.path, titleSource);
     }
     const { title, cut } = cutTitle(name);
-    if (cut) warnings++;
+    let own = cut ? 1 : 0;
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
       if (kind === 'image') return undefined;
       const found = profile.resolveLink(target, item.path, index);
@@ -280,31 +291,31 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       const targetItem = itemById.get(found.itemId);
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
     });
-    warnings += rewritten.unresolved.length;
+    own += rewritten.unresolved.length;
 
     const bytes = original?.length ?? 0;
     const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);
     if (outcome.kind === 'retry') return { stop: 'busy', bytes };
-    if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes }); return { bytes }; }
+    if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes }); return { bytes, warnings: own }; }
     if (outcome.kind === 'failed') {
       // The original, not the rewritten text: what the person wrote, to take elsewhere.
       if (original !== undefined) await deps.files.put(importFailedKey(tenantId, importId, item.id), original, { size: original.length, contentType: 'text/markdown' });
       await settle(item, 'failed', outcome.reason, { markdownBytes: outcome.markdownBytes, ...(outcome.stateBytes === undefined ? {} : { stateBytes: outcome.stateBytes }) });
-      return { bytes };
+      return { bytes, warnings: own };
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
       content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, attachments: [],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
-      case 'ok': status.set(item.id, 'ok'); return { bytes };
-      case 'not-pending': status.set(item.id, 'ok'); return { bytes };
+      case 'ok': status.set(item.id, 'ok'); return { bytes, warnings: own };
+      case 'not-pending': await adopt(item); return { bytes, warnings: 0 };
       case 'not-running': return { stop: 'not_running', bytes };
       case 'collection-deleted': return { stop: 'collection_deleted', bytes };
-      case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
-      case 'tenant-pages-full': await settle(item, 'failed', 'tenant_pages_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
-      case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
-      case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
+      case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes, warnings: own };
+      case 'tenant-pages-full': await settle(item, 'failed', 'tenant_pages_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes, warnings: own };
+      case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes, warnings: own };
+      case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes, warnings: own };
     }
   };
 
@@ -325,6 +336,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       at++;
       pages++;
       bytes += step.bytes;
+      warnings += step.warnings ?? 0;
       if (step.stop === 'busy') return finish((c) => ({ kind: 'busy', counts: c }));
       if (step.stop !== undefined) return finish((c) => ({ kind: 'stopped', reason: step.stop as PassTwoStop, counts: c }));
     }

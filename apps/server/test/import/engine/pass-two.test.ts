@@ -212,9 +212,40 @@ describe('what the page write refuses', () => {
     expect(await t.run()).toMatchObject({ kind: 'stopped', reason: 'not_running' });
   });
 
-  it('an item that was settled by someone else meanwhile is skipped over, not an error', async () => {
-    const t = await setup([md('a.md\u0000# A\n')], { repo: refusing('not-pending') });
-    expect((await t.run()).kind).toBe('done');
+  it('an item that was settled by someone else meanwhile is skipped over, not an error, and what it became is read back: written counts as a page, failed does not', async () => {
+    // The write is refused as not-pending because another run wrote the page between this run's read of the items and its write: the page exists, so it counts.
+    const written = await setup([md('a.md\u0000# A\n')]);
+    const wItem = await written.byPath('a.md');
+    const real = written.repo.writePage.bind(written.repo);
+    written.repo.writePage = async (...args) => {
+      await real(args[0], args[1], { ...args[2], position: () => 'a' }); // the other run's write
+      return { kind: 'not-pending' };
+    };
+    expect(await written.run()).toMatchObject({ kind: 'done', counts: { pagesDone: 1 } });
+    expect(wItem?.status).toBe('pending');
+    expect((await written.byPath('a.md'))?.status).toBe('ok');
+
+    // The other run failed the item instead: it does not count as a page, and a child does not get its stale page id as a parent.
+    const failed = await setup([md('a/index.md\u0000# A\n'), md('a/child.md\u0000# C\n')]);
+    const fItem = await failed.byPath('a/index.md');
+    const realFailed = failed.repo.writePage.bind(failed.repo);
+    failed.repo.writePage = async (...args) => {
+      if (args[2].itemId === fItem?.id) { await failed.repo.settle(TENANT, 'imp', fItem.id, { status: 'failed', message: 'internal' }); return { kind: 'not-pending' }; }
+      return realFailed(...args);
+    };
+    const second = await failed.run();
+    expect(second).toMatchObject({ kind: 'done', counts: { pagesDone: 1, failed: 1 } });
+    expect(failed.repo.written.find((w) => w.page.title === 'C')?.page.parentId).toBeNull();
+  });
+
+  it('an item whose settle is refused because another run settled it first takes the status that run gave it', async () => {
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n')]);
+    t.converter.seedScript = (m) => (m.startsWith('# A') ? { ok: false, reason: 'invalid-markdown', detail: 'x' } : undefined);
+    const item = await t.byPath('a.md');
+    const real = t.repo.settle.bind(t.repo);
+    t.repo.settle = async (tenant, id, itemId, outcome) => { if (itemId === item?.id) { await real(tenant, id, itemId, { status: 'skipped', message: 'ignored' }); } return real(tenant, id, itemId, outcome); };
+    const result = await t.run();
+    expect(result).toMatchObject({ kind: 'done', counts: { failed: 0, skipped: 1, pagesDone: 1 } });
   });
 });
 
@@ -255,6 +286,16 @@ describe('batches, cancelling and resuming', () => {
     expect(t.repo.written.filter((w) => w.page.itemId === aId)).toHaveLength(1);
     const c = t.repo.written.find((w) => w.page.title === 'c')?.page;
     expect(c?.content.markdown).toMatch(/^\[a\]\(\/p\/[^)]+\) \[b\]\(\/p\/[^)]+\)\n$/);
+  });
+
+  it('warnings of a page that stays pending are not counted, so a busy retry does not count them twice', async () => {
+    const t = await setup([md('a.md\u0000[x](nope.md)\n')]);
+    let busy = true;
+    t.converter.seedScript = () => (busy ? { ok: false, reason: 'internal', detail: 'queue-full' } : undefined);
+    expect(await t.run()).toMatchObject({ kind: 'busy', counts: { warnings: 0 } });
+    expect((await t.repo.get(TENANT, 'imp'))?.counts.warnings).toBe(0);
+    busy = false;
+    expect(await t.run()).toMatchObject({ kind: 'done', counts: { warnings: 1 } });
   });
 
   it('a busy converter ends the run with the item still pending: the caller tries again later', async () => {
