@@ -120,6 +120,21 @@ export const notionProfile: ImportProfile = {
     }
     return shared;
   },
+  /** The pages `X <id>.md` of a folder `X/` beside several of them, and no `X.md` (`folderPathOf` gives the folder to none of them). A database is no claimant. */
+  claimantsOf(pagePaths, lowerPaths) {
+    const folders = foldersOf(lowerPaths);
+    const claimants = new Map<string, string[]>();
+    for (const path of pagePaths) {
+      if (!/\.(md|markdown)$/i.test(path)) continue;
+      const segments = segmentsOf(path);
+      const { base, id } = splitName((segments.pop() ?? '').replace(/\.(md|markdown)$/i, '').normalize('NFC').toLowerCase());
+      if (id === undefined || base === '') continue;
+      const bare = [...segments, base].join('/').normalize('NFC').toLowerCase();
+      if (!folders.has(bare) || lowerPaths.has(`${bare}.md`) || lowerPaths.has(`${bare}.markdown`)) continue;
+      claimants.set(bare, [...(claimants.get(bare) ?? []), path]);
+    }
+    return new Map([...claimants].filter(([, paths]) => paths.length > 1));
+  },
   /**
    * The title line is left out (`withoutTitleLine`); front matter goes as in the generic profile, but only for a file that does not open with its title line: front matter sits at
    * the very top of a file, so what follows that line is never read as front matter. Callouts and toggles are converted before the schema sees them (`constructs.ts`).

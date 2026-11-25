@@ -44,6 +44,11 @@ export interface ImportProfile {
    * page's and the database's paths. The engine puts a page of such a folder under the database when its title is a row of the table, else under the page (decision 167).
    */
   sharedFoldersOf?(pagePaths: readonly string[], lowerPaths: ReadonlySet<string>): ReadonlyMap<string, { readonly page: string; readonly database: string }>;
+  /**
+   * The folders that several pages could each stand for, so `folderPathOf` gives them to none: by the folder's key (canonical path, NFC, lower case), the paths of those pages. The
+   * engine gives such a folder to the one of them whose text links into it (decision 171); with none or several, it stays a container.
+   */
+  claimantsOf?(pagePaths: readonly string[], lowerPaths: ReadonlySet<string>): ReadonlyMap<string, readonly string[]>;
   /** The id a name carries, for an export that names its pages by an id (the link index then finds an item by it); a profile without such names has none. */
   idOf?(path: string): string | undefined;
   /** A database export (a CSV) as a Markdown table, or undefined when the table would be over `maxBytes`; only a profile that has such exports provides it. */
