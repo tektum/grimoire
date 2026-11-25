@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDatabase, createEmbeddingStore, createSearchRepo } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
@@ -7,9 +8,10 @@ import type { EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store
 import { hybridSearch, type SemanticSearch } from '@tektum/grimoire-core/search/hybrid-search';
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import { insertCollection, insertPage, insertUser, raw } from '@tektum/grimoire-test-support/database';
-import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../../server/support/harness.js';
+import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
-// M7-T14 (R9.10): the semantic statement over 140,000 chunk vectors of 768 dimensions (10,000 pages of 14 chunks, from a seeded generator) with no index: brute force, as shipped. The measured
+// M7-T14 (R9.10), in the benchmark project (not the integration one: loading the vectors takes minutes, which every pull request would pay): the `Search latency` job of CI runs it when a change touches
+// the search, and the nightly benchmark job runs it with the other benchmarks. The semantic statement over 140,000 chunk vectors of 768 dimensions (10,000 pages of 14 chunks, from a seeded generator) with no index: brute force, as shipped. The measured
 // sizes and timings are what `docs/proof/m7-hybrid-search.md` records; GRIMOIRE_HYBRID_OUT names a file to write them to as JSON. A result above the limits fails here, and the task reports it
 // before an approximate index (HNSW) is chosen.
 const DB = 'grimoire_m7t14_latency';
@@ -56,7 +58,10 @@ const queryVectors: Float32Array[] = [];
 const measured: Record<string, unknown> = {};
 const record = (part: string, value: unknown): void => {
   measured[part] = value;
-  if (process.env['GRIMOIRE_HYBRID_OUT'] !== undefined) writeFileSync(process.env['GRIMOIRE_HYBRID_OUT'], JSON.stringify(measured, null, 2));
+  if (process.env['GRIMOIRE_HYBRID_OUT'] !== undefined) {
+    mkdirSync(path.dirname(process.env['GRIMOIRE_HYBRID_OUT']), { recursive: true });
+    writeFileSync(process.env['GRIMOIRE_HYBRID_OUT'], JSON.stringify(measured, null, 2));
+  }
   console.log(JSON.stringify({ [part]: value }));
 };
 const p95 = (ms: number[]): number => [...ms].sort((a, b) => a - b)[Math.ceil(ms.length * 0.95) - 1] as number;
