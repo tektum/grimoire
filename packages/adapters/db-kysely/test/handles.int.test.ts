@@ -41,20 +41,21 @@ describe('scoped(db, tenant)', () => {
     expect(await one.query(TENANT)).toEqual([{ tenant: null }]);
   });
 
+  // The writes are to `groups` of the legacy tenant: the runtime role may not write `tenants` (row-level security), and a row needs a tenant that exists.
   it('rolls back on an error, and leaves the connection clean for the next statement', async () => {
-    const failing = scoped(one, 'tenant-d').transaction(async (tx) => {
-      await tx.query(`insert into tenants (id, name, domain) values ('rolled-back', 'r', 'r.example')`);
+    const failing = scoped(one, 'legacy').transaction(async (tx) => {
+      await tx.query(`insert into groups (name, tenant_id) values ('rolled-back', 'legacy')`);
       await tx.query('select 1 / 0');
     });
     await expect(failing).rejects.toThrow(/division by zero/);
     await expect(scoped(one, 'tenant-d').query('select 1 / 0')).rejects.toThrow(/division by zero/);
-    expect(await one.query(`select count(*)::int as n from tenants where id = 'rolled-back'`)).toEqual([{ n: 0 }]);
+    expect(await scoped(one, 'legacy').query(`select count(*)::int as n from groups where name = 'rolled-back'`)).toEqual([{ n: 0 }]);
     expect(await one.query(TENANT)).toEqual([{ tenant: null }]);
   });
 
   it('commits what it wrote', async () => {
-    await scoped(one, 'tenant-e').query(`insert into tenants (id, name, domain) values ('committed', 'c', 'c.example')`);
-    expect(await one.query(`select count(*)::int as n from tenants where id = 'committed'`)).toEqual([{ n: 1 }]);
+    await scoped(one, 'legacy').query(`insert into groups (name, tenant_id) values ('committed', 'legacy')`);
+    expect(await scoped(one, 'legacy').query(`select count(*)::int as n from groups where name = 'committed'`)).toEqual([{ n: 1 }]);
   });
 
   it('lets a transaction raise its isolation level as its first statement, with the tenant still set', async () => {

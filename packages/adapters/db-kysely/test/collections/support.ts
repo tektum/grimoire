@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createDatabase, createOpsDatabase } from '../../src/index.js';
+import { createDatabase, createOpsDatabase, scoped } from '../../src/index.js';
 import type { GrimoireTables, KyselyDatabase, OperatorDatabase } from '../../src/index.js';
 import type { CompiledQuery, Kysely, QueryResult } from 'kysely';
 import { adminUrl, appUrl, migratorUrl, opsUrl } from '@tektum/grimoire-test-support/database';
@@ -50,23 +50,23 @@ export async function createTestDatabase(label: string): Promise<TestDatabase> {
   };
 }
 
-/** A user row; returns its id. */
+/** A user row in the tenant, written under that tenant's scope (the policies of the runtime role); returns its id. */
 export async function addUser(db: KyselyDatabase, name: string, role: 'admin' | 'member' | 'viewer' = 'member', tenantId = 'legacy'): Promise<string> {
-  const rows = await db.query<{ id: string }>(
+  const rows = await scoped(db, tenantId).query<{ id: string }>(
     `insert into users (descope_user_id, email, name, role, tenant_id) values ($1, $2, $1, $3, $4) returning id`,
     [name, `${name}@example.com`, role, tenantId],
   );
   return (rows[0] as { id: string }).id;
 }
 
-/** A group row; returns its id. */
+/** A group row in the tenant, written under that tenant's scope (the policies of the runtime role); returns its id. */
 export async function addGroup(db: KyselyDatabase, name: string, tenantId = 'legacy'): Promise<string> {
-  const rows = await db.query<{ id: string }>(`insert into groups (name, tenant_id) values ($1, $2) returning id`, [name, tenantId]);
+  const rows = await scoped(db, tenantId).query<{ id: string }>(`insert into groups (name, tenant_id) values ($1, $2) returning id`, [name, tenantId]);
   return (rows[0] as { id: string }).id;
 }
 
-/** A tenant row (the runtime role may add them, as a first sign-in does). */
-export async function addTenant(db: KyselyDatabase, id: string): Promise<void> {
+/** A tenant row. The runtime role may not add one (row-level security: a tenant is made by the operator role, as a first sign-in does), so pass the migrator's handle (`t.admin`) or the operator's. */
+export async function addTenant(db: Pick<KyselyDatabase, 'query'>, id: string): Promise<void> {
   await db.query(`insert into tenants (id, name, domain) values ($1, $1, $1) on conflict do nothing`, [id]);
 }
 

@@ -23,7 +23,7 @@ afterAll(async () => { await t?.drop(); });
 beforeEach(async () => { await t.admin.query(`delete from imports where tenant_id = 'legacy'`); });
 
 const seed = async (status: string, createdAt?: number): Promise<{ id: string }> => {
-  const rows = await t.app.query<{ id: string }>(
+  const rows = await t.admin.query<{ id: string }>(
     `insert into imports (tenant_id, target_collection_id, source, status, created_by, created_at)
      values ('legacy', $1, 'markdown_zip', $2, $3, coalesce(to_timestamp($4::double precision / 1000.0), now())) returning id`, [collectionId, status, userId, createdAt ?? null],
   );
@@ -35,7 +35,7 @@ describe('the PostgreSQL ImportRepo meets the conformance cases', () => {
     it(c.name, async () => {
       await c.run({
         repo: createImportRepo(t.app), tenantId: 'legacy', otherTenantId: 'other', userId, now: NOW, collectionId,
-        seedStatus: async (id, status) => { await t.app.query('update imports set status = $2 where id = $1', [id, status]); },
+        seedStatus: async (id, status) => { await t.admin.query('update imports set status = $2 where id = $1', [id, status]); },
         seed: async (status, createdAt) => {
           const made = await seed(status, createdAt);
           const row = await createImportRepo(t.app).get('legacy', made.id);
@@ -82,7 +82,7 @@ describe('what only the database does', () => {
     const batch = Array.from({ length: 200 }, (_, i) => ({ path: `p${String(i)}.md`, kind: 'page' as const }));
     const [a, b] = await Promise.all([repo.addItems('legacy', made.id, batch), repo.addItems('legacy', made.id, batch)]);
     expect(a + b).toBe(200);
-    const rows = await t.app.query<{ n: number }>('select count(*)::int as n from import_items where import_id = $1', [made.id]);
+    const rows = await t.admin.query<{ n: number }>('select count(*)::int as n from import_items where import_id = $1', [made.id]);
     expect(rows[0]?.n).toBe(200);
   });
 
@@ -94,7 +94,7 @@ describe('what only the database does', () => {
   it('items carry the tenant of their import', async () => {
     const made = await seed('running');
     await createImportRepo(t.app).addItems('legacy', made.id, [{ path: 'a.md', kind: 'page' }]);
-    const rows = await t.app.query<{ tenant_id: string }>('select tenant_id from import_items where import_id = $1', [made.id]);
+    const rows = await t.admin.query<{ tenant_id: string }>('select tenant_id from import_items where import_id = $1', [made.id]);
     expect(rows.map((r) => r.tenant_id)).toEqual(['legacy']);
   });
 });

@@ -1,8 +1,8 @@
 // BENCHMARK, not a test and not part of the product. Run by .github/workflows/bench-rls.yml (workflow_dispatch only) against a Postgres started with the staging
 // parameters (tools/bench/compose.bench.yaml). It measures what `scoped()` and the row-level security policies of docs/tenancy.md step 4 cost per request:
 //   plain   the runtime pool, the same SQL, no tenant setting
-//   scoped  scoped(db, tenant): `begin; set local app.tenant` in one round trip, no policies
-//   policy  scoped() with the draft policies of migration 0013 enabled (tenant_isolation on every tenant table)
+//   scoped  scoped(db, tenant): `begin; set local app.tenant` in one round trip, row-level security switched off
+//   policy  scoped() with the policies of migration 0014 in force (switched back on: tenant_isolation, operator_all and tenants_self, as the product ships them)
 // for three requests: page-open (pages.get: the page, then its breadcrumb), tree-read (collections.tree) and chunk-search (the semantic statement of embeddings.search over 140k chunks of 768 dimensions with STORAGE MAIN). Data: 100 collections, about 10k pages of about 4 KB in 41 tenants (40 small, one big).
 // Needs `bun run build` first (it uses the built adapter and the CLI to migrate). Env: BENCH_HOST (default 127.0.0.1:55432), BENCH_REQUESTS (5000), BENCH_CLIENTS (20).
 import { execFile } from 'node:child_process';
@@ -134,18 +134,12 @@ async function measure(app, mode, op, targets) {
   return { p50: at(0.5), p95: at(0.95), p99: at(0.99) };
 }
 
-async function enablePolicies(admin) {
-  const claim = `nullif(current_setting('app.tenant', true), '')`;
-  // Every table with a tenant_id, found as migration 0014 will find them (page_chunks and page_embedding_state included).
-  const tables = (await admin.query(`select c.table_name from information_schema.columns c join information_schema.tables t using (table_schema, table_name)
-                                      where c.table_schema = 'public' and c.column_name = 'tenant_id' and t.table_type = 'BASE TABLE' order by 1`)).map((r) => r.table_name);
-  console.log(`policies on: ${tables.join(', ')}`);
-  for (const t of tables) {
-    await admin.query(`alter table ${t} enable row level security`);
-    await admin.query(`create policy tenant_isolation on ${t} to grimoire_app using (tenant_id = ${claim}) with check (tenant_id = ${claim})`);
-  }
-  await admin.query(`alter table tenants enable row level security`);
-  await admin.query(`create policy tenant_self on tenants for select to grimoire_app using (id = ${claim})`);
+/** Switches row-level security off (`on` false: returns the tables that had it) or back on for `tables`, as the administrator. The policies themselves stay as the migrations made them. */
+async function rowSecurity(admin, on, tables) {
+  const list = tables ?? (await admin.query(`select relname from pg_class where relkind = 'r' and relrowsecurity and relnamespace = 'public'::regnamespace order by 1`)).map((r) => r.relname);
+  if (list.length === 0) throw new Error('no table has row-level security after the migrations: there is nothing to measure');
+  for (const t of list) await admin.query(`alter table ${t} ${on ? 'enable' : 'disable'} row level security`);
+  return list;
 }
 
 const sysql = createDatabase(url('grimoire_admin').replace(`/${DB}`, '/postgres'), { maxConnections: 1 });
@@ -160,8 +154,12 @@ const results = [];
 try {
   await seedData(admin);
   const targets = await loadTargets(admin);
+  // The migrations made the policies (0014): off for the two phases without them, then back on, so the third phase measures the policies the product ships.
+  const secured = await rowSecurity(admin, false);
   for (const mode of ['plain', 'scoped']) for (const op of Object.keys(OPS)) results.push({ mode, op, ...(await measure(app, mode, op, targets)) });
-  await enablePolicies(admin);
+  await rowSecurity(admin, true, secured);
+  const policies = await admin.query(`select c.relname as t, string_agg(p.polname, '+' order by p.polname) as p from pg_policy p join pg_class c on c.oid = p.polrelid group by 1 order by 1`);
+  console.log(`policies on: ${policies.map((r) => `${r.t} (${r.p})`).join(', ')}`);
   for (const op of Object.keys(OPS)) results.push({ mode: 'policy', op, ...(await measure(app, 'policy', op, targets)) });
 } finally {
   await app.close();

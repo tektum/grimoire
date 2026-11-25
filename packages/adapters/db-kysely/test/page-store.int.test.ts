@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createDatabase, createOpsDatabase, type KyselyDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPageStore } from '../src/page-store.js';
+import { scoped } from '../src/index.js';
 import { insertPage, opsUrl } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from './page-store-support.js';
 import { aroundScoped } from './collections/support.js';
@@ -93,7 +94,7 @@ describe('seed', () => {
     const held = new Promise<void>((r) => { release = r; });
     let locked: () => void = () => undefined;
     const lockTaken = new Promise<void>((r) => { locked = r; });
-    const holder = other.transaction(async (tx) => { await tx.query('select 1 from pages where id = $1 for update', [id]); locked(); await held; });
+    const holder = scoped(other, 'legacy').transaction(async (tx) => { await tx.query('select 1 from pages where id = $1 for update', [id]); locked(); await held; });
     holder.catch(() => undefined); // a holder that fails before it locks is seen through the race below, not as an unhandled rejection
     try {
       // The holder either takes the lock (lockTaken) or fails first (the race rejects with its error): the test fails at once and the cleanup below runs.

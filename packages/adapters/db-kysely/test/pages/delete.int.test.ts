@@ -3,6 +3,7 @@ import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
+import { scoped } from '../../src/index.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -73,7 +74,7 @@ describe('the PostgreSQL PageRepo softDelete', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const locked = new Promise<void>((resolve) => { held = resolve; });
     // Another transaction holds the collection and deletes the page; the delete is started meanwhile and queues behind it.
-    const first = t.app.transaction(async (tx) => {
+    const first = scoped(t.app, 'legacy').transaction(async (tx) => {
       await tx.query(`select 1 from collections where id = $1 for update`, [collection]);
       held();
       await gate;

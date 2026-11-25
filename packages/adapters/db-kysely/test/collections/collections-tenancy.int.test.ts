@@ -13,8 +13,8 @@ let a: { boss: string; amy: string; group: string };
 let b: { boss: string; bea: string; group: string };
 beforeAll(async () => {
   t = await createTestDatabase('colltenancy');
-  await addTenant(t.app, 'T-a');
-  await addTenant(t.app, 'T-b');
+  await addTenant(t.admin, 'T-a');
+  await addTenant(t.admin, 'T-b');
   a = { boss: await addUser(t.app, 'boss-a', 'admin', 'T-a'), amy: await addUser(t.app, 'amy-a', 'member', 'T-a'), group: await addGroup(t.app, 'Writers', 'T-a') };
   b = { boss: await addUser(t.app, 'boss-b', 'admin', 'T-b'), bea: await addUser(t.app, 'bea-b', 'member', 'T-b'), group: await addGroup(t.app, 'Writers', 'T-b') };
 }, 60_000);
@@ -22,7 +22,7 @@ afterAll(async () => { await t?.drop(); });
 
 describe('the PostgreSQL CollectionRepo while a collection changes tenant (tenant-adopt, docs/tenancy.md section 5)', () => {
   it('never lists the entries of a collection under the tenant it moved to: the entries are read under the tenant asked for', async () => {
-    await addTenant(t.app, 'T-c');
+    await addTenant(t.admin, 'T-c');
     const repo = createCollections(t.app);
     const walker = await addUser(t.app, 'walker-a', 'member', 'T-a');
     const mine = await repo.append('T-a', { name: 'Moving', createdBy: a.boss }, after);

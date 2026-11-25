@@ -45,6 +45,7 @@ describe('migration 0002 (page markdown)', () => {
   it('the runtime role can select, insert, update and delete, cannot create tables (42501) or truncate', async () => {
     const app = createDatabase(appUrl(EMPTY), { maxConnections: 1 });
     try {
+      await app.query("select set_config('app.tenant', 'legacy', false)"); // row-level security: the runtime role sees and writes the rows of its tenant (one connection, so the setting stays)
       await app.query("insert into pages (id, markdown, collection_id, created_by) values ('1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10', 'x', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001')");
       expect(await app.query("select markdown from pages where id = '1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10'")).toEqual([{ markdown: 'x' }]);
       await app.query("update pages set text_content = 't' where id = '1b6f4f0e-3c1d-4a53-9a62-5d1c2a7e8f10'");

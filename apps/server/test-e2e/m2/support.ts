@@ -46,7 +46,8 @@ function devPassword(): string {
   } catch { /* no .env */ }
   return 'grimoire-dev';
 }
-const db = createDatabase(`postgresql://grimoire_app:${devPassword()}@127.0.0.1:55432/grimoire`, { maxConnections: 2 });
+// As the operator role, which row-level security lets read and write every tenant's rows (migration 0014); the fixtures set no tenant. Same grants as the runtime role.
+const db = createDatabase(`postgresql://grimoire_ops:${devPassword()}@127.0.0.1:55432/grimoire`, { maxConnections: 2 });
 export const closeM2Db = (): Promise<void> => db.close();
 
 export interface Row {

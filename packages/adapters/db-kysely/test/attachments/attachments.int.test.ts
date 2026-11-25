@@ -3,10 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { attachmentRepoConformance } from '@tektum/grimoire-core/testing/attachment-repo-conformance';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAttachments } from '../../src/attachments.js';
+import { scoped } from '../../src/index.js';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
+import type { AttachmentRepo, AttachmentRow, NewReady } from '@tektum/grimoire-core/ports/attachment-repo';
 
 let t: TestDatabase;
 let pageId: string;
@@ -15,6 +17,9 @@ let otherUserId: string;
 let parallelUserId: string;
 const ordering = new FakeOrdering();
 const NOW = 1_700_000_000_000;
+
+/** A ready row in a transaction of the legacy tenant, as the importer stores one in its own (the port takes no call without a transaction). */
+const insertReady = (repo: AttachmentRepo, row: NewReady): Promise<AttachmentRow> => scoped(t.app, 'legacy').transaction((tx) => repo.insertReady(row, tx));
 
 const newPage = async (): Promise<string> => {
   const collection = await createCollections(t.app).append('legacy', { name: `c${randomUUID().slice(0, 8)}`, createdBy: userId }, (last) => ordering.between(last, null));
@@ -35,7 +40,7 @@ afterAll(async () => { await t?.drop(); });
 describe('the PostgreSQL AttachmentRepo meets the conformance cases', () => {
   for (const c of attachmentRepoConformance) {
     it(c.name, async () => {
-      await c.run({ repo: createAttachments(t.app), pageId, userId, otherUserId, parallelUserId, missingPageId: randomUUID(), missingUserId: randomUUID(), now: NOW });
+      await c.run({ repo: createAttachments(t.app), inTransaction: (fn) => scoped(t.app, 'legacy').transaction(fn), pageId, userId, otherUserId, parallelUserId, missingPageId: randomUUID(), missingUserId: randomUUID(), now: NOW });
     }, 30_000);
   }
 });
@@ -76,8 +81,8 @@ describe('what only the database does', () => {
     const repo = createAttachments(t.app);
     const kept = randomUUID();
     const gone = randomUUID();
-    await t.app.transaction(async (tx) => { await repo.insertReady(ready(kept, pageId), tx); });
-    await expect(t.app.transaction(async (tx) => {
+    await scoped(t.app, 'legacy').transaction(async (tx) => { await repo.insertReady(ready(kept, pageId), tx); });
+    await expect(scoped(t.app, 'legacy').transaction(async (tx) => {
       await repo.insertReady(ready(gone, pageId), tx);
       throw new Error('the page failed to save');
     })).rejects.toThrow('the page failed to save');
@@ -91,8 +96,8 @@ describe('what only the database does', () => {
     const other = await newPage();
     const a = randomUUID();
     const b = randomUUID();
-    await repo.insertReady(ready(a, doomed));
-    await repo.insertReady(ready(b, other));
+    await insertReady(repo, ready(a, doomed));
+    await insertReady(repo, ready(b, other));
     await t.admin.query(`delete from pages where id = $1`, [doomed]);
     expect(await repo.get('legacy', a)).toBeUndefined();
     expect(await repo.get('legacy', b)).toBeDefined();
@@ -102,7 +107,7 @@ describe('what only the database does', () => {
     const repo = createAttachments(t.app);
     const leaver = await addUser(t.app, `leaver${randomUUID().slice(0, 4)}`, 'member');
     const id = randomUUID();
-    await repo.insertReady({ ...ready(id, pageId), uploaderId: leaver });
+    await insertReady(repo, { ...ready(id, pageId), uploaderId: leaver });
     await t.admin.query(`delete from users where id = $1`, [leaver]);
     expect(await repo.get('legacy', id)).toMatchObject({ uploaderId: null, status: 'ready' });
   });
@@ -116,7 +121,7 @@ describe('what only the database does', () => {
     );
     await expect(repo.get('legacy', huge)).rejects.toThrow('safe integer');
     const marked = randomUUID();
-    await repo.insertReady(ready(marked, pageId));
+    await insertReady(repo, ready(marked, pageId));
     await t.admin.query(`update attachments set deleted_at = now() where id = $1`, [marked]);
     expect(await repo.get('legacy', marked)).toBeUndefined();
     expect(await repo.getMany('legacy', [marked])).toEqual([]);

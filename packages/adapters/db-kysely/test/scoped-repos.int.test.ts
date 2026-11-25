@@ -79,7 +79,7 @@ let s: { boss: string; member: string; group: string; collection: string; other:
 
 beforeAll(async () => {
   t = await createTestDatabase('scopedrepos');
-  await addTenant(t.app, TENANT);
+  await addTenant(t.admin, TENANT);
   const boss = await addUser(t.app, 'guard-boss', 'admin', TENANT);
   const member = await addUser(t.app, 'guard-member', 'member', TENANT);
   const group = await addGroup(t.app, 'guards', TENANT);

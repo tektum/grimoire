@@ -17,7 +17,7 @@ const trash = () => createTrash(t.app);
 
 /** A tenant with a person and `n` collections. */
 async function tenant(id: string, n = 1): Promise<{ by: string; collections: string[] }> {
-  await addTenant(t.app, id);
+  await addTenant(t.admin, id);
   const by = await addUser(t.app, `boss-${id}`, 'admin', id);
   const collections: string[] = [];
   for (let i = 0; i < n; i += 1) collections.push((await createCollections(t.app).append(id, { name: `Docs ${String(i)}`, createdBy: by }, (last) => ordering.between(last, null))).id);
