@@ -15,6 +15,25 @@ function watchStore(page: Page): { readonly seen: string[] } {
   page.on('response', (response) => {
     if (response.request().method() === 'PUT') seen.push(`PUT ${new URL(response.url()).origin} -> ${String(response.status())}`);
   });
+  // Where the API told the browser to PUT (the origin and path of the address, never its query: it is signed), and what the page's console said.
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    if (response.request().method() === 'POST' && url.pathname === '/v1/imports') {
+      void response.json().then(
+        (body: { upload?: { url?: string; method?: string; headers?: Record<string, string> } }) => {
+          const target = body.upload?.url === undefined ? undefined : new URL(body.upload.url);
+          seen.push(
+            `create -> ${String(response.status())} upload ${body.upload?.method ?? '?'} ${target === undefined ? '?' : target.origin + target.pathname.replace(/[0-9a-f-]{36}/g, '<id>')} headers ${Object.keys(body.upload?.headers ?? {}).join(',')}`,
+          );
+        },
+        () => seen.push('create -> not JSON'),
+      );
+    }
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') seen.push(`console: ${message.text().slice(0, 200)}`);
+  });
+  page.on('pageerror', (error) => seen.push(`pageerror: ${error.message.slice(0, 200)}`));
   page.on('requestfailed', (request) => seen.push(`${request.method()} ${new URL(request.url()).origin} failed: ${request.failure()?.errorText ?? '?'}`));
   return { seen };
 }
