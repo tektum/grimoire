@@ -49,13 +49,12 @@ describe('pre-sign-in slot lifetime (U1)', () => {
     await vi.waitFor(() => { expect(sockets.every((s) => s.readyState === WebSocket.CLOSED)).toBe(true); }, { timeout: 20_000, interval: 10 });
     expect(closeCodes).toHaveLength(500);
     expect(new Set(closeCodes)).toEqual(new Set([4408])); // the contract's timeout code, not a bare reset
-    await vi.waitFor(() => { expect(server.events.filter((e) => e.event === 'collab.refused' && e.code === 'preauth-timeout')).toHaveLength(500); }, { timeout: 10_000, interval: 10 });
-    const released = server.events.filter((e) => e.event === 'collab.refused' && e.code === 'preauth-timeout').map((e) => Date.parse(String(e.ts)));
-    const lastRelease = Math.max(...released);
-    const timeline = `server released ${String(released.length)} slots; last release ${String(lastRelease - lastOpened)} ms after the last socket opened (first ${String(Math.min(...released) - lastOpened)} ms); this client saw the last close ${String(lastClosed - lastOpened)} ms after it`;
-    expect(lastRelease - lastOpened, timeline).toBeLessThan(6500);
+    // The server says when its last unauthenticated slot is freed: `server.stats` with none open, which is not throttled (`collab.refused` is: 499 of the 500 are only counted).
+    await vi.waitFor(() => { expect(server.events.some((e) => e.event === 'server.stats' && e.openUnauthenticated === 0)).toBe(true); }, { timeout: 10_000, interval: 10 });
     const last = server.events.filter((e) => e.event === 'server.stats' && e.openUnauthenticated === 0).at(-1);
-    expect(last, timeline).toBeDefined();
+    const lastRelease = Date.parse(String(last?.ts));
+    const timeline = `the server freed its last slot ${String(lastRelease - lastOpened)} ms after the last socket opened; this client saw the last close ${String(lastClosed - lastOpened)} ms after it`;
+    expect(lastRelease - lastOpened, timeline).toBeLessThan(6500);
     const replacement = new WebSocket(wsUrl(server.port), { headers: { Origin: ALLOWED_ORIGIN } }); sockets.push(replacement);
     await onOpen(replacement); replacement.send(authOnlyFrame(page, 'dev:test-secret-0123456789abcdef:bob:member'));
     await vi.waitFor(() => { expect(server.events.some((e) => e.event === 'collab.connected' && e.pageId === page)).toBe(true); }, { timeout: 2000 });
@@ -69,5 +68,5 @@ describe('pre-sign-in slot lifetime (U1)', () => {
     // Negative wait, mandated by the 30 s connected-window requirement: a signed-in socket must still be open after 30 real seconds; the clock cannot be faked in a child server process.
     await new Promise<void>((resolve) => { setTimeout(resolve, 30000); });
     expect(authenticated.readyState).toBe(WebSocket.OPEN);
-  }, 45_000);
+  }, 75_000); // the longest the client may take to see the closes (20 s), the stats event (10 s), the replacement (2 s), and the two real-clock waits (4 s and 30 s), and the time to open 500 sockets
 });
