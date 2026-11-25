@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
+import { queryKey } from '../../src/api/query';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { Palette } from '../../src/palette/Palette';
 import { pagePath } from '../../src/tree/model';
@@ -57,14 +58,18 @@ function fake(options: { role?: string; search?: (q: string) => { status: number
 
 const Where = () => {
   const l = useLocation();
-  return <output data-testid="where">{l.pathname + l.search}</output>;
+  return (
+    <output data-testid="where" data-new-page={String((l.state as { newPage?: boolean } | null)?.newPage === true)}>
+      {l.pathname + l.search}
+    </output>
+  );
 };
 
-function show(api: ApiLike, at = '/c/c1') {
+function show(api: ApiLike, at = '/c/c1', client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const session = { auth: {}, api, collabUrl: 'ws://x', apiUrl: 'http://x' } as unknown as Session;
   return render(
     <SessionContext.Provider value={session}>
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={[at]}>
           <button type="button">before</button>
           <Palette />
@@ -76,6 +81,21 @@ function show(api: ApiLike, at = '/c/c1') {
     </SessionContext.Provider>,
   );
 }
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+/** Waits until the person's role has been read and drawn: what is offered before that is for nobody in particular. */
+const roleKnown = async (client: QueryClient) => {
+  await waitFor(() => expect(client.getQueryState(queryKey('GET', '/v1/me', undefined))?.status).toBe('success'));
+  await act(async () => undefined);
+};
+/** Waits until the create has been answered and its outcome handled: the tree was marked stale after the answer, and what was waiting for that ran. */
+const watchCreate = (client: QueryClient) => {
+  const invalidated = vi.spyOn(client, 'invalidateQueries');
+  return async () => {
+    await waitFor(() => expect(invalidated).toHaveBeenCalled());
+    await invalidated.mock.results[0]!.value;
+    await act(async () => undefined);
+  };
+};
 const where = () => screen.getByTestId('where').textContent;
 const openIt = async () => {
   await userEvent.keyboard('{Control>}k{/Control}');
@@ -89,9 +109,11 @@ describe('the rest of what the palette does', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'Admin' }));
     await waitFor(() => expect(where()).toBe('/admin/users'));
     cleanup();
-    show(fake({ role: 'member' }).api);
+    const client = newClient();
+    show(fake({ role: 'member' }).api, '/c/c1', client);
     await openIt();
     await screen.findByRole('option', { name: 'Trash' });
+    await roleKnown(client); // the role has been read: only now does the absence of Admin mean anything
     expect(screen.queryByRole('option', { name: 'Admin' })).toBeNull();
   });
 
@@ -133,6 +155,7 @@ describe('the New page command', () => {
     show(t.api);
     await choose();
     await waitFor(() => expect(where()).toBe(pagePath(NEW.title, NEW.urlId)));
+    expect(screen.getByTestId('where').getAttribute('data-new-page')).toBe('true'); // the page opens with its title ready to be written
     expect(t.creates).toEqual([{ collectionId: 'c1', parentId: null }]);
     await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull()); // the palette closed when the command was chosen
   });
@@ -140,7 +163,9 @@ describe('the New page command', () => {
   it('does not open the page when the person has gone somewhere else while it was being made', async () => {
     let finish: () => void = () => undefined;
     const t = fake({ create: () => new Promise((resolve) => (finish = () => resolve({ status: 201, body: NEW }))) });
-    show(t.api);
+    const client = newClient();
+    const handled = watchCreate(client);
+    show(t.api, '/c/c1', client);
     await choose();
     await waitFor(() => expect(t.creates).toHaveLength(1));
     await openIt();
@@ -149,14 +174,18 @@ describe('the New page command', () => {
     await act(async () => {
       finish();
     });
-    await waitFor(() => expect(where()).toBe('/trash'));
+    await handled(); // the answer has come and what waited for it has run: the person is still where they went
+    expect(where()).toBe('/trash');
   });
 
   it('stays where it is when the page could not be made', async () => {
     const t = fake({ create: async () => ({ status: 403, body: { error: { code: 'forbidden' } } }) });
-    show(t.api);
+    const client = newClient();
+    const handled = watchCreate(client);
+    show(t.api, '/c/c1', client);
     await choose();
-    await waitFor(() => expect(t.creates).toHaveLength(1));
+    await handled(); // the refusal has been answered and handled
+    expect(t.creates).toHaveLength(1);
     expect(where()).toBe('/c/c1');
   });
 });
