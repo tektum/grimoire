@@ -20,7 +20,7 @@ bun install --frozen-lockfile && make down && make up && make test-m6 && make do
 | `offline` | An edit made offline is kept and merged on reconnect | `apps/web/test-e2e/editor/offline.spec.ts` | proved |
 | `status-messages` | Every status message is shown for the signal that causes it, with the server stopped and with the scripted server | `apps/web/test-e2e/status/messages.spec.ts`<br>`apps/web/test-e2e/editor/signal-rows.spec.ts`<br>`apps/web/test-e2e/editor/connection-signals.spec.ts` | proved |
 | `images` | An image pasted into a page is uploaded, and an expired image address is refreshed | `apps/web/test-e2e/attachments/upload-flow.spec.ts`<br>`apps/web/test-e2e/attachments/url-refresh.spec.ts` | proved |
-| `search-palette` | Search and the palette find a page and open it | (to come) | pending M6-T09 |
+| `search-palette` | Search and the palette find a page and open it (against the scripted search: the stack has no search endpoint until M7-T01, and the same specifications point at it then; a run against the stack before that would get a 404) | `apps/web/test-e2e/search/palette.spec.ts` | proved |
 | `history-restore` | A restored version is seen by the second browser | `apps/web/test-e2e/history/restore.spec.ts` | proved |
 | `admin` | The admin screens change a role, a group and the access of a collection | `apps/web/test-e2e/admin/admin.spec.ts` | proved |
 | `import` | The import screen takes a file into a collection | (to come) | pending M6-T12a |
@@ -139,8 +139,8 @@ The build step `bun run --filter apps/web check:build` is part of the run, befor
 | Images and files (M6-T08) | After an upload the saved Markdown (read through GET /v1/pages/{id}/markdown) holds ![name](attachments/<uuid>/<cleaned name>). | `apps/web/test-e2e/attachments/markdown-path.spec.ts` | proved |
 | Images and files (M6-T08) | The eleventh parallel upload shows 'Too many uploads at once. | `apps/web/test-e2e/attachments/cap.spec.ts` | proved |
 | Search and palette (M6-T09) | A result with matchedPassage.text containing <img src=x onerror=alert(1)> shows it as literal text and no script runs, a 300-character passage wraps without horizontal. | `apps/web/test-e2e/search/passage.spec.ts` | pending M6-T09 |
-| Search and palette (M6-T09) | Mod-K opens the dialog with focus in the input. | `apps/web/test-e2e/search/palette.spec.ts` | pending M6-T09 |
-| Search and palette (M6-T09) | A snippet { text: 'a <script>alert(1)</script> x', ranges: [[28, 29]] } renders the literal text <script> and one mark element around x, ranges outside the text or. | `apps/web/test/search/snippet.test.ts` | pending M6-T09 |
+| Search and palette (M6-T09) | Mod-K opens the dialog with focus in the input. | `apps/web/test-e2e/search/palette.spec.ts` | proved |
+| Search and palette (M6-T09) | A snippet { text: 'a <script>alert(1)</script> x', ranges: [[28, 29]] } renders the literal text <script> and one mark element around x, ranges outside the text or. | `apps/web/test/search/snippet.test.ts` | proved |
 | Search and palette (M6-T09) | A result with partial: true (a 1 MB page of distinct words, Q35 = B) shows "Only the beginning of this page is searchable" and one without it does not. | `apps/web/test-e2e/search/partial.spec.ts` | pending M6-T09 |
 | Search and palette (M6-T09) | The results screen paginates with nextCursor (a second request carries the cursor) and shows "No results" for an empty list. | `apps/web/test-e2e/search/results.spec.ts` | pending M6-T09 |
 | Search and palette (M6-T09) | Axe reports no serious or critical violation on /search and with the palette open. (Firefox leaves this out: Chromium and WebKit only) | `apps/web/test-e2e/search/axe.spec.ts` | pending M6-T09 |

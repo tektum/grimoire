@@ -80,17 +80,22 @@ function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { read
  * The contents beside every screen (the shell's contents area): the tree of the collection that is open (`/c/:id`), the one of the page that is open
  * (`/p/:slug`, read through the page's address), or else the collection that was read last. Nothing but its name where there is none.
  */
-export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonly storage?: ClientStorage }) {
+/** The collection the person is in: the one in the address (`/c/:id`), the one of the page that is open, or else the one read last; with the `urlId` of the open page, if any. */
+export function useOpenCollection(api: ApiLike, storage?: ClientStorage): { readonly collectionId: string | undefined; readonly urlId: string | undefined } {
   const inCollection = useMatch('/c/:collectionId');
   const inPage = useMatch('/p/:slug/*');
   const urlId = inPage?.params.slug === undefined ? undefined : urlIdOf(inPage.params.slug);
+  const remembered = useMemo(() => storage ?? createClientStorage(), [storage]);
+  const ofPage = usePageCollection(api, urlId);
+  return { collectionId: inCollection?.params.collectionId ?? (urlId === undefined ? (remembered.get(LAST_COLLECTION_KEY) ?? undefined) : ofPage), urlId };
+}
+
+export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonly storage?: ClientStorage }) {
+  const { collectionId, urlId } = useOpenCollection(api, storage);
   // Kept here, in the part that stays when the screen changes: the key of the location now, for `CollectionContents` to compare with the one where a page was asked for.
   const { key } = useLocation();
   const hereKey = useRef(key);
   hereKey.current = key;
-  const remembered = useMemo(() => storage ?? createClientStorage(), [storage]);
-  const ofPage = usePageCollection(api, urlId);
-  const collectionId = inCollection?.params.collectionId ?? (urlId === undefined ? (remembered.get(LAST_COLLECTION_KEY) ?? undefined) : ofPage);
   return (
     <div className="contents">
       <p className="contents-title">Contents</p>

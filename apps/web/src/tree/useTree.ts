@@ -20,11 +20,12 @@ export const treeKey = (collectionId: string): readonly unknown[] => queryKey('G
  * The flat page list of one collection. Refetched on the window `focus` event (React Query's own focus handling listens to visibility only, and is
  * off here, so one return to the window is exactly one request) and every minute.
  */
-export function useCollectionTree(api: ApiLike, collectionId: string) {
+export function useCollectionTree(api: ApiLike, collectionId: string | undefined) {
   const query = useQuery<readonly FlatPage[], HttpError>({
-    queryKey: treeKey(collectionId),
+    enabled: collectionId !== undefined,
+    queryKey: treeKey(collectionId ?? ''),
     queryFn: async ({ signal }) => {
-      const { data, response } = await api.GET(TREE_PATH as never, { params: { path: { id: collectionId } }, signal } as never);
+      const { data, response } = await api.GET(TREE_PATH as never, { params: { path: { id: collectionId ?? '' } }, signal } as never);
       if (!response.ok) throw new HttpError(response.status);
       return (data as { pages: readonly FlatPage[] }).pages;
     },
@@ -35,9 +36,10 @@ export function useCollectionTree(api: ApiLike, collectionId: string) {
   const { refetch } = query;
   useEffect(() => {
     // `cancelRefetch: false`: a read already under way is reused, not cancelled and started again.
+    if (collectionId === undefined) return; // `enabled: false` stops the automatic reads only: a manual one would ask for a tree with no id
     const onFocus = (): void => void refetch({ cancelRefetch: false });
     window.addEventListener('focus', onFocus);
     return () => { window.removeEventListener('focus', onFocus); };
-  }, [refetch]);
+  }, [refetch, collectionId]);
   return query;
 }

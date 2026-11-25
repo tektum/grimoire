@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router';
 import { UserBadge } from '../auth/UserBadge';
+import { Palette } from '../palette/Palette';
 import { useSession } from '../auth/session';
 import { ContentsPanel } from '../tree/ContentsPanel';
 import { inPageHref } from '../ui/inpage';
@@ -22,6 +23,7 @@ export function Shell() {
         </nav>
         <UserBadge />
       </header>
+      <Palette />
       <div className="shell-body">
         <aside className="shell-contents" aria-label="Contents">
           {session === null ? <p>Contents</p> : <ContentsPanel api={session.api} />}
