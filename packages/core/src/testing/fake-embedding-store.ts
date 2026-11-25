@@ -2,6 +2,8 @@ import { EMBED_MAX_ATTEMPTS, type ChunkHit, type ChunkRow, type EmbeddingStore }
 
 /** A chunk as stored: the embedding is always there. */
 type StoredChunk = ChunkRow & { readonly embedding: Float32Array };
+/** A row of page_chunks: `model` is a column of it, so the rows of a page may be of more than one model while a rollout is under way. */
+type StoredRow = StoredChunk & { readonly model: string };
 interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean; text: string; title: string; urlId: string }
 interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
@@ -15,8 +17,9 @@ const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length &&
  */
 export class FakeEmbeddingStore implements EmbeddingStore {
   private readonly pages = new Map<string, PageFact>();
-  // One set of chunks and one state per page, as the tables' keys (page_id; page_id, chunk_index) allow: `model` is a column, so a write for another model replaces them.
-  private readonly chunks = new Map<string, { model: string; rows: StoredChunk[] }>();
+  // The rows of page_chunks, keyed as the table is (page_id, chunk_index): a row of another model at another index stays when a model's rows are written, and is replaced at the same
+  // index. One state per page (page_id). Reads give the rows of the model asked for.
+  private readonly chunks = new Map<string, StoredRow[]>();
   private readonly states = new Map<string, StateRow>();
 
   constructor(private readonly now: () => number = () => Date.now()) {}
@@ -60,10 +63,9 @@ export class FakeEmbeddingStore implements EmbeddingStore {
   saveChunks(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly (ChunkRow & { readonly embedding: Float32Array })[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);
     if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return Promise.resolve('stale');
-    const before = this.chunks.get(pageId);
-    const rows = new Map((before?.model === model ? before.rows : []).map((c) => [c.chunkIndex, c]));
-    for (const c of chunks) rows.set(c.chunkIndex, c);
-    this.chunks.set(pageId, { model, rows: [...rows.values()].sort((a, b) => a.chunkIndex - b.chunkIndex) });
+    const rows = new Map((this.chunks.get(pageId) ?? []).map((c) => [c.chunkIndex, c]));
+    for (const c of chunks) rows.set(c.chunkIndex, { ...c, model }); // the upsert: the row of this index is replaced, whatever its model
+    this.chunks.set(pageId, [...rows.values()].sort((a, b) => a.chunkIndex - b.chunkIndex));
     return Promise.resolve('ok');
   }
 
@@ -71,15 +73,14 @@ export class FakeEmbeddingStore implements EmbeddingStore {
   async replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);
     if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return 'stale';
-    const before = this.chunks.get(pageId);
-    const kept = new Map((before?.model === model ? before.rows : []).map((c) => [c.chunkIndex, c]));
-    const rows = chunks.map((c): StoredChunk => {
-      if (c.embedding !== undefined) return { ...c, embedding: c.embedding };
+    const kept = new Map(this.rowsOf(pageId, model).map((c) => [c.chunkIndex, c]));
+    const rows = chunks.map((c): StoredRow => {
+      if (c.embedding !== undefined) return { ...c, embedding: c.embedding, model };
       const old = kept.get(c.chunkIndex);
       if (old === undefined || !same(old.contentHash, c.contentHash)) throw new Error(`no stored vector to keep for chunk ${String(c.chunkIndex)}`);
-      return { ...c, embedding: old.embedding };
+      return { ...c, embedding: old.embedding, model };
     });
-    this.chunks.set(pageId, { model, rows: rows.sort((a, b) => a.chunkIndex - b.chunkIndex) });
+    this.chunks.set(pageId, rows.sort((a, b) => a.chunkIndex - b.chunkIndex)); // every row of the page that is not listed goes, whatever its model
     this.states.set(pageId, { model, markdownHash, status: 'ready', attempts: 0, error: null });
     return 'ok';
   }
@@ -146,7 +147,6 @@ export class FakeEmbeddingStore implements EmbeddingStore {
   }
 
   private rowsOf(pageId: string, model: string): readonly StoredChunk[] {
-    const c = this.chunks.get(pageId);
-    return c?.model === model ? c.rows : [];
+    return (this.chunks.get(pageId) ?? []).filter((c) => c.model === model);
   }
 }

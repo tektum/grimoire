@@ -173,13 +173,21 @@ describe('FakeEmbeddingStore, progress saved before the page is whole', () => {
     expect(store.stored('p1', 'm').chunks).toEqual([]);
   });
 
-  it('keeps the rows of one model apart: a save for another model starts that model\'s own rows', async () => {
+  it('upserts by index as the SQL does: the rows of another model at other indexes stay and stay visible to that model, a row at the same index is replaced, and replacePage then removes what it does not list', async () => {
     const store = new FakeEmbeddingStore(() => NOW);
     store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 0 });
-    await store.saveChunks('legacy', 'p1', hash(1), 'm1', [{ ...chunk(0, 'alpha'), embedding: vectorOf('passage: alpha', 8) }]);
-    await store.saveChunks('legacy', 'p1', hash(1), 'm2', [{ ...chunk(1, 'beta'), embedding: vectorOf('passage: beta', 8) }]);
-    expect(store.stored('p1', 'm2').chunks.map((c) => c.chunkIndex)).toEqual([1]);
-    expect(store.stored('p1', 'm1').chunks).toEqual([]); // the one set of a page is of the model that wrote last, as replacePage has it
+    const row = (i: number, text: string) => ({ ...chunk(i, text), embedding: vectorOf(`passage: ${text}`, 8) });
+    await store.saveChunks('legacy', 'p1', hash(1), 'm1', [row(0, 'alpha'), row(1, 'beta'), row(2, 'gamma')]);
+    await store.saveChunks('legacy', 'p1', hash(1), 'm2', [row(0, 'delta'), row(1, 'epsilon')]); // a partial run of another model
+    expect(store.stored('p1', 'm1').chunks.map((c) => c.chunkIndex)).toEqual([2]); // 0 and 1 became m2's
+    expect(store.stored('p1', 'm2').chunks.map((c) => c.chunkIndex)).toEqual([0, 1]);
+    expect([...(await store.existingHashes('legacy', 'p1', 'm1')).keys()]).toEqual([2]);
+    expect(await store.counts('m1')).toMatchObject({ chunks: 1 });
+    expect(await store.counts('m2')).toMatchObject({ chunks: 2 });
+    const keep = (i: number, text: string): ChunkRow => ({ chunkIndex: i, contentHash: hash(i + 1), charStart: i * 10, charEnd: i * 10 + text.length, tokenCount: 3 });
+    await store.replacePage('legacy', 'p1', hash(1), 'm2', [keep(0, 'delta'), keep(1, 'epsilon')]); // the finishing write: m1's row at 2 goes, as the SQL deletes what is not listed
+    expect(store.stored('p1', 'm1').chunks).toEqual([]);
+    expect(store.stored('p1', 'm2').chunks.map((c) => c.chunkIndex)).toEqual([0, 1]);
   });
 });
 
