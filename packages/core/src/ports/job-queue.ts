@@ -68,7 +68,10 @@ export interface JobQueue {
   isLive(name: string, singletonKey: string): Promise<boolean>;
   /** Registers the handler that runs the jobs of `name`. */
   work<Payload>(name: string, handler: JobHandler<Payload>): Promise<void>;
-  /** Enqueues `name` with `payload` on a five-field cron expression (UTC). Replaces an earlier schedule of the same name. */
+  /**
+   * Enqueues `name` with `payload` on a five-field cron expression (UTC). Replaces an earlier schedule of the same name. Call it at every start of every process that works the
+   * queue: a schedule lives in the queue, not in the process, and calling it again changes nothing. The queue must be `stately`.
+   */
   schedule(name: string, cron: string, payload?: unknown): Promise<void>;
   /**
    * Stops taking jobs at once and waits up to `graceMs` for running handlers; the signals of those still running abort at

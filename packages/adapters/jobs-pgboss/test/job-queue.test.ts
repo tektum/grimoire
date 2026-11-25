@@ -9,9 +9,10 @@ function stub() {
     send: vi.fn(async () => 'id-1'),
     work: vi.fn<(...args: unknown[]) => Promise<string>>(async () => 'worker-1'),
     schedule: vi.fn(async () => {}),
+    cancel: vi.fn(async () => ({})),
     createQueue: vi.fn(async () => {}),
     getQueue: vi.fn(async () => null),
-    findJobs: vi.fn<(...args: unknown[]) => Promise<{ id: string }[]>>(async () => []),
+    findJobs: vi.fn<(...args: unknown[]) => Promise<{ id: string; startAfter?: Date }[]>>(async () => []),
     getDb: vi.fn(() => ({ executeSql: vi.fn<(...args: unknown[]) => Promise<{ rows: unknown[] }>>(async () => ({ rows: [] })) })),
     isInstalled: vi.fn(async () => true),
     on: vi.fn(() => boss),
@@ -111,13 +112,82 @@ describe('PgBossJobQueue', () => {
     expect(aborted).toEqual([true, true]);
   });
 
-  it('schedules in UTC with a null payload by default', async () => {
-    const boss = stub();
-    const q = new PgBossJobQueue(boss);
-    await q.schedule('n', '* * * * *');
-    await q.schedule('m', '0 3 * * *', { x: 1 });
-    expect(boss.schedule).toHaveBeenNthCalledWith(1, 'n', '* * * * *', null, { tz: 'UTC' });
-    expect(boss.schedule).toHaveBeenNthCalledWith(2, 'm', '0 3 * * *', { x: 1 }, { tz: 'UTC' });
+  describe('schedule: a chain of sends, no pg-boss cron', () => {
+    const at = (iso: string) => () => new Date(iso);
+    const held = (iso: string) => ({ id: 'held', startAfter: new Date(iso) });
+    const sent = (boss: ReturnType<typeof stub>) => boss.send.mock.calls.map((c) => c as unknown as [string, unknown, { singletonKey: string; startAfter: Date }]);
+
+    it('sends the first run with a key of its own and the next UTC time as its start, a null payload by default, and never uses the library schedule', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:07:30Z'));
+      await q.schedule('n', '*/5 * * * *');
+      await q.schedule('m', '0 3 * * *', { x: 1 });
+      expect(sent(boss)).toEqual([
+        ['n', null, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T10:10:00Z') }],
+        ['m', { x: 1 }, { singletonKey: 'sched:m', startAfter: new Date('2026-03-11T03:00:00Z') }],
+      ]);
+      expect(boss.schedule).not.toHaveBeenCalled();
+      expect(boss.findJobs).toHaveBeenCalledWith('n', { key: 'sched:n', queued: true, limit: 1 });
+    });
+
+    it('leaves a waiting run alone when its time is one of the cron, even a late one, so a restart after downtime runs it once', async () => {
+      const boss = stub();
+      boss.findJobs.mockResolvedValue([held('2026-03-10T10:00:00Z')]);
+      await new PgBossJobQueue(boss, undefined, at('2026-03-10T10:12:00Z')).schedule('n', '*/5 * * * *');
+      expect(boss.send).not.toHaveBeenCalled();
+      expect(boss.cancel).not.toHaveBeenCalled();
+    });
+
+    it('cancels a waiting run whose time is not one of the current cron and sends the right one', async () => {
+      const boss = stub();
+      boss.findJobs.mockResolvedValue([held('2026-03-10T10:05:00Z')]);
+      await new PgBossJobQueue(boss, undefined, at('2026-03-10T10:02:00Z')).schedule('n', '0 * * * *');
+      expect(boss.cancel).toHaveBeenCalledWith('n', 'held');
+      expect(sent(boss)).toEqual([['n', null, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T11:00:00Z') }]]);
+    });
+
+    it('refuses a cron it cannot read, and then sends nothing and runs no next', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
+      await expect(q.schedule('n', 'every day')).rejects.toThrow();
+      await q.work('n', async () => {});
+      await (boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>)([{ id: 'j', data: {}, retryCount: 0, retryLimit: 0, expireInSeconds: 60 }]);
+      expect(boss.send).not.toHaveBeenCalled();
+    });
+
+    it('sends the next run before the handler starts, from the time it is now, so a failing run keeps the chain and a late one skips what it missed', async () => {
+      const boss = stub();
+      const order: string[] = [];
+      boss.send.mockImplementation((async () => { order.push('send'); return 'id'; }) as never);
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:12:00Z'));
+      await q.schedule('n', '*/5 * * * *', { p: 1 });
+      boss.send.mockClear();
+      order.length = 0;
+      await q.work('n', async () => { order.push('handler'); throw new Error('fails'); });
+      const run = boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>;
+      await expect(run([{ id: 'j', data: { p: 1 }, retryCount: 0, retryLimit: 0, expireInSeconds: 900 }])).rejects.toThrow('fails');
+      expect(order).toEqual(['send', 'handler']);
+      expect(sent(boss)).toEqual([['n', { p: 1 }, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T10:15:00Z') }]]);
+    });
+
+    it('does not run a handler when the next run cannot be sent, so pg-boss retries the whole run', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
+      await q.schedule('n', '*/5 * * * *');
+      boss.send.mockRejectedValueOnce(new Error('db down'));
+      const handler = vi.fn(async () => {});
+      await q.work('n', handler);
+      await expect((boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>)([{ id: 'j', data: {}, retryCount: 0, retryLimit: 0, expireInSeconds: 60 }])).rejects.toThrow('db down');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('sends no next run for a queue that has no schedule', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
+      await q.work('plain', async () => {});
+      await (boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>)([{ id: 'j', data: {}, retryCount: 0, retryLimit: 0, expireInSeconds: 60 }]);
+      expect(boss.send).not.toHaveBeenCalled();
+    });
   });
 
   it('ensureQueue creates a missing queue from its definition once and leaves an existing one alone', async () => {
@@ -202,13 +272,6 @@ describe('createJobQueue', () => {
     expect(boss.start).toHaveBeenCalledTimes(2);
   });
 
-  it('turns the cron loop on only when asked', async () => {
-    const boss = stub();
-    const make = vi.fn(() => boss);
-    await createJobQueue({ connectionString: 'postgresql://example/db', onError, cron: true }, make);
-    expect(make).toHaveBeenCalledWith(expect.objectContaining({ schedule: true }));
-  });
-
   it('uses the stop grace given at creation as the default of stop', async () => {
     const boss = stub();
     const q = await createJobQueue({ connectionString: 'postgresql://example/db', onError, stopGraceMs: 700 }, () => boss);
@@ -218,5 +281,17 @@ describe('createJobQueue', () => {
 
   it('builds a real PgBoss by default without connecting until started', async () => {
     await expect(createJobQueue({ connectionString: 'postgresql://127.0.0.1:1/none', onError })).rejects.toThrow();
+  });
+});
+
+describe('PgBossJobQueue, the real clock', () => {
+  it('sends the first run of an every-minute schedule at the next whole minute', async () => {
+    const boss = stub();
+    const before = Date.now();
+    await new PgBossJobQueue(boss).schedule('n', '* * * * *');
+    const start = (boss.send.mock.calls[0]?.[2] as unknown as { startAfter: Date }).startAfter.getTime();
+    expect(start).toBeGreaterThan(before);
+    expect(start - before).toBeLessThanOrEqual(60_000);
+    expect(start % 60_000).toBe(0);
   });
 });

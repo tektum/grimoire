@@ -1,3 +1,4 @@
+import { CronExpressionParser } from 'cron-parser';
 import { PgBoss, type ConstructorOptions, type JobWithMetadata } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import { expirySignalDelayMs, type EnqueueOptions, type JobHandler, type JobQueue, type QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
@@ -9,7 +10,7 @@ export const PGBOSS_SCHEMA = 'pgboss';
 export const DEFAULT_STOP_GRACE_MS = 1500;
 
 /** The part of pg-boss the adapter uses; tests pass a stand-in. */
-export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'schedule' | 'createQueue' | 'getQueue' | 'findJobs' | 'getDb' | 'isInstalled' | 'on'>;
+export type PgBossLike = Pick<PgBoss, 'start' | 'stop' | 'send' | 'work' | 'cancel' | 'createQueue' | 'getQueue' | 'findJobs' | 'getDb' | 'isInstalled' | 'on'>;
 
 /** The database object pg-boss accepts for one call (`db` option). */
 interface PgBossDatabase { executeSql(text: string, values?: unknown[]): Promise<{ rows: unknown[] }> }
@@ -18,6 +19,12 @@ interface PgBossDatabase { executeSql(text: string, values?: unknown[]): Promise
 function asDatabase(tx: Queryable): PgBossDatabase {
   return { executeSql: async (text: string, values?: unknown[]) => ({ rows: [...(await tx.query(text, values))] }) };
 }
+
+const scheduleKey = (name: string): string => `sched:${name}`;
+/** The first time of a five-field UTC cron after `after`. */
+const nextRun = (cron: string, after: Date): Date => CronExpressionParser.parse(cron, { currentDate: after, tz: 'UTC' }).next().toDate();
+/** Whether `at` is a time of the cron (cron times fall on whole minutes). */
+const isRunTime = (cron: string, at: Date): boolean => nextRun(cron, new Date(at.getTime() - 1000)).getTime() === at.getTime();
 
 /** Creates the queue unless it exists; an existing one is left as it is. */
 export async function ensureQueueOn(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, definition: QueueDefinition): Promise<void> {
@@ -41,9 +48,13 @@ export class PgBossJobQueue implements JobQueue {
   /** The abort controllers of the handlers that are running now. */
   private readonly running = new Set<AbortController>();
 
+  /** The schedules of this process: the cron and payload that each run sends its successor with. */
+  private readonly schedules = new Map<string, { readonly cron: string; readonly payload: unknown }>();
+
   constructor(
     private readonly boss: PgBossLike,
     private readonly stopGraceMs: number = DEFAULT_STOP_GRACE_MS,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   /** Creates the queue unless it exists. Run it with a role that may create tables (`grimoire migrate`), before `work`, `schedule` or `enqueue` use the name. */
@@ -75,6 +86,7 @@ export class PgBossJobQueue implements JobQueue {
   async work<Payload>(name: string, handler: JobHandler<Payload>): Promise<void> {
     await this.boss.work<Payload, void, { includeMetadata: true }>(name, { includeMetadata: true }, async (jobs: JobWithMetadata<Payload>[]) => {
       for (const job of jobs) {
+        if (this.schedules.has(name)) await this.sendNext(name); // before the handler: a run that fails, or is dead-lettered, does not end the schedule
         const own = new AbortController();
         this.running.add(own);
         const timer = setTimeout(() => { own.abort(); }, expirySignalDelayMs(job.expireInSeconds));
@@ -89,8 +101,29 @@ export class PgBossJobQueue implements JobQueue {
     });
   }
 
+  /**
+   * Schedules without pg-boss's cron loop (which the runtime role cannot start, decision 16): the next run is a job with the key `sched:<name>` and its start time,
+   * on a `stately` queue, so at most one waits. Every run sends its successor before it starts (`work`), and each process sends the first at boot, where a second one collapses into
+   * the first. A waiting run that is not at a time of this cron (the cron was changed) is cancelled and replaced; a late one stays and runs once.
+   */
   async schedule(name: string, cron: string, payload?: unknown): Promise<void> {
-    await this.boss.schedule(name, cron, (payload ?? null) as object | null, { tz: 'UTC' });
+    const next = nextRun(cron, this.now());
+    this.schedules.set(name, { cron, payload });
+    const [waiting] = await this.boss.findJobs<unknown>(name, { key: scheduleKey(name), queued: true, limit: 1 });
+    if (waiting !== undefined) {
+      if (isRunTime(cron, waiting.startAfter)) return;
+      await this.boss.cancel(name, waiting.id);
+    }
+    await this.sendRun(name, payload, next);
+  }
+
+  private async sendNext(name: string): Promise<void> {
+    const s = this.schedules.get(name) as { readonly cron: string; readonly payload: unknown };
+    await this.sendRun(name, s.payload, nextRun(s.cron, this.now()));
+  }
+
+  private async sendRun(name: string, payload: unknown, startAfter: Date): Promise<void> {
+    await this.boss.send(name, (payload ?? null) as object | null, { singletonKey: scheduleKey(name), startAfter });
   }
 
   /** True when pg-boss's tables are installed and answer; false otherwise (for the readiness check). */
@@ -122,12 +155,6 @@ export interface CreateOptions {
   readonly onError: (error: Error) => void;
   /** How long `stop` waits for running jobs unless it is told otherwise. Default 1.5 s. */
   readonly stopGraceMs?: number;
-  /**
-   * Run pg-boss's cron loop in this process, so `schedule` entries fire. Off by default: the loop calls `create_queue` for
-   * an internal queue every time it starts, which the runtime role may not run. A process that is meant to fire schedules
-   * needs a role that may.
-   */
-  readonly cron?: boolean;
 }
 
 /** pg-boss never migrates here (`migrate: false`): `grimoire migrate` owns the schema. Resolves once started. */
@@ -139,7 +166,7 @@ export async function createJobQueue(
     connectionString: options.connectionString,
     schema: PGBOSS_SCHEMA,
     migrate: false,
-    schedule: options.cron ?? false,
+    schedule: false,
     ...(options.max === undefined ? {} : { max: options.max }),
   });
   boss.on('error', options.onError);
