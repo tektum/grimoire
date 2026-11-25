@@ -2,6 +2,11 @@
 .palette [cmdk-list] { overflow-y: auto; margin-top: var(--space-2); }
 .palette [cmdk-group-heading] { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: var(--space-2) var(--space-3) var(--space-1); }
 .palette [cmdk-item] { overflow-wrap: anywhere; }
+/* The row the keys are on: the accent as a 2 px outline inside the row (3:1 or more against the panel in both schemes), not only a background that is barely different from the panel in the dark one. */
+.palette [cmdk-item][data-selected='true'] { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (forced-colors: active) {
+  .palette [cmdk-item][data-selected='true'] { outline-color: Highlight; }
+}
 .palette-result-title { font-weight: 600; display: block; }
 .palette-snippet { display: block; color: var(--muted); font-size: 0.85rem; }
 /* The matched words: a marker colour with the text colour on it, in both schemes (4.5 or more: #ffe08a under #1b1a17, #6b5600 under #ece8de). */
