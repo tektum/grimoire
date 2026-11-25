@@ -229,10 +229,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       const found = await scoped(db, tenantId).query<{ created_by: string | null }>(`select created_by from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
       if (found[0] === undefined) return undefined;
       return scoped(db, tenantId).transaction(async (tx) => {
-        // The live pages the import's `ok` page items name, and below them every live page (one a person added under an imported page too). Each subtree is deleted under its own root's id as the batch, as a
-        // page delete does, so a restore of one root checks what it must (a batch with several roots would bring the others back unchecked). A page under another imported page belongs to that page's subtree.
+        // The live pages the import's `ok` page and database items name (a database is a page, decision 167), and below them every live page (one a person added under an imported page
+        // too). Each subtree is deleted under its own root's id as the batch, as a page delete does, so a restore of one root checks what it must (a batch with several roots would bring the
+        // others back unchecked). A page under another imported page belongs to that page's subtree.
         const seeds = `select p.id, p.collection_id from pages p where p.tenant_id = $1 and p.deleted_at is null
-          and p.id in (select page_id from import_items where tenant_id = $1 and import_id = $2 and kind = 'page' and status = 'ok' and page_id is not null)`;
+          and p.id in (select page_id from import_items where tenant_id = $1 and import_id = $2 and kind in ('page', 'database_csv') and status = 'ok' and page_id is not null)`;
         // The collections first, in id order, as create, move and a page delete take them: a create under an imported page cannot commit between this read of the tree and the delete.
         await tx.query(`select 1 from collections where id in (select collection_id from (${seeds}) s) order by id for no key update`, [tenantId, id]);
         const moved = await tx.query<{ id: string; root: string }>(

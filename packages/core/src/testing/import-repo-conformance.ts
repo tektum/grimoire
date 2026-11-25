@@ -524,6 +524,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'trash-imported-moves-a-written-database-page-too',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'Tasks 0123456789abcdef0123456789abcdef_all.csv', kind: 'database_csv' }]);
+      const [database] = await h.repo.pending(h.tenantId, made.id, 'database_csv', 10);
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, database!.id, { collectionId: made.targetCollectionId }), limits, h.now)).kind, 'ok');
+      await h.seedStatus(made.id, 'cancelled');
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id).then((r) => r?.pages), 1, 'a database page at the root is an imported page like any other (decision 167)');
+    },
+  },
+  {
     name: 'trash-imported-finds-only-the-import-of-the-tenant',
     async run(h) {
       const made = await h.seed('cancelled');

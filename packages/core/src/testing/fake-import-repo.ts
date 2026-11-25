@@ -190,7 +190,7 @@ export class FakeImportRepo implements ImportRepo {
   /** The fake keeps the parent of each page it wrote: a page under another page of the import is part of that page's subtree, so the batches are the outermost roots, as in the database. A page a person added has nowhere to be here (the database case checks those). */
   trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined> {
     if (this.find(tenantId, id) === -1) return Promise.resolve(undefined);
-    const live = this.stored.filter((s) => s.tenantId === tenantId && s.importId === id && s.item.kind === 'page' && s.item.status === 'ok' && s.item.pageId !== null && !this.trashed.has(s.item.pageId));
+    const live = this.stored.filter((s) => s.tenantId === tenantId && s.importId === id && (s.item.kind === 'page' || s.item.kind === 'database_csv') && s.item.status === 'ok' && s.item.pageId !== null && !this.trashed.has(s.item.pageId));
     const ids = new Set(live.map((s) => s.item.pageId as string));
     const parentOf = new Map(this.written.filter((w) => w.tenantId === tenantId && w.importId === id).map((w) => [this.stored.find((s) => s.tenantId === tenantId && s.importId === id && s.item.id === w.page.itemId)?.item.pageId ?? '', w.page.parentId]));
     const underAnother = (pageId: string): boolean => {
