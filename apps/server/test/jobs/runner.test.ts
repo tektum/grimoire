@@ -29,6 +29,19 @@ const make = (queue: RecordingQueue, errors: Error[] = []) => {
 };
 
 describe('the job runner', () => {
+  it('adds a job to the queue once it is up, with its options, and says so when it is not (the queue is not up yet, or the server is stopping)', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    const { runner } = make(queue);
+    await expect(runner.enqueueImport({ importId: 'i1', tenantId: 't1' })).rejects.toThrow('jobs-unavailable');
+    await runner.start();
+    await expect(runner.enqueueImport({ importId: 'i1', tenantId: 't1' }, { singletonKey: 'i1' })).resolves.toBe('job-1');
+    expect(sent).toEqual([['import', { importId: 'i1', tenantId: 't1' }, { singletonKey: 'i1' }]]);
+    await runner.hook.run();
+    await expect(runner.enqueueImport({ importId: 'i1', tenantId: 't1' })).rejects.toThrow('jobs-unavailable');
+  });
+
   it('registers a handler for each job of the registry when it starts, and starts once', async () => {
     const queue = new RecordingQueue();
     const { runner } = make(queue);

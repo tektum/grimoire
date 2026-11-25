@@ -7,6 +7,7 @@ import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
+import type { EnqueueOptions } from '@tektum/grimoire-core/ports/job-queue';
 import type { SearchRepo } from '@tektum/grimoire-core/ports/search-repo';
 import type { Role, UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
 import type { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
@@ -41,6 +42,8 @@ export interface HttpDeps {
   readonly search: SearchRepo;
   /** The imports of the caller's tenant (M7-T04 fills the adapter). */
   readonly imports: ImportRepo;
+  /** Hands the job of an import to the queue (the import start): its payload is the ids and nothing else (decision 4). Rejects with `jobs-unavailable` while there is no queue (the `collab` role has none, and the queue may not be up yet). */
+  enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
   /** Sibling ordering on fractional keys. */
   readonly ordering: Ordering;
   readonly idempotency: IdempotencyStore;
