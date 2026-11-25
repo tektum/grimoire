@@ -86,7 +86,8 @@ export function createRun(options: RunOptions = {}, collabStarter: CollabStarter
       if (config.local && !isLoopback(config.host)) log.warn('server.local_mode_exposed', { host: config.host });
       if (ctx.collab) for (const hook of await collabStarter({ config, log, host: ctx.collab.host, hostDeps: ctx.collab.deps, server, shutdown: ctx.shutdown })) ctx.shutdown.register(hook);
       else rejectUpgrades(server, log);
-      if (ctx.jobs) await ctx.jobs.start();
+      // Not awaited: a database that does not answer must not hold the server's start (the runner logs and retries; it never rejects).
+      if (ctx.jobs) void ctx.jobs.start();
     } catch (e) {
       if (ctx.shutdown.isDraining()) return;
       const code = e instanceof Error && 'code' in e && typeof e.code === 'string' ? e.code : 'none';

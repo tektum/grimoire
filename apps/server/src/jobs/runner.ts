@@ -33,6 +33,8 @@ export interface JobRunnerOptions {
 
 /** How long after a failed start the next one is tried. */
 export const START_RETRY_MS = 30_000;
+/** How long a stop waits for a start that is still under way (a database that does not answer must not hold shutdown for the whole grace). */
+export const START_STOP_WAIT_MS = 1000;
 /** The starts tried in all (about ten minutes); after that the failure is logged for good and the server keeps running without jobs. */
 export const MAX_START_ATTEMPTS = 20;
 
@@ -47,6 +49,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   let queue: JobQueue | undefined;
   let running = false;
   let stopped = false;
+  /** The stop gave up waiting for the start under way: the queue it makes later is stopped by the attempt, not by the hook. */
+  let abandoned = false;
   let attempts = 0;
   let state: JobsState = 'starting';
   let timer: NodeJS.Timeout | undefined;
@@ -60,7 +64,11 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       const url = config.database.url;
       if (url === undefined) throw new Error('the job queue needs the database url');
       made = await options.make({ connectionString: url, stopGraceMs: config.jobs.stopGraceMs, onError: options.onError ?? (() => undefined) });
-      if (stopped) { queue = made; return; } // stopped while starting: no handler is registered, and the hook stops this queue
+      if (stopped) { // stopped while starting: no handler is registered; the hook stops this queue, or the attempt does when the hook has given up waiting
+        if (abandoned) await made.stop({ graceMs: 0 }).catch(() => undefined);
+        else queue = made;
+        return;
+      }
       for (const job of registerJobs({ config })) await made.work(job.name, job.handler);
       queue = made;
       state = 'up';
@@ -86,7 +94,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         stopped = true;
         if (state !== 'down') state = 'stopped';
         if (timer !== undefined) clearTimeout(timer);
-        await inFlight; // a start under way settles first, so shutdown cannot release what it is still using
+        if (inFlight !== undefined) {
+          // A start under way settles first, so shutdown cannot release what it is still using; but not for ever.
+          let wait: NodeJS.Timeout | undefined;
+          const settled = await Promise.race([inFlight.then(() => true), new Promise<boolean>((resolve) => { wait = setTimeout(() => { resolve(false); }, START_STOP_WAIT_MS); wait.unref(); })]);
+          if (wait !== undefined) clearTimeout(wait);
+          if (!settled) { abandoned = true; return; }
+        }
         if (queue === undefined) return;
         const { inFlight: running } = await queue.stop({ graceMs: config.jobs.stopGraceMs });
         log.info('jobs.stopped', { inFlight: running });

@@ -3,7 +3,7 @@ import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
-import { createJobRunner, MAX_START_ATTEMPTS, START_RETRY_MS } from '../../src/jobs/runner.js';
+import { createJobRunner, MAX_START_ATTEMPTS, START_RETRY_MS, START_STOP_WAIT_MS } from '../../src/jobs/runner.js';
 
 class RecordingQueue implements JobQueue {
   readonly worked: string[] = [];
@@ -127,5 +127,25 @@ describe('the job runner', () => {
     await vi.advanceTimersByTimeAsync(START_RETRY_MS * (MAX_START_ATTEMPTS + 5));
     expect(attempts).toBe(MAX_START_ATTEMPTS);
     expect(logger.entries.filter((e) => e.event === 'jobs.unavailable')).toHaveLength(1);
+  });
+
+  it('does not wait for ever for a start that hangs (a database that never answers): the hook gives up after a moment, and the queue that comes later is stopped, not set up', async () => {
+    vi.useFakeTimers();
+    const queue = new RecordingQueue();
+    let release: (q: RecordingQueue) => void = () => undefined;
+    const pending = new Promise<RecordingQueue>((resolve) => { release = resolve; });
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => pending });
+    void runner.start();
+    let done = false;
+    const stopping = runner.hook.run().then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(START_STOP_WAIT_MS - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await stopping;
+    expect(done).toBe(true);
+    release(queue);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queue.worked).toEqual([]);
+    expect(queue.stopped).toEqual([{ graceMs: 0 }]);
   });
 });
