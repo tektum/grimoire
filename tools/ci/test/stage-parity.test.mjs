@@ -109,6 +109,8 @@ test('semantic search is off in the app of every stage, with the same value ever
   for (const name of NAMES) {
     const app = record(name, 'any.example.test').find((c) => c.type === 'sst.aws:Service').args.containers.find((c) => c.name === 'app');
     assert.equal(app.environment.GRIMOIRE_SEMANTIC_SEARCH, 'off', `${name} sets the switch itself, so a new default cannot turn it on`);
+  }
+});
 
 test('the load balancer of every stage takes TLS 1.2 and newer only, drops invalid header fields, and logs every request to a private bucket that expires what it holds', () => {
   for (const name of NAMES) {
