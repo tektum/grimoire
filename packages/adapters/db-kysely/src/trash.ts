@@ -1,6 +1,7 @@
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { RestoreResult, TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import { insertAuditEvent } from './audit.js';
+import { scoped } from './index.js';
 import type { KyselyDatabase } from './index.js';
 import { META_COLUMNS, meta, openPagesOfTenant } from './pages.js';
 
@@ -22,7 +23,7 @@ type MetaRow = Parameters<typeof meta>[0];
 export function createTrash(db: KyselyDatabase): TrashRepo {
   return {
     async roots(tenantId, collectionIds, limit, after) {
-      const rows = await db.query<{ id: string; title: string; collection_id: string; deleted_ms: string; deleted_by: string | null }>(
+      const rows = await scoped(db, tenantId).query<{ id: string; title: string; collection_id: string; deleted_ms: string; deleted_by: string | null }>(
         `select p.id, p.title, p.collection_id, (extract(epoch from p.deleted_at) * 1000)::bigint::text as deleted_ms, p.deleted_by
            from pages p
           where ${IS_ROOT} and p.tenant_id = $5
@@ -38,7 +39,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
 
     async rootOf(tenantId, id) {
       const row = (
-        await db.query<{ collection_id: string; batch: string; collection_deleted: boolean }>(
+        await scoped(db, tenantId).query<{ collection_id: string; batch: string; collection_deleted: boolean }>(
           `select p.collection_id, p.deleted_batch as batch, c.deleted_at is not null as collection_deleted
              from pages p join collections c on c.id = p.collection_id where p.id = $1 and p.tenant_id = $2 and ${IS_ROOT}`,
           [id, tenantId],
@@ -48,7 +49,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
     },
 
     restore(tenantId, id, expectedCollectionId, limits, position) {
-      return db.transaction(async (tx): Promise<RestoreResult> => {
+      return scoped(db, tenantId).transaction(async (tx): Promise<RestoreResult> => {
         const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages p where id = $1 and tenant_id = $2 and ${IS_ROOT}`, [id, tenantId]))[0];
         if (page === undefined) return { kind: 'not-found' };
         // The caller's right was checked on this collection: a page that moved since (with an ancestor) is not restored on that check.
@@ -116,7 +117,7 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
     },
 
     purge(tenantId, batch, actorId, removedKeys) {
-      return db.transaction(async (tx) => {
+      return scoped(db, tenantId).transaction(async (tx) => {
         // One statement: the composite foreign key between pages is deferred, so pages that point at each other go together. `deleted_at is not
         // null` is checked on the row itself, so a restore that commits while this waits on a row lock is seen again and its pages are kept.
         const gone = await tx.query(`${DOOMED} delete from pages where id in (select id from doomed) and deleted_at is not null and tenant_id = $2 returning 1`, [batch, tenantId]);

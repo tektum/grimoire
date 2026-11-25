@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
-import { addGroup, addTenant, addUser, createTestDatabase } from './support.js';
+import { addGroup, addTenant, addUser, aroundScoped, createTestDatabase } from './support.js';
 import type { TestDatabase } from './support.js';
 
 // docs/tenancy.md section 7, surface 1 (collections): a collection, its access entries and its tree belong to one tenant; another tenant sees them as absent and cannot grant them to
@@ -29,18 +29,13 @@ describe('the PostgreSQL CollectionRepo while a collection changes tenant (tenan
     await repo.upsertAccess('T-a', mine.id, { principalType: 'user', principalId: walker, permission: 'read' }, a.boss);
     let moved = false;
     // The move commits between the check of the collection and the read of its entries.
-    const racing = new Proxy(t.app, {
-      get(target, prop) {
-        if (prop !== 'query') { const v = Reflect.get(target, prop) as unknown; return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v; }
-        return async (sql: string, params?: unknown[]) => {
-          const rows = await target.query(sql, params);
-          if (!moved && sql.includes('select default_permission')) {
-            moved = true;
-            await t.admin.query(`begin; update users set tenant_id = 'T-c' where id = '${walker}'; update collections set tenant_id = 'T-c' where id = '${mine.id}'; update collection_access set tenant_id = 'T-c' where collection_id = '${mine.id}'; commit`);
-          }
-          return rows;
-        };
-      },
+    const racing = aroundScoped(t.app, async (sql, run) => {
+      const rows = await run();
+      if (!moved && sql.includes('select default_permission')) {
+        moved = true;
+        await t.admin.query(`begin; update users set tenant_id = 'T-c' where id = '${walker}'; update collections set tenant_id = 'T-c' where id = '${mine.id}'; update collection_access set tenant_id = 'T-c' where collection_id = '${mine.id}'; commit`);
+      }
+      return rows;
     });
     const listed = await createCollections(racing).listAccess('T-a', mine.id);
     expect(moved).toBe(true);

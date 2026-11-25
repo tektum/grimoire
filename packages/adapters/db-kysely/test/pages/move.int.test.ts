@@ -4,7 +4,7 @@ import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
 import type { KyselyDatabase } from '../../src/index.js';
-import { addUser, createTestDatabase } from '../collections/support.js';
+import { addUser, aroundScoped, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
 let t: TestDatabase;
@@ -28,7 +28,11 @@ const flaky = (d: KyselyDatabase, failures: number): { db: KyselyDatabase; attem
   let attempts = 0;
   return {
     attempts: () => attempts,
-    db: { ...d, transaction: (fn) => { attempts += 1; return attempts <= failures ? Promise.reject(Object.assign(new Error('could not serialize'), { code: '40001' })) : d.transaction(fn); } },
+    db: aroundScoped(d, (sql, run) => {
+      if (!sql.startsWith('begin;')) return run();
+      attempts += 1;
+      return attempts <= failures ? Promise.reject(Object.assign(new Error('could not serialize'), { code: '40001' })) : run();
+    }),
   };
 };
 

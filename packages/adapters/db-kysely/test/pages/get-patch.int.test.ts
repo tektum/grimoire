@@ -8,7 +8,7 @@ import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
 import { createPageStore } from '../../src/page-store.js';
 import type { KyselyDatabase } from '../../src/index.js';
-import { addUser, createTestDatabase } from '../collections/support.js';
+import { addUser, aroundScoped, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
 let t: TestDatabase;
@@ -28,14 +28,14 @@ const seeded = async (markdown: string, title: string) => {
   if (isSeedRefusal(out)) throw new Error('refused');
   return out;
 };
-/** A database that records every statement sent, in or out of a transaction. */
-const counted = (d: KyselyDatabase, sent: string[]): KyselyDatabase => ({
+/** A database that records every statement sent, in or out of a transaction, scoped or not. */
+const counted = (d: KyselyDatabase, sent: string[]): KyselyDatabase => aroundScoped({
   ...d,
   query: (sql, params) => { sent.push(sql); return d.query(sql, params); },
   transaction: (fn) => d.transaction((tx) => fn({ query: (sql, params) => { sent.push(sql); return tx.query(sql, params); } })),
   ping: () => d.ping(),
   close: () => d.close(),
-});
+}, (sql, run) => { sent.push(sql); return run(); });
 
 beforeAll(async () => {
   t = await createTestDatabase('getpatch');

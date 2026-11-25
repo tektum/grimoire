@@ -1,6 +1,7 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { CreatePageResult, MovePageResult, PageDetail, PageMeta, PageRepo, SoftDeleteResult } from '@tektum/grimoire-core/ports/page-repo';
+import { scoped } from './index.js';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -60,7 +61,7 @@ export async function openPagesOfTenant(tx: Queryable, tenantId: string): Promis
 export function createPages(db: KyselyDatabase): PageRepo {
   return {
     create(tenantId, input, limits, position) {
-      return db.transaction(async (tx): Promise<CreatePageResult> => {
+      return scoped(db, tenantId).transaction(async (tx): Promise<CreatePageResult> => {
         // The collection row first: a delete of the collection and other creates take it too, so the liveness check, the count and the
         // sibling positions below cannot change under this transaction. A collection of another tenant is one that is not there.
         const locked = await tx.query(`select 1 from collections where id = $1 and tenant_id = $2 and deleted_at is null for no key update`, [input.collectionId, tenantId]);
@@ -97,24 +98,26 @@ export function createPages(db: KyselyDatabase): PageRepo {
         return { kind: 'created', page: meta(rows[0] as Row) };
       });
     },
-    async get(tenantId, id) {
-      const rows = await db.query<Row & { stale_ms: string | null; stale: boolean }>(
-        `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms,
-                (markdown_stale_since is not null or (markdown is null and ydoc is not null)) as stale
-           from pages p where id = $1 and tenant_id = $2 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id, tenantId],
-      );
-      const row = rows[0];
-      if (row === undefined) return undefined;
-      const up = await db.query<{ id: string; title: string }>(
-        `with recursive up as (select id, parent_id, title, 1 as d from pages where id = $1
-           union all select p.id, p.parent_id, p.title, up.d + 1 from pages p join up on p.id = up.parent_id)
-         select id, title from up where id <> $2 order by d desc`, [row.parent_id, id],
-      );
-      const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms), markdownStale: row.stale };
-      return detail;
+    get(tenantId, id) {
+      return scoped(db, tenantId).transaction(async (tx) => {
+        const rows = await tx.query<Row & { stale_ms: string | null; stale: boolean }>(
+          `select ${META_COLUMNS}, (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms,
+                  (markdown_stale_since is not null or (markdown is null and ydoc is not null)) as stale
+             from pages p where id = $1 and tenant_id = $2 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id, tenantId],
+        );
+        const row = rows[0];
+        if (row === undefined) return undefined;
+        const up = await tx.query<{ id: string; title: string }>(
+          `with recursive up as (select id, parent_id, title, 1 as d from pages where id = $1
+             union all select p.id, p.parent_id, p.title, up.d + 1 from pages p join up on p.id = up.parent_id)
+           select id, title from up where id <> $2 order by d desc`, [row.parent_id, id],
+        );
+        const detail: PageDetail = { ...meta(row), breadcrumb: row.parent_id === null ? [] : up, markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms), markdownStale: row.stale };
+        return detail;
+      });
     },
     async markdownOf(tenantId, id) {
-      const rows = await db.query<{ markdown: string | null; has_state: boolean; title: string; saved_ms: string; stale_ms: string | null }>(
+      const rows = await scoped(db, tenantId).query<{ markdown: string | null; has_state: boolean; title: string; saved_ms: string; stale_ms: string | null }>(
         `select markdown, ydoc is not null as has_state, title, (extract(epoch from updated_at) * 1000)::bigint::text as saved_ms,
                 (extract(epoch from markdown_stale_since) * 1000)::bigint::text as stale_ms
            from pages p where id = $1 and tenant_id = $2 and deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null)`, [id, tenantId],
@@ -124,10 +127,10 @@ export function createPages(db: KyselyDatabase): PageRepo {
       return { markdown: row.markdown, hasState: row.has_state, title: row.title, savedAt: Number(row.saved_ms), markdownStaleSince: row.stale_ms === null ? null : Number(row.stale_ms) };
     },
     async idOfUrlId(tenantId, urlId) {
-      return (await db.query<{ id: string }>(`select id from pages where url_id = $1 and tenant_id = $2`, [urlId, tenantId]))[0]?.id;
+      return (await scoped(db, tenantId).query<{ id: string }>(`select id from pages where url_id = $1 and tenant_id = $2`, [urlId, tenantId]))[0]?.id;
     },
     updateMeta(tenantId, id, patch) {
-      return db.transaction(async (tx) => {
+      return scoped(db, tenantId).transaction(async (tx) => {
         const retitled = patch.title !== undefined;
         // The Markdown is read, and the title and hash written, only when the title changes: an icon change must not rebuild the search vector.
         const row = (await tx.query<{ markdown?: string | null }>(
@@ -157,7 +160,7 @@ export function createPages(db: KyselyDatabase): PageRepo {
     async move(tenantId, id, to, limits, position) {
       for (let attempt = 1; attempt <= MOVE_ATTEMPTS; attempt += 1) {
         try {
-          return await db.transaction(async (tx): Promise<MovePageResult> => {
+          return await scoped(db, tenantId).transaction(async (tx): Promise<MovePageResult> => {
             await tx.query(`set transaction isolation level serializable`);
             const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and tenant_id = $2 and deleted_at is null`, [id, tenantId]))[0];
             if (page === undefined) return { kind: 'not-found' };
@@ -217,7 +220,7 @@ export function createPages(db: KyselyDatabase): PageRepo {
       return { kind: 'conflict' };
     },
     softDelete(tenantId, id, deletedBy, expectedCollectionId) {
-      return db.transaction(async (tx): Promise<SoftDeleteResult> => {
+      return scoped(db, tenantId).transaction(async (tx): Promise<SoftDeleteResult> => {
         const page = (await tx.query<{ collection_id: string }>(`select collection_id from pages where id = $1 and tenant_id = $2 and deleted_at is null`, [id, tenantId]))[0];
         if (page === undefined) return { kind: 'not-found' };
         // Access was checked against this collection; a page that left it since is not deleted on that check.
