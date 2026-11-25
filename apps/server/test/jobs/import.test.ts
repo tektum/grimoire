@@ -295,6 +295,25 @@ describe('the profile an import is read with is the one of its source', () => {
         expect(t.repo.written.find((w) => w.page.title === 'Home')?.page.content.markdown).toContain(`/p/${db?.urlId ?? 'none'}`);
         expect(items.find((i) => i.path === `Home ${ID1}.md`)).toMatchObject({ status: 'ok', warnings: 0 });
       });
+
+      it('a folder that a page and a database of one name share: a page whose title is a row of the table goes under the database, any other under the page, and no empty page is made', async () => {
+        const ID3 = '00112233445566778899aabbccddeeff';
+        const t = await setup([
+          md(`Roadmap ${ID1}.md\u0000# Roadmap\n\nOur plans.\n`),
+          csv(`Roadmap ${ID3}_all.csv`, 'Name,Status\nShip it,Open\nPolish,Done\n'),
+          md(`Roadmap/Ship it ${R1}.md\u0000# Ship it\n\nStatus: Open\n\nWhat shipping takes.\n`),
+          md(`Roadmap/Polish ${R2}.md\u0000# Polish\n\nStatus: Done\n`),
+          md(`Roadmap/Notes ${R3}.md\u0000# Notes\n\nFrom the planning meeting.\n`),
+        ], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const items = await t.items();
+        const page = items.find((i) => i.path === `Roadmap ${ID1}.md`);
+        const db = items.find((i) => i.path === `Roadmap ${ID3}_all.csv`);
+        expect(t.repo.written.find((w) => w.page.title === 'Ship it')?.page.parentId).toBe(db?.pageId);
+        expect(t.repo.written.find((w) => w.page.title === 'Notes')?.page.parentId).toBe(page?.pageId);
+        expect(items.find((i) => i.path === `Roadmap/Polish ${R2}.md`)).toMatchObject({ status: 'skipped', message: 'database_row' });
+        expect(t.repo.written).toHaveLength(4); // the page, the database, Ship it, Notes: no empty page for the folder
+      });
     });
 
     it('a failed database item keeps its CSV for the report to offer (decision 168), as a failed page keeps its Markdown', async () => {

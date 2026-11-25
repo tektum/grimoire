@@ -96,6 +96,30 @@ export const notionProfile: ImportProfile = {
     if (!folders.has(bare) || plain || (pagesNamed(lowerPaths).get(bare) ?? 0) > 1) return at(stem);
     return at(base);
   },
+  /** The folders `X/` beside exactly one page and one database named `X`, and no `X.md`: their pages are the database's rows and the page's own (decision 167). */
+  sharedFoldersOf(pagePaths, lowerPaths) {
+    const folders = foldersOf(lowerPaths);
+    const named = new Map<string, { pages: string[]; databases: string[] }>();
+    for (const path of pagePaths) {
+      const lower = segmentsOf(path).join('/').normalize('NFC').toLowerCase();
+      const stem = stemOf(lower, lowerPaths);
+      if (stem === undefined) continue;
+      const s = stem.split('/');
+      const { base, id } = splitName(s.pop() ?? '');
+      if (id === undefined || base === '') continue;
+      const key = [...s, base].join('/');
+      const both = named.get(key) ?? { pages: [], databases: [] };
+      (/\.(md|markdown)$/.test(lower) ? both.pages : both.databases).push(path);
+      named.set(key, both);
+    }
+    const shared = new Map<string, { page: string; database: string }>();
+    for (const [key, { pages, databases }] of named) {
+      const [page] = pages;
+      const [database] = databases;
+      if (page !== undefined && database !== undefined && pages.length === 1 && databases.length === 1 && folders.has(key) && !lowerPaths.has(`${key}.md`) && !lowerPaths.has(`${key}.markdown`)) shared.set(key, { page, database });
+    }
+    return shared;
+  },
   /** Front matter goes as in the generic profile; callouts and toggles are converted before the schema sees them (`constructs.ts`). */
   preprocess: (markdown, ctx) => convertConstructs(markdownProfile.preprocess(markdown, ctx)),
   resolveLink: resolveNotionLink,

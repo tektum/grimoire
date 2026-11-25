@@ -95,7 +95,9 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
   // The folders that have a page of their own, and the folders above pages that have none: those get a container. Folders are the same folder by the key duplicate detection uses (NFC,
   // lower case, `.` and empty segments dropped), so `Dir` and `dir` are one; a container keeps the spelling it was first seen under.
   const key = (folder: string): string => canonical(folder).normalize('NFC').toLowerCase();
-  const hasPage = new Set(pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key));
+  // A folder that a page and a database of its name share has owners too: its pages go under one or the other (pass two, decision 167).
+  const shared = profile.sharedFoldersOf?.(pagePaths, lowerPaths)?.keys() ?? [];
+  const hasPage = new Set([...pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key), ...shared]);
   const containers = new Map<string, string>();
   for (const path of pagePaths) {
     for (let folder = profile.parentPathOf(path, lowerPaths); folder !== null && !hasPage.has(key(folder)) && !containers.has(key(folder)); ) {
@@ -257,7 +259,45 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const folderPage = new Map<string, ImportItem>();
   for (const i of pageItems) if (!isContainer(i)) { const f = profile.folderPathOf(i.path, lowerPaths); if (f !== undefined && !folderPage.has(folderKey(f))) folderPage.set(folderKey(f), i); }
   for (const i of pageItems) if (isContainer(i) && !folderPage.has(folderKey(i.path))) folderPage.set(folderKey(i.path), i);
+  // A database's table, read once: its columns (the header) and the titles of its rows (the first column).
+  const tables = new Map<string, Promise<{ readonly columns: ReadonlySet<string>; readonly titles: ReadonlySet<string> } | undefined>>();
+  const tableOf = (db: ImportItem): Promise<{ readonly columns: ReadonlySet<string>; readonly titles: ReadonlySet<string> } | undefined> => {
+    let known = tables.get(db.id);
+    if (known === undefined) {
+      const entry = entryByPath.get(db.path);
+      known = entry === undefined ? Promise.resolve(undefined) : readEntry(deps.reader, deps.limits, entry, deps.limits.maxEntryBytes).then((read) => {
+        const csv = read.kind === 'ok' ? readCsv(read.bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES }) : undefined;
+        const [header, ...rows] = csv?.ok === true ? csv.rows : [];
+        return header === undefined ? undefined : { columns: new Set(header.map((c) => c.trim()).filter((c) => c !== '')), titles: new Set(rows.map((r) => (r[0] ?? '').trim())) };
+      });
+      tables.set(db.id, known);
+    }
+    return known;
+  };
+  const rowText = pageText(deps.reader, deps.limits, deps.entries);
+  // Decision 167: a folder that a page and a database of one name share holds the database's rows and the page's own pages: a page of it goes under the database when its title
+  // is a row of the table, else under the page. It is read from the archive the same way at every start, so the tree agrees with itself.
+  const rowOf = new Map<string, ImportItem>();
+  const sharedFolders = profile.sharedFoldersOf?.(pageItems.filter((i) => !isContainer(i)).map((i) => i.path), lowerPaths);
+  if (sharedFolders !== undefined && sharedFolders.size > 0) {
+    const byPath = new Map(pageItems.map((i) => [i.path, i]));
+    for (const [folder, owners] of sharedFolders) {
+      const page = byPath.get(owners.page);
+      const db = byPath.get(owners.database);
+      if (page === undefined || db === undefined) continue;
+      folderPage.set(folder, page);
+      const titles = (await tableOf(db))?.titles;
+      if (titles === undefined) continue;
+      for (const i of pageItems) {
+        if (isContainer(i) || i.kind !== 'page' || folderKey(profile.parentPathOf(i.path, lowerPaths) ?? '') !== folder) continue;
+        const text = await rowText(i.path);
+        if (text !== undefined && titles.has(profile.titleOf(i.path, text).trim())) rowOf.set(i.id, db);
+      }
+    }
+  }
   const parentOf = (i: ImportItem): ImportItem | undefined => {
+    const row = rowOf.get(i.id);
+    if (row !== undefined) return row;
     const folder = isContainer(i) ? segmentsOf(i.path).slice(0, -1).join('/') : profile.parentPathOf(i.path, lowerPaths);
     if (folder === null || folder === '') return undefined;
     const parent = folderPage.get(folderKey(folder));
@@ -284,20 +324,6 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     const parent = parentOf(i);
     return parent?.kind === 'database_csv' ? parent : undefined;
   };
-  const columns = new Map<string, Promise<ReadonlySet<string> | undefined>>();
-  const columnsOf = (db: ImportItem): Promise<ReadonlySet<string> | undefined> => {
-    let known = columns.get(db.id);
-    if (known === undefined) {
-      const entry = entryByPath.get(db.path);
-      known = entry === undefined ? Promise.resolve(undefined) : readEntry(deps.reader, deps.limits, entry, deps.limits.maxEntryBytes).then((read) => {
-        const csv = read.kind === 'ok' ? readCsv(read.bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES }) : undefined;
-        return csv?.ok === true && csv.rows[0] !== undefined ? new Set(csv.rows[0].map((c) => c.trim()).filter((c) => c !== '')) : undefined;
-      });
-      columns.set(db.id, known);
-    }
-    return known;
-  };
-  const rowText = pageText(deps.reader, deps.limits, deps.entries);
   const bareRows = new Map<string, boolean>();
   for (const i of all) if (i.status === 'skipped' && i.message === 'database_row') bareRows.set(i.id, true);
   const rowIsBare = async (i: ImportItem, text?: string): Promise<boolean> => {
@@ -307,7 +333,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     let answer = false;
     if (db !== undefined) {
       const source = text ?? (await rowText(i.path));
-      const names = await columnsOf(db);
+      const names = (await tableOf(db))?.columns;
       answer = source !== undefined && names !== undefined && onlyRepeatsRow(source, names);
     }
     bareRows.set(i.id, answer);
