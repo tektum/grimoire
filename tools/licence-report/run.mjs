@@ -4,7 +4,7 @@
 //                                     [--compose FILE] [--check-images]
 // Exit 0 when every package and image passes the rule, 1 on any violation, 2 on a usage or input error.
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve, dirname, relative } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bunLockToPackages } from "./bun-lock.mjs";
 import { findDockerfiles } from "./find-dockerfiles.mjs";
