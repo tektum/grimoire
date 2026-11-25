@@ -72,7 +72,7 @@ The mutation job took 3 min 54 s in total. From now on `make test-m3` also print
 
 ## Known limits
 
-- The sign-in provider is replaced by a local key server. Nothing here shows how the live provider behaves. The opt-in live check (`.github/workflows/descope-live-m3.yml`) is written and linted but has never been run: its project, test user and secrets do not exist yet.
+- The sign-in provider is replaced by a local key server. Nothing here shows how the live provider behaves. The opt-in live check (`make test-m3-live`, by hand only; its CI workflow was removed) has never been run: its project, test user and secrets do not exist. Sign-in on staging covers the live provider now.
 - The test runs the re-check every 5 seconds, not every 60. The cut-off bound it asserts (25 seconds) follows from that.
 - The per-user caps are lowered (3 sockets, 4 documents) and the per-address connection-attempt limit is raised so that one machine can run every scenario. The defaults (20 and 50) are not exercised here.
 - The database outage takes about two minutes because the host fails closed after `max(3, ceil(120 / interval))` failed rounds. Nobody is closed before that. There is no mutation proof for this rule and none for the key-server outage: neither can be broken from outside without changing the code.

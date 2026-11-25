@@ -1,4 +1,4 @@
-// Live sign-in check against a real provider project (TEST TOOL, never shipped; run only by .github/workflows/descope-live-m3.yml, which is manual and has never been run).
+// Live sign-in check against a real provider project (TEST TOOL, never shipped; run by hand with `make test-m3-live`, never in CI, and never run so far).
 // Signs the existing test user in with a one-time code that the management API generates for test users, then checks what the application's verifier relies on, with Node
 // built-ins only (a provider SDK may appear only inside its adapter):
 //   1. the session token has three parts, RS256, a `kid`, `iss` equal to the project id, `drn` DS, and an `exp` in the future;
