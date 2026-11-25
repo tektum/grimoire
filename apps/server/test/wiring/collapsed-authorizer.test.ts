@@ -32,8 +32,9 @@ function files(dir: string): string[] {
   } catch { return []; }
 }
 
-// Both scans parse only the texts that can hold what they look for (a property named check or checkMany; a module path with authorize/): parsing all of the
-// production files twice took about 0.5 s idle and passed the 5 s default under a loaded test run. A name or path spelled with escape sequences is out of reach.
+// Both scans parse only the texts that can hold what they look for (a property named check or checkMany; a module path with authorize/ or one of the names
+// of the decision): parsing all of the production files twice took about 0.5 s idle and passed the 5 s default under a loaded test run. A name or path spelled
+// with escape sequences is out of reach.
 const CHECK_PROPERTY = /\.\s*check(?:Many)?\b/;
 
 /** `<receiver>.check(...)` and `<receiver>.checkMany(...)` calls in `text`, with the receiver's source text. */
@@ -64,7 +65,7 @@ const IMPORT_ALLOWED = [
 
 /** Imports of the uncollapsed decision in `text`: `file:line module`. */
 export function uncollapsedImports(file: string, text: string): string[] {
-  if (!text.includes('authorize/')) return [];
+  if (!text.includes('authorize/') && !UNCOLLAPSED_NAMES.some((name) => text.includes(name))) return [];
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const out: string[] = [];
   const at = (n: ts.Node, what: string): void => { out.push(`${file}:${String(sf.getLineAndCharacterOfPosition(n.getStart()).line + 1)} ${what}`); };
@@ -135,6 +136,10 @@ describe('only the collapsed authorisation answer is used outside the authoriser
       "const m = await import('../authorize/decide.js');",
     ];
     for (const line of bad) expect(uncollapsedImports('apps/server/src/x.ts', line), line).toHaveLength(1);
+    // A named import is refused whatever module it comes from: a barrel that re-exports the decision must not open a way around the rule.
+    for (const line of ["import { decide } from '@tektum/grimoire-core/authorize';", "import { createAuthorizer as make } from '../somewhere-else.js';"]) {
+      expect(uncollapsedImports('apps/server/src/x.ts', line), line).toHaveLength(1);
+    }
     expect(uncollapsedImports('apps/server/src/x.ts', "import type { DenyReason } from '../authorize/decide.js'; import { createPageAccess } from '@tektum/grimoire-core/authorize';")).toEqual([]);
   });
 });
