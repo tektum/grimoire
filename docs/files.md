@@ -11,6 +11,10 @@ How an uploaded file travels, what the server checks, and what it does not do. T
 
 An upload that is not completed within an hour expires. Retrying the first step with the same `Idempotency-Key` signs a fresh address for the same row while it is still waiting; the address itself is never stored.
 
+## The two store addresses
+
+The server talks to the file store at `GRIMOIRE_S3_ENDPOINT` (the name the server reaches it by, for example a Compose service) and signs every link for `GRIMOIRE_S3_PUBLIC_ENDPOINT`, because a signature covers the host. **The public endpoint must be an address the browser can reach**, and the store's CORS rule must allow the application's origin (`make files-setup` applies `GRIMOIRE_ALLOWED_ORIGINS`). When it is not set, links carry the internal address: that works where the two coincide (a hosted store) and fails in a browser where they do not (a store reached by a Compose service name), for uploads and downloads alike. Nothing refuses that configuration at start, because the server cannot know what the browser can reach; `GET /v1/config` shows the origin the browser is told to use (`fileStoreOrigin`).
+
 ## How files are served
 
 - Files are private: every download is a signed link that works for 300 seconds.
