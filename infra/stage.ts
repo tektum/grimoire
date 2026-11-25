@@ -1,5 +1,5 @@
 import { descopeProject } from './descope/project.ts';
-import type { StageConfig, StageSettings } from './stages.ts';
+import { POSTGRES_VERSION, type StageConfig, type StageSettings } from './stages.ts';
 import { databaseUrl, RDS_CA_BUNDLE } from './stack/database-url.ts';
 import { inStartOrder } from './stack/init-order.ts';
 
@@ -20,7 +20,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   const region = aws.getRegionOutput().region;
   const identity = descopeProject(config, domain);
   const vpc = new sst.aws.Vpc('Vpc', { nat: config.nat });
-  const db = new sst.aws.Postgres('Db', { vpc, version: '17' });
+  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION });
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');

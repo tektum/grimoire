@@ -34,6 +34,13 @@ const row = (name: string, value: unknown): StageConfig => {
   return v as StageConfig;
 };
 
+/**
+ * The database engine, one value for every stage (what is tested on one is what is promoted to the next). A bare "17" lets a new stage take whatever minor RDS defaults to; the
+ * pgvector of an instance depends on its minor (0.7.x up to 17.2, 0.8.0 from 17.3, 0.8.1 from 17.8, 0.8.2 from 17.10), and the embedding migration (0011) uses what 0.8.0 has,
+ * so no stage may start below 17.3. 17.9 is what the running stage has (automatic minor upgrades are off there).
+ */
+export const POSTGRES_VERSION = '17.9';
+
 export const stages: Readonly<Record<string, StageConfig>> = Object.fromEntries(Object.entries(table).map(([name, value]) => [name, row(name, value)]));
 
 export function stageConfig(stage: string): StageConfig {
