@@ -411,6 +411,16 @@ describe('the report of an ended import', () => {
     expect(await screen.findByText('There is nothing to list.')).toBeTruthy();
   });
 
+  it('has one live region while the report loads: the line that says how the import ended, not a second one that says the report is loading', async () => {
+    const t = fake({ states: [ended()], items: [[]] });
+    const held = { ...t.api, GET: (path: string, init?: unknown) => (path === '/v1/imports/{id}/items' ? new Promise(() => undefined) : (t.api.GET as (p: string, i?: unknown) => unknown)(path, init)) } as unknown as ApiLike;
+    show(held, '/import?import=imp1');
+    expect(await screen.findByText('Loading the report…')).toBeTruthy();
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(1);
+    expect(regions[0]!.textContent).toMatch(/^Done:/);
+  });
+
   it('reads the next page when asked, and says so when the report cannot be read, with a way to try again', async () => {
     let broken = false;
     const t = fake({ states: [ended()], items: [[item({ id: 'a' })], [item({ id: 'b' })]], itemsFail: () => broken });
