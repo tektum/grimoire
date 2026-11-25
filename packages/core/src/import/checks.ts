@@ -1,0 +1,54 @@
+import type { ImportConfig } from '../ports/config.js';
+
+/** What the central directory of an archive says about one entry. No file name is ever logged or put in a refusal: a refusal names the entry's index. */
+export interface ArchiveEntry {
+  readonly path: string;
+  /** The uncompressed size the entry declares (it is checked against the bytes really read). */
+  readonly size: number;
+  readonly compressedSize: number;
+  readonly isSymlink: boolean;
+  readonly isDirectory: boolean;
+  /** A plain file (not a device, a pipe, a socket or a link). A directory is not regular and is not refused for it. */
+  readonly isRegular: boolean;
+}
+
+export type HeaderRefusal = 'unsafe_path' | 'symlink' | 'non_regular' | 'too_many_entries' | 'too_large' | 'ratio';
+export type HeaderCheck = { readonly ok: true } | { readonly ok: false; readonly reason: HeaderRefusal; readonly index?: number };
+
+/** A name that could write outside the import: a `..` segment, an absolute path, a drive letter, a backslash or a NUL. */
+function unsafe(path: string): boolean {
+  return path.includes('\0') || path.includes('\\') || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.split('/').includes('..');
+}
+
+/**
+ * The header check of stage 2, over the metadata alone (R10.3): nothing of the archive has been read. The count is judged first, so a hundred thousand entries cost one
+ * comparison; then each entry's name and type; then the declared total, the ratio of the whole archive, and the ratio of each entry. A ratio of exactly the limit passes.
+ */
+export function checkHeader(entries: readonly ArchiveEntry[], archiveBytes: number, limits: Pick<ImportConfig, 'maxEntries' | 'maxUncompressedBytes' | 'maxRatio'>): HeaderCheck {
+  if (entries.length > limits.maxEntries) return { ok: false, reason: 'too_many_entries' };
+  let total = 0;
+  for (const [index, entry] of entries.entries()) {
+    if (unsafe(entry.path)) return { ok: false, reason: 'unsafe_path', index };
+    if (entry.isSymlink) return { ok: false, reason: 'symlink', index };
+    if (!entry.isRegular && !entry.isDirectory) return { ok: false, reason: 'non_regular', index };
+    total += entry.size;
+  }
+  if (total > limits.maxUncompressedBytes) return { ok: false, reason: 'too_large' };
+  if (total > limits.maxRatio * archiveBytes) return { ok: false, reason: 'ratio' };
+  for (const [index, entry] of entries.entries()) {
+    if (entry.size > limits.maxRatio * entry.compressedSize) return { ok: false, reason: 'ratio', index };
+  }
+  return { ok: true };
+}
+
+/** The indexes of the entries whose path equals an earlier one once NFC-normalised and lower-cased (the later one is the duplicate). */
+export function duplicateIndexes(paths: readonly string[]): ReadonlySet<number> {
+  const seen = new Set<string>();
+  const out = new Set<number>();
+  for (const [index, path] of paths.entries()) {
+    const key = path.normalize('NFC').toLowerCase();
+    if (seen.has(key)) out.add(index);
+    else seen.add(key);
+  }
+  return out;
+}
