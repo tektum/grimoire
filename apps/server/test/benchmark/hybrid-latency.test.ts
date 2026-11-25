@@ -169,4 +169,21 @@ describe('the semantic statement without an index', () => {
     record('hybridRequestMaxMs', Math.round(worst));
     expect(worst).toBeLessThanOrEqual(REQUEST_MS);
   });
+
+  // Evidence for the decision between tuning the table and an approximate index, recorded after the assertions (it changes the table): the plan is a parallel scan of `page_chunks` with one worker
+  // (the table's own pages are few, because each 768-dimension vector sits out of line in the TOAST table) and the buffers say how much of the time is reading. Never asserted.
+  it('records what two table settings do to the statement: more workers for the scan, and the vector stored in the row', { timeout: 1_800_000 }, async () => {
+    const measure = async (): Promise<number> => Math.round(p95(await statement(collections)));
+    await run('alter table page_chunks set (parallel_workers = 4)');
+    record('experimentParallelWorkers4P95Ms', await measure());
+    await run('alter table page_chunks reset (parallel_workers)');
+    await run('alter table page_chunks alter column embedding set storage main');
+    await run('update page_chunks set embedding = embedding');
+    await run('vacuum (analyze) page_chunks');
+    record('experimentStorageMainP95Ms', await measure());
+    await run('alter table page_chunks set (parallel_workers = 4)');
+    record('experimentStorageMainAndWorkers4P95Ms', await measure());
+    const sizes = await run(`select pg_size_pretty(pg_relation_size('page_chunks')) as heap, pg_size_pretty(pg_total_relation_size('page_chunks') - pg_relation_size('page_chunks')) as rest`);
+    record('tableSizesAfterStorageMain', sizes);
+  });
 });
