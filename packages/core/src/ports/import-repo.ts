@@ -145,6 +145,6 @@ export interface ImportRepo {
   markUploaded(tenantId: string, id: string): Promise<boolean>;
   /** The settled items (`ok`, `skipped` or `failed`: not the ones still `pending`), in ascending id, after `afterId` when given, at most `limit`. Ids compare as whole numbers. */
   listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;
-  /** `running` becomes `cancelled` (`finishedAt` set) and the row is returned; any other status is left as it is and nothing is returned. */
+  /** `running` or `uploaded` (accepted and waiting for its turn) becomes `cancelled` (`finishedAt` set) and the row is returned; any other status is left as it is and nothing is returned. */
   cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
 }

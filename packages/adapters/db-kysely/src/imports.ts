@@ -176,7 +176,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     async cancel(tenantId, id, now) {
       const rows = await db.query<ImportRow>(
         `update imports set status = 'cancelled', finished_at = to_timestamp($3::double precision / 1000.0)
-         where tenant_id = $1 and id = $2 and status = 'running' returning ${IMPORT_COLUMNS}`,
+         where tenant_id = $1 and id = $2 and status in ('running', 'uploaded') returning ${IMPORT_COLUMNS}`,
         [tenantId, id, now],
       );
       return rows[0] === undefined ? undefined : record(rows[0]);

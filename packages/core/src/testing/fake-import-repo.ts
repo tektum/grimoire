@@ -131,7 +131,8 @@ export class FakeImportRepo implements ImportRepo {
 
   cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined> {
     const at = this.find(tenantId, id);
-    if (this.rows[at]?.status !== 'running') return Promise.resolve(undefined);
+    const status = this.rows[at]?.status;
+    if (status !== 'running' && status !== 'uploaded') return Promise.resolve(undefined);
     return Promise.resolve(this.replace(at, { status: 'cancelled', finishedAt: now }));
   }
 }

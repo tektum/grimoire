@@ -276,7 +276,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
-    name: 'cancel-ends-a-running-import-only',
+    name: 'cancel-ends-a-running-or-waiting-import-only',
     async run(h) {
       const made = await h.seed('uploaded');
       assert.equal((await h.repo.start(h.tenantId, made.id, h.now))?.status, 'running');
@@ -286,11 +286,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.equal(cancelled?.finishedAt, h.now + 9);
       assert.equal(await h.repo.cancel(h.tenantId, made.id, h.now + 20), undefined, 'cancelled already');
       assert.equal(await h.repo.setCounts(h.tenantId, made.id, NO_IMPORT_COUNTS), false);
-      for (const status of ['created', 'uploaded', 'done', 'failed'] as const) {
+      for (const status of ['created', 'done', 'failed'] as const) {
         const other = await h.seed(status);
         assert.equal(await h.repo.cancel(h.tenantId, other.id, h.now), undefined, status);
         assert.equal((await h.repo.get(h.tenantId, other.id))?.status, status);
       }
+      // An import that waits for its turn (accepted, `uploaded`, while another of the tenant runs) can be withdrawn: it never runs.
+      const waiting = await h.seed('uploaded');
+      const withdrawn = await h.repo.cancel(h.tenantId, waiting.id, h.now + 3);
+      assert.equal(withdrawn?.status, 'cancelled');
+      assert.equal(withdrawn?.finishedAt, h.now + 3);
+      assert.equal(await h.repo.start(h.tenantId, waiting.id, h.now), undefined, 'a cancelled import is not started');
     },
   },
 ];
