@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHeader, duplicateIndexes } from '../../../src/import/checks.js';
+import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_BYTES, MAX_REPORTED_NAME_LENGTH, reportedName } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
 import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
@@ -8,6 +8,8 @@ import { defaultImportConfig } from '../../../src/testing/fake-config.js';
 // M7-T03 (contracts section 4, stage 2, and section 7): the pure checks over the entry metadata of an archive, before anything is read. They name a reason, never an entry's name.
 const limits = defaultImportConfig;
 const file = (path: string, over: Partial<ArchiveEntry> = {}): ArchiveEntry => ({ path, size: 10, compressedSize: 10, isSymlink: false, isDirectory: false, isRegular: true, ...over });
+// No lone surrogate: a high one not followed by a low one, or a low one not preceded by a high one.
+const wellFormed = (text: string): boolean => !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(text);
 const check = (entries: readonly ArchiveEntry[], archiveBytes = 1000) => checkHeader(entries, archiveBytes, limits);
 
 describe('an entry name that could write outside the import', () => {
@@ -17,6 +19,54 @@ describe('an entry name that could write outside the import', () => {
 
   it('accepts names that only look like it: dots inside a name, a leading dot, a colon later in the name', () => {
     expect(check([file('a..b/c.md'), file('.hidden/x.md'), file('a/b:c.md'), file('...'), file('..a/b')])).toEqual({ ok: true });
+  });
+});
+
+describe('a name that cannot be kept and shown as it is is one failed item (bad_name), not a refused archive', () => {
+  it.each([['a\nb.md'], ['a\tb.md'], ['a\u001bb.md'], ['a\u007fb.md'], ['a\u0085b.md'], ['a\u2028b.md'], ['a\u2029b.md'], ['dir/\u009fx.md']])('%j (a control or line separator character): the archive passes, the name is bad', (name) => {
+    expect(check([file('ok.md'), file(name)])).toEqual({ ok: true });
+    expect(isBadName(name)).toBe(true);
+  });
+
+  it('a name over MAX_ENTRY_PATH_BYTES bytes of UTF-8 is bad, one of exactly that many is not, and neither refuses the archive (the unique index on the path holds about 2.7 KB)', () => {
+    const exact = `${'a'.repeat(MAX_ENTRY_PATH_BYTES - 3)}.md`;
+    const over = `${'a'.repeat(MAX_ENTRY_PATH_BYTES - 2)}.md`;
+    expect([isBadName(exact), isBadName(over)]).toEqual([false, true]);
+    expect(check([file('ok.md'), file(over)])).toEqual({ ok: true });
+  });
+
+  it('the limit counts bytes, not characters: three-byte characters reach it at a third of the length, and four-byte ones (a surrogate pair) at a quarter', () => {
+    const three = '\u65e5'; // 3 bytes
+    const four = '\u{1f600}'; // 4 bytes, 2 UTF-16 units
+    const fits3 = `${three.repeat(Math.floor((MAX_ENTRY_PATH_BYTES - 3) / 3))}.md`;
+    expect([isBadName(fits3), isBadName(`${fits3}${three}`)]).toEqual([false, true]);
+    const fits4 = `${four.repeat(Math.floor((MAX_ENTRY_PATH_BYTES - 3) / 4))}.md`;
+    expect([isBadName(fits4), isBadName(`${fits4}${four}`)]).toEqual([false, true]);
+  });
+
+  it('a name from a page-tree export (a 32-character id in every segment, nested deeply) and ordinary non-ASCII names are fine', () => {
+    const segment = `Some page title ${'0123456789abcdef'.repeat(2)}`;
+    expect([`${Array.from({ length: 32 }, () => segment).join('/')}.md`, 'caf\u00e9/\u65e5\u672c\u8a9e a.md', 'a b/c d.md'].map(isBadName)).toEqual([false, false, false]);
+  });
+
+  it('what is kept of a bad name, to report it, has no control character and is at most 300 characters', () => {
+    expect(reportedName('a\u001b[31m\nb.md')).toBe('a[31mb.md');
+    expect(reportedName(`${'x'.repeat(400)}\u0007`)).toBe('x'.repeat(300));
+    expect(reportedName('plain/name.md')).toBe('plain/name.md');
+  });
+
+  it('a reported name is never cut in the middle of a surrogate pair, whatever is removed before the cut', () => {
+    const emoji = '\u{1f600}';
+    const cut = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 1)}\n${emoji}`);
+    expect(cut).toBe('a'.repeat(MAX_REPORTED_NAME_LENGTH - 1));
+    expect(wellFormed(cut)).toBe(true);
+    const whole = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
+    expect(whole).toBe(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
+    expect(wellFormed(reportedName('\u{1f600}'.repeat(200)))).toBe(true);
+  });
+
+  it('a NUL, a backslash, a drive, an absolute path or a .. segment are still attacks and still refuse the archive', () => {
+    for (const name of ['a\0b', '\0', 'a\\b', 'C:/x', '/abs', 'a/../b']) expect(check([file('ok.md'), file(name)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
   });
 });
 
