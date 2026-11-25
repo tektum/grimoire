@@ -99,7 +99,7 @@ export const markdownProfile: ImportProfile = {
     const folderPage = FOLDER_PAGE.exec(name);
     if (folderPage === null || segments.length === 0) return undefined;
     // When a folder has both an index file and a README, the index file is its page and the README is an ordinary page inside it.
-    const readmeBesideIndex = folderPage[1]?.toLowerCase() === 'readme' && lowerPaths !== undefined && INDEX_NAMES.some((n) => lowerPaths.has(`${segments.join('/').toLowerCase()}/${n}`));
+    const readmeBesideIndex = folderPage[1]?.toLowerCase() === 'readme' && lowerPaths !== undefined && INDEX_NAMES.some((n) => lowerPaths.has(`${segments.join('/')}/${n}`.normalize('NFC').toLowerCase()));
     return readmeBesideIndex ? undefined : segments.join('/');
   },
   parentPathOf(path, lowerPaths) {
