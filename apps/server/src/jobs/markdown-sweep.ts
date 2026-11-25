@@ -35,12 +35,13 @@ export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSign
     // A page that left the list, or whose mark is a newer one (cleared and set again between two runs), starts fresh.
     const marks = new Map(listed.map((p) => [p.id, p.staleSince]));
     for (const [id, entry] of failing) if (marks.get(id) !== entry.staleSince) failing.delete(id);
-    for (const { id } of listed) {
+    // The list crosses tenants (the operator connection); each page is then read and repaired scoped to the tenant the list named.
+    for (const { id, tenantId } of listed) {
       if (signal.aborted || attempts >= PAGES_PER_RUN) break;
       const now = deps.now();
       const backoff = failing.get(id);
       if (backoff !== undefined && now < backoff.retryAt) continue;
-      const page = await deps.pages.load(id);
+      const page = await deps.pages.load(tenantId, id);
       if (page === undefined || page.state === null || page.markdownStaleSince === null) { failing.delete(id); skipped += 1; continue; }
       if (now - page.markdownStaleSince < SWEEP_QUIET_MS) continue;
       attempts += 1;
@@ -54,7 +55,7 @@ export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSign
         failing.set(id, { failures, retryAt: now + Math.min(60_000 * 2 ** (failures - 1), MAX_BACKOFF_MS), reportedAt: report ? now : reportedAt, staleSince: page.markdownStaleSince });
         continue;
       }
-      const outcome = await deps.pages.repairMarkdown(id, { state: page.state, epoch: page.epoch }, { markdown: converted.markdown, text: converted.text });
+      const outcome = await deps.pages.repairMarkdown(tenantId, id, { state: page.state, epoch: page.epoch }, { markdown: converted.markdown, text: converted.text });
       if (outcome === 'repaired') { failing.delete(id); repaired += 1; } else skipped += 1;
     }
     return { repaired, skipped, failed };

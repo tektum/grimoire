@@ -67,7 +67,7 @@ describe('editors (R4.22)', () => {
     await s.edit('a', ALICE);
     let n = 0;
     const real = s.pages.store.bind(s.pages);
-    s.pages.store = (id, w) => (++n === 1 ? Promise.reject(new Error('down')) : real(id, w));
+    s.pages.store = (tenantId, id, w) => (++n === 1 ? Promise.reject(new Error('down')) : real(tenantId, id, w));
     const p = s.store();
     await s.flush();
     s.waits[0]?.release();
@@ -402,7 +402,7 @@ describe('order of saves: the per-page chain is the guarantee (fix round, item 3
     let n = 0;
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => { release = resolve; });
-    s.pages.store = async (id, w) => { if (++n === 1) await held; return real(id, w); }; // the first write stays pending until the test lets it go
+    s.pages.store = async (tenantId, id, w) => { if (++n === 1) await held; return real(tenantId, id, w); }; // the first write stays pending until the test lets it go
     await s.edit('old');
     const first = s.store();
     await s.flush();

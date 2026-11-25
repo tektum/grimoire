@@ -14,7 +14,7 @@ describe('the 5-minute rule (R9.2)', () => {
   it('one edit then 5 minutes without another makes exactly one revision with reason idle, dated at the last edit', async () => {
     const b = build();
     saved(b, 'one');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     const editedAt = b.clock.now();
     b.timers.advance(5 * MINUTE - 1);
     await b.scheduler.whenIdle();
@@ -30,9 +30,9 @@ describe('the 5-minute rule (R9.2)', () => {
   it('a further edit before the 5 minutes restarts the timer, and the revision is dated at the last edit with every author', async () => {
     const b = build();
     saved(b, 'one');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(4 * MINUTE);
-    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.changed(PAGE, BOB, 'legacy');
     const lastEditAt = b.clock.now();
     b.timers.advance(4 * MINUTE);
     await b.scheduler.whenIdle();
@@ -45,13 +45,13 @@ describe('the 5-minute rule (R9.2)', () => {
   it('keeps one timer per page and starts a fresh record after a revision', async () => {
     const b = build();
     saved(b, 'one');
-    b.scheduler.changed(PAGE, ANA);
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     expect(b.timers.pending).toBe(1);
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     saved(b, 'two');
-    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.changed(PAGE, BOB, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE).map((r) => [r.markdown, r.authors])).toEqual([['one', [ANA]], ['two', [BOB]]]);
@@ -60,10 +60,10 @@ describe('the 5-minute rule (R9.2)', () => {
   it('makes none when title and Markdown equal the latest revision', async () => {
     const b = build();
     saved(b, 'same');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toHaveLength(1);
@@ -73,10 +73,10 @@ describe('the 5-minute rule (R9.2)', () => {
   it('makes none for a page with no saved Markdown or no page, and forgets the edits', async () => {
     const b = build();
     b.repo.setPage(PAGE, { title: 'T', markdown: null });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
-    b.scheduler.changed('00000000-0000-4000-8000-0000000000d4', ANA);
+    b.scheduler.changed('00000000-0000-4000-8000-0000000000d4', ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([]);
@@ -88,7 +88,7 @@ describe('the 5-minute rule (R9.2)', () => {
   it('records no author for a user id that is not a UUID, and still makes the revision', async () => {
     const b = build();
     saved(b, 'one');
-    b.scheduler.changed(PAGE, 'dev-user-name');
+    b.scheduler.changed(PAGE, 'dev-user-name', 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ authors: [], lastAuthorId: null })]);
@@ -103,12 +103,12 @@ describe('an edit that arrives while a revision is being made', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = b.repo.createFromPage.bind(b.repo);
     b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     const firstEditAt = b.clock.now();
     b.timers.advance(5 * MINUTE);
     await vi.waitFor(() => { expect(b.repo.calls).toHaveLength(1); }); // the first revision read 'before' and waits at the gate
     saved(b, 'after');
-    b.scheduler.changed(PAGE, BOB); // arrives while the first revision is still being written
+    b.scheduler.changed(PAGE, BOB, 'legacy'); // arrives while the first revision is still being written
     release();
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ markdown: 'before', authors: [ANA], createdAt: firstEditAt })]);
@@ -125,11 +125,11 @@ describe('an edit that arrives while a revision is being made', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const original = b.repo.createFromPage.bind(b.repo);
     b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await vi.waitFor(() => { expect(b.repo.calls).toHaveLength(1); });
     saved(b, 'after');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     release();
     await b.scheduler.whenIdle();
     await b.scheduler.unloaded(PAGE);
@@ -141,7 +141,7 @@ describe('a save that lands while the revision is being made', () => {
   it('dates the revision at that save and names its editor, so the new Markdown is not credited to an earlier edit', async () => {
     const b = build();
     b.repo.setPage(PAGE, { title: 'T', markdown: 'with the later save', lastEditedAt: b.clock.now() + 5 * MINUTE + 10, lastEditedBy: BOB });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ createdAt: b.clock.now() + 10, authors: [ANA, BOB], lastAuthorId: BOB })]);
@@ -152,7 +152,7 @@ describe('the last editor leaving', () => {
   it('makes a revision with reason last_editor_left at once, and cancels the timer', async () => {
     const b = build();
     saved(b, 'final');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     await b.scheduler.unloaded(PAGE);
     expect(b.repo.made(PAGE)).toEqual([expect.objectContaining({ reason: 'last_editor_left', markdown: 'final', authors: [ANA] })]);
     expect(b.timers.pending).toBe(0);
@@ -172,9 +172,9 @@ describe('the last editor leaving', () => {
   it('makes none when the content equals the latest revision', async () => {
     const b = build();
     saved(b, 'same');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     await b.scheduler.unloaded(PAGE);
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     await b.scheduler.unloaded(PAGE);
     expect(b.repo.made(PAGE)).toHaveLength(1);
   });
@@ -184,7 +184,7 @@ describe('stale Markdown', () => {
   it('defers while the flag is set with one collab.revision_deferred, and makes the revision at the save that clears it', async () => {
     const b = build();
     saved(b, 'old', { stale: true });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     await b.scheduler.unloaded(PAGE);
@@ -205,7 +205,7 @@ describe('what each revision logs', () => {
   it('logs exactly one collab.revision_created with the page id and the reason, and nothing of the title or Markdown', async () => {
     const b = build();
     saved(b, 'secret text', { title: 'Secret title' });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
     expect(b.events('collab.revision_created')).toEqual([{ level: 'info', event: 'collab.revision_created', fields: { pageId: PAGE, reason: 'idle' } }]);
@@ -215,7 +215,7 @@ describe('what each revision logs', () => {
   it('logs a failed attempt without text, and keeps the edits owed for the next trigger', async () => {
     const b = build();
     saved(b, 'text');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.repo.failNext = new RangeError('database down');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
@@ -230,7 +230,7 @@ describe('a failed attempt', () => {
   it('is tried again after another quiet period, so the idle rule does not die with it', async () => {
     const b = build();
     saved(b, 'text');
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.repo.failNext = new Error('database down');
     b.timers.advance(5 * MINUTE);
     await b.scheduler.whenIdle();
@@ -249,10 +249,10 @@ describe('a failed attempt', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     let entered = 0;
     b.repo.createFromPage = async () => { entered += 1; await gate; throw new Error('database down'); };
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE);
     await vi.waitFor(() => { expect(entered).toBe(1); });
-    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.changed(PAGE, BOB, 'legacy');
     expect(b.timers.pending).toBe(1);
     release();
     await b.scheduler.whenIdle();
@@ -266,7 +266,7 @@ describe('a failed attempt', () => {
     const hold = new Promise<void>((resolve) => { open = resolve; });
     let inside = 0;
     stopping.repo.createFromPage = async () => { inside += 1; await hold; throw new Error('database down'); };
-    stopping.scheduler.changed(PAGE, ANA);
+    stopping.scheduler.changed(PAGE, ANA, 'legacy');
     stopping.timers.advance(5 * MINUTE);
     await vi.waitFor(() => { expect(inside).toBe(1); });
     stopping.scheduler.stop();
@@ -384,7 +384,7 @@ describe('a revision owed at shutdown', () => {
     const b = build();
     const editedAt = b.clock.now();
     b.repo.setPage(PAGE, { title: 'T', markdown: 'saved at shutdown', lastEditedAt: editedAt, lastEditedBy: ANA });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.scheduler.stop(); // the shutdown: timers cancelled, nothing waits for revision work
     await b.scheduler.whenIdle();
     expect(b.repo.made(PAGE)).toEqual([]);
@@ -408,9 +408,9 @@ describe('after the shutdown began', () => {
   it('starts no timer, no revision and no catch-up, and a catch-up pass that was running arms no second pass', async () => {
     const b = build();
     b.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.scheduler.stop();
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     expect(b.timers.pending).toBe(0);
     await b.scheduler.unloaded(PAGE);
     await b.scheduler.saved(PAGE);
@@ -442,18 +442,18 @@ describe('stopping leaves no timer behind, whatever was in flight', () => {
     b.repo.createFromPage = async (request) => { const result = await original(request); await gate; return result; };
     b.scheduler.opened();
     await b.scheduler.whenIdle();
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.timers.advance(5 * MINUTE - 1);
-    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.changed(PAGE, BOB, 'legacy');
     b.timers.advance(5 * MINUTE); // the idle timer fires and the write waits at the gate
     await vi.waitFor(() => { expect(b.repo.calls.filter((c) => c.startsWith('createFromPage'))).toHaveLength(1); });
-    b.scheduler.changed(PAGE, ANA); // arms a timer while the write is in flight
+    b.scheduler.changed(PAGE, ANA, 'legacy'); // arms a timer while the write is in flight
     expect(b.timers.pending).toBeGreaterThan(0);
     b.scheduler.stop();
     expect(b.timers.pending).toBe(0);
     release();
     await b.scheduler.whenIdle();
-    b.scheduler.changed(PAGE, BOB);
+    b.scheduler.changed(PAGE, BOB, 'legacy');
     b.scheduler.opened();
     expect(b.timers.pending).toBe(0);
   });
@@ -462,7 +462,7 @@ describe('stopping leaves no timer behind, whatever was in flight', () => {
 describe('stopping', () => {
   it('cancels every timer, the catch-up\'s second pass included', async () => {
     const b = build();
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.scheduler.opened();
     await b.scheduler.whenIdle();
     expect(b.timers.pending).toBe(2);
@@ -480,9 +480,9 @@ describe('the default timers', () => {
     const clock = new FakeClock(1_700_000_000_000);
     const scheduler = createRevisionScheduler({ repo, clock, report: revisionReport(createCollabLog(new FakeLogger())) });
     repo.setPage(PAGE, { title: 'T', markdown: 'text' });
-    scheduler.changed(PAGE, ANA);
+    scheduler.changed(PAGE, ANA, 'legacy');
     await vi.advanceTimersByTimeAsync(4 * MINUTE);
-    scheduler.changed(PAGE, ANA);
+    scheduler.changed(PAGE, ANA, 'legacy');
     await vi.advanceTimersByTimeAsync(4 * MINUTE);
     expect(repo.made(PAGE)).toEqual([]);
     await vi.advanceTimersByTimeAsync(MINUTE);
@@ -500,7 +500,7 @@ describe('the default timers never hold the process open', () => {
     const scheduler = createRevisionScheduler({ repo: new FakeRevisionRepo(), clock: new FakeClock(1), report: revisionReport(createCollabLog(new FakeLogger())) });
     const real = globalThis.setTimeout;
     globalThis.setTimeout = ((callback: () => void, ms?: number) => { const h = real(callback, ms); handles.push(h as unknown as { hasRef(): boolean }); return h; }) as typeof setTimeout;
-    try { scheduler.changed(PAGE, ANA); } finally { globalThis.setTimeout = real; }
+    try { scheduler.changed(PAGE, ANA, 'legacy'); } finally { globalThis.setTimeout = real; }
     expect(handles).toHaveLength(1);
     expect(handles[0]?.hasRef()).toBe(false);
     scheduler.stop();
@@ -511,7 +511,7 @@ describe('a failure that is not an Error', () => {
   it('is logged with a fixed name, for a page and for the catch-up', async () => {
     const b = build();
     b.repo.setPage(PAGE, { title: 'T', markdown: 'text' });
-    b.scheduler.changed(PAGE, ANA);
+    b.scheduler.changed(PAGE, ANA, 'legacy');
     b.repo.failNext = 'plain string' as unknown as Error;
     await b.scheduler.unloaded(PAGE);
     b.repo.failNext = 'plain string' as unknown as Error;

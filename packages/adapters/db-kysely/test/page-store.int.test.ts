@@ -1,11 +1,11 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createHash, randomUUID } from 'node:crypto';
-import { createDatabase, createOpsDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import type { Database } from '@tektum/grimoire-core/ports/database';
+import { createDatabase, createOpsDatabase, type KyselyDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPageStore } from '../src/page-store.js';
 import { insertPage, opsUrl } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from './page-store-support.js';
+import { aroundScoped } from './collections/support.js';
 
 const DB = `grimoire_m2t04_store_${String(process.pid)}`;
 const run = (sql: string): Promise<unknown> => sqlAdmin(DB, sql);
@@ -31,14 +31,10 @@ const databaseClockMoves = async (): Promise<void> => {
   await vi.waitFor(() => { expect(clock.now()).toBeGreaterThan(t0); }, { timeout: 2000, interval: 1 });
 };
 
-let db: Database;
+let db: KyselyDatabase;
 let ops: OperatorDatabase;
-/** Counts every statement the store sends. */
-const counted = (inner: Database, sink: string[]): Database => ({
-  query: (sql, params) => { sink.push(sql); return inner.query(sql, params); },
-  transaction: (fn) => inner.transaction((tx) => fn({ query: (sql, params) => { sink.push(sql); return tx.query(sql, params); } })),
-  ping: () => inner.ping(), close: () => inner.close(),
-});
+/** Counts every statement the store sends on its scoped connections. */
+const counted = (inner: KyselyDatabase, sink: string[]): KyselyDatabase => aroundScoped(inner, (sql, run) => { sink.push(sql); return run(); });
 
 beforeAll(async () => { requireBuild(); await createTestDatabase(DB, true); db = createDatabase(appUrl(DB), { maxConnections: 24 }); ops = createOpsDatabase(opsUrl(DB)); }, 60_000);
 afterAll(async () => { await db.close(); await ops.close(); await dropTestDatabase(DB); });
@@ -47,7 +43,7 @@ it('save hashes include the row title (page-store move regression)', async () =>
   const id = await newRow();
   await sqlAdmin(DB, `update pages set title = 'Saved title' where id = '${id}'`);
   const store = createPageStore(db, ops, clock);
-  await store.store(id, { kind: 'converted', state: new Uint8Array([1]), markdown: 'Body', text: 'Body', epoch: 0, editedAt: Date.now() });
+  await store.store('legacy', id, { kind: 'converted', state: new Uint8Array([1]), markdown: 'Body', text: 'Body', epoch: 0, editedAt: Date.now() });
   expect((await row(id))?.markdown_hash).toEqual(expectedHash('Saved title', 'Body'));
   expect(Buffer.from((await row(id))?.markdown_hash ?? '').equals(markdownHash('Saved title', 'Body'))).toBe(true);
 });
@@ -64,7 +60,7 @@ describe('seed', () => {
     // The 20 calls are all made before any of them can continue (nothing is awaited in between), so by the time the first build starts the other 19 have
     // called seed too; holding that build open until the test releases it means a second build could only start if single flight were broken.
     const build = async (md: string): Promise<Uint8Array> => { builds++; await open; return new TextEncoder().encode(`state of ${md}`); };
-    const all = Promise.all(Array.from({ length: 20 }, () => store.seed(id, build)));
+    const all = Promise.all(Array.from({ length: 20 }, () => store.seed('legacy', id, build)));
     await vi.waitFor(() => { expect(builds).toBeGreaterThanOrEqual(1); }, { timeout: 5000, interval: 5 });
     // With single flight exactly one read of the row has been sent by now; without it every one of the 20 calls would have sent its own (the statement is counted
     // when it is issued), so this fails when the in-process single flight is removed, not only when a second build happens to start.
@@ -84,9 +80,9 @@ describe('seed', () => {
     await insertPage(run, { id: withState, ydoc: new Uint8Array([1, 2]), markdown: 'md' });
     const empty = await newRow();
     const build = (): Promise<Uint8Array> => Promise.reject(new Error('must not be called'));
-    expect(await store.seed(withState, build)).toMatchObject({ seeded: false, state: new Uint8Array([1, 2]) });
-    expect(await store.seed(empty, build)).toMatchObject({ seeded: false, state: null });
-    expect(await store.seed(randomUUID(), build)).toMatchObject({ seeded: false, state: null });
+    expect(await store.seed('legacy', withState, build)).toMatchObject({ seeded: false, state: new Uint8Array([1, 2]) });
+    expect(await store.seed('legacy', empty, build)).toMatchObject({ seeded: false, state: null });
+    expect(await store.seed('legacy', randomUUID(), build)).toMatchObject({ seeded: false, state: null });
   });
 
   it('with a lock held by another connection and a lock timeout of 1 s the seed fails with a lock-timeout error', async () => {
@@ -103,7 +99,7 @@ describe('seed', () => {
       // The holder either takes the lock (lockTaken) or fails first (the race rejects with its error): the test fails at once and the cleanup below runs.
       await Promise.race([lockTaken, holder.then(() => { throw new Error('the holder ended before it took the lock'); })]);
       const t0 = Date.now();
-      await expect(createPageStore(db, ops, clock, { lockTimeoutMs: 1000 }).seed(id, () => Promise.resolve(new Uint8Array([1])))).rejects.toMatchObject({ code: '55P03' });
+      await expect(createPageStore(db, ops, clock, { lockTimeoutMs: 1000 }).seed('legacy', id, () => Promise.resolve(new Uint8Array([1])))).rejects.toMatchObject({ code: '55P03' });
       expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
     } finally {
       release(); await holder.catch(() => undefined); await other.close();
@@ -120,7 +116,7 @@ describe('store', () => {
     const editor = await newUser();
     const before = (await row(id))?.updated_at;
     await databaseClockMoves();
-    expect(await createPageStore(db, ops, clock).store(id, converted({ editedBy: editor }))).toEqual({ written: true });
+    expect(await createPageStore(db, ops, clock).store('legacy', id, converted({ editedBy: editor }))).toEqual({ written: true });
     const r = await row(id);
     expect(r).toMatchObject({ markdown: 'M', text_content: 'T', last_edited_by: editor });
     expect(Buffer.from(r?.ydoc ?? '')).toEqual(Buffer.from([9, 9]));
@@ -134,11 +130,11 @@ describe('store', () => {
     const id = await newRow();
     const sent: string[] = [];
     const store = createPageStore(counted(db, sent), ops, clock);
-    await store.store(id, converted());
+    await store.store('legacy', id, converted());
     const first = (await row(id))?.updated_at;
     sent.length = 0;
     await databaseClockMoves();
-    expect(await store.store(id, converted())).toEqual({ written: false, reason: 'unchanged' });
+    expect(await store.store('legacy', id, converted())).toEqual({ written: false, reason: 'unchanged' });
     expect(sent.some((s) => /^\s*update/i.test(s))).toBe(false);
     expect((await row(id))?.updated_at).toBe(first);
   });
@@ -146,29 +142,29 @@ describe('store', () => {
   it('an equal hash after a state-only save (stale row) still writes and clears the mark', async () => {
     const id = await newRow();
     const store = createPageStore(db, ops, clock);
-    await store.store(id, converted());
-    await store.store(id, { kind: 'state-only', state: new Uint8Array([5]), epoch: 0 });
-    expect(await store.store(id, converted({ state: new Uint8Array([6])}))).toEqual({ written: true });
+    await store.store('legacy', id, converted());
+    await store.store('legacy', id, { kind: 'state-only', state: new Uint8Array([5]), epoch: 0 });
+    expect(await store.store('legacy', id, converted({ state: new Uint8Array([6])}))).toEqual({ written: true });
     expect(Buffer.from((await row(id))?.ydoc ?? '')).toEqual(Buffer.from([6]));
-    expect((await store.load(id))?.markdownStaleSince).toBeNull();
+    expect((await store.load('legacy', id))?.markdownStaleSince).toBeNull();
   });
 
   it('stale mark: state-only sets it once (the earliest time stays), a converted write clears it, listStale returns the stale pages oldest first', async () => {
     const a = await newRow(); const b = await newRow();
     const store = createPageStore(db, ops, clock);
-    await store.store(a, converted());
-    expect((await store.load(a))?.markdownStaleSince).toBeNull();
-    await store.store(a, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
-    const first = (await store.load(a))?.markdownStaleSince;
+    await store.store('legacy', a, converted());
+    expect((await store.load('legacy', a))?.markdownStaleSince).toBeNull();
+    await store.store('legacy', a, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
+    const first = (await store.load('legacy', a))?.markdownStaleSince;
     expect(first).toEqual(expect.any(Number));
     await databaseClockMoves();
-    await store.store(b, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
-    await store.store(a, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
-    expect((await store.load(a))?.markdownStaleSince).toBe(first);
+    await store.store('legacy', b, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
+    await store.store('legacy', a, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
+    expect((await store.load('legacy', a))?.markdownStaleSince).toBe(first);
     const ids = (await store.listStale(100)).map((x) => x.id).filter((x) => x === a || x === b);
     expect(ids).toEqual([a, b]);
-    await store.store(a, converted({ markdown: 'M2' }));
-    expect((await store.load(a))?.markdownStaleSince).toBeNull();
+    await store.store('legacy', a, converted({ markdown: 'M2' }));
+    expect((await store.load('legacy', a))?.markdownStaleSince).toBeNull();
     expect((await store.listStale(100)).map((x) => x.id)).not.toContain(a);
     expect((await store.listStale(100)).find((x) => x.id === b)?.staleSince).toEqual(expect.any(Number));
   });
@@ -176,33 +172,33 @@ describe('store', () => {
   it('repairMarkdown writes the Markdown of the state it was made from, and only then', async () => {
     const id = await newRow();
     const store = createPageStore(db, ops, clock);
-    await store.store(id, converted({ state: new Uint8Array([1]), markdown: 'old' }));
-    await store.store(id, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
+    await store.store('legacy', id, converted({ state: new Uint8Array([1]), markdown: 'old' }));
+    await store.store('legacy', id, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
     const before = await row(id);
     // A save came in after the state [2] was read: the state is now [3].
-    await store.store(id, { kind: 'state-only', state: new Uint8Array([3]), epoch: 0 });
-    expect(await store.repairMarkdown(id, { state: new Uint8Array([2]), epoch: 0 }, { markdown: 'from 2', text: 't' })).toBe('skipped');
+    await store.store('legacy', id, { kind: 'state-only', state: new Uint8Array([3]), epoch: 0 });
+    expect(await store.repairMarkdown('legacy', id, { state: new Uint8Array([2]), epoch: 0 }, { markdown: 'from 2', text: 't' })).toBe('skipped');
     expect((await row(id))?.markdown).toBe('old');
-    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 1 }, { markdown: 'wrong epoch', text: 't' })).toBe('skipped');
-    expect(await store.repairMarkdown(randomUUID(), { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'no row', text: 't' })).toBe('skipped');
-    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'from 3', text: 'text 3' })).toBe('repaired');
+    expect(await store.repairMarkdown('legacy', id, { state: new Uint8Array([3]), epoch: 1 }, { markdown: 'wrong epoch', text: 't' })).toBe('skipped');
+    expect(await store.repairMarkdown('legacy', randomUUID(), { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'no row', text: 't' })).toBe('skipped');
+    expect(await store.repairMarkdown('legacy', id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'from 3', text: 'text 3' })).toBe('repaired');
     const after = await row(id);
     expect([after?.markdown, after?.text_content, Buffer.from(after?.ydoc ?? '')]).toEqual(['from 3', 'text 3', Buffer.from([3])]);
     expect(after?.markdown_hash).toEqual(expectedHash('', 'from 3'));
     expect(after?.last_edited_by).toBe(before?.last_edited_by);
-    expect((await store.load(id))?.markdownStaleSince).toBeNull();
-    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'again', text: 't' })).toBe('skipped'); // no longer stale
+    expect((await store.load('legacy', id))?.markdownStaleSince).toBeNull();
+    expect(await store.repairMarkdown('legacy', id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'again', text: 't' })).toBe('skipped'); // no longer stale
     const bare = await newRow();
-    expect(await store.repairMarkdown(bare, { state: new Uint8Array([1]), epoch: 0 }, { markdown: 'no state', text: 't' })).toBe('skipped');
+    expect(await store.repairMarkdown('legacy', bare, { state: new Uint8Array([1]), epoch: 0 }, { markdown: 'no state', text: 't' })).toBe('skipped');
   });
 
   it('state-only writes the state and updated_at, never Markdown, text, hash or editor', async () => {
     const id = await newRow();
     const store = createPageStore(db, ops, clock);
-    await store.store(id, converted({ editedBy: await newUser() }));
+    await store.store('legacy', id, converted({ editedBy: await newUser() }));
     const before = await row(id);
     await databaseClockMoves();
-    expect(await store.store(id, { kind: 'state-only', state: new Uint8Array([4, 4, 4]), epoch: 0 })).toEqual({ written: true });
+    expect(await store.store('legacy', id, { kind: 'state-only', state: new Uint8Array([4, 4, 4]), epoch: 0 })).toEqual({ written: true });
     const after = await row(id);
     expect(Buffer.from(after?.ydoc ?? '')).toEqual(Buffer.from([4, 4, 4]));
     expect({ ...after, ydoc: null, updated_at: '' }).toEqual({ ...before, ydoc: null, updated_at: '' });
@@ -213,20 +209,20 @@ describe('store', () => {
     const id = await newRow();
     await sqlAdmin(DB, `update pages set state_epoch = 3 where id = '${id}'`);
     const store = createPageStore(db, ops, clock);
-    expect(await store.store(id, converted({ epoch: 2 }))).toEqual({ written: false, reason: 'epoch-mismatch' });
+    expect(await store.store('legacy', id, converted({ epoch: 2 }))).toEqual({ written: false, reason: 'epoch-mismatch' });
     expect((await row(id))?.markdown).toBeNull();
-    expect(await store.store(randomUUID(), converted())).toEqual({ written: false, reason: 'no-row' });
-    expect((await store.load(id))?.epoch).toBe(3);
+    expect(await store.store('legacy', randomUUID(), converted())).toEqual({ written: false, reason: 'no-row' });
+    expect((await store.load('legacy', id))?.epoch).toBe(3);
   });
 
   it('load returns state, Markdown, hash and epoch; undefined for no row', async () => {
     const id = await newRow();
     const store = createPageStore(db, ops, clock);
-    await store.store(id, converted());
-    const loaded = await store.load(id);
+    await store.store('legacy', id, converted());
+    const loaded = await store.load('legacy', id);
     expect(loaded?.markdown).toBe('M');
     expect(Buffer.from(loaded?.markdownHash ?? '')).toEqual(expectedHash('', 'M'));
-    expect(await store.load(randomUUID())).toBeUndefined();
+    expect(await store.load('legacy', randomUUID())).toBeUndefined();
   });
 });
 
@@ -236,16 +232,16 @@ describe('review fixes', () => {
   it('F7: the same Markdown with a different state writes the state, the time and the editor, not the Markdown columns; an identical state writes nothing', async () => {
     const id = await newRow(); const editor = await newUser();
     const store = createPageStore(db, ops, clock);
-    await store.store(id, { ...same, state: new Uint8Array([1]) });
+    await store.store('legacy', id, { ...same, state: new Uint8Array([1]) });
     const first = await row(id);
     await databaseClockMoves();
-    expect(await store.store(id, { ...same, state: new Uint8Array([1, 2]), text: 'ignored', editedBy: editor })).toEqual({ written: true });
+    expect(await store.store('legacy', id, { ...same, state: new Uint8Array([1, 2]), text: 'ignored', editedBy: editor })).toEqual({ written: true });
     const second = await row(id);
     expect(Buffer.from(second?.ydoc ?? '')).toEqual(Buffer.from([1, 2]));
     expect(second).toMatchObject({ markdown: 'M', text_content: 'T', last_edited_by: editor });
     expect((second?.updated_at ?? '') > (first?.updated_at ?? '')).toBe(true);
     await databaseClockMoves();
-    expect(await store.store(id, { ...same, state: new Uint8Array([1, 2]) })).toEqual({ written: false, reason: 'unchanged' });
+    expect(await store.store('legacy', id, { ...same, state: new Uint8Array([1, 2]) })).toEqual({ written: false, reason: 'unchanged' });
     expect((await row(id))?.updated_at).toBe(second?.updated_at);
   });
 
@@ -258,7 +254,7 @@ describe('review fixes', () => {
     const sample = async (): Promise<void> => { const r = await sqlAdmin<{ n: string }>(DB, "select count(*) as n from pg_stat_activity where datname = current_database() and usename = 'grimoire_app' and state like 'idle in transaction%'"); idleInTx = Math.max(idleInTx, Number(r[0]?.n)); };
     const t0 = Date.now();
     const builds = new Map<string, number>();
-    const results = await Promise.all(ids.flatMap((id) => [0, 1].map(() => store.seed(id, async () => {
+    const results = await Promise.all(ids.flatMap((id) => [0, 1].map(() => store.seed('legacy', id, async () => {
       builds.set(id, (builds.get(id) ?? 0) + 1);
       await new Promise((r) => setTimeout(r, 200)); await sample(); await new Promise((r) => setTimeout(r, 200));
       return new Uint8Array([7]);
@@ -274,7 +270,7 @@ describe('review fixes', () => {
     const id = randomUUID();
     await insertPage(run, { id, markdown: 'old' });
     const seen: string[] = [];
-    const r = await createPageStore(db, ops, clock).seed(id, async (md) => {
+    const r = await createPageStore(db, ops, clock).seed('legacy', id, async (md) => {
       seen.push(md);
       if (md === 'old') await sqlAdmin(DB, `update pages set markdown = 'new' where id = '${id}'`);
       return new TextEncoder().encode(md);

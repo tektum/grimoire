@@ -144,7 +144,7 @@ async function holdingThePageLock<T>(pageId: string, start: () => Promise<T>[], 
 describe('RevisionRepo.createFromPage', () => {
   it('makes a revision of the saved state, dated at the last edit, with the authors that are users and in the order given', async () => {
     const id = await savedPage({ title: 'T1', markdown: 'body one' });
-    const made = await createRevisions(t.app, t.ops).createFromPage({ pageId: id, reason: 'idle', authorIds: [bob, '00000000-0000-4000-8000-0000000000ff', ana], lastAuthorId: ana, at: 1_700_000_100_123 });
+    const made = await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: id, reason: 'idle', authorIds: [bob, '00000000-0000-4000-8000-0000000000ff', ana], lastAuthorId: ana, at: 1_700_000_100_123 });
     expect(made.kind).toBe('created');
     expect(await revisionsOf(id)).toEqual([{ reason: 'idle', title: 'T1', markdown: 'body one', ms: '1700000100123', author_ids: [bob, ana], last_author_id: ana }]);
     const hash = (await t.admin.query<{ markdown_hash: Buffer }>(`select markdown_hash from revisions where page_id = $1`, [id]))[0]?.markdown_hash;
@@ -154,7 +154,7 @@ describe('RevisionRepo.createFromPage', () => {
   it('skips identical title and Markdown, and makes another revision when either changes', async () => {
     const id = await savedPage({ title: 'T2', markdown: 'same' });
     const repo = createRevisions(t.app, t.ops);
-    const ask = (at: number) => repo.createFromPage({ pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at });
+    const ask = (at: number) => repo.createFromPage({ tenantId: 'legacy', pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at });
     expect((await ask(1_700_000_200_000)).kind).toBe('created');
     expect(await ask(1_700_000_201_000)).toEqual({ kind: 'unchanged' });
     await t.admin.query(`update pages set title = 'T2b', markdown_hash = $2 where id = $1`, [id, markdownHash('T2b', 'same')]);
@@ -164,7 +164,7 @@ describe('RevisionRepo.createFromPage', () => {
 
   it('refuses stale Markdown, a page with no Markdown, a deleted page and an unknown page', async () => {
     const repo = createRevisions(t.app, t.ops);
-    const ask = (pageId: string) => repo.createFromPage({ pageId, reason: 'idle', authorIds: [], lastAuthorId: null, at: 1_700_000_300_000 });
+    const ask = (pageId: string) => repo.createFromPage({ tenantId: 'legacy', pageId, reason: 'idle', authorIds: [], lastAuthorId: null, at: 1_700_000_300_000 });
     const stale = await savedPage({ stale: true });
     const bare = await savedPage({ markdown: null });
     const gone = await savedPage();
@@ -178,7 +178,7 @@ describe('RevisionRepo.createFromPage', () => {
 
   it('drops a last author that is not a user instead of failing', async () => {
     const id = await savedPage({ title: 'T3', markdown: 'x' });
-    const made = await createRevisions(t.app, t.ops).createFromPage({ pageId: id, reason: 'idle', authorIds: [], lastAuthorId: '00000000-0000-4000-8000-0000000000fe', at: 1_700_000_400_000 });
+    const made = await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: id, reason: 'idle', authorIds: [], lastAuthorId: '00000000-0000-4000-8000-0000000000fe', at: 1_700_000_400_000 });
     expect(made.kind).toBe('created');
     expect((await revisionsOf(id))[0]).toMatchObject({ author_ids: [], last_author_id: null });
   });
@@ -188,7 +188,7 @@ describe('RevisionRepo.createFromPage, concurrently and with ids that are not UU
   it('makes exactly one revision when two calls for one page run at once', async () => {
     const id = await savedPage({ title: 'Race', markdown: 'raced' });
     const repo = createRevisions(t.app, t.ops);
-    const ask = () => repo.createFromPage({ pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_500_000 });
+    const ask = () => repo.createFromPage({ tenantId: 'legacy', pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_500_000 });
     const results = await holdingThePageLock(id, () => [ask(), ask(), ask(), ask()], 4);
     expect(results.map((r) => r.kind).sort()).toEqual(['created', 'unchanged', 'unchanged', 'unchanged']);
     expect(await revisionsOf(id)).toHaveLength(1);
@@ -196,17 +196,17 @@ describe('RevisionRepo.createFromPage, concurrently and with ids that are not UU
 
   it('dates the revision at a save newer than the caller\'s snapshot and names that save\'s editor as the last author', async () => {
     const id = await savedPage({ title: 'Later', markdown: 'saved after the snapshot', editedMs: 1_700_000_800_000, editedBy: bob });
-    const made = await createRevisions(t.app, t.ops).createFromPage({ pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
+    const made = await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: id, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
     expect(made.kind).toBe('created');
     expect(await revisionsOf(id)).toEqual([{ reason: 'idle', title: 'Later', markdown: 'saved after the snapshot', ms: '1700000800000', author_ids: [ana, bob], last_author_id: bob }]);
     const older = await savedPage({ title: 'Older', markdown: 'saved before', editedMs: 1_700_000_600_000, editedBy: bob });
-    await createRevisions(t.app, t.ops).createFromPage({ pageId: older, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
+    await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: older, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: 1_700_000_700_000 });
     expect((await revisionsOf(older))[0]).toMatchObject({ ms: '1700000700000', author_ids: [ana], last_author_id: ana });
   });
 
   it('drops author ids that are not UUIDs before they reach the database, instead of failing', async () => {
     const id = await savedPage({ title: 'Names', markdown: 'dev tokens' });
-    const made = await createRevisions(t.app, t.ops).createFromPage({ pageId: id, reason: 'idle', authorIds: ['dev-user', ana, 'not-a-uuid'], lastAuthorId: 'dev-user', at: 1_700_000_600_000 });
+    const made = await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: id, reason: 'idle', authorIds: ['dev-user', ana, 'not-a-uuid'], lastAuthorId: 'dev-user', at: 1_700_000_600_000 });
     expect(made.kind).toBe('created');
     expect((await revisionsOf(id))[0]).toMatchObject({ author_ids: [ana], last_author_id: null });
   });
@@ -232,7 +232,7 @@ describe('RevisionRepo.catchUp', () => {
     const bare = await savedPage({ markdown: null, editedMs: NOW - 9 * 60_000, editedBy: ana });
     const never = await savedPage({ title: 'Never edited', markdown: 'n', editedMs: null });
     const kept = await savedPage({ title: 'Kept', markdown: 'kept', editedMs: NOW - 8 * 60_000, editedBy: ana });
-    await createRevisions(t.app, t.ops).createFromPage({ pageId: kept, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: NOW - 8 * 60_000 });
+    await createRevisions(t.app, t.ops).createFromPage({ tenantId: 'legacy', pageId: kept, reason: 'idle', authorIds: [ana], lastAuthorId: ana, at: NOW - 8 * 60_000 });
     const repo = createRevisions(t.app, t.ops);
     const made = await repo.catchUp(NOW - 5 * 60_000, 100);
     expect(made.map((m) => m.pageId)).toContain(old);
@@ -250,7 +250,7 @@ describe('RevisionRepo.catchUp', () => {
     const repo = createRevisions(t.app, t.ops);
     const [fromCatchUp, fromPage] = await holdingThePageLock<unknown>(id, () => [
       repo.catchUp(NOW - 5 * 60_000, 100),
-      repo.createFromPage({ pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at: NOW - 30 * 60_000 }),
+      repo.createFromPage({ tenantId: 'legacy', pageId: id, reason: 'last_editor_left', authorIds: [ana], lastAuthorId: ana, at: NOW - 30 * 60_000 }),
     ], 2) as [Awaited<ReturnType<typeof repo.catchUp>>, Awaited<ReturnType<typeof repo.createFromPage>>];
     expect((await revisionsOf(id))).toHaveLength(1);
     const caught = fromCatchUp.filter((m) => m.pageId === id).length;

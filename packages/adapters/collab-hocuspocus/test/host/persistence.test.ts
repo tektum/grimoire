@@ -50,7 +50,7 @@ describe('store retry', () => {
     const s = setup(); s.pages.seed(PAGE);
     let n = 0;
     const real = s.pages.store.bind(s.pages);
-    s.pages.store = (id, w) => (++n <= 2 ? Promise.reject(new Error('down')) : real(id, w));
+    s.pages.store = (tenantId, id, w) => (++n <= 2 ? Promise.reject(new Error('down')) : real(tenantId, id, w));
     await s.store();
     expect(s.sleeps).toEqual([1000, 2000]);
     expect(s.logger.entries.map((e) => e.event).filter((e) => e !== 'collab.saved' && e !== 'collab.save_skipped')).toEqual(['collab.store_failed', 'collab.store_failed']);
@@ -62,7 +62,7 @@ describe('store retry', () => {
     const s = setup(); s.pages.seed(PAGE); s.pages.failStores = true;
     let n = 0;
     const real = s.pages.store.bind(s.pages);
-    s.pages.store = (id, w) => { if (++n === 9) s.pages.failStores = false; return real(id, w); };
+    s.pages.store = (tenantId, id, w) => { if (++n === 9) s.pages.failStores = false; return real(tenantId, id, w); };
     await s.store();
     const events = s.logger.entries.map((e) => e.event);
     expect(events.filter((e) => e === 'collab.store_failed')).toHaveLength(8);
@@ -105,7 +105,7 @@ describe('store retry', () => {
     const s = setup();
     const stored: Uint8Array[] = [];
     let n = 0;
-    s.pages.store = (_id, w) => { if (++n === 1) return Promise.reject(new Error('down')); stored.push(w.state); return Promise.resolve(OK); };
+    s.pages.store = (_tenantId, _id, w) => { if (++n === 1) return Promise.reject(new Error('down')); stored.push(w.state); return Promise.resolve(OK); };
     let release: () => void = () => undefined;
     const ext = createPersistenceExtension({ deps: s.deps, log: s.log, sleep: () => new Promise<void>((r) => { release = r; }) });
     const p = ext.onStoreDocument?.({ document: s.doc, documentName: PAGE } as never);
@@ -150,7 +150,7 @@ describe('store retry', () => {
     const s = setup(); s.pages.seed(PAGE); s.pages.failStores = true;
     let n = 0;
     const real = s.pages.store.bind(s.pages);
-    s.pages.store = (id, w) => { if (++n === 6) s.pages.failStores = false; return real(id, w); };
+    s.pages.store = (tenantId, id, w) => { if (++n === 6) s.pages.failStores = false; return real(tenantId, id, w); };
     await s.store();
     const text = JSON.stringify(s.logger.entries);
     expect(text).not.toContain('secret page content');

@@ -91,7 +91,7 @@ describe('a save that outlives its page load', () => {
     await s.edit('a'); await store();
     await s.edit('b');
     const realStore = s.pages.store.bind(s.pages);
-    s.pages.store = async (id, write) => { const out = await realStore(id, write); await s.ext.afterUnloadDocument?.({ documentName: PAGE } as never); return out; };
+    s.pages.store = async (tenantId, id, write) => { const out = await realStore(tenantId, id, write); await s.ext.afterUnloadDocument?.({ documentName: PAGE } as never); return out; };
     const before = s.events('collab.saved').length;
     await store();
     expect(s.events('collab.saved')).toHaveLength(before);

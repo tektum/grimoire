@@ -19,16 +19,14 @@ export class FakePageStore implements PageStore {
   failStores = false;
   failLoads = false;
 
-  /** Creates a row (test setup), or, with a function, seeds one like `PageStore.seed`. */
+  /** Creates a row (test setup), or, given a tenant, an id and a function, seeds one like `PageStore.seed`. One tenant only: the tenant is not checked. */
   seed(id: string, state?: Uint8Array | null): void;
-  seed(id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>;
-  seed(id: string, arg?: Uint8Array | null | ((markdown: string) => Promise<Uint8Array>)): void | Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }> {
-    if (typeof arg !== 'function') {
-      this.rows.set(id, arg ?? null);
-      if (!this.markdowns.has(id)) this.markdowns.set(id, null);
-      return undefined;
-    }
-    return this.seedRow(id, arg);
+  seed(tenantId: string, id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>;
+  seed(first: string, second?: Uint8Array | null | string, build?: (markdown: string) => Promise<Uint8Array>): void | Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }> {
+    if (typeof second === 'string' && build !== undefined) return this.seedRow(second, build);
+    this.rows.set(first, second instanceof Uint8Array ? second : null);
+    if (!this.markdowns.has(first)) this.markdowns.set(first, null);
+    return undefined;
   }
 
   private async seedRow(id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }> {
@@ -42,11 +40,11 @@ export class FakePageStore implements PageStore {
     return { state: built, seeded: true, epoch: this.epoch };
   }
 
-  listStale(limit: number): Promise<{ id: string; staleSince: number }[]> {
-    return Promise.resolve([...this.stale].filter((e): e is [string, number] => e[1] !== null).sort((a, b) => a[1] - b[1]).slice(0, limit).map(([id, staleSince]) => ({ id, staleSince })));
+  listStale(limit: number): Promise<{ id: string; tenantId: string; staleSince: number }[]> {
+    return Promise.resolve([...this.stale].filter((e): e is [string, number] => e[1] !== null).sort((a, b) => a[1] - b[1]).slice(0, limit).map(([id, staleSince]) => ({ id, tenantId: 'legacy', staleSince })));
   }
 
-  repairMarkdown(id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'> {
+  repairMarkdown(_tenantId: string, id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'> {
     const have = this.rows.get(id);
     if (!have || seen.epoch !== this.epoch || !Buffer.from(have).equals(Buffer.from(seen.state)) || (this.stale.get(id) ?? null) === null) return Promise.resolve('skipped');
     this.markdowns.set(id, converted.markdown);
@@ -56,7 +54,7 @@ export class FakePageStore implements PageStore {
     return Promise.resolve('repaired');
   }
 
-  load(id: string): Promise<StoredPage | undefined> {
+  load(_tenantId: string, id: string): Promise<StoredPage | undefined> {
     this.calls.load++;
     if (this.failLoads) return Promise.reject(new Error('load failed'));
     const state = this.rows.get(id);
@@ -64,7 +62,7 @@ export class FakePageStore implements PageStore {
     return Promise.resolve({ state, markdown: this.markdowns.get(id) ?? null, markdownHash: this.hashes.get(id) ?? null, epoch: this.epoch, markdownStaleSince: this.stale.get(id) ?? null });
   }
 
-  store(id: string, w: PageWrite): Promise<WriteOutcome> {
+  store(_tenantId: string, id: string, w: PageWrite): Promise<WriteOutcome> {
     this.calls.store++;
     if (this.failStores) return Promise.reject(new Error('store failed'));
     if (!this.rows.has(id)) return Promise.resolve({ written: false, reason: 'no-row' });
