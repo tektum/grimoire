@@ -26,6 +26,10 @@ test.describe('the return path', () => {
       await page.getByRole('button', { name: 'Sign in' }).click();
       await page.waitForURL((url) => !url.pathname.startsWith('/login'));
       expect(new URL(page.url()).origin).toBe(new URL(baseURL ?? 'http://127.0.0.1:4173').origin);
+      // The start page is the app: with its stored session gone it would send the browser to sign in again (`RequireSignIn`), and that navigation could land in the middle of the next `goto` (WebKit
+      // reports it as "interrupted by another navigation"). So the app is signed in and settled first, and left for the inert sign-in document before the storage is cleared.
+      await expect(page.getByTestId('user-name')).toBeVisible();
+      await page.goto('/login.html');
       await page.evaluate(() => window.localStorage.clear());
     }
   });
