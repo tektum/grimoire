@@ -83,6 +83,7 @@ export default defineConfig({
         "packages/core/src/authorize/decide.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/logger-json/src/scrub.ts": { statements: 100, branches: 98, functions: 100, lines: 100 },
         "packages/adapters/auth-descope/src/index.ts": { statements: 99, branches: 98, functions: 100, lines: 100 },
+        "packages/adapters/embedder-onnx/src/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "packages/adapters/files-s3/src/**": { statements: 99, branches: 87, functions: 100, lines: 100 },
       },
     },

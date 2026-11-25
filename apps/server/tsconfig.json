@@ -42,6 +42,9 @@
     },
     {
       "path": "../../packages/adapters/files-s3"
+    },
+    {
+      "path": "../../packages/adapters/embedder-onnx"
     }
   ]
 }

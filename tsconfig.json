@@ -47,6 +47,9 @@
       "path": "./packages/adapters/files-s3"
     },
     {
+      "path": "./packages/adapters/embedder-onnx"
+    },
+    {
       "path": "./db/migrations"
     },
     {

@@ -9,7 +9,7 @@ const expectedNames = [
   "@tektum/grimoire-editor-schema",
   "@tektum/grimoire-api-client",
   "@tektum/grimoire-web",
-  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss", "files-s3"].map(
+  ...["auth-descope", "config-env", "logger-json", "db-kysely", "auth-dev", "auth-fake", "collab-hocuspocus", "markdown-milkdown", "jobs-pgboss", "files-s3", "embedder-onnx"].map(
 
     (a) => `@tektum/grimoire-adapter-${a}`,
   ),
