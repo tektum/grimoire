@@ -37,6 +37,12 @@ export interface PageStore {
   store(id: string, w: PageWrite): Promise<WriteOutcome>;
   /** Ids of pages whose Markdown is stale, oldest first (the sweep's query; the sweep itself belongs to the jobs milestone). */
   listStale(limit: number): Promise<string[]>;
+  /**
+   * The sweep's write, a compare-and-set: stores `markdown` and `text` for a page whose Markdown is stale, only while its row still holds exactly the `state`
+   * and `epoch` the conversion was made from (checked under the row lock), and clears the mark. Anything else (a save in between, a reset, no mark, no row)
+   * writes nothing and answers `skipped`; the page is tried again at the next sweep. The editor state and the last edit are never touched.
+   */
+  repairMarkdown(id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'>;
 }
 
 export interface CollabDeps {

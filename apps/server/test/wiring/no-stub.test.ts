@@ -92,6 +92,7 @@ describe('a user with access only to collection X cannot open a page of collecti
       seed: () => Promise.resolve({ state: null, seeded: false, epoch: 0 }),
       store: () => Promise.resolve({ written: true }),
       listStale: () => Promise.resolve([]),
+      repairMarkdown: () => Promise.resolve('skipped'),
     };
     const host = createCollabHost();
     await host.start({

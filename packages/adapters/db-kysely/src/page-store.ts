@@ -104,6 +104,16 @@ export function createPageStore(db: Database, clock: Clock, options: PageStoreOp
       });
     },
 
+    repairMarkdown(id, seen, converted) {
+      return db.transaction(async (tx) => {
+        const row = await lockRow(tx, id, lockTimeoutMs);
+        // Only the state the conversion was made from may get its Markdown: a save since then has a newer state, and its own Markdown or its own mark.
+        if (row === undefined || row.state_epoch !== seen.epoch || row.ydoc === null || row.stale_ms === null || !Buffer.from(row.ydoc).equals(Buffer.from(seen.state))) return 'skipped';
+        await tx.query(`update pages set markdown = $2, text_content = $3, markdown_hash = $4, markdown_stale_since = null where id = $1`, [id, converted.markdown, converted.text, hashOf(row.title, converted.markdown)]);
+        return 'repaired';
+      });
+    },
+
     async listStale(limit) {
       const rows = await db.query<{ id: string }>('select id from pages where markdown_stale_since is not null order by markdown_stale_since limit $1', [limit]);
       return rows.map((r) => r.id);
