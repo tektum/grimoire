@@ -29,6 +29,7 @@
         "@tektum/grimoire-adapter-collab-hocuspocus": "*",
         "@tektum/grimoire-adapter-config-env": "*",
         "@tektum/grimoire-adapter-db-kysely": "*",
+        "@tektum/grimoire-adapter-embedder-onnx": "*",
         "@tektum/grimoire-adapter-files-s3": "*",
         "@tektum/grimoire-adapter-jobs-pgboss": "*",
         "@tektum/grimoire-adapter-logger-json": "*",

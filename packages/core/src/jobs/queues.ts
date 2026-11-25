@@ -17,5 +17,7 @@ export function jobQueues(importExpireSeconds = 900): readonly QueueDefinition[]
     { ...withDeadLetter, name: 'upload-cleanup', policy: 'stately', expireInSeconds: 600 },
     { ...withDeadLetter, name: 'revision-catchup', policy: 'stately', expireInSeconds: 1800 },
     { ...withDeadLetter, name: 'markdown-sweep', policy: 'stately', expireInSeconds: 300 },
+    { ...withDeadLetter, name: 'embed-sweep', policy: 'stately', expireInSeconds: 300 },
+    { ...withDeadLetter, name: 'embed-page', policy: 'stately', expireInSeconds: 600 },
   ];
 }

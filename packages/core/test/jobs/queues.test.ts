@@ -14,6 +14,8 @@ describe('jobQueues', () => {
       ['upload-cleanup', 'stately', 600],
       ['revision-catchup', 'stately', 1800],
       ['markdown-sweep', 'stately', 300],
+      ['embed-sweep', 'stately', 300],
+      ['embed-page', 'stately', 600],
     ]);
   });
 

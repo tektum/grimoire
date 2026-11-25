@@ -15,6 +15,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.9",
     "@tektum/grimoire-adapter-auth-dev": "*",
+    "@tektum/grimoire-adapter-embedder-onnx": "*",
     "@tektum/grimoire-adapter-auth-descope": "*",
     "@tektum/grimoire-adapter-collab-hocuspocus": "*",
     "@tektum/grimoire-adapter-config-env": "*",
