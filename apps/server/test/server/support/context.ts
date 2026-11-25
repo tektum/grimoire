@@ -30,6 +30,8 @@ export interface TestContext {
   readonly logger: FakeLogger;
   readonly clock: FakeClock;
   readonly shutdown: Shutdown;
+  /** What the app handed to the job queue, in order. */
+  readonly enqueued: { name: string; payload: unknown; options: unknown }[];
 }
 
 /** A database that answers the migration probe; pass `migrated: false` for an unmigrated one. */
@@ -48,11 +50,16 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
   const verifier = { verify: () => Promise.resolve({ kind: 'service-unavailable' as const }) };
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: [], refusedEmailDomains: [], allowDevRole: true };
   const users = new FakeUserStore();
+  const enqueued: { name: string; payload: unknown; options: unknown }[] = [];
   const http: AppContext['http'] = {
     config, providerBaseUrl: null, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
     authorizer: createAuthorizer(createFakeAccessStore(emptyWorld())),
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
     ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(), search: new FakeSearchRepo(), imports: new FakeImportRepo(),
+    enqueueImport: (payload, options) => {
+      enqueued.push({ name: 'import', payload, options });
+      return Promise.resolve('job-1');
+    },
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
     pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), attachments: new FakeAttachmentRepo(), deleteFiles: () => Promise.resolve(),
   };
@@ -61,5 +68,5 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
     auth: { verifier }, signInPolicy,
     shutdown, shutdownHooks: [], testFacilities: [],
   };
-  return { ctx, logger, clock, shutdown };
+  return { ctx, logger, clock, shutdown, enqueued };
 }

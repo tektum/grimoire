@@ -1,6 +1,6 @@
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
-import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
+import type { EnqueueOptions, JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import type { EventLog } from '../events.js';
 import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
@@ -16,6 +16,8 @@ export interface JobRunner {
   start(): Promise<void>;
   /** Stops the queue in the `release-jobs` phase, with the grace of the settings. */
   readonly hook: ShutdownHook;
+  /** Adds a job for a route to hand work to (the import start). Rejects with `jobs-unavailable` while the queue is not up (not started yet, given up, or stopping): the route answers that it cannot take the work now. */
+  enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
 }
 
 /** What the queue is started with: the part of the adapter's options this module sets. */
@@ -102,6 +104,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   };
   return {
     state: () => state,
+    enqueueImport: (payload, options) => (queue === undefined || state !== 'up' ? Promise.reject(new Error('jobs-unavailable')) : queue.enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, options)),
     start: async () => {
       if (running) return;
       running = true;

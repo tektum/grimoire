@@ -8,7 +8,7 @@ import type { HttpDeps } from '../../src/http/env.js';
 import { makeContext } from '../server/support/context.js';
 
 const HTTP_KEYS = [
-  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports',
+  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports', 'enqueueImport',
   'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState', 'attachments', 'deleteFiles',
 ] as const satisfies readonly (keyof HttpDeps)[];
 
@@ -54,6 +54,10 @@ describe('application context wiring', () => {
       expect(ctx.collab?.deps.revisions).not.toBe(ctx.http.revisions);
     }
     expect(ctx.shutdownHooks.map((h) => h.name)).toContain('markdown-pool');
+  });
+
+  it.each(['collab', 'api'])('role %s: a job cannot be handed over while there is no queue up (the collab role has none, the api role has not started its own)', async (role) => {
+    await expect(ctxOf({ GRIMOIRE_ROLE: role }).http.enqueueImport({ importId: 'i1', tenantId: 't1' })).rejects.toThrow('jobs-unavailable');
   });
 
   it('role api: the markdown pool is released in release-jobs, before every close-database hook', () => {

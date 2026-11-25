@@ -125,6 +125,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     authorizer: createAuthorizer(createAccessStore(db)),
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
     ordering: createOrdering(), converter, search: createSearchRepo(db, { statementTimeoutMs: config.search.statementTimeoutMs }), imports: createImportRepo(db),
+    enqueueImport: (payload, options) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImport(payload, options)),
     idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
     attachments: createAttachments(db),
