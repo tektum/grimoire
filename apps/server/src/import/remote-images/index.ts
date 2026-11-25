@@ -104,14 +104,14 @@ export function createRemoteImageFetcher(config: Config, seams: RemoteImageTestS
       const { res } = got;
       const status = res.statusCode ?? 0;
       if ([301, 302, 303, 307, 308].includes(status)) {
-        res.resume();
+        res.destroy(); // not drained: the body of an answer that is refused is not read, and the socket cannot be reused (keepAlive is off)
         const location = res.headers.location;
         if (location === undefined) return { ok: false, reason: 'status' };
         if (hop >= MAX_HOPS) return { ok: false, reason: 'redirect' };
         try { current = new URL(location, v.url).href; } catch { return { ok: false, reason: 'scheme' }; }
         continue;
       }
-      if (status !== 200) { res.resume(); return { ok: false, reason: 'status' }; }
+      if (status !== 200) { res.destroy(); return { ok: false, reason: 'status' }; }
       return read(res, signal);
     }
   };

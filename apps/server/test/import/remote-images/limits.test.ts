@@ -5,6 +5,7 @@ import type { TestServer } from './support.js';
 
 // M7-T09: per-image and per-import limits, and what a response must be to be an image.
 let written = 0;
+const closed: string[] = [];
 let server: TestServer;
 beforeAll(async () => {
   server = await startServer((req, res) => {
@@ -19,6 +20,15 @@ beforeAll(async () => {
         break;
       }
       case '/slow': break; // never answers
+      case '/endless-404': case '/endless-302': {
+        const path = req.url as string;
+        res.writeHead(path === '/endless-404' ? 404 : 302, path === '/endless-302' ? { location: '/ok' } : {});
+        res.on('close', () => { closed.push(path); });
+        res.on('error', () => undefined);
+        const pump = (): void => { while (res.write(Buffer.alloc(1000))) { /* until the socket is full */ } res.once('drain', pump); };
+        pump();
+        break;
+      }
       case '/svg': res.writeHead(200, { 'content-type': 'image/svg+xml' }); res.end('<svg xmlns="http://www.w3.org/2000/svg"/>'); break;
       case '/html': res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html></html>'); break;
       case '/disguised': res.writeHead(200, { 'content-type': 'image/png' }); res.end('<html><body>not a png</body></html>'); break;
@@ -73,6 +83,16 @@ describe('the budget of one import', () => {
     expect((await f.fetch(url('/ok'), budget)).ok).toBe(true);
     now = 10_001;
     expect(await f.fetch(url('/ok'), budget)).toEqual({ ok: false, reason: 'budget' });
+  });
+});
+
+describe('a refusal ends the connection', () => {
+  it.each(['/endless-404', '/endless-302'])('%s: the body is not drained, the socket is closed once the answer is given', async (path) => {
+    const f = fetcher({ maxBytes: 100_000 });
+    const result = await f.fetch(url(path), createRemoteBudget(cfg()));
+    expect(result.ok).toBe(path === '/endless-302'); // a 404 is refused; the redirect leads on to the image
+    await new Promise((r) => setTimeout(r, 300));
+    expect(closed).toContain(path);
   });
 });
 
