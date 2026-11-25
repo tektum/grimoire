@@ -188,5 +188,10 @@
     "file": "apps/server/test/jobs/maintenance-soak.int.test.ts",
     "line": "await new Promise((resolve) => setTimeout(resolve, SOAK_MS));",
     "reason": "The soak is a duration by definition (decision 13): pg-boss's own loops must run for five minutes under the runtime role. Nothing marks the end of a soak; the checks after it read what the loops did."
+  },
+  {
+    "file": "apps/web/test-e2e/editor/stack.ts",
+    "line": "const stalled = setTimeout(reportStall, STALL_REPORT_MS);",
+    "reason": "A watchdog, not a wait: nothing awaits it and it never delays the test; it prints the stack report once if a recreate of the app is still going after 45 s (it is cleared when the recreate ends), so a spec cut off by its own timeout has already shown which phase stalled."
   }
 ]

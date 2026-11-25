@@ -27,12 +27,51 @@ export function recreateEnv(settings: Record<string, string> = {}): NodeJS.Proce
  * `M6_MIN_CLIENT_VERSION`) and waits until it answers. With no settings it returns the app to the stack's defaults: a spec that changed them calls it in `finally`.
  */
 export async function recreateApp(settings: Record<string, string> = {}): Promise<void> {
-  await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
-    cwd: repoRoot,
-    maxBuffer: 64 * 1024 * 1024,
-    env: recreateEnv(settings),
-  });
-  await waitReady();
+  const began = Date.now();
+  let phase = 'compose up';
+  const reportStall = (): void => void stackReport().then((report) => console.log(`recreateApp: still in ${phase} after ${seconds(STALL_REPORT_MS)}\n${report}`));
+  // A watchdog, not a wait (allow-listed in tools/ci/test-sleep-allow.json): it describes the stack once while the recreate is still going, because a spec cut
+  // off by its own timeout never reaches the lines after the await, and a stall is the thing to see.
+  const stalled = setTimeout(reportStall, STALL_REPORT_MS);
+  try {
+    await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
+      cwd: repoRoot,
+      maxBuffer: 64 * 1024 * 1024,
+      env: recreateEnv(settings),
+    });
+    const upMs = Date.now() - began;
+    console.log(`recreateApp: compose up ${seconds(upMs)}`);
+    phase = '/readyz';
+    try {
+      await waitReady();
+    } catch (error) {
+      console.log(`recreateApp: compose up ${seconds(upMs)}, then /readyz never answered (${seconds(Date.now() - began - upMs)})\n${await stackReport()}`);
+      throw error;
+    }
+    console.log(`recreateApp: compose up ${seconds(upMs)}, /readyz ${seconds(Date.now() - began - upMs)}`);
+  } finally {
+    clearTimeout(stalled);
+  }
+}
+
+/** A recreate still going after this is described in the output: it is the stall that cost three specs and about seven minutes of a browser run twice (a normal one takes a few seconds). */
+const STALL_REPORT_MS = 45_000;
+/** Each line of the report is cut here; the lines themselves are all kept. */
+const REPORT_LINE_CHARS = 500;
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
+
+/** What the stack looks like now (containers and the last 25 lines of the app's log), for a recreate that stalled or failed; never throws, and each command has 15 s (a hung Docker must not hold the report). */
+async function stackReport(): Promise<string> {
+  const part = async (label: string, args: string[]): Promise<string> => {
+    try {
+      const { stdout } = await run('docker', ['compose', '-p', 'grimoire', ...args], { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024, timeout: 15_000 });
+      const lines = stdout.trim().split('\n').map((line) => (line.length > REPORT_LINE_CHARS ? `${line.slice(0, REPORT_LINE_CHARS)}...` : line));
+      return `--- ${label}\n${lines.join('\n')}`;
+    } catch (error) {
+      return `--- ${label}: ${error instanceof Error ? error.message.slice(0, 200) : 'failed'}`;
+    }
+  };
+  return [await part('docker compose ps', ['ps', '--all']), await part('app log, last lines', ['logs', '--no-log-prefix', '--tail', '25', 'app'])].join('\n');
 }
 
 /** Waits for the app to answer `/readyz` again (after a restart or a start). */
