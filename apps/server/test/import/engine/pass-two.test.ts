@@ -93,9 +93,11 @@ describe('writing pages in the order of the tree', () => {
 
   it('each page is written under the page id and URL id its item was given, with the canonical Markdown the converter made', async () => {
     const t = await setup([md('a.md\u0000*one*  text\n')]);
+    const before = await t.byPath('a.md');
+    expect(typeof before?.pageId === 'string' && typeof before?.urlId === 'string').toBe(true); // given when pass one added the item
     await t.run();
     const item = await t.byPath('a.md');
-    expect(item).toMatchObject({ status: 'ok' });
+    expect(item).toMatchObject({ status: 'ok', pageId: before?.pageId, urlId: before?.urlId });
     expect(t.repo.written[0]?.page.content.markdown).toBe('*one*  text\n');
     expect(t.repo.written[0]?.page.markdownBytes).toBe(Buffer.byteLength('*one*  text\n'));
   });

@@ -148,7 +148,7 @@ describe('a consumer that is late', () => {
     const s = store([{ name: 'lie.md', data: Buffer.alloc(500, 0x61), declaredSize: 10 }]);
     const { reader, entries } = await ok(s);
     const stream = await reader.openEntry(entries[0]!, limits);
-    await new Promise<void>((resolve) => { setTimeout(resolve, 20); }); // the abort happens now, with nobody listening
+    await vi.waitFor(() => { expect(stream.destroyed).toBe(true); }, { timeout: 5000, interval: 5 }); // the abort has happened, with nobody listening
     const read = async (): Promise<void> => { for await (const chunk of stream) void chunk; };
     await expect(read()).rejects.toMatchObject({ reason: 'size_mismatch' });
   });
