@@ -217,7 +217,7 @@ describe('search', () => {
     const MARK = 'hiddenmarker-5531';
     const emoji = await page({ text: `🙂🙂 intro words. the matching passage is here. tail`, editedSecondsAgo: 120 });
     const start = Array.from('🙂🙂 intro words. ').length; // code points: PostgreSQL's substr counts them, not UTF-16 units
-    await store.replacePage(TENANT, emoji, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: start, charEnd: start + 30 }]);
+    await store.replacePage(TENANT, emoji, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: start, charEnd: start + Array.from('the matching passage is here').length }]);
     const secretPage = await page({ collection: hidden, text: `${MARK} should never be read` });
     await store.replacePage(TENANT, secretPage, hash(1), M, [{ ...chunk(0, unit(1, 0, 0, 0)), charStart: 0, charEnd: 20 }]);
     const hits = await ask({ minSimilarity: 0.99 });
