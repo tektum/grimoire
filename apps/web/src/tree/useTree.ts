@@ -36,9 +36,10 @@ export function useCollectionTree(api: ApiLike, collectionId: string | undefined
   const { refetch } = query;
   useEffect(() => {
     // `cancelRefetch: false`: a read already under way is reused, not cancelled and started again.
+    if (collectionId === undefined) return; // `enabled: false` stops the automatic reads only: a manual one would ask for a tree with no id
     const onFocus = (): void => void refetch({ cancelRefetch: false });
     window.addEventListener('focus', onFocus);
     return () => { window.removeEventListener('focus', onFocus); };
-  }, [refetch]);
+  }, [refetch, collectionId]);
   return query;
 }

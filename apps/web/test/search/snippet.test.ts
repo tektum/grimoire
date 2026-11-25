@@ -54,6 +54,19 @@ describe('the snippet of a search result', () => {
     ]);
   });
 
+  it.each([
+    ['no ranges at all', { text: 'plain words' }],
+    ['ranges that are not a list', { text: 'plain words', ranges: 'x' }],
+    ['a snippet that is only a string (the older shape of the answer)', 'plain <mark>words</mark>'],
+    ['no snippet', undefined],
+    ['a snippet that is not text', { text: 42, ranges: [[0, 1]] }],
+  ])('draws what it can as text and does not throw for %s', (_name, snippet) => {
+    const { container } = render(createElement('p', null, createElement(Snippet, { snippet: snippet as never })));
+    expect(container.querySelector('mark')).toBeNull();
+    expect(container.querySelector('mark, b, i')).toBeNull();
+    expect(container.textContent).toBe(typeof snippet === 'string' ? snippet : typeof (snippet as { text?: unknown } | undefined)?.text === 'string' ? (snippet as { text: string }).text : '');
+  });
+
   it('draws plain text when there is nothing to mark', () => {
     const { container } = draw('nothing here', []);
     expect(container.querySelector('mark')).toBeNull();
