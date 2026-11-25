@@ -7,10 +7,9 @@ import { ErrorBoundary } from '../../src/app/ErrorBoundary';
 import { routeObjects } from '../../src/app/router';
 import { ROUTES } from '../../src/app/routes';
 
-// `/search`, `/c/:collectionId`, `/p/:slug`, `/p/:slug/history*`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx, test/history, test/trash and test/admin.
+// `/search`, `/import`, `/c/:collectionId`, `/p/:slug`, `/p/:slug/history*`, `/trash` and `/admin/*` are no longer placeholders: they need the session of the app, and are tested in test/tree/route.test.tsx, test/editor/page-screen.test.tsx, test/history, test/trash and test/admin.
 describe('shell and screens', () => {
   it.each([
-    ['/import', 'Import'],
     ['/nope/x', 'Page not found'],
   ])('renders %s inside the shell', async (url, heading) => {
     render(<RouterProvider router={createMemoryRouter(routeObjects(), { initialEntries: [url] })} />);

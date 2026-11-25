@@ -1,0 +1,10 @@
+.import-screen { max-inline-size: var(--measure, 44rem); margin-inline: auto; }
+.import-form { display: grid; gap: var(--space-2); justify-items: start; }
+.import-form select, .import-form input[type='file'] { max-inline-size: 100%; font: inherit; }
+.import-warning { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-inline-start: 4px solid var(--accent); border-radius: var(--radius-2); background: var(--paper-raised); }
+.import-progress { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
+.import-bar { inline-size: 100%; block-size: 0.75rem; border: 1px solid var(--muted); border-radius: 999px; overflow: hidden; background: var(--paper-raised); }
+.import-bar-fill { block-size: 100%; background: var(--accent); }
+@media (forced-colors: active) {
+  .import-bar-fill { background: Highlight; }
+}
