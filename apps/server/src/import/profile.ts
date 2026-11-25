@@ -17,7 +17,7 @@ export interface Target { readonly kind: 'page' | 'attachment'; readonly itemId:
 
 /**
  * What differs between the sources of an archive (M7 contracts section 4): how an entry is classified, a page's title and parent, what is cleaned from its Markdown before it is
- * parsed, and how a link is found. The generic `markdown_zip` profile is `markdown-profile.ts`; the Notion rules are a second profile (M7-T06).
+ * parsed, and how a link is found. The generic `markdown_zip` profile is `markdown-profile.ts`; the rules for a page-tree export with its own naming are a second profile (M7-T06).
  */
 export interface ImportProfile {
   readonly source: 'markdown_zip' | 'notion_md_csv';
