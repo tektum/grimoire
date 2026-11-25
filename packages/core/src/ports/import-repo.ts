@@ -72,6 +72,8 @@ export interface ImportItem {
   readonly markdownBytes: number | null;
   readonly stateBytes: number | null;
   readonly attempts: number;
+  /** Warnings this item raised (a cut title, a link that matched nothing), kept on the row so the import's count is worked out from the rows and survives a resumed or overlapping run. */
+  readonly warnings: number;
 }
 
 /** How an item ends without a page: left out on purpose (`skipped`) or not readable (`failed`), with the reason as its message. */
@@ -80,6 +82,7 @@ export interface ItemOutcome {
   readonly message: string;
   readonly markdownBytes?: number;
   readonly stateBytes?: number;
+  readonly warnings?: number;
 }
 
 /** The longest message an item row keeps (archive-controlled text, contracts section 4, step 8). */
@@ -103,6 +106,7 @@ export interface NewImportedPage {
   readonly content: { readonly state: Uint8Array; readonly markdown: string; readonly text: string; readonly hash: Buffer };
   readonly markdownBytes: number;
   readonly stateBytes: number;
+  readonly warnings?: number;
   readonly attachments: readonly Omit<NewReady, 'pageId'>[];
 }
 

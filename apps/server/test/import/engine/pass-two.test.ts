@@ -238,6 +238,28 @@ describe('what the page write refuses', () => {
     expect(failed.repo.written.find((w) => w.page.title === 'C')?.page.parentId).toBeNull();
   });
 
+  it('warnings are kept on the rows: a run interrupted after a write and before its counts were saved loses none on resume', async () => {
+    const t = await setup([md('a.md\u0000[x](nope.md)\n'), md('b.md\u0000# B\n')]);
+    // The first run writes a.md (one warning) and stops before saving any counts, as a crash would.
+    const real = t.repo.setCounts.bind(t.repo);
+    t.repo.setCounts = () => Promise.resolve(true);
+    t.converter.seedScript = (m) => { if (m === '# B\n') throw new Error('crash'); return undefined; };
+    await expect(t.run()).rejects.toThrow('crash');
+    t.repo.setCounts = real;
+    t.converter.seedScript = undefined;
+    const resumed = await t.run();
+    expect(resumed).toMatchObject({ kind: 'done', counts: { pagesDone: 2, warnings: 1 } });
+  });
+
+  it('a settle that lost the race counts none of this run\'s warnings', async () => {
+    const t = await setup([md('a.md\u0000[x](nope.md)\n')]);
+    t.converter.seedScript = () => ({ ok: false, reason: 'invalid-markdown', detail: 'x' });
+    const item = await t.byPath('a.md');
+    const real = t.repo.settle.bind(t.repo);
+    t.repo.settle = async (tenant, id, itemId, outcome) => { if (itemId === item?.id) await real(tenant, id, itemId, { status: 'skipped', message: 'ignored' }); return real(tenant, id, itemId, outcome); };
+    expect(await t.run()).toMatchObject({ kind: 'done', counts: { warnings: 0, failed: 0, skipped: 1 } });
+  });
+
   it('an item whose settle is refused because another run settled it first takes the status that run gave it', async () => {
     const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n')]);
     t.converter.seedScript = (m) => (m.startsWith('# A') ? { ok: false, reason: 'invalid-markdown', detail: 'x' } : undefined);
