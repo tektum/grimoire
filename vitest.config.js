@@ -14,6 +14,7 @@ export const integrationCovered = [
   "packages/adapters/db-kysely/src/audit.ts", // integration tests: packages/adapters/db-kysely/test/audit
   "packages/adapters/db-kysely/src/pages.ts", // integration tests: packages/adapters/db-kysely/test/pages
   "packages/adapters/db-kysely/src/admin.ts", // integration tests: packages/adapters/db-kysely/test/admin
+  "packages/adapters/db-kysely/src/embeddings.ts", // integration tests: packages/adapters/db-kysely/test/embeddings
   "packages/adapters/db-kysely/src/page-state.ts", // integration tests: packages/adapters/db-kysely/test/page-state
   "packages/adapters/db-kysely/src/trash.ts", // integration tests: packages/adapters/db-kysely/test/trash
   "packages/adapters/db-kysely/src/revisions.ts", // integration tests: packages/adapters/db-kysely/test/revisions

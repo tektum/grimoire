@@ -1,5 +1,7 @@
-import type { ChunkHit, ChunkRow, EmbeddingStore } from '../ports/embedding-store.js';
+import { EMBED_MAX_ATTEMPTS, type ChunkHit, type ChunkRow, type EmbeddingStore } from '../ports/embedding-store.js';
 
+/** A chunk as stored: the embedding is always there. */
+type StoredChunk = ChunkRow & { readonly embedding: Float32Array };
 interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean }
 interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
@@ -12,7 +14,7 @@ const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length &&
 export class FakeEmbeddingStore implements EmbeddingStore {
   private readonly pages = new Map<string, PageFact>();
   // One set of chunks and one state per page, as the tables' keys (page_id; page_id, chunk_index) allow: `model` is a column, so a write for another model replaces them.
-  private readonly chunks = new Map<string, { model: string; rows: ChunkRow[] }>();
+  private readonly chunks = new Map<string, { model: string; rows: StoredChunk[] }>();
   private readonly states = new Map<string, StateRow>();
 
   constructor(private readonly now: () => number = () => Date.now()) {}
@@ -33,7 +35,7 @@ export class FakeEmbeddingStore implements EmbeddingStore {
   }
 
   /** What is stored for a page and model, for assertions. */
-  stored(pageId: string, model: string): { readonly chunks: readonly ChunkRow[]; readonly state: Readonly<StateRow> | undefined } {
+  stored(pageId: string, model: string): { readonly chunks: readonly StoredChunk[]; readonly state: Readonly<StateRow> | undefined } {
     const state = this.states.get(pageId);
     return { chunks: this.rowsOf(pageId, model), state: state?.model === model ? state : undefined };
   }
@@ -48,12 +50,21 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     return Promise.resolve(new Map(rows.map((c) => [c.chunkIndex, c.contentHash])));
   }
 
-  replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
+  // eslint-disable-next-line @typescript-eslint/require-await -- async so that a throw is a rejection, as the real store's is
+  async replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);
-    if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return Promise.resolve('stale');
-    this.chunks.set(pageId, { model, rows: [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex) });
+    if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return 'stale';
+    const before = this.chunks.get(pageId);
+    const kept = new Map((before?.model === model ? before.rows : []).map((c) => [c.chunkIndex, c]));
+    const rows = chunks.map((c): StoredChunk => {
+      if (c.embedding !== undefined) return { ...c, embedding: c.embedding };
+      const old = kept.get(c.chunkIndex);
+      if (old === undefined || !same(old.contentHash, c.contentHash)) throw new Error(`no stored vector to keep for chunk ${String(c.chunkIndex)}`);
+      return { ...c, embedding: old.embedding };
+    });
+    this.chunks.set(pageId, { model, rows: rows.sort((a, b) => a.chunkIndex - b.chunkIndex) });
     this.states.set(pageId, { model, markdownHash, status: 'ready', attempts: 0, error: null });
-    return Promise.resolve('ok');
+    return 'ok';
   }
 
   markFailed(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, error: string): Promise<void> {
@@ -70,7 +81,7 @@ export class FakeEmbeddingStore implements EmbeddingStore {
       .filter(([, p]) => p.tenantId === tenantId && !p.deleted && p.markdownHash !== null && p.editedAt < cutoff)
       .filter(([id, p]) => {
         const state = this.states.get(id);
-        return state?.model !== model || !same(state.markdownHash, p.markdownHash as Uint8Array);
+        return state?.model !== model || !same(state.markdownHash, p.markdownHash as Uint8Array) || (state.status === 'failed' && state.attempts < EMBED_MAX_ATTEMPTS);
       })
       .sort((a, b) => a[1].editedAt - b[1].editedAt || (a[0] < b[0] ? -1 : 1));
     return Promise.resolve(due.slice(0, o.limit).map(([pageId, p]) => ({ pageId, markdownHash: p.markdownHash as Uint8Array })));
@@ -110,7 +121,7 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     return Promise.resolve({ chunks, pagesReady, pagesFailed, pagesPending });
   }
 
-  private rowsOf(pageId: string, model: string): readonly ChunkRow[] {
+  private rowsOf(pageId: string, model: string): readonly StoredChunk[] {
     const c = this.chunks.get(pageId);
     return c?.model === model ? c.rows : [];
   }

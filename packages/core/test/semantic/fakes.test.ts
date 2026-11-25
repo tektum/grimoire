@@ -50,7 +50,10 @@ describe('FakeEmbeddingStore', () => {
     expect(await need()).toEqual(['p2', 'p1']);
     expect(await store.pagesNeedingEmbedding('legacy', 'm', { olderThanSeconds: 60, limit: 1 })).toHaveLength(1);
     await store.markFailed('legacy', 'p2', hash(2), 'm', 'too-long');
-    expect(await need()).toEqual(['p1']);
+    await store.markFailed('legacy', 'p2', hash(2), 'm', 'too-long');
+    expect(await need()).toEqual(['p2', 'p1']); // two failures: tried again
+    await store.markFailed('legacy', 'p2', hash(2), 'm', 'too-long');
+    expect(await need()).toEqual(['p1']); // three: not again until the Markdown changes
     store.editPage('p2', hash(22), NOW - 200_000);
     expect(await need()).toEqual(['p2', 'p1']);
     store.trashPage('p1');
@@ -115,6 +118,24 @@ describe('FakeEmbeddingStore', () => {
     expect(await store.counts('m')).toEqual({ chunks: 2, pagesReady: 1, pagesFailed: 1, pagesPending: 1 }); // p3 is trashed, x1 (another tenant) is pending
     store.seedPage({ id: 'p5', collectionId: 'open', markdownHash: null });
     expect((await store.counts('m')).pagesPending).toBe(1);
+  });
+});
+
+describe('FakeEmbeddingStore, chunks that did not change', () => {
+  it('keeps the stored vector of a chunk given without one, updates its offsets, and throws when there is none to keep', async () => {
+    const store = new FakeEmbeddingStore(() => NOW);
+    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 0 });
+    const first = chunk(0, 'alpha');
+    await store.replacePage('legacy', 'p1', hash(1), 'm', [first, chunk(1, 'beta')]);
+    const unchanged: ChunkRow = { chunkIndex: 0, contentHash: first.contentHash, charStart: 5, charEnd: 9, tokenCount: first.tokenCount };
+    await store.replacePage('legacy', 'p1', hash(1), 'm', [unchanged]);
+    const [kept] = store.stored('p1', 'm').chunks;
+    expect(kept?.embedding).toEqual(first.embedding);
+    expect([kept?.charStart, kept?.charEnd]).toEqual([5, 9]);
+    expect(store.stored('p1', 'm').chunks).toHaveLength(1);
+    await expect(store.replacePage('legacy', 'p1', hash(1), 'm', [{ ...unchanged, contentHash: hash(99) }])).rejects.toThrow(/no stored vector/);
+    await expect(store.replacePage('legacy', 'p1', hash(1), 'm2', [unchanged])).rejects.toThrow(/no stored vector/); // another model: nothing to keep
+    expect(store.stored('p1', 'm').chunks).toHaveLength(1);
   });
 });
 
