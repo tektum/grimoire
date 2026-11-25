@@ -39,3 +39,8 @@ test("still fails on any other error: only a thing that is gone is tolerated", (
   const broken = { ...fs(), readdirSync: () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); } };
   assert.throws(() => findDockerfiles("/r", { root: "/r", fs: broken, join, relative }), /EACCES/);
 });
+
+test("fails when the root itself is missing: it is required input, and an empty scan would let the gate pass without auditing any image", () => {
+  const fsGone = { ...fs(), readdirSync: () => { throw enoent(); } };
+  assert.throws(() => findDockerfiles("/r", { root: "/r", fs: fsGone, join, relative }), /ENOENT/);
+});

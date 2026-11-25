@@ -6,14 +6,14 @@ const gone = (e) => e !== null && typeof e === "object" && e.code === "ENOENT";
 
 /**
  * Every Dockerfile under `dir`, with its text, named relative to `root`. The tree can change while it is walked (the tests of this folder make and remove scratch directories inside it, in other
- * processes of the same run): a directory or a file that is gone by the time it is read is not there, and any other error is the scan's own.
+ * processes of the same run): a directory below the root or a file that is gone by the time it is read is not there. The root is required input: a root that is missing, and any other error, is the scan's own.
  */
 export function findDockerfiles(dir, { root = dir, fs = nodeFs, join = nodeJoin, relative = nodeRelative, found = [] } = {}) {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch (e) {
-    if (gone(e)) return found;
+    if (gone(e) && dir !== root) return found;
     throw e;
   }
   for (const d of entries) {
