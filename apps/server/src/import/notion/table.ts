@@ -26,12 +26,16 @@ const cell = (value: string): string => value.replaceAll('\\', '\\\\').replaceAl
 
 /**
  * constructed: [F§6] a Markdown table: the first row is the header. A cell is text: a formula such as `=SUM(A1)` is written as it is and nothing evaluates it. Every row is as wide
- * as the widest (a Markdown table drops the cells past its header), so that no cell of a ragged CSV is lost.
+ * as the widest (a Markdown table drops the cells past its header), so that no cell of a ragged CSV is lost. Undefined when the table would be over `maxBytes`: that is judged
+ * before the table is made (every cell takes at least 3 bytes, so one very wide row cannot make every row that wide in memory), and again on the table made.
  */
-export function csvToMarkdownTable(rows: readonly (readonly string[])[]): string {
+export function csvToMarkdownTable(rows: readonly (readonly string[])[], maxBytes: number): string | undefined {
   const [header, ...body] = rows;
   if (header === undefined) return '';
   const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+  // The least a table of this shape takes: `| ` and ` |` and a line break for each of its lines (the separator too), and ` | ` between cells.
+  if ((rows.length + 1) * (3 * width + 1) > maxBytes) return undefined;
   const line = (r: readonly string[]): string => `| ${[...r, ...Array.from({ length: width - r.length }, () => '')].map(cell).join(' | ')} |\n`;
-  return `${line(header)}| ${Array.from({ length: width }, () => '---').join(' | ')} |\n${body.map(line).join('')}`;
+  const table = `${line(header)}| ${Array.from({ length: width }, () => '---').join(' | ')} |\n${body.map(line).join('')}`;
+  return Buffer.byteLength(table) > maxBytes ? undefined : table;
 }
