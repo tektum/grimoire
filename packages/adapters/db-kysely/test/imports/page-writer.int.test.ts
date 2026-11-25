@@ -253,3 +253,47 @@ describe('the attachments of a page', () => {
     expect((await repo.getItem('legacy', s.importId, s.items.get('a.md') as string))?.status).toBe('ok');
   });
 });
+
+describe('moving the pages of an import to the trash', () => {
+  const deleted = (collectionId: string) =>
+    t.app.query<{ id: string; deleted_batch: string | null; deleted_by: string | null; deleted_at: Date | null }>(`select id, deleted_batch, deleted_by, deleted_at from pages where collection_id = $1 order by id`, [collectionId]);
+
+  it('moves the pages of ok items, and the pages under them that a person added, in one batch by the importer, and a second call finds nothing', async () => {
+    const s = await started(['a.md', 'a/b.md']);
+    const repo = createImportRepo(t.app);
+    const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
+    if (a.kind !== 'ok') throw new Error('page a');
+    const b = await repo.writePage('legacy', s.importId, page(s.items.get('a/b.md') as string, s.collectionId, { parentId: a.pageId }), LIMITS, NOW);
+    if (b.kind !== 'ok') throw new Error('page b');
+    await t.app.query(`update imports set status = 'cancelled', finished_at = now() where id = $1`, [s.importId]);
+    // A page that is not the import's, under an imported page (a second import stands for the person who added it), and one beside it.
+    const other = await t.app.query<{ id: string }>(`insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', 'running', $2) returning id`, [s.collectionId, userId]);
+    const otherId = (other[0] as { id: string }).id;
+    await repo.addItems('legacy', otherId, [{ path: 'child.md', kind: 'page' }, { path: 'beside.md', kind: 'page' }]);
+    const waiting = new Map((await repo.pending('legacy', otherId, 'page', 10)).map((i) => [i.path, i.id]));
+    const child = await repo.writePage('legacy', otherId, page(waiting.get('child.md') as string, s.collectionId, { parentId: b.pageId }), LIMITS, NOW);
+    const beside = await repo.writePage('legacy', otherId, page(waiting.get('beside.md') as string, s.collectionId), LIMITS, NOW);
+    if (child.kind !== 'ok' || beside.kind !== 'ok') throw new Error('pages of the other import');
+
+    const moved = await repo.trashImported('legacy', s.importId);
+    expect(moved?.pages).toBe(3);
+    const rows = new Map((await deleted(s.collectionId)).map((r) => [r.id, r]));
+    for (const id of [a.pageId, b.pageId, child.pageId]) {
+      expect(rows.get(id)?.deleted_batch, id).toBe(moved?.batch);
+      expect(rows.get(id)?.deleted_by, id).toBe(userId);
+      expect(rows.get(id)?.deleted_at, id).not.toBeNull();
+    }
+    expect(rows.get(beside.pageId)?.deleted_at).toBeNull();
+    expect(await repo.trashImported('legacy', s.importId)).toEqual({ batch: null, pages: 0 });
+    expect((await deleted(s.collectionId)).filter((r) => r.deleted_batch === moved?.batch)).toHaveLength(3);
+  });
+
+  it('does not touch a page of another tenant that an import names', async () => {
+    const s = await started(['a.md']);
+    const repo = createImportRepo(t.app);
+    const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
+    if (a.kind !== 'ok') throw new Error('page a');
+    expect(await repo.trashImported('other', s.importId)).toBeUndefined();
+    expect((await deleted(s.collectionId)).every((r) => r.deleted_at === null)).toBe(true);
+  });
+});

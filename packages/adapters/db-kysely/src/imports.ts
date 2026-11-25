@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { cleanItemText, ImportBusyError, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportCounts, ImportItem, ImportRecord, ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
@@ -192,6 +193,42 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         [tenantId, id, now],
       );
       return rows[0] === undefined ? undefined : record(rows[0]);
+    },
+    async running(tenantId) {
+      const rows = await db.query<{ id: string }>(`select id from imports where tenant_id = $1 and status = 'running' order by id`, [tenantId]);
+      return rows.map((r) => r.id);
+    },
+    async stale(tenantId, createdBefore, limit) {
+      const rows = await db.query<{ id: string }>(
+        `select id from imports where tenant_id = $1 and status in ('created', 'uploaded') and created_at <= to_timestamp($2::double precision / 1000.0)
+         order by created_at, id limit $3`,
+        [tenantId, createdBefore, limit],
+      );
+      return rows.map((r) => r.id);
+    },
+    async abandon(tenantId, id, now) {
+      const rows = await db.query(
+        `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
+         where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`,
+        [tenantId, id, now],
+      );
+      return rows.length === 1;
+    },
+    async trashImported(tenantId, id) {
+      const found = await db.query<{ created_by: string | null }>(`select created_by from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
+      if (found[0] === undefined) return undefined;
+      // One statement: the live pages of the import's `ok` page items and, below them, every live page (one a person added under an imported page too), all in one batch, as a page delete does.
+      const batch = randomUUID();
+      const moved = await db.query(
+        `with recursive down as (
+           select p.id from pages p where p.tenant_id = $1 and p.deleted_at is null
+             and p.id in (select page_id from import_items where tenant_id = $1 and import_id = $2 and kind = 'page' and status = 'ok' and page_id is not null)
+           union
+           select c.id from pages c join down on c.parent_id = down.id where c.tenant_id = $1 and c.deleted_at is null)
+         update pages set deleted_at = now(), deleted_by = $3, deleted_batch = $4 where id in (select id from down) and tenant_id = $1 and deleted_at is null returning 1`,
+        [tenantId, id, found[0].created_by, batch],
+      );
+      return moved.length === 0 ? { batch: null, pages: 0 } : { batch, pages: moved.length };
     },
   };
 }
