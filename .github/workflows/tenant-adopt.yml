@@ -84,7 +84,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: Find the database and the cluster of the stage, by their exact names, and check they are in one network
+      - name: Find the database and the cluster of the stage, by what SST makes, and check they are in one network
         id: targets
         env:
           STAGE: ${{ inputs.stage }}
@@ -94,13 +94,11 @@ jobs:
       - name: Take a snapshot of the database first, and wait until it can be restored from
         env:
           STAGE: ${{ inputs.stage }}
-          INSTANCE: ${{ steps.targets.outputs.instance }}
+          DATABASE: ${{ steps.targets.outputs.database }}
+          KIND: ${{ steps.targets.outputs.database_kind }}
         run: |
           set -euo pipefail
-          snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
-          aws rds create-db-snapshot --db-instance-identifier "${INSTANCE}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
-          aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
-          echo "snapshot ${snapshot} of ${INSTANCE} is available: it is what a restore of this stage's data starts from"
+          bash tools/adopt/snapshot.sh "${KIND}" "${DATABASE}" "grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
       - name: Run the command as a task of the stage's service
         env:
           CLUSTER: ${{ steps.targets.outputs.cluster }}
