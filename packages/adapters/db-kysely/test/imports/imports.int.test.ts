@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { importRepoConformance } from '@tektum/grimoire-core/testing/import-repo-conformance';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
@@ -18,6 +18,9 @@ beforeAll(async () => {
   collectionId = (await createCollections(t.app).append('legacy', { name: 'imports', createdBy: userId }, (last) => ordering.between(last, null))).id;
 }, 60_000);
 afterAll(async () => { await t?.drop(); });
+// A tenant has one running import (migration 0012): every case starts from a tenant that has none.
+// The runtime role may not delete (migration 0005 grants select, insert and update), so the schema owner's connection clears them; the items go with their import.
+beforeEach(async () => { await t.admin.query(`delete from imports where tenant_id = 'legacy'`); });
 
 const seed = async (status: string): Promise<{ id: string }> => {
   const rows = await t.app.query<{ id: string }>(
@@ -30,7 +33,7 @@ describe('the PostgreSQL ImportRepo meets the conformance cases', () => {
   for (const c of importRepoConformance) {
     it(c.name, async () => {
       await c.run({
-        repo: createImportRepo(t.app), tenantId: 'legacy', otherTenantId: 'other', userId, now: NOW,
+        repo: createImportRepo(t.app), tenantId: 'legacy', otherTenantId: 'other', userId, now: NOW, collectionId,
         seedStatus: async (id, status) => { await t.app.query('update imports set status = $2 where id = $1', [id, status]); },
         seed: async (status) => {
           const made = await seed(status);
