@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { rewriteMarkdown } from '../../../src/import/markdown-rewrite.js';
-import type { ResolveTarget } from '../../../src/import/markdown-rewrite.js';
+import type { Resolved, ResolveTarget } from '../../../src/import/markdown-rewrite.js';
 
 // What the engine knows: the page items and the files of the archive. The rewrite itself only asks.
-const known: Record<string, string> = { 'a.md': '/p/AAA', 'dir/b.md': '/p/BBB', 'img/cat.png': 'attachments/11/cat.png', 'my%20file.pdf': 'attachments/22/my file.pdf' };
+const page = (url: string): Resolved => ({ kind: 'page', url });
+const file = (url: string): Resolved => ({ kind: 'file', url });
+const known: Record<string, Resolved> = { 'a.md': page('/p/AAA'), 'dir/b.md': page('/p/BBB'), 'img/cat.png': file('attachments/11/cat.png'), 'my%20file.pdf': file('attachments/22/my file.pdf'), 'doc.pdf': file('attachments/33/doc.pdf') };
 const calls: string[] = [];
 const resolve: ResolveTarget = (target) => { calls.push(target); return known[target]; };
 
@@ -19,6 +21,19 @@ describe('rewriting links and images (R10.2)', () => {
     const out = rewriteMarkdown('[doc](my%20file.pdf)\n', resolve);
     expect(out.markdown).toBe('[doc](<attachments/22/my file.pdf>)\n');
     expect(calls).toContain('my%20file.pdf');
+  });
+
+  it('a fragment is kept on a page link and dropped on a file, so an attachment path stays exactly attachments/<id>/<name>', () => {
+    const out = rewriteMarkdown('[p](a.md#part) [f](doc.pdf#page=2) ![i](img/cat.png#x)\n', resolve);
+    expect(out.markdown).toBe('[p](/p/AAA#part) [f](attachments/33/doc.pdf) ![i](attachments/11/cat.png)\n');
+  });
+
+  it('a protocol-relative address is external: untouched, not looked up, not reported unresolved', () => {
+    calls.length = 0;
+    const source = '[l](//cdn.example.com/a) ![i](//cdn.example.com/a.png)\n';
+    const out = rewriteMarkdown(source, resolve);
+    expect(out).toMatchObject({ markdown: source, rewritten: 0, unresolved: [], remoteImages: [] });
+    expect(calls).toEqual([]);
   });
 
   it('a link inside a code fence, an inline code span or raw HTML is untouched, even when the path would match', () => {
