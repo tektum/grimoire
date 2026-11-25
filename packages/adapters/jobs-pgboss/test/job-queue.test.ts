@@ -289,7 +289,7 @@ describe('PgBossJobQueue, the real clock', () => {
     const boss = stub();
     const before = Date.now();
     await new PgBossJobQueue(boss).schedule('n', '* * * * *');
-    const start = (boss.send.mock.calls[0]?.[2] as unknown as { startAfter: Date }).startAfter.getTime();
+    const start = ((boss.send.mock.calls[0] as unknown as unknown[])[2] as { startAfter: Date }).startAfter.getTime();
     expect(start).toBeGreaterThan(before);
     expect(start - before).toBeLessThanOrEqual(60_000);
     expect(start % 60_000).toBe(0);
