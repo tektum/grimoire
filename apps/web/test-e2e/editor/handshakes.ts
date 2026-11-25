@@ -33,6 +33,12 @@ export interface HandshakeTrace {
 }
 
 const withoutQuery = (url: string): string => url.split('?')[0] ?? url;
+/** A line of the page's console or an uncaught error, cut short, with every query string and every handshake token taken out: these lines go to the log of a CI run. */
+const redacted = (text: string): string =>
+  text
+    .replace(/\?[^\s"'<>)]*/g, '?<query removed>')
+    .replace(/g1\.[A-Za-z0-9_-]+/g, 'g1.<token removed>')
+    .slice(0, 200);
 
 /** `recordHandshakes` with the context of a failure: sockets opened and closed, frames sent, console errors. */
 export function traceHandshakes(page: Page): HandshakeTrace {
@@ -54,17 +60,18 @@ export function traceHandshakes(page: Page): HandshakeTrace {
     },
   };
   const describe = (wanted: number): string => {
-    const first =
+    const opened =
       sockets.length === 0
         ? 'no websocket was opened by the page'
-        : `${String(sockets.length)} websocket${sockets.length === 1 ? ' was' : 's were'} opened (${sockets.map((s, n) => `${s}${closed.has(n) ? ' [closed]' : ''}`).join(', ')}) and ${String(trace.frames)} frame${trace.frames === 1 ? '' : 's'} sent, none with a handshake token`;
-    const seen = handshakes.length === 0 ? '' : `; ${String(handshakes.length)} of ${String(wanted)} handshakes were seen`;
-    return `expected ${String(wanted)} handshake${wanted === 1 ? '' : 's'}: ${first}${seen}${errors.length === 0 ? '; the page wrote no console error' : `; console: ${errors.slice(0, 5).join(' | ')}`}`;
+        : `${String(sockets.length)} websocket${sockets.length === 1 ? ' was' : 's were'} opened (${sockets.map((s, n) => `${s}${closed.has(n) ? ' [closed]' : ''}`).join(', ')}) and ${String(trace.frames)} frame${trace.frames === 1 ? '' : 's'} sent`;
+    // "none with a token" only when none was seen: after a first handshake the wait for a second says how many of those wanted there were.
+    const tokens = sockets.length === 0 ? '' : handshakes.length === 0 ? ', none with a handshake token' : `; ${String(handshakes.length)} of ${String(wanted)} handshakes were seen`;
+    return `expected ${String(wanted)} handshake${wanted === 1 ? '' : 's'}: ${opened}${tokens}${errors.length === 0 ? '; the page wrote no console error' : `; console: ${errors.slice(0, 5).join(' | ')}`}`;
   };
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text().slice(0, 200));
+    if (message.type() === 'error') errors.push(redacted(message.text()));
   });
-  page.on('pageerror', (error) => errors.push(error.message.slice(0, 200)));
+  page.on('pageerror', (error) => errors.push(redacted(error.message)));
   page.on('websocket', (socket) => {
     const index = sockets.push(withoutQuery(socket.url())) - 1;
     socket.on('close', () => closed.add(index));

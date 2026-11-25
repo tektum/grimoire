@@ -69,3 +69,33 @@ test('it waits for as many handshakes as asked, and a count that is only reached
   await trace.waitFor(2, 2000);
   expect(trace.handshakes.map((h) => h.t)).toEqual(['a', 'b']);
 });
+
+test('after one handshake a wait for two says how many were seen, and never that there was no token', async () => {
+  const f = fakePage();
+  const trace = traceHandshakes(f.page);
+  const s = f.socket('ws://x/collab');
+  s.emit('framesent', { payload: token({ t: 'a' }) });
+  const error = await trace.waitFor(2, 200).then(
+    () => undefined,
+    (e: Error) => e,
+  );
+  expect(error?.message).toContain('1 of 2 handshakes were seen');
+  expect(error?.message).not.toContain('none with a handshake token');
+});
+
+test('what the console and the uncaught errors say is shown without query strings and without handshake tokens', async () => {
+  const f = fakePage();
+  const trace = traceHandshakes(f.page);
+  const secret = token({ t: 'do-not-print' });
+  f.emit('console', { type: () => 'error', text: () => `WebSocket connection to 'ws://127.0.0.1:1/collab?token=${secret}&x=1' failed` });
+  f.emit('pageerror', new Error(`bad frame ${secret} at ws://h/collab?secret=do-not-print`));
+  const error = await trace.waitFor(1, 200).then(
+    () => undefined,
+    (e: Error) => e,
+  );
+  expect(error?.message).toContain('WebSocket connection to');
+  expect(error?.message).toContain('bad frame');
+  expect(error?.message).not.toContain('do-not-print');
+  expect(error?.message).not.toContain(secret);
+  expect(error?.message).not.toContain('token=');
+});
