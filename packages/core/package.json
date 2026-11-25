@@ -37,6 +37,10 @@
       "types": "./dist/attachments/*.d.ts",
       "default": "./dist/attachments/*.js"
     },
+    "./search/*": {
+      "types": "./dist/search/*.d.ts",
+      "default": "./dist/search/*.js"
+    },
     "./jobs/*": {
       "types": "./dist/jobs/*.d.ts",
       "default": "./dist/jobs/*.js"

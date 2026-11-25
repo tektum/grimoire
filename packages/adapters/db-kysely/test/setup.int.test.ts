@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 
 describe('setupDatabase against a PostgreSQL superuser', () => {
-  it('creates the three roles, locks the database to them, hands the schemas to the migration role and installs citext', async () => {
+  it('creates the three roles, locks the database to them, hands the schemas to the migration role and installs citext and pg_trgm', async () => {
     const first = await setup(SUPER, PASSWORDS);
     expect(first).toEqual({ created: [ROLES.migrator, ROLES.app, ROLES.ops], updated: [] });
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
@@ -49,11 +49,13 @@ describe('setupDatabase against a PostgreSQL superuser', () => {
       acl: await q('select datacl::text as acl from pg_database where datname = current_database()'),
       appCan: await q(`select has_schema_privilege($1, 'public', 'usage') as usage, has_schema_privilege($1, 'public', 'create') as make, has_schema_privilege($1, 'pgboss', 'usage') as boss`, [ROLES.app]),
       citext: await q(`select 1 from pg_extension where extname = 'citext'`),
+      trgm: await q(`select 1 from pg_extension where extname = 'pg_trgm'`),
     }));
     expect(state.owners).toEqual([{ schema: 'pgboss', owner: ROLES.migrator }, { schema: 'public', owner: ROLES.migrator }]);
     expect(String((state.acl[0] as { acl: string }).acl)).not.toMatch(/(^\{|,)=/); // no entry for PUBLIC
     expect(state.appCan).toEqual([{ usage: true, make: false, boss: false }]); // the runtime role gets the job queue's grants from `grimoire migrate`, not here
     expect(state.citext).toHaveLength(1);
+    expect(state.trgm).toHaveLength(1);
   });
 
   it('is safe to run again, and a run with new passwords rotates them', async () => {

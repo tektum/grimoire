@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import pg from 'pg';
@@ -88,12 +88,13 @@ const migrationRows = async (): Promise<string[]> =>
 
 describe('grimoire migrate', () => {
   it('applies on an empty database and is idempotent on a second run', async () => {
+    const expected = (await readdir(path.join(ROOT, 'db/migrations'))).filter((n) => /^\d{4}_.*\.ts$/.test(n)).map((n) => n.replace(/\.ts$/, '')).sort(); // every migration there is: a new one needs no edit here
     const first = await migrate();
     expect(first.code).toBe(0);
-    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: 9 }); // 0001 to 0008
+    expect(first.lines.at(-1)).toMatchObject({ event: 'migrate.done', applied: expected.length });
     expect(await tables()).toEqual(expect.arrayContaining(['kysely_migration', 'pages']));
     const rows = await migrationRows();
-    expect(rows).toEqual(['0001_pages', '0002_page_markdown', '0003_schema_version', '0004_permissions', '0005_history_files_imports_audit', '0006_page_search_and_positions', '0007_idempotency_created_index', '0008_drop_page_defaults', '0009_tenancy']);
+    expect(rows).toEqual(expected);
 
     const second = await migrate();
     expect(second.code).toBe(0);
