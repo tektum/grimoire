@@ -28,9 +28,9 @@ export class SegmentStore implements FileStorage {
     if (start < 0 || end >= this.size || start > end) return Promise.reject(new FileStorageError('range-not-satisfiable', 'outside the object'));
     this.ranges.push({ start, end });
     const segments = this.segments;
-    const counter = this;
+    const track = (delta: number): void => { this.openBodies += delta; };
     async function* body(): AsyncGenerator<Uint8Array> {
-      counter.openBodies++;
+      track(1);
       try {
       let at = 0;
       for (const segment of segments) {
@@ -44,7 +44,7 @@ export class SegmentStore implements FileStorage {
         at += length;
         if (at > end) break;
       }
-      } finally { counter.openBodies--; }
+      } finally { track(-1); }
     }
     return Promise.resolve({ body: body(), size: end - start + 1, contentType: 'application/zip' });
   }
