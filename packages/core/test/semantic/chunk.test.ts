@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import type { ChunkRow } from '../../src/ports/embedding-store.js';
 import { chunkText } from '../../src/semantic/chunk.js';
 
 // One token per whitespace-separated word, as the task says.
@@ -11,9 +12,9 @@ const sentence = (i: number, n = 10) => `${Array.from({ length: n - 1 }, (_, k) 
 const sentences = (count: number, perSentence = 10) => Array.from({ length: count }, (_, i) => sentence(i, perSentence)).join(' ');
 
 /** The characters of `text` outside the chunks that are not whitespace: none, when the chunks cover every non-blank character once and in order. */
-function uncovered(text: string, chunks: readonly { charStart: number; charEnd: number }[]): string {
+function uncovered(text: string, chunks: readonly { unitStart: number; unitEnd: number }[]): string {
   const covered = new Array<number>(text.length).fill(0);
-  for (const c of chunks) for (let i = c.charStart; i < c.charEnd; i += 1) covered[i] = (covered[i] as number) + 1;
+  for (const c of chunks) for (let i = c.unitStart; i < c.unitEnd; i += 1) covered[i] = (covered[i] as number) + 1;
   // By UTF-16 unit, like `covered` and the offsets: `[...text]` would go by code point and be off by one after every astral character.
   return Array.from({ length: text.length }, (_, i) => text.charAt(i)).map((ch, i) => ((covered[i] === 0 && ch.trim() !== '') || (covered[i] as number) > 1 ? `${ch}@${String(i)}` : '')).join('');
 }
@@ -26,11 +27,11 @@ describe('chunkText', () => {
     for (const c of chunks) {
       expect(c.tokenCount).toBeLessThanOrEqual(400);
       expect(c.tokenCount).toBeGreaterThan(0);
-      expect(text.slice(c.charStart, c.charEnd)).toBe(c.text);
+      expect(text.slice(c.unitStart, c.unitEnd)).toBe(c.text);
     }
     expect(chunks.slice(0, -1).every((c) => c.tokenCount >= 100 && c.tokenCount <= 220)).toBe(true);
     expect(chunks.map((c) => c.chunkIndex)).toEqual(chunks.map((_, i) => i));
-    expect(chunks.every((c, i) => i === 0 || (chunks[i - 1] as { charEnd: number }).charEnd <= c.charStart)).toBe(true);
+    expect(chunks.every((c, i) => i === 0 || (chunks[i - 1] as { unitEnd: number }).unitEnd <= c.unitStart)).toBe(true);
     expect(uncovered(text, chunks)).toBe('');
   });
 
@@ -91,7 +92,7 @@ describe('chunkText', () => {
   it('keeps the offsets in UTF-16 units of the text it was given, also with characters outside the basic plane and Windows line ends', () => {
     const text = `Ünï 🙂 first line here\r\n\r\nsecond 🙂 line goes here\r\nthird line of the page`;
     const chunks = run(text);
-    for (const c of chunks) expect(text.slice(c.charStart, c.charEnd)).toBe(c.text);
+    for (const c of chunks) expect(text.slice(c.unitStart, c.unitEnd)).toBe(c.text);
     expect(uncovered(text, chunks)).toBe('');
   });
 
@@ -103,18 +104,36 @@ describe('chunkText', () => {
     }
   });
 
-  it('also gives the offsets in Unicode code points, which is how the store reads a passage (PostgreSQL substr), differing from the UTF-16 ones after an astral character', () => {
+  it('gives charStart and charEnd in Unicode code points, as ChunkRow and the store read them, and unitStart and unitEnd in UTF-16 units for slicing the string', () => {
     const text = '🙂🙂 first line here\n\nsecond 🙂 line goes here\nthird 𝒳 line';
     const chunks = chunkText(text, words, { model: MODEL, targetTokens: 3, maxTokens: 10 });
     expect(chunks.length).toBeGreaterThanOrEqual(3);
     const points = Array.from(text);
     for (const c of chunks) {
-      expect(points.slice(c.pointStart, c.pointEnd).join('')).toBe(c.text);
-      expect(text.slice(c.charStart, c.charEnd)).toBe(c.text);
+      expect(points.slice(c.charStart, c.charEnd).join('')).toBe(c.text); // what PostgreSQL substr(text, charStart + 1, charEnd - charStart) reads
+      expect(text.slice(c.unitStart, c.unitEnd)).toBe(c.text);
     }
-    expect(chunks.some((c) => c.pointStart !== c.charStart)).toBe(true); // the astral characters make them differ
-    expect(chunkText('plain ascii text here', words, { model: MODEL }).map((c) => [c.pointStart, c.pointEnd, c.charStart, c.charEnd])).toEqual([[0, 21, 0, 21]]);
-    expect(chunkText('🙂 emoji first words', words, { model: MODEL })[0]).toMatchObject({ pointStart: 0, pointEnd: 19, charStart: 0, charEnd: 20 });
+    expect(chunks.some((c) => c.charStart !== c.unitStart)).toBe(true); // the astral characters make them differ
+    expect(chunkText('plain ascii text here', words, { model: MODEL }).map((c) => [c.charStart, c.charEnd, c.unitStart, c.unitEnd])).toEqual([[0, 21, 0, 21]]);
+    expect(chunkText('🙂 emoji first words', words, { model: MODEL })[0]).toMatchObject({ charStart: 0, charEnd: 19, unitStart: 0, unitEnd: 20 });
+  });
+
+  it('is assignable to a ChunkRow only with the same unit: a chunk passed straight to the store reads the right passage after an emoji', () => {
+    const text = '🙂 alpha beta gamma';
+    const [chunk] = chunkText(text, words, { model: MODEL });
+    const row: ChunkRow = { chunkIndex: 0, contentHash: (chunk as { contentHash: Uint8Array }).contentHash, charStart: (chunk as { charStart: number }).charStart, charEnd: (chunk as { charEnd: number }).charEnd, tokenCount: 1 };
+    expect(Array.from(text).slice(row.charStart, row.charEnd).join('')).toBe(text); // the whole text is one chunk: nothing read late
+    const second = chunkText('🙂 first line here\n\nalpha beta gamma', words, { model: MODEL, targetTokens: 3, maxTokens: 10 }).at(-1);
+    expect(Array.from('🙂 first line here\n\nalpha beta gamma').slice(second?.charStart, second?.charEnd).join('')).toBe('alpha beta gamma');
+  });
+
+  it('counts a lone surrogate as one code point and does not swallow the character after it, so later offsets do not drift', () => {
+    const text = 'a\uD800 b c';
+    const [chunk] = chunkText(text, words, { model: MODEL });
+    expect(chunk).toMatchObject({ charStart: 0, charEnd: 6, unitStart: 0, unitEnd: 6 });
+    const later = chunkText('x \uD800 first line here\n\n🙂 second line here', words, { model: MODEL, targetTokens: 3, maxTokens: 10 }).at(-1);
+    expect(later?.text).toBe('🙂 second line here');
+    expect(Array.from('x \uD800 first line here\n\n🙂 second line here').slice(later?.charStart, later?.charEnd).join('')).toBe('🙂 second line here');
   });
 
   it('counts tokens of the chunk as the counter says, not as the sum of its parts', () => {
@@ -151,8 +170,8 @@ describe('chunkText', () => {
   });
 
   it('the helper that checks coverage sees an uncovered character after an astral one', () => {
-    expect(uncovered('🙂a', [{ charStart: 0, charEnd: 2 }])).toBe('a@2');
-    expect(uncovered('🙂a', [{ charStart: 0, charEnd: 3 }])).toBe('');
+    expect(uncovered('🙂a', [{ unitStart: 0, unitEnd: 2 }])).toBe('a@2');
+    expect(uncovered('🙂a', [{ unitStart: 0, unitEnd: 3 }])).toBe('');
   });
 
   it('keeps stacked full-width marks together: a cut after 本当？！ is after the second mark, never between them', () => {

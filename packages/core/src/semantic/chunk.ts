@@ -4,12 +4,15 @@ import { createHash } from 'node:crypto';
 export interface Chunk {
   readonly chunkIndex: number;
   readonly text: string;
-  /** Offsets of the chunk in the text it was cut from, in UTF-16 code units: `text.slice(charStart, charEnd) === chunk.text`. */
+  /**
+   * Offsets of the chunk in the text it was cut from, in Unicode code points: what `ChunkRow` holds and PostgreSQL's `substr` counts, so a chunk handed to the store reads the right
+   * passage. They differ from the UTF-16 offsets after an astral character (an emoji). A lone surrogate counts as one.
+   */
   readonly charStart: number;
   readonly charEnd: number;
-  /** The same offsets in Unicode code points: what PostgreSQL's `substr` counts, and so what the store keeps and reads a passage by. They differ from the UTF-16 ones after an astral character (an emoji). */
-  readonly pointStart: number;
-  readonly pointEnd: number;
+  /** The same offsets in UTF-16 code units, for slicing the JavaScript string: `text.slice(unitStart, unitEnd) === chunk.text`. */
+  readonly unitStart: number;
+  readonly unitEnd: number;
   /** The tokens of the chunk as the counter says (not the sum of its parts). */
   readonly tokenCount: number;
   /** SHA-256 of the model name, one NUL byte and the chunk's text: another model, or another text, is another hash, so an unchanged chunk is not embedded again. */
@@ -119,7 +122,7 @@ export function chunkText(text: string, countTokens: (text: string) => number, o
       tokens = piece.tokens;
     }
   }
-  const chunks: Omit<Chunk, 'chunkIndex' | 'pointStart' | 'pointEnd'>[] = [];
+  const chunks: Omit<Chunk, 'chunkIndex' | 'charStart' | 'charEnd'>[] = [];
   /** A group is one chunk unless the counter says the whole is over the limit although the sum of its parts was not: then it is halved, by pieces, until it is not. */
   const emit = (group: readonly Piece[]): void => {
     const start = (group[0] as Piece).start;
@@ -132,7 +135,7 @@ export function chunkText(text: string, countTokens: (text: string) => number, o
       emit(group.slice(half));
       return;
     }
-    chunks.push({ text: chunk, charStart: start, charEnd: end, tokenCount, contentHash: new Uint8Array(createHash('sha256').update(options.model).update('\0').update(chunk).digest()) });
+    chunks.push({ text: chunk, unitStart: start, unitEnd: end, tokenCount, contentHash: new Uint8Array(createHash('sha256').update(options.model).update('\0').update(chunk).digest()) });
   };
   for (const group of groups) emit(group);
   // Code point offsets, in one pass over the text in order (the chunks are in order and never cut a surrogate pair).
@@ -141,10 +144,13 @@ export function chunkText(text: string, countTokens: (text: string) => number, o
   const pointAt = (utf16: number): number => {
     for (; unit < utf16; unit += 1) {
       const code = text.charCodeAt(unit);
-      if (code >= 0xd800 && code <= 0xdbff && unit + 1 < text.length) unit += 1;
+      if (code >= 0xd800 && code <= 0xdbff && unit + 1 < text.length) {
+        const next = text.charCodeAt(unit + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) unit += 1; // a pair is one point; a lone high surrogate is one point and does not take the character after it
+      }
       point += 1;
     }
     return point;
   };
-  return chunks.map((c, chunkIndex) => ({ chunkIndex, ...c, pointStart: pointAt(c.charStart), pointEnd: pointAt(c.charEnd) }));
+  return chunks.map((c, chunkIndex) => ({ chunkIndex, ...c, charStart: pointAt(c.unitStart), charEnd: pointAt(c.unitEnd) }));
 }
