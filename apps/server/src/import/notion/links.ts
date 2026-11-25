@@ -11,11 +11,14 @@ export interface NotionIndex {
 }
 export interface Target { readonly kind: 'page' | 'attachment'; readonly itemId: string; readonly fragment?: string }
 
+/** An archive path as `resolveLinkPath` makes its targets: `.` and empty segments dropped, NFC, so an entry stored as `./a//b.md` is found by `a/b.md`. */
+const canonical = (path: string): string => path.split('/').filter((segment) => segment !== '' && segment !== '.').join('/').normalize('NFC');
+
 export function buildIndex(items: readonly IndexedItem[]): NotionIndex {
   const byPath = new Map<string, IndexedItem>();
   const byId = new Map<string, IndexedItem>();
   for (const item of items) {
-    const key = item.path.normalize('NFC');
+    const key = canonical(item.path);
     byPath.set(key, item);
     const id = splitName(item.path.split('/').at(-1) ?? '').id;
     if (id !== undefined && !byId.has(id)) byId.set(id, item);

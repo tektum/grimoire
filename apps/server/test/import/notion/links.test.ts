@@ -41,6 +41,15 @@ describe('images and files', () => {
   });
 });
 
+describe('the index keys are canonical like the targets a link resolves to', () => {
+  it('finds an entry whose archive path has . and empty segments, by the path without them', () => {
+    const odd = buildIndex([{ itemId: 'p', path: 'dir/./Sub  Page.md'.replace('  ', ' '), kind: 'page' }, { itemId: 'q', path: './dir//other.md', kind: 'page' }, { itemId: 'r', path: 'caf\u00e9/x.md', kind: 'page' }]);
+    expect(resolveNotionLink('Sub%20Page.md', 'dir/a.md', odd)).toMatchObject({ itemId: 'p' });
+    expect(resolveNotionLink('other.md', 'dir/a.md', odd)).toMatchObject({ itemId: 'q' });
+    expect(resolveNotionLink('cafe\u0301/x.md', 'a.md', odd)).toMatchObject({ itemId: 'r' }); // NFC
+  });
+});
+
 describe('what a resolved link is', () => {
   it('is the id of an item of the export (and a fragment), never a path: nothing here can be written into a page as an href', () => {
     const r = resolveNotionLink(`../${encodeURIComponent(home)}#top`, child, index);
