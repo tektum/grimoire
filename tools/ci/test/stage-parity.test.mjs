@@ -61,13 +61,13 @@ test('the settings of a stage come from variables named for no stage, and a miss
 
 const record = (name, domain, extra = {}) => recordProgram(() => stage(stageConfig(name), { domain, allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: ['omer@descope.com'], ...extra })).calls;
 
-test('the staging stack declares what its fixture holds: every resource it had before, under the same name, plus the security groups of the shared VPC, so a deploy replaces nothing', () => {
+test('the staging stack declares what its fixture holds: every resource it had before the stages were one function, under the same name, plus what was added since, so a deploy replaces nothing', () => {
   const golden = JSON.parse(readFileSync(new URL('./fixtures/staging-declarations.json', import.meta.url), 'utf8')).calls;
   assert.deepEqual(record('staging', 'grimoire.descope.io'), golden);
   const before = ["Project", "Settings", "Otp", "UserToken", "Session", "Password", "Magiclink", "Enchantedlink", "Embeddedlink", "Totp", "Passkey", "Oauth", "Styles", "Flow-sign-up-or-in", "Vpc", "Db", "DbAppPassword", "DbMigratorPassword", "DbOpsPassword", "Files", "Cluster", "AdminUrl", "AppPassword", "MigratorPassword", "OpsPassword", "MigratorUrl", "AppUrl", "OpsUrl", "Server"];
-  const added = golden.map((c) => c.name).filter((n) => !before.includes(n));
   assert.ok(before.every((n) => golden.some((c) => c.name === n)), 'every resource of before is still declared, under the same name');
-  assert.ok(added.length > 0 && added.every((n) => /^(Service|Db|VpcFlow|VpcDefault)/.test(n)), `what is new belongs to the network: ${added}`);
+  const added = golden.map((c) => c.name).filter((n) => !before.includes(n));
+  assert.ok(added.every((n) => /^(LoadBalancerLogs|Service|Db|VpcFlow|VpcDefault)/.test(n)), `what is new belongs to the network and the edge: ${added}`);
 });
 
 test('the operator role (docs/tenancy.md section 3.2) has a password of its own: db-setup alone receives it, and the server alone its connection', () => {
@@ -109,6 +109,31 @@ test('semantic search is off in the app of every stage, with the same value ever
   for (const name of NAMES) {
     const app = record(name, 'any.example.test').find((c) => c.type === 'sst.aws:Service').args.containers.find((c) => c.name === 'app');
     assert.equal(app.environment.GRIMOIRE_SEMANTIC_SEARCH, 'off', `${name} sets the switch itself, so a new default cannot turn it on`);
+
+test('the load balancer of every stage takes TLS 1.2 and newer only, drops invalid header fields, and logs every request to a private bucket that expires what it holds', () => {
+  for (const name of NAMES) {
+    const { calls, raw } = recordProgram(() => stage(stageConfig(name), { domain: 'any.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [] }));
+    const transform = raw.find((c) => c.type === 'sst.aws:Service').args.transform;
+    const balancer = {};
+    transform.loadBalancer(balancer);
+    assert.equal(balancer.dropInvalidHeaderFields, true, name);
+    assert.deepEqual(JSON.parse(JSON.stringify(balancer.accessLogs)), { bucket: '<LoadBalancerLogs.bucket>', prefix: 'alb', enabled: true }, name);
+    const https = { protocol: 'HTTPS' };
+    transform.listener(https);
+    assert.equal(https.sslPolicy, 'ELBSecurityPolicy-TLS13-1-2-2021-06', `${name}: TLS 1.3 and 1.2 with forward secrecy only`);
+    const http = { protocol: 'HTTP' };
+    transform.listener(http);
+    assert.equal(http.sslPolicy, undefined, 'a plain listener takes no TLS policy (it only redirects)');
+    const one = (type) => { const found = calls.filter((c) => c.type === type); assert.equal(found.length, 1, `${name}: ${type}`); return found[0]; };
+    assert.equal(one('aws.s3:Bucket').name, 'LoadBalancerLogs');
+    assert.deepEqual(one('aws.s3:BucketPublicAccessBlock').args, { bucket: '<LoadBalancerLogs.id>', blockPublicAcls: true, blockPublicPolicy: true, ignorePublicAcls: true, restrictPublicBuckets: true });
+    assert.deepEqual(one('aws.s3:BucketServerSideEncryptionConfiguration').args.rules, [{ applyServerSideEncryptionByDefault: { sseAlgorithm: 'AES256' } }], 'load balancer logs take SSE-S3 only');
+    const policy = String(one('aws.s3:BucketPolicy').args.policy);
+    assert.match(policy, /aws\.elb\.getServiceAccountOutput/, 'the log delivery of the load balancer service writes, no other principal');
+    assert.match(policy, /"actions":\["s3:PutObject"\]/);
+    assert.match(policy, /AWSLogs\/\{?[^"]*\*/, 'only below its own prefix');
+    assert.match(policy, /aws:SecureTransport/, 'a request that is not TLS is refused');
+    assert.deepEqual(one('aws.s3:BucketLifecycleConfiguration').args.rules, [{ id: 'expire', status: 'Enabled', filter: {}, expiration: { days: 90 }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }]);
   }
 });
 
