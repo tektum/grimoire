@@ -103,6 +103,7 @@ describe('the job runner', () => {
   });
 
   it('a stop that comes while the queue is still starting waits for it, registers no handler, and stops that queue', async () => {
+    vi.useFakeTimers();
     const queue = new RecordingQueue();
     let release: (q: RecordingQueue) => void = () => undefined;
     const pending = new Promise<RecordingQueue>((resolve) => { release = resolve; });
@@ -110,8 +111,10 @@ describe('the job runner', () => {
     const starting = runner.start();
     let hookDone = false;
     const stopping = runner.hook.run().then(() => { hookDone = true; });
-    await Promise.resolve();
-    expect(hookDone).toBe(false); // the hook is still waiting for the start to settle
+    // Observed, not guessed: the hook has begun (it says so by the state), and for the whole of its wait (half the 1.5 s grace) it has not finished while the start is unsettled.
+    expect(runner.state()).toBe('stopped');
+    await vi.advanceTimersByTimeAsync(Math.min(START_STOP_WAIT_MS, 1500 / 2) - 1);
+    expect(hookDone).toBe(false);
     release(queue);
     await Promise.all([starting, stopping]);
     expect(queue.worked).toEqual([]);
