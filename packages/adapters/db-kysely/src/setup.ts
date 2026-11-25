@@ -1,9 +1,14 @@
 import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
 import type { KyselyDatabase } from './index.js';
 
-/** The two database roles of the product. Their names are fixed by the migrations (they grant to `grimoire_app`) and by the job queue set-up. */
-export const DATABASE_ROLES = { app: 'grimoire_app', migrator: 'grimoire_migrator' } as const;
-export interface DatabaseRoles { readonly app: string; readonly migrator: string }
+/**
+ * The three database roles of the product. Their names are fixed by the migrations (they grant to `grimoire_app`) and by the job queue set-up. `grimoire_ops` is the
+ * operator role of docs/tenancy.md section 3.2: a member of the runtime role (so it has exactly its grants) with a login of its own, which the row-level security
+ * policies name to let it cross tenants. It has no BYPASSRLS: the master user of a managed database (RDS) may not give that attribute, and needs not.
+ */
+export const DATABASE_ROLES = { app: 'grimoire_app', migrator: 'grimoire_migrator', ops: 'grimoire_ops' } as const;
+export interface DatabaseRoles { readonly app: string; readonly migrator: string; readonly ops: string }
+export interface DatabasePasswords { readonly app: string; readonly migrator: string; readonly ops: string }
 
 const ROLE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 const MIN_PASSWORD_LENGTH = 16;
@@ -28,20 +33,21 @@ export interface SetupResult { readonly created: readonly string[]; readonly upd
 
 /**
  * Makes a managed database ready for `grimoire migrate`, as the cluster's administrator (the master user of a managed service, or a superuser): the same end
- * state as `db/init/roles.psql`, which does this for the local stack, but safe to run again. The two login roles exist with the given passwords (a run with
+ * state as `db/init/roles.psql`, which does this for the local stack, but safe to run again. The three login roles exist with the given passwords (a run with
  * new passwords rotates them) as plain LOGIN roles with no other attribute (no privilege attribute, no connection limit, no expiry), the public may not connect (a role that already holds an explicit grant keeps it: that is the
  * administrator's decision), the migration role owns schema `public` and the job queue's schema `pgboss`, the runtime role may
  * use `public` and nothing more (each migration grants it what it needs), and the `citext` extension exists (the migration role cannot create one).
- * All of it happens in one transaction, so a failure leaves the database as it was. A role that exists and is a member of another role is refused. The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
+ * All of it happens in one transaction, so a failure leaves the database as it was. A role that exists and is a member of another role is refused (the operator role may be a member of the runtime role only). The server is given a SCRAM verifier, not the password (see `scramVerifier`), quoted by the server (`quote_literal`); no password is logged or returned. `roles` is for tests; the product always uses `DATABASE_ROLES`.
  */
 export async function setupDatabase(
   db: KyselyDatabase,
-  passwords: { readonly app: string; readonly migrator: string },
+  passwords: DatabasePasswords,
   roles: DatabaseRoles = DATABASE_ROLES,
 ): Promise<SetupResult> {
-  for (const name of [roles.app, roles.migrator]) if (!ROLE_NAME.test(name)) throw new Error('a database role name must be lowercase letters, digits and underscores');
-  if (roles.app === roles.migrator) throw new Error('the runtime role and the migration role must be different roles');
-  for (const password of [passwords.app, passwords.migrator]) if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`a database password must be at least ${String(MIN_PASSWORD_LENGTH)} characters`);
+  const all = [roles.app, roles.migrator, roles.ops];
+  for (const name of all) if (!ROLE_NAME.test(name)) throw new Error('a database role name must be lowercase letters, digits and underscores');
+  if (new Set(all).size !== all.length) throw new Error('the runtime role, the migration role and the operator role must be different roles');
+  for (const password of [passwords.app, passwords.migrator, passwords.ops]) if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`a database password must be at least ${String(MIN_PASSWORD_LENGTH)} characters`);
 
   // One transaction: a failure part-way (a rotation of one password but not the other, a revoke before its grants) leaves the database as it was. Every statement here is transactional.
   return db.transaction(async (tx) => {
@@ -52,14 +58,14 @@ export async function setupDatabase(
     };
     // Roles that already exist keep nothing they should not have: an extra membership is refused (db-setup does not guess what to revoke); the attributes are reset below.
     const memberships = await tx.query<{ member: string; group: string }>(
-      'select r.rolname as member, g.rolname as "group" from pg_auth_members m join pg_roles r on r.oid = m.member join pg_roles g on g.oid = m.roleid where r.rolname = any($1::text[])',
-      [[roles.app, roles.migrator]],
+      'select r.rolname as member, g.rolname as "group" from pg_auth_members m join pg_roles r on r.oid = m.member join pg_roles g on g.oid = m.roleid where r.rolname = any($1::text[]) and not (r.rolname = $2 and g.rolname = $3)',
+      [all, roles.ops, roles.app],
     );
     if (memberships.length > 0) throw new Error(`the role ${memberships[0]?.member ?? ''} is a member of ${memberships[0]?.group ?? ''}: db-setup does not change memberships, so remove it or use a clean database`);
 
     const created: string[] = [];
     const updated: string[] = [];
-    for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app]] as const) {
+    for (const [name, password] of [[roles.migrator, passwords.migrator], [roles.app, passwords.app], [roles.ops, passwords.ops]] as const) {
       const [current] = await tx.query<Record<(typeof RESETTABLE)[number][0], boolean>>('select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1', [name]);
       // Only what an existing role has too much of is named: a managed master user is not a superuser, and may not even name SUPERUSER, REPLICATION or BYPASSRLS on a role that has none of them.
       const reset = current === undefined ? [] : RESETTABLE.filter(([column]) => current[column]).map(([, clause]) => clause);
@@ -75,6 +81,8 @@ export async function setupDatabase(
     }
     const app = await quote('ident', roles.app);
     const migrator = await quote('ident', roles.migrator);
+    // The operator role has the runtime role's grants, and only through it: nothing to keep in step when a migration grants the runtime role more.
+    await tx.query(`grant ${app} to ${await quote('ident', roles.ops)}`);
     const database = await quote('ident', (await tx.query<{ name: string }>('select current_database() as name'))[0]?.name ?? '');
 
     // A managed service's master user is not a superuser: to hand an object to the migration role it must be able to become that role.

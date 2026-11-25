@@ -64,7 +64,19 @@ const record = (name, domain, extra = {}) => recordProgram(() => stage(stageConf
 test('the staging stack declares exactly what it declared before the stages were one function: the same resources, names and wiring, so a deploy replaces nothing', () => {
   const golden = JSON.parse(readFileSync(new URL('./fixtures/staging-declarations.json', import.meta.url), 'utf8')).calls;
   assert.deepEqual(record('staging', 'grimoire.descope.io'), golden);
-  assert.equal(golden.length, 26);
+  assert.equal(golden.length, 29);
+});
+
+test('the operator role (docs/tenancy.md section 3.2) has a password of its own: db-setup alone receives it, and the server alone its connection', () => {
+  const calls = record('staging', 'grimoire.descope.io');
+  const named = (name) => calls.find((c) => c.name === name);
+  assert.deepEqual(named('DbOpsPassword'), { type: 'random:RandomPassword', name: 'DbOpsPassword', args: { length: 40, special: false } });
+  assert.deepEqual(named('OpsPassword'), { type: 'aws.ssm:Parameter', name: 'OpsPassword', args: { type: 'SecureString', value: '<DbOpsPassword.result>' } });
+  assert.deepEqual(named('OpsUrl')?.args.type, 'SecureString');
+  const ssm = Object.fromEntries(named('Server').args.containers.map((c) => [c.name, c.ssm]));
+  assert.deepEqual(ssm['db-setup'].GRIMOIRE_DB_OPS_PASSWORD, '<OpsPassword.arn>');
+  assert.deepEqual(ssm.app, { GRIMOIRE_DATABASE_URL: '<AppUrl.arn>', GRIMOIRE_DATABASE_OPS_URL: '<OpsUrl.arn>' });
+  assert.deepEqual(Object.keys(ssm.migrate), ['GRIMOIRE_DATABASE_MIGRATION_URL']);
 });
 
 test('no two stages share a project name: Descope refuses a second project of a name that exists', () => {

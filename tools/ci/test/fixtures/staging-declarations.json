@@ -166,6 +166,14 @@
       }
     },
     {
+      "type": "random:RandomPassword",
+      "name": "DbOpsPassword",
+      "args": {
+        "length": 40,
+        "special": false
+      }
+    },
+    {
       "type": "sst.aws:Bucket",
       "name": "Files",
       "args": {
@@ -224,6 +232,14 @@
     },
     {
       "type": "aws.ssm:Parameter",
+      "name": "OpsPassword",
+      "args": {
+        "type": "SecureString",
+        "value": "<DbOpsPassword.result>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
       "name": "MigratorUrl",
       "args": {
         "type": "SecureString",
@@ -233,6 +249,14 @@
     {
       "type": "aws.ssm:Parameter",
       "name": "AppUrl",
+      "args": {
+        "type": "SecureString",
+        "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
+      }
+    },
+    {
+      "type": "aws.ssm:Parameter",
+      "name": "OpsUrl",
       "args": {
         "type": "SecureString",
         "value": "<resolve(user,secret,host,port,name)|apply(fn)>"
@@ -266,7 +290,8 @@
             "ssm": {
               "GRIMOIRE_DATABASE_ADMIN_URL": "<AdminUrl.arn>",
               "GRIMOIRE_DB_APP_PASSWORD": "<AppPassword.arn>",
-              "GRIMOIRE_DB_MIGRATOR_PASSWORD": "<MigratorPassword.arn>"
+              "GRIMOIRE_DB_MIGRATOR_PASSWORD": "<MigratorPassword.arn>",
+              "GRIMOIRE_DB_OPS_PASSWORD": "<OpsPassword.arn>"
             }
           },
           {
@@ -311,7 +336,8 @@
               "GRIMOIRE_S3_CORS_MODE": "external"
             },
             "ssm": {
-              "GRIMOIRE_DATABASE_URL": "<AppUrl.arn>"
+              "GRIMOIRE_DATABASE_URL": "<AppUrl.arn>",
+              "GRIMOIRE_DATABASE_OPS_URL": "<OpsUrl.arn>"
             }
           }
         ],

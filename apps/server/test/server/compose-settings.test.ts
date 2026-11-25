@@ -22,6 +22,7 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_DATABASE_ADMIN_URL: 'only the db-setup step holds the administrator connection; the server refuses to start with it',
   GRIMOIRE_DB_APP_PASSWORD: 'only the db-setup step holds the role passwords; the server refuses to start with it',
   GRIMOIRE_DB_MIGRATOR_PASSWORD: 'only the db-setup step holds the role passwords; the server refuses to start with it',
+  GRIMOIRE_DB_OPS_PASSWORD: 'only the db-setup step holds the role passwords; the server refuses to start with it',
   GRIMOIRE_S3_ADMIN_SECRET_KEY: 'the running server never holds the admin key',
   GRIMOIRE_S3_CREATE_ONLY_HEADER: 'M5-T02a passes it',
   GRIMOIRE_S3_CORS_MODE: 'M5-T02a passes it',

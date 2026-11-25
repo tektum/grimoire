@@ -105,11 +105,12 @@ export interface FilesSetupConfig {
   readonly secretKey: string;
 }
 
-/** What `grimoire db-setup` needs: the administrator's connection to the database and the two passwords to give the product's roles (never part of the server's settings). */
+/** What `grimoire db-setup` needs: the administrator's connection to the database and the three passwords to give the product's roles (never part of the server's settings). */
 export interface DatabaseSetupConfig {
   readonly adminUrl: string;
   readonly appPassword: string;
   readonly migratorPassword: string;
+  readonly opsPassword: string;
 }
 
 /** The import's limits and the remote-image fetcher's (contracts section 6). The size of a Markdown file is the seed cap of `collab`, not a setting of its own. */
@@ -133,7 +134,8 @@ export interface SearchConfig { readonly statementTimeoutMs: number }
 
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
-  readonly database: { readonly url?: string; readonly migrationUrl?: string };
+  /** `opsUrl`: the operator role's connection (docs/tenancy.md section 3.2), absent unless configured. */
+  readonly database: { readonly url?: string; readonly migrationUrl?: string; readonly opsUrl?: string };
   /** Present only for the `db-setup` purpose. */
   readonly dbSetup?: DatabaseSetupConfig;
   readonly descopeProjectId?: string; readonly allowedOrigins: readonly string[];

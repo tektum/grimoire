@@ -5,7 +5,7 @@ import type { DatabaseRoles } from '../src/index.js';
 // Its own database and its own role names, created and dropped by this file: the roles of the shared development database are cluster-wide and must keep their passwords.
 const ID = String(process.pid);
 const DATABASE = `grimoire_dbsetup_${ID}`;
-const ROLES: DatabaseRoles = { app: `t_app_${ID}`, migrator: `t_migrator_${ID}` };
+const ROLES: DatabaseRoles = { app: `t_app_${ID}`, migrator: `t_migrator_${ID}`, ops: `t_ops_${ID}` };
 const MANAGED_ADMIN = `t_admin_${ID}`; // a master user of a managed service: it can create roles, but it is not a superuser
 const server = '127.0.0.1:55432';
 const url = (role: string, password: string, name: string): string => `postgresql://${role}:${password}@${server}/${name}`;
@@ -16,12 +16,14 @@ async function run<T>(connection: string, work: (query: (text: string, params?: 
 }
 const asSuperuser = <T>(name: string, work: Parameters<typeof run<T>>[1]) => run(url('grimoire_admin', 'grimoire-dev', name), work);
 const canConnect = (role: string, password: string): Promise<boolean> => run(url(role, password, DATABASE), (q) => q('select 1')).then(() => true, () => false);
-const setup = <T>(as: { role: string; password: string }, passwords: { app: string; migrator: string }, work?: (r: Awaited<ReturnType<typeof setupDatabase>>) => T) => {
+type Passwords = { app: string; migrator: string; ops: string };
+const setup = <T>(as: { role: string; password: string }, passwords: Passwords, work?: (r: Awaited<ReturnType<typeof setupDatabase>>) => T) => {
   const handle = createDatabase(url(as.role, as.password, DATABASE), { maxConnections: 1 });
   return setupDatabase(handle, passwords, ROLES).finally(() => handle.close()).then((r) => (work ? work(r) : r));
 };
 const SUPER = { role: 'grimoire_admin', password: 'grimoire-dev' };
-const PASSWORDS = { app: 'app-password-0123456789', migrator: 'migrator-password-0123456789' };
+const PASSWORDS = { app: 'app-password-0123456789', migrator: 'migrator-password-0123456789', ops: 'ops-password-0123456789' };
+const ROTATED = { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789', ops: 'rotated-ops-password-0123456789' };
 
 beforeAll(async () => {
   await asSuperuser('postgres', (q) => q(`drop database if exists ${DATABASE} with (force)`));
@@ -30,16 +32,17 @@ beforeAll(async () => {
 afterAll(async () => {
   await asSuperuser('postgres', async (q) => {
     await q(`drop database if exists ${DATABASE} with (force)`);
-    for (const role of [ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
+    for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
   });
 });
 
 describe('setupDatabase against a PostgreSQL superuser', () => {
-  it('creates both roles, locks the database to them, hands the schemas to the migration role and installs citext', async () => {
+  it('creates the three roles, locks the database to them, hands the schemas to the migration role and installs citext', async () => {
     const first = await setup(SUPER, PASSWORDS);
-    expect(first).toEqual({ created: [ROLES.migrator, ROLES.app], updated: [] });
+    expect(first).toEqual({ created: [ROLES.migrator, ROLES.app, ROLES.ops], updated: [] });
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
     expect(await canConnect(ROLES.migrator, PASSWORDS.migrator)).toBe(true);
+    expect(await canConnect(ROLES.ops, PASSWORDS.ops)).toBe(true);
     expect(await canConnect(ROLES.app, 'not-the-password-0123456789')).toBe(false);
     const state = await asSuperuser(DATABASE, async (q) => ({
       owners: await q(`select n.nspname as schema, r.rolname as owner from pg_namespace n join pg_roles r on r.oid = n.nspowner where n.nspname in ('public', 'pgboss') order by 1`),
@@ -54,19 +57,22 @@ describe('setupDatabase against a PostgreSQL superuser', () => {
   });
 
   it('is safe to run again, and a run with new passwords rotates them', async () => {
-    const rotated = { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789' };
-    expect(await setup(SUPER, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app] });
+    const rotated = ROTATED;
+    expect(await setup(SUPER, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app, ROLES.ops] });
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(false);
     expect(await canConnect(ROLES.app, rotated.app)).toBe(true);
     expect(await canConnect(ROLES.migrator, rotated.migrator)).toBe(true);
-    expect(await setup(SUPER, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app] }); // again, nothing changes and nothing fails
+    expect(await canConnect(ROLES.ops, rotated.ops)).toBe(true);
+    expect(await canConnect(ROLES.ops, PASSWORDS.ops)).toBe(false);
+    expect(await setup(SUPER, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app, ROLES.ops] }); // again, nothing changes and nothing fails
   });
 
   it('quotes a password with quotes and backslashes instead of running it as SQL', async () => {
-    const odd = { app: `it's "a" \\ password; drop table x;--`, migrator: `back\\slash'quote-0123456789` };
+    const odd = { app: `it's "a" \\ password; drop table x;--`, migrator: `back\\slash'quote-0123456789`, ops: `"ops" it's; \\-0123456789` };
     await setup(SUPER, odd);
     expect(await canConnect(ROLES.app, odd.app)).toBe(true);
     expect(await canConnect(ROLES.migrator, odd.migrator)).toBe(true);
+    expect(await canConnect(ROLES.ops, odd.ops)).toBe(true);
   });
 });
 
@@ -74,7 +80,7 @@ describe('setupDatabase on a database that is not clean', () => {
   const OTHER = `t_other_${ID}`;
   const reset = () => asSuperuser('postgres', async (q) => {
     await q(`drop database if exists ${DATABASE} with (force)`);
-    for (const role of [ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
+    for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
     await q(`create database ${DATABASE}`);
   });
   const roleFlags = (role: string) => asSuperuser('postgres', (q) => q(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1`, [role]));
@@ -117,7 +123,7 @@ describe('setupDatabase on a database that is not clean', () => {
     const handle = createDatabase(url(SUPER.role, SUPER.password, DATABASE), { maxConnections: 1 });
     const failing = { ...handle, transaction: <T>(fn: Parameters<typeof handle.transaction<T>>[0]) => handle.transaction((tx) => fn({ query: (text, params) => (/create extension/.test(text) ? Promise.reject(new Error('the step failed')) : tx.query(text, params)) })) };
     try {
-      await expect(setupDatabase(failing as typeof handle, { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789' }, ROLES)).rejects.toThrow('the step failed');
+      await expect(setupDatabase(failing as typeof handle, ROTATED, ROLES)).rejects.toThrow('the step failed');
     } finally { await handle.close(); }
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true); // the rotation was rolled back
     expect(await canConnect(ROLES.app, 'rotated-app-password-0123456789')).toBe(false);
@@ -128,12 +134,13 @@ describe('setupDatabase as the master user of a managed service (not a superuser
   it('does the same, which needs the right to become the migration role to give it the schemas', async () => {
     await asSuperuser('postgres', async (q) => {
       await q(`drop database if exists ${DATABASE} with (force)`);
-      for (const role of [ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
+      for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
       await q(`create role ${MANAGED_ADMIN} login createrole password 'managed-admin-password-0123'`);
       await q(`create database ${DATABASE} owner ${MANAGED_ADMIN}`);
     });
     const result = await setup({ role: MANAGED_ADMIN, password: 'managed-admin-password-0123' }, PASSWORDS);
-    expect(result).toEqual({ created: [ROLES.migrator, ROLES.app], updated: [] });
+    expect(result).toEqual({ created: [ROLES.migrator, ROLES.app, ROLES.ops], updated: [] });
+    expect(await canConnect(ROLES.ops, PASSWORDS.ops)).toBe(true); // the master user could make it a member of the runtime role
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
     const owner = await asSuperuser(DATABASE, (q) => q(`select r.rolname as owner from pg_namespace n join pg_roles r on r.oid = n.nspowner where n.nspname = 'public'`));
     expect(owner).toEqual([{ owner: ROLES.migrator }]);
@@ -141,8 +148,8 @@ describe('setupDatabase as the master user of a managed service (not a superuser
 
   it('can run again and rotate the passwords, which on PostgreSQL 16 and later a non-superuser may not do to the privilege attributes of a role that has none', async () => {
     const managed = { role: MANAGED_ADMIN, password: 'managed-admin-password-0123' };
-    const rotated = { app: 'rotated-app-password-0123456789', migrator: 'rotated-migrator-password-0123456789' };
-    expect(await setup(managed, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app] });
+    const rotated = ROTATED;
+    expect(await setup(managed, rotated)).toEqual({ created: [], updated: [ROLES.migrator, ROLES.app, ROLES.ops] });
     expect(await canConnect(ROLES.app, rotated.app)).toBe(true);
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(false);
   });
@@ -155,14 +162,61 @@ describe('setupDatabase as the master user of a managed service (not a superuser
   });
 });
 
+describe('the operator role (docs/tenancy.md section 3.2): the runtime role plus nothing but a login of its own', () => {
+  const OTHER = `t_other_ops_${ID}`;
+  const as = <T>(role: string, password: string, work: Parameters<typeof run<T>>[1]) => run(url(role, password, DATABASE), work);
+  const message = (p: Promise<unknown>): Promise<string> => p.then(() => 'ran', (e: unknown) => (e instanceof Error ? e.message : 'error'));
+  const flags = () => asSuperuser('postgres', (q) => q('select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit from pg_roles where rolname = $1', [ROLES.ops]));
+  const memberOf = () => asSuperuser('postgres', (q) => q('select g.rolname as "group" from pg_auth_members m join pg_roles r on r.oid = m.member join pg_roles g on g.oid = m.roleid where r.rolname = $1', [ROLES.ops]));
+
+  beforeAll(async () => {
+    await asSuperuser('postgres', async (q) => {
+      await q(`drop database if exists ${DATABASE} with (force)`);
+      for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
+      await q(`create database ${DATABASE}`);
+    });
+    await setup(SUPER, PASSWORDS);
+    await as(ROLES.migrator, PASSWORDS.migrator, async (q) => { await q('create table shared (id int)'); await q(`grant select, insert on shared to ${ROLES.app}`); });
+  }, 60_000);
+
+  it('has no attribute but login and inherit: not bypassrls (an RDS master user may not grant it), not superuser, no createdb, no createrole', async () => {
+    expect(await flags()).toEqual([{ rolsuper: false, rolcreatedb: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false, rolinherit: true }]);
+  });
+
+  it('is a member of the runtime role only, and so has its grants without any of its own', async () => {
+    expect(await memberOf()).toEqual([{ group: ROLES.app }]);
+    expect(await as(ROLES.ops, PASSWORDS.ops, async (q) => { await q('insert into shared values (1)'); return q('select id from shared'); })).toEqual([{ id: 1 }]);
+  });
+
+  it('cannot change the schema: no new table, no altered one', async () => {
+    expect(await message(as(ROLES.ops, PASSWORDS.ops, (q) => q('create table public.mine (id int)')))).toMatch(/permission denied/);
+    expect(await message(as(ROLES.ops, PASSWORDS.ops, (q) => q('alter table shared add column x int')))).toMatch(/must be owner/);
+  });
+
+  it('cannot become the migration role or the administrator', async () => {
+    expect(await message(as(ROLES.ops, PASSWORDS.ops, (q) => q(`set role ${ROLES.migrator}`)))).toMatch(/permission denied to set role/);
+    expect(await message(as(ROLES.ops, PASSWORDS.ops, (q) => q(`set role ${SUPER.role}`)))).toMatch(/permission denied to set role/);
+  });
+
+  it('a run takes bypassrls back from an existing operator role, and refuses one that is a member of any other role', async () => {
+    await asSuperuser('postgres', (q) => q(`alter role ${ROLES.ops} bypassrls`));
+    await setup(SUPER, PASSWORDS);
+    expect(await flags()).toEqual([expect.objectContaining({ rolbypassrls: false })]);
+    await asSuperuser('postgres', async (q) => { await q(`create role ${OTHER}`); await q(`grant ${OTHER} to ${ROLES.ops}`); });
+    await expect(setup(SUPER, PASSWORDS)).rejects.toThrow(new RegExp(`${ROLES.ops} is a member of ${OTHER}`));
+  });
+});
+
 describe('setupDatabase refuses what it must not do before it touches the database', () => {
-  const refuses = async (passwords: { app: string; migrator: string }, roles: DatabaseRoles = ROLES): Promise<string> => {
+  const refuses = async (passwords: Passwords, roles: DatabaseRoles = ROLES): Promise<string> => {
     const handle = createDatabase(url(SUPER.role, SUPER.password, DATABASE), { maxConnections: 1 });
     try { await setupDatabase(handle, passwords, roles); return 'ran'; } catch (e) { return e instanceof Error ? e.message : 'error'; } finally { await handle.close(); }
   };
   it('a short password, equal roles and a role name that is not plain', async () => {
-    expect(await refuses({ app: 'short', migrator: PASSWORDS.migrator })).toMatch(/at least 16/);
-    expect(await refuses(PASSWORDS, { app: 'same_role', migrator: 'same_role' })).toMatch(/different roles/);
-    expect(await refuses(PASSWORDS, { app: 'x; drop role y', migrator: 'ok_role' })).toMatch(/lowercase letters/);
+    expect(await refuses({ ...PASSWORDS, app: 'short' })).toMatch(/at least 16/);
+    expect(await refuses({ ...PASSWORDS, ops: 'short' })).toMatch(/at least 16/);
+    expect(await refuses(PASSWORDS, { app: 'same_role', migrator: 'same_role', ops: 'ops_role' })).toMatch(/different roles/);
+    expect(await refuses(PASSWORDS, { app: 'app_role', migrator: 'migrator_role', ops: 'app_role' })).toMatch(/different roles/);
+    expect(await refuses(PASSWORDS, { app: 'x; drop role y', migrator: 'ok_role', ops: 'ops_role' })).toMatch(/lowercase letters/);
   });
 });

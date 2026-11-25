@@ -66,6 +66,8 @@ services:
       GRIMOIRE_DEV_TOKEN_SECRET: "${GRIMOIRE_DEV_TOKEN_SECRET:-}"
       GRIMOIRE_ALLOWED_ORIGINS: "${GRIMOIRE_ALLOWED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}"
       GRIMOIRE_DATABASE_URL: postgresql://grimoire_app:${GRIMOIRE_DEV_DB_PASSWORD}@postgres:5432/grimoire
+      # The operator role (docs/tenancy.md section 3.2), made by db/init/roles.psql: a database volume older than that lacks it until `make reset`.
+      GRIMOIRE_DATABASE_OPS_URL: postgresql://grimoire_ops:${GRIMOIRE_DEV_DB_PASSWORD}@postgres:5432/grimoire
       # Empty means "use the default" (the settings loader treats an empty value as unset).
       GRIMOIRE_LOG_LEVEL: "${GRIMOIRE_LOG_LEVEL:-}"
       GRIMOIRE_TRUSTED_PROXY: "${GRIMOIRE_TRUSTED_PROXY:-}"
