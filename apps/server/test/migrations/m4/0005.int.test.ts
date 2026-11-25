@@ -40,7 +40,7 @@ describe('migrations 0005 and 0006', () => {
   it('apply on an empty database, and a second run applies nothing', async () => {
     const first = await migrate(EMPTY);
     expect(first.code, first.output).toBe(0);
-    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 9 }]);
+    expect(await sqlAdmin(EMPTY, 'select count(*)::int as n from kysely_migration')).toEqual([{ n: 10 }]);
     const second = await migrate(EMPTY);
     expect(second.code, second.output).toBe(0);
     expect(second.output).toContain('migrate.nothing_pending');

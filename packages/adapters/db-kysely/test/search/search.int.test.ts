@@ -43,7 +43,7 @@ describe('search: what is found', () => {
     const { hits } = await find('zebrafish');
     expect(ids(hits)).toEqual([title, body]);
     expect(hits[0]).toMatchObject({ title: 'Zebrafish handbook', collectionId: open, partial: false });
-    expect(hits[1]?.snippet).toEqual({ text: 'the zebrafish migration plan', ranges: [[4, 13]] });
+    expect(hits[1]?.snippet).toEqual({ text: 'zebrafish migration plan', ranges: [[0, 9]] }); // the headline starts at the match
     expect(typeof hits[0]?.updatedAt).toBe('number');
   });
 
@@ -59,8 +59,8 @@ describe('search: what is found', () => {
     await page('Control', { body: 'a\u0001b\u0002c needle d\u0001e needle' });
     const { hits } = await find('needle');
     const snippet = hits.find((h) => h.title === 'Control')?.snippet;
-    expect(snippet?.text).toBe('a b c needle d e needle');
-    expect(snippet?.ranges).toEqual([[6, 12], [17, 23]]);
+    expect(snippet?.text).toBe('needle d e needle'); // the characters became spaces before the headline was cut, so none of them is a marker
+    expect(snippet?.ranges).toEqual([[0, 6], [11, 17]]);
   });
 
   it('answers a query of symbols with an empty list', async () => {
