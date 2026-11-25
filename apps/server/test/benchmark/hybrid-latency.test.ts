@@ -112,6 +112,25 @@ const statement = async (collectionIds: readonly string[]): Promise<number[]> =>
 };
 
 describe('the semantic statement without an index', () => {
+  // What the numbers below rest on, recorded (never asserted): the settings of the database and the plan of the statement with every collection visible, as the store sends it.
+  it('records the database settings and the plan of the statement', { timeout: 600_000 }, async () => {
+    const settings = await run(
+      `select name, setting, unit from pg_settings where name in ('shared_buffers', 'work_mem', 'effective_cache_size', 'max_parallel_workers_per_gather', 'max_parallel_workers', 'max_worker_processes', 'jit') order by name`,
+    );
+    record('postgresSettings', settings);
+    const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
+    const ids = `{${collections.join(',')}}`;
+    const plan = await run(
+      `explain (analyze, buffers, costs off) with nearest as (select c.page_id, c.chunk_index, c.embedding <=> '${vectorText}'::vector as distance from page_chunks c join pages p on p.id = c.page_id
+         where c.model = '${modelKey(model)}' and c.tenant_id = '${TENANT}' and p.tenant_id = '${TENANT}' and p.deleted_at is null and p.collection_id = any('${ids}'::uuid[]) and 1 - (c.embedding <=> '${vectorText}'::vector) >= 0
+         order by distance, c.page_id, c.chunk_index limit 300) select count(*) from nearest`,
+    );
+    record(
+      'plan',
+      (plan as { 'QUERY PLAN': string }[]).map((r) => r['QUERY PLAN']),
+    );
+  });
+
   it('has p95 within 400 ms for a user who sees every collection', { timeout: 600_000 }, async () => {
     await statement(collections); // one round to warm the cache, not counted
     const all = p95(await statement(collections));
