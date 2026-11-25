@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export interface Handshake {
   t: string;
@@ -52,10 +52,11 @@ export function traceHandshakes(page: Page): HandshakeTrace {
     frames: 0,
     errors,
     async waitFor(count, timeoutMs) {
-      const deadline = Date.now() + timeoutMs;
-      while (handshakes.length < count) {
-        if (Date.now() >= deadline) throw new Error(describe(count));
-        await new Promise((resolve) => setTimeout(resolve, 50));
+      // Playwright's own poll (the wait of the browser specifications; the server harness's `eventually` is not a dependency of this package); its timeout is replaced by the account of what the page did.
+      try {
+        await expect.poll(() => handshakes.length, { timeout: timeoutMs }).toBeGreaterThanOrEqual(count);
+      } catch {
+        throw new Error(describe(count));
       }
     },
   };
