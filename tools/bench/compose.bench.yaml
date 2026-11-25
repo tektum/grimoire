@@ -1,0 +1,4 @@
+# Benchmark only (.github/workflows/bench-rls.yml): the compose Postgres started with the staging RDS parameters (db.t4g.micro, 1 GiB).
+services:
+  postgres:
+    command: ["postgres", "-c", "shared_buffers=180MB", "-c", "effective_cache_size=360MB", "-c", "work_mem=4MB", "-c", "jit=off"]
