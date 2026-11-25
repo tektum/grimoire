@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { createRemoteImageFetcher } from '../../src/import/remote-images/index.js';
-import { isImportPayload } from '../../src/jobs/types.js';
+import { isImportPayload, isStubHandler } from '../../src/jobs/types.js';
 import { importJobs, registerJobs, type JobDeps } from '../../src/jobs/index.js';
 import { fakeJobDeps } from './deps.js';
 
@@ -23,7 +23,7 @@ describe('the registry of jobs', () => {
     expect(jobs.map((j) => j.name)).toEqual(['import', 'import-sweep', 'import-cleanup', 'purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
     expect(jobs.every((j) => typeof j.handler === 'function')).toBe(true);
     expect(Object.fromEntries(jobs.map((j) => [j.name, j.schedule]))).toEqual({
-      import: undefined, 'import-sweep': '*/5 * * * *', 'import-cleanup': undefined, purge: '17 3 * * *', 'upload-cleanup': '*/15 * * * *', 'revision-catchup': '47 3 * * *', 'markdown-sweep': '* * * * *',
+      import: undefined, 'import-sweep': undefined, 'import-cleanup': undefined, purge: '17 3 * * *', 'upload-cleanup': '*/15 * * * *', 'revision-catchup': '47 3 * * *', 'markdown-sweep': '* * * * *',
     });
   });
 
@@ -32,9 +32,16 @@ describe('the registry of jobs', () => {
     const noFiles: { -readonly [K in keyof JobDeps]?: JobDeps[K] } = { ...deps };
     delete noFiles.files;
     const jobs = registerJobs(noFiles as JobDeps);
-    expect(jobs.find((j) => j.name === 'import-sweep')?.schedule).toBe('1 2 * * *');
     expect(jobs.find((j) => j.name === 'purge')?.schedule).toBe('3 4 * * *');
     expect(jobs.map((j) => j.name)).not.toContain('upload-cleanup');
+  });
+
+  it('schedules only jobs that are real: a handler that is a stub (it rejects until its task lands) is never given a schedule, so it cannot retry and dead-letter every few minutes', () => {
+    const jobs = registerJobs(fakeJobDeps().deps);
+    const scheduled = jobs.filter((j) => j.schedule !== undefined);
+    expect(scheduled.map((j) => j.name)).toEqual(['purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
+    for (const j of scheduled) expect(isStubHandler(j.handler), j.name).toBe(false);
+    expect(jobs.filter((j) => isStubHandler(j.handler)).map((j) => j.name)).toEqual(['import', 'import-sweep', 'import-cleanup']);
   });
 
   it('the import handlers refuse to run until the import exists (M7-T04), so no job is silently dropped', async () => {
@@ -50,7 +57,7 @@ describe('the registry of jobs', () => {
   });
 
   it('is what a runner without a registry registers: the import jobs only', () => {
-    expect(importJobs(makeFakeConfig()).map((j) => j.name)).toEqual(['import', 'import-sweep', 'import-cleanup']);
+    expect(importJobs().map((j) => j.name)).toEqual(['import', 'import-sweep', 'import-cleanup']);
   });
 });
 

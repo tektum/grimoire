@@ -48,10 +48,11 @@ export interface JobDeps {
 const MARKDOWN_SWEEP_CRON = '* * * * *';
 
 /** The import jobs: what a runner registers when it is given nothing else. */
-export function importJobs(config: Config): readonly RegisteredJob[] {
+export function importJobs(): readonly RegisteredJob[] {
   return [
     { name: 'import', handler: handleImport },
-    { name: 'import-sweep', handler: handleImportSweep, schedule: config.jobs.sweepCron },
+    // Not scheduled until its handler is real (M7-T05 adds `schedule: config.jobs.sweepCron`): a stub that is scheduled retries and dead-letters on every run.
+    { name: 'import-sweep', handler: handleImportSweep },
     { name: 'import-cleanup', handler: handleImportCleanup },
   ];
 }
@@ -61,7 +62,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
   const { config, log, clock } = deps;
   const sweep = createMarkdownSweep({ pages: deps.pages, converter: deps.converter, now: () => clock.now(), onConvertFailure: (pageId, reason) => log.warn('markdown_sweep.convert_failed', { pageId, reason }) });
   return [
-    ...importJobs(config),
+    ...importJobs(),
     {
       name: 'purge',
       schedule: config.jobs.purgeCron,

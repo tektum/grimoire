@@ -5,7 +5,7 @@ import type { EventLog } from '../events.js';
 import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
 import { importJobs, type RegisteredJob } from './index.js';
-import { instrument } from './instrument.js';
+import { instrument, reasonOf } from './instrument.js';
 
 /** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
 export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
@@ -54,7 +54,7 @@ export const MAX_START_ATTEMPTS = 20;
  */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const { config, log } = options;
-  const jobs = options.jobs ?? importJobs(config);
+  const jobs = options.jobs ?? importJobs();
   const clock = options.clock ?? { now: () => Date.now() };
   let queue: JobQueue | undefined;
   let running = false;
@@ -92,12 +92,12 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       }
       queue = made;
       state = 'up';
-    } catch {
+    } catch (error) {
       // Nothing started here may keep running: a queue made but not set up is stopped now, with no grace (nothing is running on it).
       if (made !== undefined) await made.stop({ graceMs: 0 }).catch(() => undefined);
       if (stopped) return; // a start that fails after the stop began changes nothing: the state stays `stopped`, and no event says jobs are unavailable
       if (attempts >= MAX_START_ATTEMPTS) { state = 'down'; log.error('jobs.unavailable', { attempts }); return; }
-      log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0 });
+      log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0, ...reasonOf(error) });
       if (!stopped) { timer = setTimeout(() => { inFlight = attempt(); }, START_RETRY_MS); timer.unref(); }
     } finally {
       attempting = false;

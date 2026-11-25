@@ -23,10 +23,11 @@ class RecordingQueue implements JobQueue {
 
 afterEach(() => { vi.useRealTimers(); });
 
-const make = (queue: RecordingQueue, errors: Error[] = []) => {
+const scheduledJob = { name: 'purge', schedule: '17 3 * * *', handler: () => Promise.resolve() };
+const make = (queue: RecordingQueue, errors: Error[] = [], jobs?: Parameters<typeof createJobRunner>[0]['jobs']) => {
   const logger = new FakeLogger();
   const config = makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' }, jobs: { stopGraceMs: 1234 } });
-  const runner = createJobRunner({ config, log: createEventLog(logger), make: () => Promise.resolve(queue), onError: (e) => { errors.push(e); } });
+  const runner = createJobRunner({ config, log: createEventLog(logger), make: () => Promise.resolve(queue), onError: (e) => { errors.push(e); }, ...(jobs === undefined ? {} : { jobs }) });
   return { runner, logger };
 };
 
@@ -54,24 +55,25 @@ describe('the job runner', () => {
 
   it('schedules each job that has a cron, once its handler is registered, so no run is sent to a queue nobody works', async () => {
     const queue = new RecordingQueue();
-    await make(queue).runner.start();
-    expect(queue.scheduled).toEqual(['import-sweep */5 * * * *']);
-    expect(queue.order.indexOf('schedule import-sweep')).toBeGreaterThan(queue.order.indexOf('work import-sweep'));
+    await make(queue, [], [scheduledJob, { name: 'import', handler: () => Promise.resolve() }]).runner.start();
+    expect(queue.scheduled).toEqual(['purge 17 3 * * *']);
+    expect(queue.order.indexOf('schedule purge')).toBeGreaterThan(queue.order.indexOf('work purge'));
   });
 
   it('counts a schedule that cannot be sent as a failed start: the queue is stopped and the start is tried again', async () => {
     vi.useFakeTimers();
     const queue = new RecordingQueue();
     queue.failSchedule = true;
-    const { runner, logger } = make(queue);
+    const { runner, logger } = make(queue, [], [scheduledJob]);
     await runner.start();
     expect(runner.state()).toBe('starting');
     expect(queue.stopped).toEqual([{ graceMs: 0 }]);
     expect(logger.entries.filter((e) => e.event === 'jobs.failed')).toHaveLength(1);
+    expect(logger.entries.find((e) => e.event === 'jobs.failed')?.fields).toMatchObject({ name: 'queue-start', errorName: 'Error', errorMessage: 'no send' });
     queue.failSchedule = false;
     await vi.advanceTimersByTimeAsync(START_RETRY_MS);
     expect(runner.state()).toBe('up');
-    expect(queue.scheduled).toEqual(['import-sweep */5 * * * *']);
+    expect(queue.scheduled).toEqual(['purge 17 3 * * *']);
   });
 
   it('stops with the grace of the settings and logs how many jobs were still running', async () => {

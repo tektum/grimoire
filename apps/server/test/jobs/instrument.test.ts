@@ -21,7 +21,28 @@ describe('instrument', () => {
     await expect(run({}, ctx({ attempt: 3 }))).rejects.toThrow('secret detail');
     await expect(run({}, ctx({ attempt: 4 }))).rejects.toThrow('secret detail');
     expect(events(logger)).toEqual(['info jobs.started', 'warn jobs.retrying', 'info jobs.started', 'error jobs.failed']);
-    expect(JSON.stringify(logger.entries)).not.toContain('secret detail');
+  });
+
+  it('says why a run failed: the class of the error and its message, cut and with control characters taken out, on both the retry and the final failure', async () => {
+    const { deps, logger, clock } = fakeJobDeps();
+    class QuotaError extends Error { constructor(m: string) { super(m); this.name = 'QuotaError'; } }
+    const failing = (e: unknown) => instrument('purge', () => Promise.reject(e), deps.log, clock);
+    await expect(failing(new QuotaError('no space\nleft'))({}, ctx({ attempt: 1 }))).rejects.toThrow();
+    await expect(failing(new TypeError('x'.repeat(500)))({}, ctx({ attempt: 4 }))).rejects.toThrow();
+    await expect(failing('just a string')({}, ctx({ attempt: 2 }))).rejects.toBe('just a string');
+    const failures = logger.entries.filter((e) => e.event === 'jobs.retrying' || e.event === 'jobs.failed');
+    expect(failures.map((e) => [e.event, (e.fields as { errorName: string }).errorName, (e.fields as { errorMessage: string }).errorMessage])).toEqual([
+      ['jobs.retrying', 'QuotaError', 'no space left'],
+      ['jobs.failed', 'TypeError', 'x'.repeat(200)],
+      ['jobs.retrying', 'NonError', 'just a string'],
+    ]);
+    expect(failures[0]?.fields).toMatchObject({ name: 'purge', jobId: 'j1', attempt: 1 });
+  });
+
+  it('does not log the payload of the job', async () => {
+    const { deps, logger, clock } = fakeJobDeps();
+    await expect(instrument('purge', () => Promise.reject(new Error('boom')), deps.log, clock)({ tenantId: 'T-secret-tenant' }, ctx())).rejects.toThrow();
+    expect(JSON.stringify(logger.entries)).not.toContain('T-secret-tenant');
   });
 
   it('logs jobs.aborted when the handler returns after its signal aborted', async () => {

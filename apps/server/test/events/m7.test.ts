@@ -9,8 +9,8 @@ describe('milestone 7 events', () => {
     const log = createEventLog(logger);
     log.info('jobs.started', { name: 'purge', jobId: 'j1', attempt: 1, ms: 0 });
     log.info('jobs.completed', { name: 'purge', jobId: 'j1', attempt: 1, ms: 5 });
-    log.warn('jobs.retrying', { name: 'purge', jobId: 'j1', attempt: 1, ms: 5 });
-    log.error('jobs.failed', { name: 'purge', jobId: 'j1', attempt: 3, ms: 5 });
+    log.warn('jobs.retrying', { name: 'purge', jobId: 'j1', attempt: 1, ms: 5, errorName: 'Error', errorMessage: 'x' });
+    log.error('jobs.failed', { name: 'purge', jobId: 'j1', attempt: 3, ms: 5, errorName: 'Error', errorMessage: 'x' });
     log.warn('jobs.aborted', { name: 'purge', jobId: 'j1' });
     log.info('jobs.stopped', { inFlight: 0 });
     log.debug('search.query', { ms: 4, results: 3 });

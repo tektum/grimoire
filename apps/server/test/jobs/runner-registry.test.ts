@@ -38,7 +38,7 @@ describe('the job runner and the registry', () => {
       ['jobs.started', { name: 'purge', jobId: 'j1', attempt: 1, ms: 0 }],
       ['jobs.completed', { name: 'purge', jobId: 'j1', attempt: 1, ms: 25 }],
       ['jobs.started', { name: 'markdown-sweep', jobId: 'j1', attempt: 4, ms: 0 }],
-      ['jobs.failed', { name: 'markdown-sweep', jobId: 'j1', attempt: 4, ms: 0 }],
+      ['jobs.failed', { name: 'markdown-sweep', jobId: 'j1', attempt: 4, ms: 0, errorName: 'Error', errorMessage: 'detail' }],
     ]);
   });
 

@@ -1,4 +1,4 @@
-import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
+import { notImplemented } from './types.js';
 
-/** The `import-sweep` job. The work lands in a later M7 task; until then it fails, so a job that reaches it is retried and shows up, not dropped. */
-export const handleImportSweep: JobHandler = () => Promise.reject(new Error('the import-sweep job is not available yet'));
+/** The `import-sweep` job. The work lands with M7-T05; until then it is a stub, and a stub is not scheduled (see `importJobs`). */
+export const handleImportSweep = notImplemented('import-sweep');

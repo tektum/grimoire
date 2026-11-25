@@ -27,6 +27,7 @@ import { adoptTenant, createAccessStore, createAttachments, createAdmin, createA
 import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import { registerJobs } from './jobs/index.js';
+import { reasonOf } from './jobs/instrument.js';
 import { createJobRunner } from './jobs/runner.js';
 import type { JobRunner } from './jobs/runner.js';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -176,7 +177,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
       revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
     }),
-    onError: () => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0 }); } });
+    onError: (error) => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0, ...reasonOf(error) }); } });
   const shutdownHooks: ShutdownHook[] = [
     ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
     markdownPoolHook(converter),

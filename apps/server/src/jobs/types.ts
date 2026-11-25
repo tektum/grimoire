@@ -1,3 +1,16 @@
+import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
+
+const stubs = new WeakSet<JobHandler>();
+
+/** The handler of a job whose task has not landed: it rejects, so a job that reaches it is retried and shows up, not dropped. It is marked, and the registry never schedules a marked handler. */
+export function notImplemented(name: string): JobHandler {
+  const handler: JobHandler = () => Promise.reject(new Error(`the ${name} job is not available yet`));
+  stubs.add(handler);
+  return handler;
+}
+
+export const isStubHandler = (handler: JobHandler): boolean => stubs.has(handler);
+
 /** The payload of the import jobs: the tenant and the import, ids only (never a key, a URL, a name or Markdown; pg-boss payloads sit in tables the runtime role can read). */
 export interface ImportPayload {
   readonly tenantId: string;
