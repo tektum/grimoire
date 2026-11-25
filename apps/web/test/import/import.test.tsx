@@ -221,14 +221,17 @@ describe('the import screen', () => {
     expect(screen.queryByText('That import has already started.')).toBeNull();
   });
 
-  it('sends the file again, to the same import, when the start says it did not arrive', async () => {
+  it.each([
+    ['upload_missing', 'The file did not arrive. Try again.'],
+    ['size_mismatch', 'The file that arrived is not the size it was said to be. Try again.'],
+  ])('sends the file again, to the same import, when the start says it is %s', async (code, words) => {
     const put = vi.fn(async () => new Response(null, { status: 200 }));
     vi.stubGlobal('fetch', put);
-    const t = fake({ start: [{ status: 409, code: 'upload_missing' }, { status: 202 }] });
+    const t = fake({ start: [{ status: 409, code }, { status: 202 }] });
     show(t.api);
     await choose();
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('The file did not arrive. Try again.');
+    expect((await screen.findByRole('alert')).textContent).toBe(words);
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
     expect(put).toHaveBeenCalledTimes(2);
@@ -268,6 +271,8 @@ describe('the import screen', () => {
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
     ['not a zip', { start: { status: 422, code: 'not_a_zip' } }, 'That is not a zip file.'],
     ['a file that did not arrive', { start: { status: 409, code: 'upload_missing' } }, 'The file did not arrive. Try again.'],
+    ['a zip the import cannot take', { start: { status: 422, code: 'invalid_archive' } }, 'That zip cannot be imported.'],
+    ['a file of another size than was said', { start: { status: 409, code: 'size_mismatch' } }, 'The file that arrived is not the size it was said to be. Try again.'],
     ['a collection that cannot be written', { create: { status: 403 } }, 'You can’t import into that collection.'],
     ['a file that cannot be imported', { create: { status: 422 } }, 'That file can’t be imported.'],
     ['too many imports started', { create: { status: 429 } }, 'Too many imports were started. Try again in a while.'],
