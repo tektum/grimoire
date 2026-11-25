@@ -1,0 +1,186 @@
+[
+ {
+  "id": "P01",
+  "text": "Employees accrue twenty-five days of paid leave each year. Up to five unused days may be carried into the next calendar year; the rest expire on March 31. Requests go to your manager at least two weeks ahead."
+ },
+ {
+  "id": "P02",
+  "text": "Working from home is allowed up to three days a week after the probation period. Core hours are ten to four, when everyone should be reachable on chat."
+ },
+ {
+  "id": "P03",
+  "text": "Submit receipts within thirty days. Purchases above 500 euros need written approval from a department head before you buy. Meals while travelling are reimbursed up to 40 euros a day."
+ },
+ {
+  "id": "P04",
+  "text": "On your first day IT hands you a laptop with disk encryption enabled. Install the company password manager and enrol two-factor authentication before accessing any system."
+ },
+ {
+  "id": "P05",
+  "text": "Passwords must be at least fourteen characters. Reuse of the last ten passwords is blocked. Rotate shared service credentials every ninety days using the secrets vault."
+ },
+ {
+  "id": "P06",
+  "text": "When production is down, the on-call engineer opens an incident channel, assigns an incident commander, and posts a status update every thirty minutes until service is restored."
+ },
+ {
+  "id": "P07",
+  "text": "A blameless postmortem is written within five working days of every severity one incident. It lists the timeline, the root cause, what went well, and concrete action items with owners."
+ },
+ {
+  "id": "P08",
+  "text": "Deployments to production happen on weekdays before three in the afternoon. Every release needs one approved review and a green pipeline. Friday releases require a manager's explicit sign-off."
+ },
+ {
+  "id": "P09",
+  "text": "To roll back a bad release, run the rollback job in the pipeline and select the previous tag. Database migrations are forward-only, so schema changes must be backwards compatible."
+ },
+ {
+  "id": "P10",
+  "text": "Databases are snapshotted nightly and kept for thirty-five days. A restore drill runs every quarter; the last drill restored the main cluster in forty minutes."
+ },
+ {
+  "id": "P11",
+  "text": "Meetings need an agenda shared the day before. If there is no agenda, decline. Notes and decisions are posted in the team channel within an hour."
+ },
+ {
+  "id": "P12",
+  "text": "Each candidate gets a phone screen, a take-home exercise of at most three hours, and a panel interview. Feedback must be written within twenty-four hours of each stage."
+ },
+ {
+  "id": "P13",
+  "text": "Reviews happen twice a year, in June and December. You write a self assessment, collect feedback from three peers, and discuss goals for the next half with your manager."
+ },
+ {
+  "id": "P14",
+  "text": "Birth parents receive sixteen weeks of fully paid leave and non-birth parents receive eight weeks. Leave can be taken in blocks during the first year."
+ },
+ {
+  "id": "P15",
+  "text": "If you lose a company device or suspect a phishing email, report it to the security desk immediately by phone or through the report button. Do not try to investigate on your own."
+ },
+ {
+  "id": "P16",
+  "text": "Customer data is deleted ninety days after an account is closed. Logs containing personal data are anonymised after thirty days."
+ },
+ {
+  "id": "P17",
+  "text": "Pull requests should stay under four hundred lines. Reviewers respond within one working day. Authors resolve every comment before merging; squash merges keep history linear."
+ },
+ {
+  "id": "P18",
+  "text": "New features need unit tests, and bug fixes need a regression test that fails without the fix. Flaky tests are quarantined within a day and fixed within a week."
+ },
+ {
+  "id": "P19",
+  "text": "Public API changes are additive within a major version. Breaking changes ship in a new major version, and the old one is supported for twelve months after the announcement."
+ },
+ {
+  "id": "P20",
+  "text": "Each API key is limited to six hundred requests per minute. When the limit is exceeded the server answers 429 with a Retry-After header telling the client how long to wait."
+ },
+ {
+  "id": "P21",
+  "text": "Error E-4471 means the upload checksum did not match the stored object. Retry once; if it persists, contact support with the request identifier."
+ },
+ {
+  "id": "P22",
+  "text": "Invoice INV-2025-0099 was issued to the Northwind account for the annual licence and is payable within net thirty days."
+ },
+ {
+  "id": "P23",
+  "text": "The Tel Aviv office is open from eight to eight. Visitors must be registered at reception in advance and wear a badge at all times."
+ },
+ {
+  "id": "P24",
+  "text": "Book flights through the travel portal at least fourteen days ahead. Economy class is standard for flights under six hours."
+ },
+ {
+  "id": "P25",
+  "text": "Monitors, keyboards and chairs can be ordered once from the equipment catalogue; the home office budget is 600 euros per person every three years."
+ },
+ {
+  "id": "P26",
+  "text": "Each person has a yearly learning budget of 1500 euros for courses, books and conferences. Share what you learned in a short talk at the monthly demo day."
+ },
+ {
+  "id": "P27",
+  "text": "On-call rotations last one week. The engineer on call carries the pager, answers within ten minutes, and receives a day off in lieu after a weekend shift."
+ },
+ {
+  "id": "P28",
+  "text": "Dashboards show latency, error rate and saturation for each service. Alerts page a human only when users are affected; everything else creates a ticket."
+ },
+ {
+  "id": "P29",
+  "text": "Priority one tickets get a first response within one hour, around the clock. Priority three tickets are answered within two working days."
+ },
+ {
+  "id": "P30",
+  "text": "The team plan costs twelve euros per seat per month, billed annually. Education and non-profit organisations get a fifty percent discount on request."
+ },
+ {
+  "id": "P31",
+  "text": "This quarter we focus on faster page loading, better search, and the import tool for existing documents. Mobile editing is planned for next quarter."
+ },
+ {
+  "id": "P32",
+  "text": "Use the primary teal for buttons and links, and keep at least a four to one contrast ratio between text and background. The logo needs clear space equal to its height."
+ },
+ {
+  "id": "P33",
+  "text": "Every screen must work with a keyboard alone and with a screen reader. Images need alternative text, and colour is never the only way to show a state."
+ },
+ {
+  "id": "P34",
+  "text": "A workspace is the top-level container for an organisation. Inside it, collections group related pages, and people get access to a collection through groups or individually."
+ },
+ {
+  "id": "P35",
+  "text": "Search looks at titles and page text. Put a word in quotation marks to match it exactly, and use the filter to limit results to one collection."
+ },
+ {
+  "id": "P36",
+  "text": "Deleted pages stay in the trash for thirty days and can be restored by anyone who could edit them. After that they are removed permanently."
+ },
+ {
+  "id": "P37",
+  "text": "Pages are private to their collection. To share outside the workspace, an administrator must invite the guest, who then gets read-only access to chosen collections."
+ },
+ {
+  "id": "P38",
+  "text": "You can import a zip of Markdown files. The importer keeps the folder structure, rewrites links between pages and skips files it cannot read, which it lists in a report."
+ },
+ {
+  "id": "P39",
+  "text": "מדיניות החופשה: כל עובד צובר עשרים וחמישה ימי חופשה בשנה. ניתן להעביר עד חמישה ימים לשנה הבאה, והבקשות מוגשות למנהל לפחות שבועיים מראש."
+ },
+ {
+  "id": "P40",
+  "text": "בעת תקלה בייצור, המהנדס התורן פותח ערוץ אירוע, ממנה מנהל אירוע ומעדכן את הסטטוס כל שלושים דקות עד לחזרת השירות."
+ },
+ {
+  "id": "P41",
+  "text": "הסיסמאות חייבות לכלול לפחות ארבע עשרה תווים. אסור להשתמש שוב בעשר הסיסמאות האחרונות, ויש להפעיל אימות דו שלבי."
+ },
+ {
+  "id": "P42",
+  "text": "הצוות נפגש בכל יום ראשון בבוקר לתכנון השבוע. הסיכום והמשימות מתפרסמים בערוץ הצוות."
+ },
+ {
+  "id": "P43",
+  "text": "The cafeteria serves lunch from noon to two. Vegetarian and vegan options are marked, and allergens are listed on the board next to the register."
+ },
+ {
+  "id": "P44",
+  "text": "Employees may park in the underground garage after registering their plate number. Bicycles have a covered rack by the east entrance."
+ },
+ {
+  "id": "P45",
+  "text": "New hires are paired with a mentor for the first six months. Pairs meet every two weeks and the mentor is not the new person's manager."
+ },
+ {
+  "id": "P46",
+  "text": "Everyone completes the annual security awareness course within the first month and then once a year. Completion is tracked, and access is paused for anyone who is overdue."
+ }
+]
