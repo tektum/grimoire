@@ -120,8 +120,14 @@ export const notionProfile: ImportProfile = {
     }
     return shared;
   },
-  /** The title line is left out (`withoutTitleLine`); front matter goes as in the generic profile; callouts and toggles are converted before the schema sees them (`constructs.ts`). */
-  preprocess: (markdown, ctx) => convertConstructs(markdownProfile.preprocess(withoutTitleLine(markdown), ctx)),
+  /**
+   * The title line is left out (`withoutTitleLine`); front matter goes as in the generic profile, but only for a file that does not open with its title line: front matter sits at
+   * the very top of a file, so what follows that line is never read as front matter. Callouts and toggles are converted before the schema sees them (`constructs.ts`).
+   */
+  preprocess: (markdown, ctx) => {
+    const body = withoutTitleLine(markdown);
+    return convertConstructs(body === markdown ? markdownProfile.preprocess(markdown, ctx) : body);
+  },
   resolveLink: resolveNotionLink,
   idOf,
   csvToMarkdown: csvToMarkdownTable,

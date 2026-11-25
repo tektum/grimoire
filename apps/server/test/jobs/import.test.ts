@@ -251,6 +251,12 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(cut?.page.content.markdown).toContain('end');
   });
 
+  it('an export of Notion: what follows the title line is never read as front matter (front matter sits at the very top of a file, and this file opens with its title)', async () => {
+    const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n---\nowner: kept\n---\nBody\n`)], { source: 'notion_md_csv' });
+    await t.run();
+    expect(t.repo.written[0]?.page.content.markdown).toContain('owner: kept');
+  });
+
   describe('a database of an export of Notion (decision 112: a source database is a plain table on a page)', () => {
     const csv = (name: string, text: string) => ({ name, data: Buffer.from(text) });
 
