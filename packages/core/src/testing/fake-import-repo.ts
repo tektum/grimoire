@@ -50,7 +50,10 @@ export class FakeImportRepo implements ImportRepo {
     for (const item of items) {
       const path = item.path;
       if (this.stored.some((s) => s.importId === importId && s.item.path === path)) continue;
-      this.stored.push({ tenantId, importId, item: { id: String(this.next++), path, kind: item.kind, status: 'pending', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0 } });
+      const id = String(this.next++);
+      const pending = item.status === undefined;
+      const ids = pending && item.kind === 'page' ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
+      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0 } });
       added += 1;
     }
     return Promise.resolve(added);
@@ -86,8 +89,8 @@ export class FakeImportRepo implements ImportRepo {
     if (found === undefined) return Promise.resolve({ kind: 'not-pending' });
     const lastOfParent = this.written.filter((w) => w.importId === importId && w.page.collectionId === page.collectionId && w.page.parentId === page.parentId).map((w) => w.position).sort().at(-1) ?? null;
     const position = page.position(lastOfParent, null);
-    const pageId = `page-${String(this.next++)}`;
-    const urlId = `u${pageId}`;
+    const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
+    const urlId = found.item.urlId ?? `u${pageId}`;
     this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
     this.written.push({ tenantId, importId, page, position });
     return Promise.resolve({ kind: 'ok', pageId, urlId });
@@ -128,6 +131,12 @@ export class FakeImportRepo implements ImportRepo {
     if (row === undefined || (row.status !== 'created' && row.status !== 'uploaded')) return Promise.resolve(false);
     this.replace(at, { status: 'uploaded' });
     return Promise.resolve(true);
+  }
+
+  scanItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]> {
+    const after = options.afterId === undefined ? -1n : BigInt(options.afterId);
+    const items = this.stored.filter((s) => s.tenantId === tenantId && s.importId === importId && BigInt(s.item.id) > after).map((s) => s.item);
+    return Promise.resolve(items.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1)).slice(0, options.limit));
   }
 
   listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]> {

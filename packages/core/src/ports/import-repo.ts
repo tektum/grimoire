@@ -56,6 +56,9 @@ export class ImportBusyError extends Error {
 export interface NewImportItem {
   readonly path: string;
   readonly kind: ImportItemKind;
+  /** Added already ended: `skipped` (left out on purpose, such as an ignored entry) or `failed` (such as a bad name), with the reason as its message. Absent: `pending`. */
+  readonly status?: 'skipped' | 'failed';
+  readonly message?: string;
 }
 
 export interface ImportItem {
@@ -115,7 +118,10 @@ export type WriteImportedPageResult =
  */
 export interface ImportRepo {
   get(tenantId: string, id: string): Promise<ImportRecord | undefined>;
-  /** Adds items to an import; a path already there is left as it is (resuming never duplicates). Resolves with the number added. */
+  /**
+   * Adds items to an import; a path already there is left as it is (resuming never duplicates). Resolves with the number added. A `pending` page item is given its page id and URL id here,
+   * so a link to a page that is written later can point at it (the page is written under them, see `writePage`); no other item has either.
+   */
   addItems(tenantId: string, importId: string, items: readonly NewImportItem[]): Promise<number>;
   /** The `pending` items of a kind, parents before children (fewer path segments first, then by path), at most `limit`. */
   pending(tenantId: string, importId: string, kind: ImportItemKind, limit: number): Promise<readonly ImportItem[]>;
@@ -144,6 +150,8 @@ export interface ImportRepo {
   /** `created` or `uploaded` becomes `uploaded`; `false` for any other status (and for another tenant's import). */
   markUploaded(tenantId: string, id: string): Promise<boolean>;
   /** The settled items (`ok`, `skipped` or `failed`: not the ones still `pending`), in ascending id, after `afterId` when given, at most `limit`. Ids compare as whole numbers. */
+  /** Every item of the import in any status (`listItems` is for the report and leaves out the pending ones), by id: what the engine builds its link index from. Keyset on `afterId`. */
+  scanItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;
   listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;
   /** `running` or `uploaded` (accepted and waiting for its turn) becomes `cancelled` (`finishedAt` set) and the row is returned; any other status is left as it is and nothing is returned. */
   cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
