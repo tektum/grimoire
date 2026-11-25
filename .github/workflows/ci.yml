@@ -395,7 +395,7 @@ jobs:
           grep -q '^app/models/multilingual-e5-base/model_quantized.onnx$' image-files.txt
           grep -q '^app/models/multilingual-e5-small/model_quantized.onnx$' image-files.txt
           grep -q '^app/models/models.lock.json$' image-files.txt
-          ! grep -iE 'cuda|tensorrt|libnvinfer' image-files.txt
+          if grep -iE 'cuda|tensorrt|libnvinfer' image-files.txt; then echo '::error::a GPU library is in the image'; exit 1; fi
           test "$(docker image inspect -f '{{.Config.User}}' "$image")" = 65532:65532
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             -v "$PWD/tools/ci/semantic-image-smoke.mjs:/smoke.mjs:ro" --entrypoint /nodejs/bin/node "$image" /smoke.mjs
