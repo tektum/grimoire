@@ -33,6 +33,8 @@ arithmetic and the join to `pages` (5 ms) were not the cost.
 After `STORAGE MAIN` the table is 565 MB of rows and 21 MB of everything else (it was 36 MB of rows and 568 MB of TOAST). More workers did not help; keeping the vector in the row made the
 statement three times faster.
 
+A later run, on the same hosted runner shape, measured the old layout (the vector out of line) at 450 to 472 ms where an earlier one gave 325: that layout was too noisy on a hosted runner to carry a limit, which is why the limits are asserted on the schema as it ships (the vector in the row), and the old layout is only recorded.
+
 ## What changed
 
 Migration 0013 sets `page_chunks.embedding` to `STORAGE MAIN`, before any chunk is written (the jobs that write them arrive after it), so nothing needs rewriting. A database that had chunks

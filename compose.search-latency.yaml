@@ -14,5 +14,7 @@ services:
       - jit=off
       - -c
       - max_parallel_workers_per_gather=2
+    # Docker's default of 64 MB for /dev/shm is too little for a parallel query or an index build over this table ("could not resize shared memory segment").
+    shm_size: 1g
     mem_limit: ${LATENCY_PG_MEMORY:-1g}
     cpus: ${LATENCY_PG_CPUS:-2}
