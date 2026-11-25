@@ -1,0 +1,20 @@
+[
+  {
+    "name": "multilingual-e5-base",
+    "licence": "MIT",
+    "source": "https://huggingface.co/Xenova/multilingual-e5-base",
+    "baseModel": "intfloat/multilingual-e5-base",
+    "sha256": "df7a9a29309e3ad491e1783adf8baee710262cc06079c7cbab63c630277fac94",
+    "notice": "model-notices/multilingual-e5.MIT.txt",
+    "notes": "Weights: ONNX export and int8 quantisation by the Xenova mirror (no own quantisation step) of intfloat/multilingual-e5-base. The upstream model card declares the MIT licence; the mirror's card carries no licence field and no copyright line is published by either, so the licence is the upstream one, recorded here, and the MIT notice text (without an invented copyright holder) ships with the image's licence report. The licences of the training data are not stated by the cards and are unverified. Runtime: onnxruntime-node (MIT; the package has no LICENSE file, the licence report reads its package.json) and @huggingface/tokenizers (Apache-2.0)."
+  },
+  {
+    "name": "multilingual-e5-small",
+    "licence": "MIT",
+    "source": "https://huggingface.co/Xenova/multilingual-e5-small",
+    "baseModel": "intfloat/multilingual-e5-small",
+    "sha256": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193",
+    "notice": "model-notices/multilingual-e5.MIT.txt",
+    "notes": "Weights: ONNX export and int8 quantisation by the Xenova mirror (no own quantisation step) of intfloat/multilingual-e5-small. The upstream model card declares the MIT licence; the mirror's card carries no licence field and no copyright line is published by either, so the licence is the upstream one, recorded here, and the MIT notice text (without an invented copyright holder) ships with the image's licence report. The licences of the training data are not stated by the cards and are unverified. Runtime: onnxruntime-node (MIT; the package has no LICENSE file, the licence report reads its package.json) and @huggingface/tokenizers (Apache-2.0)."
+  }
+]
