@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // M7-T00 (contracts section 1): the dependencies of the import and the pins. The tests read the files the package manager wrote, from the repository root.
-const root = process.cwd();
+// The repository root, from this file (the tests may be started from any folder).
+const root = resolve(import.meta.dirname, '../../../..');
 const lock = readFileSync(resolve(root, 'bun.lock'), 'utf8');
 const server = JSON.parse(readFileSync(resolve(root, 'apps/server/package.json'), 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
 /** The versions of a package that the lockfile resolves, each once. */
@@ -16,9 +17,9 @@ describe('the import dependencies', () => {
     expect(installed(name)).toEqual([version]);
   });
 
-  it('has the types of yauzl as a development dependency, one copy', () => {
+  it('has the types of yauzl as a development dependency, once, at the version the manifest declares', () => {
     expect(server.devDependencies['@types/yauzl']).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(installed('@types/yauzl')).toHaveLength(1);
+    expect(installed('@types/yauzl')).toEqual([server.devDependencies['@types/yauzl']]);
   });
 
   it.each(['unified', 'remark-parse', 'remark-gfm', 'unist-util-visit', 'remark-stringify'])('has %s as a direct dependency of the server, and one copy only', (name) => {
