@@ -266,6 +266,14 @@ The same page, edited by two people, in Chromium, Firefox and WebKit (the exit t
 
 ![Co-editing in WebKit](docs/screenshots/m6-t13/co-edit-webkit-light.png)
 
+![The import report: pages that were imported, with the pictures from the web that were not copied and why](docs/screenshots/m7-remote-images/report-pictures-light.png)
+
+The import report: for a page, how many pictures from the web were not copied and why, in words, never with an address.
+
+![The same report in the dark theme](docs/screenshots/m7-remote-images/report-pictures-dark.png)
+
+The same report in the dark theme.
+
 ## How it is built
 
 - TypeScript on Node.
