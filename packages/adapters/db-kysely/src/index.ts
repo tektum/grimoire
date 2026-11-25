@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { CompiledQuery, Kysely, PostgresDialect } from 'kysely';
+import type { QueryResult } from 'kysely';
 import { FileMigrationProvider, Migrator } from 'kysely/migration';
 import pg from 'pg';
 import type { GrimoireTables } from './schema.js';
@@ -36,7 +37,8 @@ export interface CreateDatabaseOptions {
   readonly closeTimeoutMs?: number;
 }
 
-type Exec = Pick<Kysely<GrimoireTables>, 'executeQuery'>;
+/** A Kysely instance, a transaction or one connection of the pool: anything that runs a compiled query. */
+interface Exec { executeQuery<R>(query: CompiledQuery<R>): Promise<QueryResult<R>> }
 
 // The port speaks raw SQL with $n parameters, so queries go through CompiledQuery.raw; Kysely's builder stays inside this package.
 const queryable = (k: Exec): Queryable => ({
@@ -70,6 +72,66 @@ export function createDatabase(url: string, opts: CreateDatabaseOptions = {}): K
       return closing;
     },
   };
+}
+
+const TENANT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const COMMIT = CompiledQuery.raw('commit');
+const ROLLBACK = CompiledQuery.raw('rollback');
+
+/** Raised by `scoped` for a tenant id that is not 1 to 128 letters, digits, "-" or "_": such an id never reaches SQL. */
+export class TenantIdError extends Error {
+  constructor() {
+    super('a tenant id must be 1 to 128 letters, digits, "-" or "_"');
+    this.name = 'TenantIdError';
+  }
+}
+
+/** What `scoped` returns: the port's queries, each in a transaction with the tenant set. No `ping` or `close`: the pool belongs to the database it came from. */
+export type TenantScoped = Pick<Database, 'query' | 'transaction'>;
+
+/**
+ * The runtime database for one tenant (docs/tenancy.md section 3.2): every `query` is one short transaction and every `transaction` sets the tenant first, with
+ * `set_config('app.tenant', id, true)`. The setting is local to the transaction, so a pooled connection never carries a tenant into the next one. `begin` and the
+ * setting go in one simple query (one round trip); that is why the id sits in the SQL text, and why only a validated id gets there.
+ */
+export function scoped(db: KyselyDatabase, tenantId: string): TenantScoped {
+  if (!TENANT_ID.test(tenantId)) throw new TenantIdError();
+  const begin = CompiledQuery.raw(`begin; select set_config('app.tenant', '${tenantId}', true)`);
+  const transaction = <T>(fn: (tx: Queryable) => Promise<T>): Promise<T> => db.kysely.connection().execute(async (connection) => {
+    try {
+      await connection.executeQuery(begin);
+      const result = await fn(queryable(connection));
+      await connection.executeQuery(COMMIT);
+      return result;
+    } catch (error) {
+      await connection.executeQuery(ROLLBACK).catch(() => undefined);
+      throw error;
+    }
+  });
+  return { query: (sql, params) => transaction((tx) => tx.query(sql, params)), transaction };
+}
+
+/**
+ * The connection of the operator role `grimoire_ops` (docs/tenancy.md section 3.2), for the few call sites that cross tenants. It is not a `Database` nor a
+ * `Queryable` (it has no `query`) and neither is one of those an `OperatorDatabase` (no `kind`), so the compiler keeps the two apart. Only the modules listed in
+ * tools/ci/operator-sites.mjs may use it; `bun run lint` checks that.
+ */
+export interface OperatorDatabase {
+  readonly kind: 'operator';
+  transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+}
+
+/** A small pool of its own (4 connections unless told otherwise) over `GRIMOIRE_DATABASE_OPS_URL`; never the runtime pool. */
+export function createOpsDatabase(url: string, opts: CreateDatabaseOptions = {}): OperatorDatabase {
+  const db = createDatabase(url, { maxConnections: 4, ...opts });
+  return { kind: 'operator', transaction: db.transaction, close: db.close };
+}
+
+/** The operator connection, which is undefined where `GRIMOIRE_DATABASE_OPS_URL` is not set: then this refuses, and nothing falls back to the runtime pool. */
+export function operator(ops: OperatorDatabase | undefined): OperatorDatabase {
+  if (ops === undefined) throw new Error('the operator connection is not configured: set GRIMOIRE_DATABASE_OPS_URL');
+  return ops;
 }
 
 /** Raised when a migration fails or the migration history is inconsistent; the message names the migration. */

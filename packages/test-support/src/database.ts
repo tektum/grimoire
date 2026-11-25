@@ -4,6 +4,7 @@ export {
   devDatabaseUrl,
   HOST,
   migratorUrl,
+  opsUrl,
   createDatabaseSupport,
   mainJs,
   requireBuild,
