@@ -112,6 +112,14 @@ describe('instrument', () => {
       }
     });
 
+    it('takes an unclosed quote to the end of the message even when its value holds another kind of quote', () => {
+      expect(said(`failed for "private user's secret`).errorMessage).toBe('failed for <value>');
+      expect(said("failed for `private user's secret").errorMessage).toBe('failed for <value>');
+      expect(said(`failed for 'private "secret" value`).errorMessage).toBe('failed for <value>');
+      expect(said(`${'a'.repeat(170)} "private user's ${'b'.repeat(1700)}"`).errorMessage).not.toContain('private'); // the closing quote is past the window that is read
+      expect(said(`${'a'.repeat(170)} "private user's ${'b'.repeat(1700)}"`).errorMessage).toBe(`${'a'.repeat(170)} <value>`);
+    });
+
     it('still redacts a value that begins before the cut of 200 and ends after it', () => {
       expect(said(`${'z'.repeat(190)} "secret value that goes on and on for a while"`).errorMessage).toBe(`${'z'.repeat(190)} <value>`.slice(0, 200)); // the value never shows, only the placeholder, cut like the rest
       expect(said(`${'z'.repeat(190)} "secret value that goes on and on for a while"`).errorMessage).not.toContain('secret');

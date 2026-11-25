@@ -22,7 +22,7 @@ const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi;
 const EMAIL_LIKE = /[^\s<>"'`()[\]@]+@[^\s<>"'`()[\]@]+\.[^\s<>"'`()[\]@]+/g;
 /** A quoted literal: "..." or `...`, and '...' unless the quote is an apostrophe inside a word; a quote that is never closed takes the rest of the message. */
 const QUOTED = /"[^"]*"|`[^`]*`|(?<!\w)'[^']*'/g;
-const UNCLOSED = /(?:"|`|(?<!\w)')[^"`']*$/;
+const UNCLOSED = /(?:"[^"]*|`[^`]*|(?<!\w)'[^']*)$/; // each kind of quote runs to the end of the message against itself only: another kind inside it does not end it
 const PLACEHOLDER = { url: '<url>', email: '<email>', value: '<value>' } as const;
 
 /**
