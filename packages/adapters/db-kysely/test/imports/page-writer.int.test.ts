@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import type { NewImportedPage } from '@tektum/grimoire-core/ports/import-repo';
 import { createCollections } from '../../src/collections.js';
@@ -148,19 +148,23 @@ describe('the import must be running', () => {
     expect((await repo.getItem('legacy', s.importId, id))?.status).toBe('pending');
   });
 
-  it('a cancel waits for a write in progress, and every write after it is refused: no page escapes the trash batch', async () => {
-    const paths = Array.from({ length: 6 }, (_, i) => `p${String(i)}.md`);
-    const s = await started(paths);
+  it('a write that meets an uncommitted cancel waits for it, then finds the import cancelled and writes nothing (the lock on the import row)', async () => {
+    const s = await started(['a.md']);
     const repo = createImportRepo(t.app);
-    const writes = paths.map((p) => repo.writePage('legacy', s.importId, page(s.items.get(p) as string, s.collectionId), LIMITS, NOW));
-    const cancel = t.app.query(`update imports set status = 'cancelled' where id = $1 and status = 'running'`, [s.importId]);
-    const results = await Promise.all([...writes, cancel]);
-    const written = (results.slice(0, 6) as { kind: string }[]).filter((r) => r.kind === 'ok').length;
-    // Whatever interleaving happened, every page that exists was written before the status changed, and none after: the pages the trash batch will find are all of them.
-    expect(await pagesOf(s.collectionId)).toHaveLength(written);
-    const late = await repo.writePage('legacy', s.importId, page(s.items.get('p0.md') as string, s.collectionId), LIMITS, NOW);
-    expect(late.kind === 'not-running' || late.kind === 'not-pending').toBe(true);
-    expect(await pagesOf(s.collectionId)).toHaveLength(written);
+    const id = s.items.get('a.md') as string;
+    let write: ReturnType<typeof repo.writePage> | undefined;
+    await t.app.transaction(async (tx) => {
+      await tx.query(`update imports set status = 'cancelled' where id = $1`, [s.importId]);
+      write = repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW);
+      // The write is blocked on the row this transaction holds: a session of the database is waiting on a lock. Without the share lock it would read the old status, write its page and finish.
+      await vi.waitFor(async () => {
+        const waiting = await t.app.query<{ n: number }>(`select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+        expect(waiting[0]?.n).toBeGreaterThan(0);
+      }, { timeout: 10_000, interval: 25 });
+    });
+    expect(await write).toEqual({ kind: 'not-running' });
+    expect(await pagesOf(s.collectionId)).toEqual([]);
+    expect((await repo.getItem('legacy', s.importId, id))?.status).toBe('pending');
   });
 });
 
