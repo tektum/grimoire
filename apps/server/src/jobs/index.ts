@@ -97,7 +97,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
           const count = await runFailedSourceCleanup({ tenants: deps.tenants, files: deps.files, now: () => clock.now() }, ctx.signal);
           log.info('import.sources_cleaned', { count });
           // The safety net: a cleanup that was never enqueued or never ran is made up for here.
-          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, now: () => clock.now() }, ctx.signal));
+          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent, now: () => clock.now() }, ctx.signal));
           return;
         }
         if (!isImportPayload(payload)) return; // an id of the wrong shape names no import
