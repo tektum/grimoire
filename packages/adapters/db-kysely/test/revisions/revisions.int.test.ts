@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createRevisions, lockPage } from '../../src/revisions.js';
+import { scoped } from '../../src/index.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -13,7 +14,7 @@ const HASH = `decode(repeat('ab', 32), 'hex')`;
 
 /** A revision written as the runtime role writes it. */
 const add = async (pageId: string, ms: number, title: string, authors: string[], last: string | null, reason = 'idle'): Promise<string> =>
-  ((await t.app.query<{ id: string }>(
+  ((await scoped(t.app, 'legacy').query<{ id: string }>(
     `insert into revisions (page_id, title, markdown, markdown_hash, author_ids, last_author_id, reason, created_at)
      values ($1, $2, $3, ${HASH}, $4::uuid[], $5, $6, timestamptz 'epoch' + $7::bigint * interval '1 millisecond') returning id`,
     [pageId, title, `text of ${title}`, authors, last, reason, ms],
@@ -23,8 +24,8 @@ beforeAll(async () => {
   t = await createTestDatabase('revs');
   ana = await addUser(t.app, 'ana', 'member');
   bob = await addUser(t.app, 'bob', 'member');
-  const collection = (await t.app.query<{ id: string }>(`insert into collections (name, position, created_by) values ('C', 'a1', $1) returning id`, [ana]))[0]?.id as string;
-  const mk = async (): Promise<string> => (await t.app.query<{ id: string }>(`insert into pages (collection_id, created_by) values ($1, $2) returning id`, [collection, ana]))[0]?.id as string;
+  const collection = (await t.admin.query<{ id: string }>(`insert into collections (name, position, created_by) values ('C', 'a1', $1) returning id`, [ana]))[0]?.id as string;
+  const mk = async (): Promise<string> => (await t.admin.query<{ id: string }>(`insert into pages (collection_id, created_by) values ($1, $2) returning id`, [collection, ana]))[0]?.id as string;
   page = await mk();
   other = await mk();
 }, 60_000);
@@ -64,10 +65,10 @@ describe('the PostgreSQL RevisionRepo', () => {
   });
 
   it('pages through stored times finer than a millisecond, and through a later page, without a gap or a repeat', async () => {
-    const p = (await t.app.query<{ id: string }>(`insert into pages (collection_id, created_by) select collection_id, created_by from pages where id = $1 returning id`, [page]))[0]?.id as string;
+    const p = (await t.admin.query<{ id: string }>(`insert into pages (collection_id, created_by) select collection_id, created_by from pages where id = $1 returning id`, [page]))[0]?.id as string;
     const ids: string[] = [];
     for (const micros of [123_456, 123_457, 123_999, 124_000, 122_000]) {
-      ids.push(((await t.app.query<{ id: string }>(
+      ids.push(((await t.admin.query<{ id: string }>(
         `insert into revisions (page_id, title, markdown, markdown_hash, reason, created_at)
          values ($1, $2, 'm', ${HASH}, 'idle', timestamptz 'epoch' + $3::bigint * interval '1 microsecond') returning id`,
         [p, `t${String(micros)}`, 1_700_000_000_000_000 + micros],
@@ -98,7 +99,7 @@ describe('the PostgreSQL RevisionRepo', () => {
     const id = await add(page, 1_700_000_040_000, 'Kept', [], null);
     await expect(t.app.query(`update revisions set title = 'changed' where id = $1`, [id])).rejects.toMatchObject({ code: '42501' });
     await expect(t.app.query(`delete from revisions where id = $1`, [id])).rejects.toMatchObject({ code: '42501' });
-    expect((await t.app.query<{ title: string }>(`select title from revisions where id = $1`, [id]))[0]?.title).toBe('Kept');
+    expect((await scoped(t.app, 'legacy').query<{ title: string }>(`select title from revisions where id = $1`, [id]))[0]?.title).toBe('Kept');
   });
 });
 
@@ -106,7 +107,7 @@ describe('the PostgreSQL RevisionRepo', () => {
 const savedPage = async (over: { title?: string; markdown?: string | null; stale?: boolean; editedMs?: number | null; editedBy?: string | null } = {}): Promise<string> => {
   const title = over.title ?? 'Saved';
   const markdown = over.markdown === undefined ? 'saved text' : over.markdown;
-  return ((await t.app.query<{ id: string }>(
+  return ((await t.admin.query<{ id: string }>(
     `insert into pages (collection_id, created_by, title, markdown, markdown_hash, markdown_stale_since, last_edited_at, last_edited_by)
      select collection_id, created_by, $1, $2::text, $3::bytea, case when $4::boolean then now() end,
             case when $5::bigint is null then null else timestamptz 'epoch' + $5::bigint * interval '1 millisecond' end, $6::uuid from pages where id = $7 returning id`,
@@ -122,7 +123,7 @@ async function holdingThePageLock<T>(pageId: string, start: () => Promise<T>[], 
   let held!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const locked = new Promise<void>((resolve) => { held = resolve; });
-  const holder = t.app.transaction(async (tx) => { await lockPage(tx, pageId); held(); await gate; });
+  const holder = scoped(t.app, 'legacy').transaction(async (tx) => { await lockPage(tx, pageId); held(); await gate; });
   await locked;
   const calls = Promise.all(start());
   try {

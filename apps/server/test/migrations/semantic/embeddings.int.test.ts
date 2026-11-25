@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createDatabase, scoped } from '@tektum/grimoire-adapter-db-kysely';
 import { insertCollection, insertPage, insertSql, insertUser, raw } from '@tektum/grimoire-test-support/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../../server/support/harness.js';
@@ -81,16 +81,17 @@ describe('the embedding tables', () => {
 describe('the runtime role on the embedding tables', () => {
   it('may select, insert, update and delete', async () => {
     const id = (await sqlAdmin<{ id: string }>(DB, `select id from pages where tenant_id = '${tenant}' limit 1`))[0]?.id as string;
-    await app.query(`insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding) values ($1, $2, 40, 'm', decode(repeat('00', 32), 'hex'), 0, 1, 1, $3::vector)`, [id, tenant, vector(5)]);
-    await app.query(`update page_chunks set token_count = 2 where page_id = $1 and chunk_index = 40`, [id]);
-    expect(await app.query(`select token_count from page_chunks where page_id = $1 and chunk_index = 40`, [id])).toEqual([{ token_count: 2 }]);
-    await app.query(`delete from page_chunks where page_id = $1 and chunk_index = 40`, [id]);
-    await app.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('01', 32), 'hex'), 'm', 'ready')`, [id, tenant]);
-    await app.query(`update page_embedding_state set status = 'failed', attempts = 1 where page_id = $1`, [id]);
-    expect(await app.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'failed', attempts: 1 }]);
-    await app.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('02', 32), 'hex'), 'm', 'ready') on conflict (page_id) do update set status = 'ready', attempts = 0`, [id, tenant]); // the upsert the jobs will use
-    expect(await app.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'ready', attempts: 0 }]);
-    await app.query(`delete from page_embedding_state where page_id = $1`, [id]);
+    const mine = scoped(app, tenant); // row-level security: the runtime role sees and writes the rows of the tenant its transaction set
+    await mine.query(`insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding) values ($1, $2, 40, 'm', decode(repeat('00', 32), 'hex'), 0, 1, 1, $3::vector)`, [id, tenant, vector(5)]);
+    await mine.query(`update page_chunks set token_count = 2 where page_id = $1 and chunk_index = 40`, [id]);
+    expect(await mine.query(`select token_count from page_chunks where page_id = $1 and chunk_index = 40`, [id])).toEqual([{ token_count: 2 }]);
+    await mine.query(`delete from page_chunks where page_id = $1 and chunk_index = 40`, [id]);
+    await mine.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('01', 32), 'hex'), 'm', 'ready')`, [id, tenant]);
+    await mine.query(`update page_embedding_state set status = 'failed', attempts = 1 where page_id = $1`, [id]);
+    expect(await mine.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'failed', attempts: 1 }]);
+    await mine.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('02', 32), 'hex'), 'm', 'ready') on conflict (page_id) do update set status = 'ready', attempts = 0`, [id, tenant]); // the upsert the jobs will use
+    expect(await mine.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'ready', attempts: 0 }]);
+    await mine.query(`delete from page_embedding_state where page_id = $1`, [id]);
   });
 
   it('may not truncate either table, or create a table: those are refused with 42501', async () => {

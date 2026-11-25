@@ -20,6 +20,7 @@ const DB = `grimoire_m3t04_mut_${String(process.pid)}`;
 const SRC = fileURLToPath(new URL('../../src/permissions.ts', import.meta.url));
 const { world, ids } = worldOfCases();
 let db: KyselyDatabase;
+let owner: KyselyDatabase; // the schema owner: row-level security does not apply to it
 
 async function failures(store: AccessStore): Promise<number> {
   const a = createAuthorizer(store);
@@ -41,7 +42,7 @@ async function failures(store: AccessStore): Promise<number> {
 }
 
 /** Compiles the real source with the edits applied and evaluates it as CommonJS; its only runtime import is kysely. */
-function mutant(name: string, edits: readonly (readonly [string, string])[]): AccessStore {
+function mutant(name: string, edits: readonly (readonly [string, string])[], on: KyselyDatabase = db): AccessStore {
   let source = readFileSync(SRC, 'utf8');
   for (const [from, to] of edits) {
     if (!source.includes(from)) throw new Error(`mutant ${name}: the text to change is gone`);
@@ -53,7 +54,7 @@ function mutant(name: string, edits: readonly (readonly [string, string])[]): Ac
   // Its runtime imports: kysely, and `scoped` from the package's own index.
   Reflect.apply(fn as (...a: unknown[]) => unknown, undefined, [mod, mod.exports, (id: string) => (id === 'kysely' ? kysely : id === './index.js' ? handles : {})]);
   if (!mod.exports.createAccessStore) throw new Error(`mutant ${name}: no createAccessStore`);
-  return mod.exports.createAccessStore(db);
+  return mod.exports.createAccessStore(on);
 }
 
 beforeAll(async () => {
@@ -61,9 +62,11 @@ beforeAll(async () => {
   await loadWorld(DB, world);
   await loadTenantWorld(DB);
   db = createDatabase(urlFor('grimoire_app', DB));
+  owner = createDatabase(urlFor('grimoire_migrator', DB));
 }, 180_000);
 afterAll(async () => {
   await db.close();
+  await owner.close();
   await dropDatabase(DB);
 });
 
@@ -82,23 +85,26 @@ describe('SQL mutants', () => {
     const store = mutant('deleted', [['collection: { deleted: row.collection_deleted_at !== null', 'collection: { deleted: false']]);
     expect(await failures(store)).toBeGreaterThan(0);
   });
-  it('the unmutated SQL passes the two-tenant check', async () => {
+  it('the unmutated SQL passes the two-tenant check, under the policies and without them (the explicit conditions are enough on their own)', async () => {
     expect(await tenantFailures(createAccessStore(db))).toBe(0);
+    expect(await tenantFailures(createAccessStore(owner))).toBe(0);
   });
+  // The tenant mutants run as the schema owner, which row-level security does not apply to: under the policies of the runtime role the other tenant's rows are hidden whatever the SQL says, and
+  // the mutant would pass. This keeps the check on the SQL's own conditions, the primary protection (docs/tenancy.md section 3.2).
   it('the tenant condition removed from visibleCollections fails the two-tenant check (an admin would list another tenant\'s collections)', async () => {
-    const store = mutant('tenant-list', [["          .whereRef('c.tenant_id', '=', 'u.tenant_id') // a collection of another tenant is not there (docs/tenancy.md, 3.3)\n", '']]);
+    const store = mutant('tenant-list', [["          .whereRef('c.tenant_id', '=', 'u.tenant_id') // a collection of another tenant is not there (docs/tenancy.md, 3.3)\n", '']], owner);
     expect(await tenantFailures(store)).toBeGreaterThan(0);
   });
   it('the page\'s tenant left out of facts fails the two-tenant check', async () => {
-    const store = mutant('tenant-page', [['...(row.page_tenant === null ? {} : { tenantId: row.page_tenant }), ', '']]);
+    const store = mutant('tenant-page', [['...(row.page_tenant === null ? {} : { tenantId: row.page_tenant }), ', '']], owner);
     expect(await tenantFailures(store)).toBeGreaterThan(0);
   });
   it('the collection\'s tenant left out of collectionFacts fails the two-tenant check', async () => {
-    const store = mutant('tenant-collection', [['...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), ', '']]);
+    const store = mutant('tenant-collection', [['...(row.collection_tenant === null ? {} : { tenantId: row.collection_tenant }), ', '']], owner);
     expect(await tenantFailures(store)).toBeGreaterThan(0);
   });
   it('the user\'s tenant left out of the facts fails the two-tenant check', async () => {
-    const store = mutant('tenant-user', [[", ...(r.user_tenant === null ? {} : { tenantId: r.user_tenant })", '']]);
+    const store = mutant('tenant-user', [[", ...(r.user_tenant === null ? {} : { tenantId: r.user_tenant })", '']], owner);
     expect(await tenantFailures(store)).toBeGreaterThan(0);
   });
   it('the viewer cap removed from visibleCollections fails the list form', async () => {

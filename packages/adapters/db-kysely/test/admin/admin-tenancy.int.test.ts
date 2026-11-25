@@ -11,8 +11,8 @@ let a: { boss: string; amy: string };
 let b: { boss: string; bea: string };
 beforeAll(async () => {
   t = await createTestDatabase('admintenancy');
-  await addTenant(t.app, 'T-a');
-  await addTenant(t.app, 'T-b');
+  await addTenant(t.admin, 'T-a');
+  await addTenant(t.admin, 'T-b');
   a = { boss: await addUser(t.app, 'boss-a', 'admin', 'T-a'), amy: await addUser(t.app, 'amy-a', 'member', 'T-a') };
   b = { boss: await addUser(t.app, 'boss-b', 'admin', 'T-b'), bea: await addUser(t.app, 'bea-b', 'member', 'T-b') };
 }, 60_000);

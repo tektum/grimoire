@@ -37,8 +37,8 @@ const tenantOf = async (table: 'pages' | 'revisions', id: string) => (await t.ad
 
 beforeAll(async () => {
   t = await createTestDatabase('pagetenancy');
-  await addTenant(t.app, 'T-a');
-  await addTenant(t.app, 'T-b');
+  await addTenant(t.admin, 'T-a');
+  await addTenant(t.admin, 'T-b');
   const collections = createCollections(t.app);
   const after = (last: string | null): string => ordering.between(last, null);
   const bossA = await addUser(t.app, 'boss-a', 'admin', 'T-a');
@@ -107,7 +107,7 @@ describe('the PostgreSQL TrashRepo across tenants', () => {
     expect(await trash.purge('T-a', page.id, a.boss, [])).toEqual({ pages: 0 });
     expect(await tenantOf('pages', page.id)).toBe('T-b');
     expect(await purgeBatch({ trash, deleteFiles: () => Promise.resolve() }, 'T-b', page.id, b.boss)).toEqual({ pages: 1, files: 0 });
-    const audit = await t.app.query<{ tenant_id: string }>(`select tenant_id from audit_events where action = 'page.purged' and target_id = $1`, [page.id]);
+    const audit = await t.admin.query<{ tenant_id: string }>(`select tenant_id from audit_events where action = 'page.purged' and target_id = $1`, [page.id]);
     expect(audit).toEqual([{ tenant_id: 'T-b' }]);
   });
 });
@@ -146,7 +146,7 @@ describe('the PostgreSQL PageStateRepo across tenants', () => {
     const page = await make('T-b', b.collection, b.boss, 'Reset');
     expect(await createPageState(t.app).reset({ tenantId: 'T-a', pageId: page.id, actorId: a.boss, confirmStale: true })).toEqual({ kind: 'not-found' });
     expect(await createPageState(t.app).reset({ tenantId: 'T-b', pageId: page.id, actorId: b.boss, confirmStale: true })).toMatchObject({ kind: 'reset' });
-    const audit = await t.app.query<{ tenant_id: string }>(`select tenant_id from audit_events where action = 'page.state_reset' and target_id = $1`, [page.id]);
+    const audit = await t.admin.query<{ tenant_id: string }>(`select tenant_id from audit_events where action = 'page.state_reset' and target_id = $1`, [page.id]);
     expect(audit).toEqual([{ tenant_id: 'T-b' }]);
   });
 });

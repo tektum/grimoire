@@ -41,6 +41,7 @@ describe('migration 0007', () => {
 
     const app = createDatabase(appUrl(AT_0006), { maxConnections: 1 });
     try {
+      await app.query("select set_config('app.tenant', 'legacy', false)"); // row-level security: the runtime role sees the rows of its tenant (one connection, so the setting stays)
       expect(await app.query(`select key from idempotency_keys where user_id = '${USER}'`)).toEqual([{ key: 'k' }]);
       await app.query(`delete from idempotency_keys where created_at < now() + interval '1 hour'`);
       expect(await app.query('select 1 from idempotency_keys')).toEqual([]);

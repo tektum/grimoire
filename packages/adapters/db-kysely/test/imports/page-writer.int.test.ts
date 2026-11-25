@@ -5,6 +5,7 @@ import type { NewImportedPage } from '@tektum/grimoire-core/ports/import-repo';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
 import { createImportRepo } from '../../src/imports.js';
+import { scoped } from '../../src/index.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -27,8 +28,8 @@ const collection = async (): Promise<string> => (await createCollections(t.app).
 async function started(paths: readonly string[]): Promise<{ importId: string; collectionId: string; items: Map<string, string> }> {
   const collectionId = await collection();
   // A tenant has one running import (migration 0012): the one an earlier test, or an earlier step of this one, started has ended by now, so it is ended before the next one runs.
-  await t.app.query(`update imports set status = 'done', finished_at = now() where tenant_id = 'legacy' and status = 'running'`);
-  const rows = await t.app.query<{ id: string }>(
+  await t.admin.query(`update imports set status = 'done', finished_at = now() where tenant_id = 'legacy' and status = 'running'`);
+  const rows = await t.admin.query<{ id: string }>(
     `insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', 'running', $2) returning id`, [collectionId, userId],
   );
   const importId = (rows[0] as { id: string }).id;
@@ -43,9 +44,7 @@ const page = (itemId: string, collectionId: string, over: Partial<NewImportedPag
   content: { state: new Uint8Array([1, 2, 3, 4]), markdown: 'Body text\n', text: 'Body text', hash: Buffer.alloc(32, 9) }, markdownBytes: 10, stateBytes: 4, attachments: [], ...over,
 });
 
-const pagesOf = (collectionId: string) => t.app.query<{ id: string; ydoc: Buffer | null; markdown: string | null; text_content: string | null; markdown_hash: Buffer | null; created_by: string; last_edited_by: string | null; parent_id: string | null; position: string; tenant_id: string }>(
-  `select id, ydoc, markdown, text_content, markdown_hash, created_by, last_edited_by, parent_id, position, tenant_id from pages where collection_id = $1 and deleted_at is null order by position`, [collectionId],
-);
+const pagesOf = (collectionId: string) => t.admin.query<{ id: string; ydoc: Buffer | null; markdown: string | null; text_content: string | null; markdown_hash: Buffer | null; created_by: string; last_edited_by: string | null; parent_id: string | null; position: string; tenant_id: string }>(`select id, ydoc, markdown, text_content, markdown_hash, created_by, last_edited_by, parent_id, position, tenant_id from pages where collection_id = $1 and deleted_at is null order by position`, [collectionId],);
 
 describe('writing a page of an import', () => {
   it('writes the page with its state, one import revision, and the item as ok, together', async () => {
@@ -58,10 +57,10 @@ describe('writing a page of an import', () => {
     expect(row).toMatchObject({ id: out.pageId, markdown: 'Body text\n', text_content: 'Body text', created_by: userId, last_edited_by: userId, parent_id: null, position: expect.any(String), tenant_id: 'legacy' });
     expect(Buffer.from(row?.ydoc ?? []).equals(Buffer.from([1, 2, 3, 4]))).toBe(true);
     expect(Buffer.from(row?.markdown_hash ?? []).equals(Buffer.alloc(32, 9))).toBe(true);
-    const revisions = await t.app.query<{ reason: string; markdown: string; last_author_id: string; tenant_id: string }>('select reason, markdown, last_author_id, tenant_id from revisions where page_id = $1', [out.pageId]);
+    const revisions = await t.admin.query<{ reason: string; markdown: string; last_author_id: string; tenant_id: string }>('select reason, markdown, last_author_id, tenant_id from revisions where page_id = $1', [out.pageId]);
     expect(revisions).toEqual([{ reason: 'import', markdown: 'Body text\n', last_author_id: userId, tenant_id: 'legacy' }]);
     expect(await repo.getItem('legacy', s.importId, s.items.get('a.md') as string)).toMatchObject({ status: 'ok', pageId: out.pageId, urlId: expect.any(String), markdownBytes: 10, stateBytes: 4, message: null });
-    expect((await t.app.query<{ n: number }>(`select count(*)::int as n from pages where collection_id = $1 and deleted_at is null and text_content is null`, [s.collectionId]))[0]?.n).toBe(0);
+    expect((await t.admin.query<{ n: number }>(`select count(*)::int as n from pages where collection_id = $1 and deleted_at is null and text_content is null`, [s.collectionId]))[0]?.n).toBe(0);
   });
 
   it('a second write of the same item writes no second page (a resumed run, a duplicate delivery)', async () => {
@@ -114,7 +113,7 @@ describe('writing a page of an import', () => {
     const repo = createImportRepo(t.app);
     const a = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), { ...LIMITS, maxPages: 1 }, NOW);
     if (a.kind !== 'ok') throw new Error(a.kind);
-    await t.app.query('update pages set deleted_at = now() where id = $1', [a.pageId]);
+    await t.admin.query('update pages set deleted_at = now() where id = $1', [a.pageId]);
     expect((await repo.writePage('legacy', s.importId, page(s.items.get('b.md') as string, s.collectionId), { ...LIMITS, maxPages: 1 }, NOW)).kind).toBe('ok');
   });
 
@@ -133,7 +132,7 @@ describe('writing a page of an import', () => {
     const repo = createImportRepo(t.app);
     const id = s.items.get('a.md') as string;
     expect((await repo.writePage('other', s.importId, page(id, s.collectionId), LIMITS, NOW)).kind).toBe('collection-deleted');
-    await t.app.query('update collections set deleted_at = now() where id = $1', [s.collectionId]);
+    await t.admin.query('update collections set deleted_at = now() where id = $1', [s.collectionId]);
     expect(await repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW)).toEqual({ kind: 'collection-deleted' });
     expect((await repo.getItem('legacy', s.importId, id))?.status).toBe('pending');
   });
@@ -149,7 +148,7 @@ describe('the ids of a page item', () => {
     expect(a?.urlId).toMatch(/^[0-9A-Za-z]{10}$/);
     const out = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
     expect(out).toEqual({ kind: 'ok', pageId: a?.pageId, urlId: a?.urlId });
-    const rows = await t.app.query<{ id: string; url_id: string }>('select id, url_id from pages where id = $1', [a?.pageId]);
+    const rows = await t.admin.query<{ id: string; url_id: string }>('select id, url_id from pages where id = $1', [a?.pageId]);
     expect(rows).toEqual([{ id: a?.pageId, url_id: a?.urlId }]);
   });
 
@@ -166,7 +165,7 @@ describe('the import must be running', () => {
   it.each([['cancelled'], ['done'], ['failed']])('a %s import takes no page: nothing is written and the item stays pending', async (status) => {
     const s = await started(['a.md']);
     const repo = createImportRepo(t.app);
-    await t.app.query('update imports set status = $2 where id = $1', [s.importId, status]);
+    await t.admin.query('update imports set status = $2 where id = $1', [s.importId, status]);
     const id = s.items.get('a.md') as string;
     expect(await repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW)).toEqual({ kind: 'not-running' });
     expect(await pagesOf(s.collectionId)).toEqual([]);
@@ -178,12 +177,13 @@ describe('the import must be running', () => {
     const repo = createImportRepo(t.app);
     const id = s.items.get('a.md') as string;
     let write: ReturnType<typeof repo.writePage> | undefined;
-    await t.app.transaction(async (tx) => {
+    await scoped(t.app, 'legacy').transaction(async (tx) => {
       await tx.query(`update imports set status = 'cancelled' where id = $1`, [s.importId]);
       write = repo.writePage('legacy', s.importId, page(id, s.collectionId), LIMITS, NOW);
       // The write is blocked on the row this transaction holds: a session of the database is waiting on a lock. Without the share lock it would read the old status, write its page and finish.
       await vi.waitFor(async () => {
-        const waiting = await t.app.query<{ n: number }>(`select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`);
+        // As the operator role, a member of the runtime role: it sees the lock waits of the runtime role's sessions (the migrator does not).
+        const waiting = await t.ops.transaction((tx) => tx.query<{ n: number }>(`select count(*)::int as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'`));
         expect(waiting[0]?.n).toBeGreaterThan(0);
       }, { timeout: 10_000, interval: 25 });
     });
@@ -230,7 +230,7 @@ describe('the attachments of a page', () => {
     const a = attachment();
     const out = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId, { attachments: [a] }), LIMITS, NOW);
     if (out.kind !== 'ok') throw new Error(out.kind);
-    const rows = await t.app.query<{ id: string; page_id: string; status: string; tenant_id: string; ready_at: Date | null }>('select id, page_id, status, tenant_id, ready_at from attachments where page_id = $1', [out.pageId]);
+    const rows = await t.admin.query<{ id: string; page_id: string; status: string; tenant_id: string; ready_at: Date | null }>('select id, page_id, status, tenant_id, ready_at from attachments where page_id = $1', [out.pageId]);
     expect(rows).toEqual([{ id: a.id, page_id: out.pageId, status: 'ready', tenant_id: 'legacy', ready_at: expect.any(Date) }]);
   });
 
@@ -241,22 +241,22 @@ describe('the attachments of a page', () => {
     // The same id twice: the second insert violates the primary key, after the page and the revision were written.
     await expect(repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId, { attachments: [dup, dup] }), LIMITS, NOW)).rejects.toThrow();
     expect(await pagesOf(s.collectionId)).toEqual([]);
-    expect((await t.app.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [dup.id]))[0]?.n).toBe(0);
-    expect((await t.app.query<{ n: number }>(`select count(*)::int as n from revisions r join pages p on p.id = r.page_id where p.collection_id = $1`, [s.collectionId]))[0]?.n).toBe(0);
+    expect((await t.admin.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [dup.id]))[0]?.n).toBe(0);
+    expect((await t.admin.query<{ n: number }>(`select count(*)::int as n from revisions r join pages p on p.id = r.page_id where p.collection_id = $1`, [s.collectionId]))[0]?.n).toBe(0);
     expect((await repo.getItem('legacy', s.importId, s.items.get('a.md') as string))?.status).toBe('pending');
     // Recovery: the same item, written again with a good attachment, succeeds (no lock or status was left behind by the rollback).
     const good = attachment();
     const again = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId, { attachments: [good] }), LIMITS, NOW);
     expect(again.kind).toBe('ok');
     expect(await pagesOf(s.collectionId)).toHaveLength(1);
-    expect((await t.app.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [good.id]))[0]?.n).toBe(1);
+    expect((await t.admin.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [good.id]))[0]?.n).toBe(1);
     expect((await repo.getItem('legacy', s.importId, s.items.get('a.md') as string))?.status).toBe('ok');
   });
 });
 
 describe('moving the pages of an import to the trash', () => {
   const deleted = (collectionId: string) =>
-    t.app.query<{ id: string; deleted_batch: string | null; deleted_by: string | null; deleted_at: Date | null }>(`select id, deleted_batch, deleted_by, deleted_at from pages where collection_id = $1 order by id`, [collectionId]);
+    t.admin.query<{ id: string; deleted_batch: string | null; deleted_by: string | null; deleted_at: Date | null }>(`select id, deleted_batch, deleted_by, deleted_at from pages where collection_id = $1 order by id`, [collectionId]);
 
   it('moves the pages of ok items, and the pages under them that a person added, each subtree in a batch named by its root, by the importer, and a second call finds nothing', async () => {
     const s = await started(['a.md', 'a/b.md', 'z.md']);
@@ -267,9 +267,9 @@ describe('moving the pages of an import to the trash', () => {
     if (a.kind !== 'ok') throw new Error('page a');
     const b = await repo.writePage('legacy', s.importId, page(s.items.get('a/b.md') as string, s.collectionId, { parentId: a.pageId }), LIMITS, NOW);
     if (b.kind !== 'ok') throw new Error('page b');
-    await t.app.query(`update imports set status = 'cancelled', finished_at = now() where id = $1`, [s.importId]);
+    await t.admin.query(`update imports set status = 'cancelled', finished_at = now() where id = $1`, [s.importId]);
     // A page that is not the import's, under an imported page (a second import stands for the person who added it), and one beside it.
-    const other = await t.app.query<{ id: string }>(`insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', 'running', $2) returning id`, [s.collectionId, userId]);
+    const other = await t.admin.query<{ id: string }>(`insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', 'running', $2) returning id`, [s.collectionId, userId]);
     const otherId = (other[0] as { id: string }).id;
     await repo.addItems('legacy', otherId, [{ path: 'child.md', kind: 'page' }, { path: 'beside.md', kind: 'page' }]);
     const waiting = new Map((await repo.pending('legacy', otherId, 'page', 10)).map((i) => [i.path, i.id]));

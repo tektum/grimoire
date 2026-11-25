@@ -98,7 +98,7 @@ describe('collection access entries', () => {
     const authorizer = createAuthorizer(createAccessStore(t.app));
     const c = await repo.append('legacy', { name: 'acl2', createdBy: admin }, after);
     const group = await addGroup(t.app, 'Readers');
-    await t.app.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, member]);
+    await t.admin.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, member]);
     const ask = async () => (await authorizer.checkCollection({ tenantId: 'legacy', userId: member, collectionId: c.id })).access;
     expect(await ask()).toBe('none');
     const saved = await repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
@@ -127,7 +127,7 @@ describe('collection access entries', () => {
 });
 
 const addPage = async (collectionId: string, title: string, parentId: string | null = null): Promise<string> =>
-  ((await t.app.query<{ id: string }>(`insert into pages (collection_id, created_by, title, parent_id) values ($1, $2, $3, $4) returning id`, [collectionId, admin, title, parentId]))[0] as { id: string }).id;
+  ((await t.admin.query<{ id: string }>(`insert into pages (collection_id, created_by, title, parent_id) values ($1, $2, $3, $4) returning id`, [collectionId, admin, title, parentId]))[0] as { id: string }).id;
 
 describe('the collection tree', () => {
   it('returns only live pages, flat, with id, urlId, parentId, position, title and icon', async () => {
@@ -187,7 +187,7 @@ describe('visibleCollections and checkCollection', () => {
     const viewer = await addUser(t.app, 'vera', 'viewer');
     const outsider = await addUser(t.app, 'otto', 'member');
     const group = await addGroup(t.app, 'Agreeing');
-    await t.app.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, outsider]);
+    await t.admin.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, outsider]);
     const made = [
       await repo.append('legacy', { name: 'g-none', createdBy: admin }, after),
       await repo.append('legacy', { name: 'g-read', defaultPermission: 'read', createdBy: admin }, after),

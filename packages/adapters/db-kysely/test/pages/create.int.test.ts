@@ -6,6 +6,7 @@ import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdo
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createPages } from '../../src/pages.js';
+import { scoped } from '../../src/index.js';
 import { addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -120,7 +121,7 @@ describe('the PostgreSQL PageRepo create', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const locked = new Promise<void>((resolve) => { held = resolve; });
     // Another transaction holds the collection and deletes it; the create is started meanwhile and queues behind it.
-    const deleter = t.app.transaction(async (tx) => {
+    const deleter = scoped(t.app, 'legacy').transaction(async (tx) => {
       await tx.query(`select 1 from collections where id = $1 for update`, [c]);
       held();
       await gate;

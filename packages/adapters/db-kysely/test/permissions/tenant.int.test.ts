@@ -23,7 +23,8 @@ afterAll(async () => {
 describe('tenants in the facts and in the decision (PostgreSQL)', () => {
   it('reads the tenant of the user and of the page', async () => {
     const facts = await createAccessStore(db).facts([{ tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_A }, { tenantId: 'tenant-b', userId: USER_B, pageId: PAGE_B }, { tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_B }]);
-    expect(facts.map((f) => [f.user?.tenantId, f.page?.tenantId])).toEqual([['tenant-a', 'tenant-a'], ['tenant-b', 'tenant-b'], ['tenant-a', 'tenant-b']]);
+    // The third request names a page of the other tenant: under row-level security the read of it under A's tenant finds no row, so there is no page fact (and no decision on it but "not found").
+    expect(facts.map((f) => [f.user?.tenantId, f.page?.tenantId])).toEqual([['tenant-a', 'tenant-a'], ['tenant-b', 'tenant-b'], ['tenant-a', undefined]]);
   });
 
   it('gives a user nothing on a page of another tenant (not found, as a page that is not there), and everything on its own', async () => {
@@ -40,7 +41,8 @@ describe('tenants in the facts and in the decision (PostgreSQL)', () => {
     expect((await store.visibleCollections('tenant-a', USER_A)).map((c) => c.collectionId)).not.toContain(COL_B);
     expect((await store.visibleCollections('tenant-b', USER_B)).map((c) => c.collectionId)).toEqual([COL_B]);
     const facts = await store.collectionFacts([{ tenantId: 'tenant-a', userId: USER_A, collectionId: COL_B }]);
-    expect([facts[0]?.user?.tenantId, facts[0]?.collection?.tenantId]).toEqual(['tenant-a', 'tenant-b']);
+    // Row-level security hides the collection of the other tenant from a read under A's tenant: no collection fact at all, which the decision takes as "not found".
+    expect([facts[0]?.user?.tenantId, facts[0]?.collection?.tenantId]).toEqual(['tenant-a', undefined]);
   });
 
   it('is wrong nowhere on the whole two-tenant check', async () => {

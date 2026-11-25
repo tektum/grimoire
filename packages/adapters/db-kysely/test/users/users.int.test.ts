@@ -62,7 +62,7 @@ describe('createUserStore', () => {
     if (created.kind !== 'created') throw new Error('requires a created user');
     expect(created.user.id).toMatch(/^[0-9a-f-]{36}$/);
     // `last_seen_at` is not part of the record the store returns: read the column itself, so that dropping the insert's now() fails here.
-    const seen = await db.query<{ seen: boolean }>('select last_seen_at is not null as seen from users where descope_user_id = $1', [values.descopeUserId]);
+    const seen = await ops.transaction((tx) => tx.query<{ seen: boolean }>('select last_seen_at is not null as seen from users where descope_user_id = $1', [values.descopeUserId]));
     expect(seen[0]?.seen).toBe(true);
     expect(await users.findByDescopeId(values.descopeUserId)).toEqual(created.user);
     const updated = await users.updateRole('legacy', created.user.id, 'viewer');
@@ -77,7 +77,7 @@ describe('createUserStore', () => {
     const all = await Promise.all(Array.from({ length: 20 }, async () => users.createIfAbsent(input('race'))));
     expect(all.filter((result) => result.kind === 'created')).toHaveLength(1);
     expect(all.filter((result) => result.kind === 'existing')).toHaveLength(19);
-    const rows = await db.kysely.selectFrom('users').select('id').where('descope_user_id', '=', input('race').descopeUserId).execute();
+    const rows = await ops.transaction((tx) => tx.query('select id from users where descope_user_id = $1', [input('race').descopeUserId]));
     expect(rows).toHaveLength(1);
   });
 
@@ -154,7 +154,7 @@ describe('createUserStore', () => {
     const results = await Promise.all([users.createIfAbsent(first), users.createIfAbsent(second)]);
     expect(results.filter((r) => r.kind === 'created')).toHaveLength(1);
     expect(results.filter((r) => r.kind === 'email-taken')).toHaveLength(1);
-    expect(await db.kysely.selectFrom('users').select('id').where('email', '=', 'SHARED@example.test').execute()).toHaveLength(1);
+    expect(await ops.transaction((tx) => tx.query('select id from users where email = $1', ['SHARED@example.test']))).toHaveLength(1);
   });
 
   it('existing-subject conflict reads the row rather than changing role or personal fields', async () => {
@@ -207,7 +207,7 @@ describe('createIfAbsent when the same user signs in several times at once', () 
 
 describe('the tenant of a new person (docs/tenancy.md section 3.1)', () => {
   const store = () => createUserStore(db, ops, 1000);
-  const tenants = async (): Promise<readonly { id: string; name: string; domain: string | null }[]> => db.query('select id, name, domain from tenants order by id');
+  const tenants = async (): Promise<readonly { id: string; name: string; domain: string | null }[]> => ops.transaction((tx) => tx.query('select id, name, domain from tenants order by id'));
   const person = (n: string) => ({ descopeUserId: `tenant-subject-${n}`, email: `${n}@tenant-${n}.test`, name: n, role: 'member' as Role });
 
   it('makes the tenant with the person in one statement, names it after the domain, and a second person of it joins the same row', async () => {

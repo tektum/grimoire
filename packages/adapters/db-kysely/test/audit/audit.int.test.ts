@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAudit } from '../../src/audit.js';
 import { createCollections } from '../../src/collections.js';
+import { scoped } from '../../src/index.js';
 import { addGroup, addTenant, addUser, createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
 
@@ -37,7 +38,7 @@ describe('the PostgreSQL AuditLog', () => {
   });
 
   it('records the tenant of the actor when the event names none, the named one when it does, and legacy for the system', async () => {
-    await addTenant(t.app, 'T-audit');
+    await addTenant(t.admin, 'T-audit');
     const actor = await addUser(t.app, 'audited', 'member', 'T-audit');
     const audit = createAudit(t.app, t.ops);
     await audit.append({ actorId: actor, action: 'thing.unnamed', targetType: 'thing', targetId: 'target-3' });
@@ -103,7 +104,7 @@ describe('the audit row of a collection change', () => {
     let held!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const locked = new Promise<void>((resolve) => { held = resolve; });
-    const holder = t.app.transaction(async (tx) => {
+    const holder = scoped(t.app, 'legacy').transaction(async (tx) => {
       await tx.query(`select 1 from collections where id = $1 for update`, [c.id]);
       held();
       await gate;

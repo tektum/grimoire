@@ -20,7 +20,10 @@ const migrate = (db: string, dir?: string) => runToEnd([path.join(serverDir, 'di
 const admin = (db: string) => (statement: string) => sqlAdmin(db, statement);
 const asApp = async <T>(db: string, statement: string): Promise<readonly T[]> => {
   const handle = createDatabase(appUrl(db), { maxConnections: 1 });
-  try { return await handle.query<T>(statement); } finally { await handle.close(); }
+  try {
+    await handle.query("select set_config('app.tenant', 'legacy', false)"); // row-level security: the runtime role sees and writes the rows of its tenant (one connection, so the setting stays)
+    return await handle.query<T>(statement);
+  } finally { await handle.close(); }
 };
 
 beforeAll(async () => {

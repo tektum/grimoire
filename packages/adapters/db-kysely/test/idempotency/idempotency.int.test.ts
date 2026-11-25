@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createDatabase, createOpsDatabase, type KyselyDatabase, type OperatorDatabase } from '../../src/index.js';
+import { createDatabase, createOpsDatabase, scoped, type KyselyDatabase, type OperatorDatabase } from '../../src/index.js';
 import { createIdempotency } from '../../src/idempotency.js';
 import { adminUrl, appUrl, migratorUrl, opsUrl } from '@tektum/grimoire-test-support/database';
 
@@ -100,7 +100,7 @@ describe('the PostgreSQL IdempotencyStore', () => {
     const user = randomUUID();
     await store.claim('legacy', user, 'old', HASH_A);
     await store.complete('legacy', user, 'old', answer);
-    await db.query(`update idempotency_keys set created_at = now() - interval '25 hours' where user_id = $1 and key = 'old'`, [user]);
+    await ops.transaction((tx) => tx.query(`update idempotency_keys set created_at = now() - interval '25 hours' where user_id = $1 and key = 'old'`, [user]));
     await store.claim('legacy', user, 'young', HASH_A);
     expect(await store.deleteCreatedBefore(Date.now() - 24 * 60 * 60 * 1000)).toBeGreaterThanOrEqual(1);
     expect((await store.claim('legacy', user, 'old', HASH_B)).kind).toBe('claimed');
@@ -109,14 +109,14 @@ describe('the PostgreSQL IdempotencyStore', () => {
 
   it('stores a key in the caller\'s tenant, and another tenant can neither replay, complete nor release it', async () => {
     const store = createIdempotency(db, ops);
-    await db.query(`insert into tenants (id, name) values ('T-idem', 'T-idem')`);
-    const rows = await db.query<{ id: string }>(`insert into users (descope_user_id, email, name, role, tenant_id) values ('idem', 'idem@example.com', 'idem', 'member', 'T-idem') returning id`);
+    await ops.transaction((tx) => tx.query(`insert into tenants (id, name) values ('T-idem', 'T-idem')`));
+    const rows = await scoped(db, 'T-idem').query<{ id: string }>(`insert into users (descope_user_id, email, name, role, tenant_id) values ('idem', 'idem@example.com', 'idem', 'member', 'T-idem') returning id`);
     const user = rows[0]!.id;
     expect(await store.claim('T-idem', user, 'k', HASH_A)).toEqual({ kind: 'claimed' });
     await store.complete('legacy', user, 'k', { status: 201, body: { other: true } });
     await store.release('legacy', user, 'k');
     expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'conflict' });
-    const stored = await db.query<{ tenant_id: string; status: number | null }>(`select tenant_id, status from idempotency_keys where user_id = $1`, [user]);
+    const stored = await ops.transaction((tx) => tx.query<{ tenant_id: string; status: number | null }>(`select tenant_id, status from idempotency_keys where user_id = $1`, [user]));
     expect(stored).toEqual([{ tenant_id: 'T-idem', status: null }]);
     await store.complete('T-idem', user, 'k', { status: 201, body: { mine: true } });
     expect(await store.claim('T-idem', user, 'k', HASH_A)).toEqual({ kind: 'replay', response: { status: 201, body: { mine: true } } });
