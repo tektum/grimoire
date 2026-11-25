@@ -13,7 +13,15 @@ const TREE = { pages: [page('welcome', null, 'p1', 'Welcome'), page('nested', 'w
 const ok = (body: unknown) => ({ status: 200, body });
 const memoryStorage = (initial: Record<string, string> = {}) => {
   const data = new Map(Object.entries(initial).map(([k, v]) => [`grimoire.${k}`, v]));
-  return createClientStorage({ getItem: (k) => data.get(k) ?? null, setItem: (k, v) => { data.set(k, v); }, removeItem: (k) => { data.delete(k); } });
+  return createClientStorage({
+    getItem: (k) => data.get(k) ?? null,
+    setItem: (k, v) => {
+      data.set(k, v);
+    },
+    removeItem: (k) => {
+      data.delete(k);
+    },
+  });
 };
 const base = { 'GET /v1/collections': ok({ items: COLLECTIONS }), 'GET /v1/collections/{id}/tree': ok(TREE) };
 const show = (api: ApiLike, path: string, storage = memoryStorage()) =>
@@ -21,7 +29,15 @@ const show = (api: ApiLike, path: string, storage = memoryStorage()) =>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="*" element={<><ContentsPanel api={api} storage={storage} /><Where /></>} />
+          <Route
+            path="*"
+            element={
+              <>
+                <ContentsPanel api={api} storage={storage} />
+                <Where />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -32,6 +48,7 @@ const Where = () => {
     <>
       <output data-testid="where">{JSON.stringify({ pathname, state })}</output>
       <Link to="/trash">Go away</Link>
+      <Link to="/p/nested-nested">Open the page</Link>
     </>
   );
 };
@@ -41,7 +58,9 @@ describe('the contents panel', () => {
   it('shows the tree of the collection in the address /c/:id, under the collection name', async () => {
     const { api, calls } = fakeApi(base);
     show(api, '/c/c1');
-    await waitFor(() => { expect(titles()).toEqual(['Welcome', 'Nested']); });
+    await waitFor(() => {
+      expect(titles()).toEqual(['Welcome', 'Nested']);
+    });
     expect(screen.getByRole('link', { name: 'Dev' }).getAttribute('href')).toBe('/c/c1');
     expect(calls).toContain('GET /v1/collections/{id}/tree c1');
   });
@@ -49,7 +68,9 @@ describe('the contents panel', () => {
   it('shows the tree of the collection of the page that is open, and marks that page', async () => {
     const { api, calls } = fakeApi({ ...base, 'GET /v1/pages/by-url-id/{urlId}': ok({ id: 'nested', urlId: 'nested', collectionId: 'c2', title: 'Nested' }) });
     show(api, '/p/nested-nested');
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
     expect(calls).toContain('GET /v1/pages/by-url-id/{urlId} nested');
     expect(calls).toContain('GET /v1/collections/{id}/tree c2');
     expect(screen.getByRole('link', { name: 'Nested' }).getAttribute('aria-current')).toBe('page');
@@ -58,14 +79,47 @@ describe('the contents panel', () => {
   it('follows the page screens of a page too (its history)', async () => {
     const { api, calls } = fakeApi({ ...base, 'GET /v1/pages/by-url-id/{urlId}': ok({ id: 'nested', urlId: 'nested', collectionId: 'c1', title: 'Nested' }) });
     show(api, '/p/nested-nested/history');
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
     expect(calls).toContain('GET /v1/pages/by-url-id/{urlId} nested');
+  });
+
+  it('keeps the tree it showed while the page that is being opened says which collection it is in, so a row in rename is not taken down', async () => {
+    const { api } = fakeApi(base);
+    const holding = { ...api, GET: (path: string, init: unknown) => (path.includes('by-url-id') ? new Promise(() => undefined) : (api.GET as (p: string, i: unknown) => unknown)(path, init)) } as unknown as ApiLike;
+    show(holding, '/c/c1');
+    await waitFor(() => {
+      expect(titles()).toEqual(['Welcome', 'Nested']);
+    });
+    await userEvent.click(screen.getByRole('link', { name: 'Open the page' }));
+    expect(JSON.parse(screen.getByTestId('where').textContent!).pathname).toBe('/p/nested-nested');
+    expect(titles()).toEqual(['Welcome', 'Nested']);
+    expect(screen.getByRole('button', { name: 'New page' })).toBeTruthy();
+  });
+
+  it('does not keep it when the page is not found: no tree of the collection before it, and no New page button that would add to that one', async () => {
+    const { api, calls } = fakeApi({ ...base, 'GET /v1/pages/by-url-id/{urlId}': { status: 404, body: {} } });
+    show(api, '/c/c1');
+    await waitFor(() => {
+      expect(titles()).toEqual(['Welcome', 'Nested']);
+    });
+    await userEvent.click(screen.getByRole('link', { name: 'Open the page' }));
+    await waitFor(() => {
+      expect(calls).toContain('GET /v1/pages/by-url-id/{urlId} nested');
+    });
+    await waitFor(() => {
+      expect(screen.queryAllByRole('treeitem')).toHaveLength(0);
+    });
+    expect(screen.queryByRole('button', { name: 'New page' })).toBeNull();
   });
 
   it('shows the collection read last on a screen that belongs to no collection (/trash)', async () => {
     const { api, calls } = fakeApi(base);
     show(api, '/trash', memoryStorage({ 'last-collection': 'c2' }));
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
     expect(calls).toContain('GET /v1/collections/{id}/tree c2');
   });
 
@@ -88,7 +142,9 @@ describe('the contents panel', () => {
     const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/tree': { status: 404 } });
     show(api, '/c/c9');
     expect(await screen.findByText('Contents')).toBeTruthy();
-    await waitFor(() => { expect(screen.queryByText('Loading')).toBeNull(); });
+    await waitFor(() => {
+      expect(screen.queryByText('Loading')).toBeNull();
+    });
     expect(screen.queryByRole('tree')).toBeNull();
   });
 
@@ -97,16 +153,22 @@ describe('the contents panel', () => {
     const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/tree': () => (attempt++ === 0 ? { status: 503 } : ok(TREE)) });
     show(api, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
   });
 
   it('keeps the tree it has when a later read fails, instead of replacing it with an error', async () => {
     let reads = 0;
     const { api } = fakeApi({ ...base, 'GET /v1/collections/{id}/tree': () => (reads++ === 0 ? ok(TREE) : { status: 503 }) });
     show(api, '/c/c1');
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
     fireEvent.focus(window);
-    await waitFor(() => { expect(reads).toBe(2); });
+    await waitFor(() => {
+      expect(reads).toBe(2);
+    });
     await expect(screen.findByRole('alert', {}, { timeout: 200 })).rejects.toThrow();
     expect(titles()).toHaveLength(2);
   });
@@ -115,11 +177,15 @@ describe('the contents panel', () => {
     const { api, bodies } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
     const writable = show(api, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
-    await waitFor(() => { expect(bodies).toEqual([{ method: 'POST', path: '/v1/pages', body: { collectionId: 'c1', parentId: null } }]); });
+    await waitFor(() => {
+      expect(bodies).toEqual([{ method: 'POST', path: '/v1/pages', body: { collectionId: 'c1', parentId: null } }]);
+    });
     expect((await screen.findAllByRole('button', { name: /Actions for/ })).length).toBeGreaterThan(0); // the new page is open now: the panel finds its collection again first
     writable.unmount();
     show(api, '/c/c2');
-    await waitFor(() => { expect(titles()).toHaveLength(2); });
+    await waitFor(() => {
+      expect(titles()).toHaveLength(2);
+    });
     expect(screen.queryByRole('button', { name: 'New page' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
   });
@@ -128,20 +194,31 @@ describe('the contents panel', () => {
     const { api } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n1', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
     show(api, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
-    await waitFor(() => { expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/p/page-n1', state: { newPage: true } }); });
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/p/page-n1', state: { newPage: true } });
+    });
   });
 
   it('does not take a person to the new page when they went somewhere else while it was being made', async () => {
     const { api } = fakeApi({ ...base, 'POST /v1/pages': { status: 201, body: page('n1', null, 'p9', '') }, 'GET /v1/pages/by-url-id/{urlId}': ok({ collectionId: 'c1' }) });
     let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const slow = { ...api, POST: (...args: unknown[]) => gate.then(() => (api.POST as (...a: unknown[]) => unknown)(...args)) } as unknown as ApiLike;
     show(slow, '/c/c1');
     await userEvent.click(await screen.findByRole('button', { name: 'New page' }));
     await userEvent.click(screen.getByRole('link', { name: 'Go away' }));
-    await waitFor(() => { expect(JSON.parse(screen.getByTestId('where').textContent!).pathname).toBe('/trash'); });
-    await act(async () => { release(); await gate; });
-    await waitFor(() => { expect(screen.queryByText('Loading')).toBeNull(); });
+    await waitFor(() => {
+      expect(JSON.parse(screen.getByTestId('where').textContent!).pathname).toBe('/trash');
+    });
+    await act(async () => {
+      release();
+      await gate;
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Loading')).toBeNull();
+    });
     expect(JSON.parse(screen.getByTestId('where').textContent!)).toEqual({ pathname: '/trash', state: null });
   });
 
