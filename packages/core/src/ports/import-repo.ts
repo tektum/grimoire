@@ -14,6 +14,8 @@ export interface ImportCounts {
   readonly skipped: number;
   readonly failed: number;
   readonly warnings: number;
+  /** Remote images copied into the tool so far (the import's budget of them, kept across runs). */
+  readonly remote?: number;
 }
 
 export const NO_IMPORT_COUNTS: ImportCounts = { pagesTotal: 0, pagesDone: 0, attachments: 0, skipped: 0, failed: 0, warnings: 0 };

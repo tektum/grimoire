@@ -32,7 +32,7 @@ const printer = unified().use(remarkGfm).use(remarkStringify);
  * address with a scheme, a protocol-relative one (`//host/...`) and a fragment-only one are left as they are. A page that has nothing to rewrite is returned exactly as it came in (no parse-and-print
  * reformatting), so importing it with this step gives the same Markdown as importing it without.
  */
-export function rewriteMarkdown(markdown: string, resolve: ResolveTarget): RewriteResult {
+export function rewriteMarkdown(markdown: string, resolve: ResolveTarget, remote?: (url: string) => string | undefined): RewriteResult {
   const tree = parser.parse(markdown);
   const unresolved: string[] = [];
   const remoteImages: string[] = [];
@@ -42,7 +42,11 @@ export function rewriteMarkdown(markdown: string, resolve: ResolveTarget): Rewri
     const url = node.url;
     if (url === '' || url.startsWith('#')) return;
     if (EXTERNAL.test(url)) {
-      if (node.type === 'image' && REMOTE_IMAGE.test(url)) remoteImages.push(url);
+      if (node.type === 'image' && REMOTE_IMAGE.test(url)) {
+        remoteImages.push(url);
+        const copy = remote?.(url); // the caller has copied it into the tool: the image points at the copy
+        if (copy !== undefined) { node.url = copy; rewritten += 1; }
+      }
       return;
     }
     const hash = url.indexOf('#');

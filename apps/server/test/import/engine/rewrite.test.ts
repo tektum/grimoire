@@ -80,3 +80,21 @@ describe('rewriting links and images (R10.2)', () => {
     expect(out.markdown).toContain('* [x] done');
   });
 });
+
+describe('remote images (the caller decides what an absolute https image becomes)', () => {
+  const remote = (url: string): string | undefined => (url.startsWith('https://ok.example/') ? 'attachments/9/copy.png' : undefined);
+
+  it('an https image the caller has a copy of is replaced; one it has not, an http one, and a link are left as written', () => {
+    const out = rewriteMarkdown('![a](https://ok.example/a.png) ![b](https://no.example/b.png) ![c](http://ok.example/c.png) [d](https://ok.example/d.png)\n', resolve, remote);
+    expect(out.markdown).toBe('![a](attachments/9/copy.png) ![b](https://no.example/b.png) ![c](http://ok.example/c.png) [d](https://ok.example/d.png)\n');
+    expect(out.rewritten).toBe(1);
+    expect(out.remoteImages).toEqual(['https://ok.example/a.png', 'https://no.example/b.png', 'http://ok.example/c.png']);
+  });
+
+  it('an image in a code span or a fence is not an image node: nothing is asked of the caller', () => {
+    const asked: string[] = [];
+    rewriteMarkdown('`![a](https://ok.example/a.png)`\n\n```\n![b](https://ok.example/b.png)\n```\n', resolve, (url) => { asked.push(url); return 'x'; });
+    expect(asked).toEqual([]);
+  });
+});
+

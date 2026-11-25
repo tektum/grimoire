@@ -1,6 +1,7 @@
 import { duplicateIndexes, isBadName, reportedName } from '@tektum/grimoire-core/import/checks';
 import { isIgnoredEntry } from '@tektum/grimoire-core/import/types';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
+import type { ImportConfig } from '@tektum/grimoire-core/ports/config';
 import type { ImportCounts, ImportItem, ImportRecord, ImportRepo, NewImportItem, WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
@@ -9,8 +10,10 @@ import { importFailedKey } from './keys.js';
 import { rewriteMarkdown } from './markdown-rewrite.js';
 import type { Resolved } from './markdown-rewrite.js';
 import { normalizePage } from './normalize.js';
+import { createRemoteBudget } from './remote-images/index.js';
+import type { RemoteImageFetcher } from './remote-images/index.js';
 import type { ImportProfile, IndexedItem, LinkIndex } from './profile.js';
-import { stageAttachment } from './attachments.js';
+import { stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
 import type { ZipEntry, ZipReader } from './zip-reader.js';
@@ -121,6 +124,8 @@ export interface PassTwoDeps {
   readonly reader: Pick<ZipReader, 'openEntry'>;
   /** The files setting and the type sniffer: absent, the files a page uses stay as written. */
   readonly attachments?: AttachmentSettings;
+  /** Remote images (M7 contracts section 5). Absent: they are not looked at. Present with no fetcher (fetching is switched off): they stay links and are counted as warnings. */
+  readonly remote?: { readonly fetcher: RemoteImageFetcher | undefined; readonly config: ImportConfig['remote'] };
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
   readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number };
@@ -219,6 +224,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     return depth;
   };
 
+  // The import's budget of remote images: the copies made so far are kept in the counts, so a resumed run goes on from them (the time starts again with each run).
+  const budget = deps.remote === undefined ? undefined : { ...createRemoteBudget({ remote: deps.remote.config }), taken: record.counts.remote ?? 0 };
   const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   // Warnings live on the item rows (written with the page or the settle), so the count is worked out from them like the others and survives a resumed or an overlapping run.
   const warned = new Map(all.map((i) => [i.id, i.warnings]));
@@ -233,7 +240,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     let warnings = 0;
     for (const n of warned.values()) warnings += n;
-    return { pagesTotal: pageItems.length, pagesDone, attachments, skipped, failed, warnings };
+    return { pagesTotal: pageItems.length, pagesDone, attachments, skipped, failed, warnings, ...(budget === undefined ? {} : { remote: budget.taken }) };
   };
   /** The status another run gave an item this one lost the race for, read back (a written page keeps its ids, a settled one has none). */
   const adopt = async (item: ImportItem): Promise<void> => {
@@ -261,7 +268,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number; readonly wrote?: 'here' | 'other' };
   /** Files judged unfit for any page that uses them (a property of the file), decided once. */
   const rejected = new Map<string, Rejection>();
-  const processInner = async (item: ImportItem, staged: Map<string, StagedFile>): Promise<Step> => {
+  const processInner = async (item: ImportItem, staged: Map<string, StagedFile>, copied: Map<string, StagedFile>): Promise<Step> => {
     let original: Buffer | undefined;
     let markdown = '';
     let titleSource = '';
@@ -284,7 +291,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     // The files this page uses (stage 4d), found first and stored before the page is written; the rewrite then points each link at its attachment.
     if (deps.attachments !== undefined) {
       const wanted: ImportItem[] = [];
-      rewriteMarkdown(markdown, (target) => {
+      const seen = rewriteMarkdown(markdown, (target) => {
         const found = profile.resolveLink(target, item.path, index);
         const file = found?.kind === 'attachment' ? itemById.get(found.itemId) : undefined;
         if (file !== undefined && !wanted.includes(file)) wanted.push(file);
@@ -300,6 +307,14 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
         rejected.set(file.id, result);
         if (status.get(file.id) === 'pending') await settle(file, result.status, result.reason);
       }
+      // Remote images (contracts section 5), each distinct address once: an https one is copied into the tool, an http one or one with no fetcher stays a link and is a warning.
+      if (deps.remote !== undefined && budget !== undefined) {
+        for (const url of new Set(seen.remoteImages)) {
+          if (!/^https:/i.test(url) || deps.remote.fetcher === undefined) { own++; continue; }
+          const got = await stageRemoteImage(stage, deps.remote.fetcher, budget, url, item.path);
+          if (got.kind === 'ok') copied.set(url, got); else own++;
+        }
+      }
     }
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
       const found = profile.resolveLink(target, item.path, index);
@@ -308,7 +323,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       if (kind === 'image') return undefined; // an image that is a page is nothing to point at
       const targetItem = itemById.get(found.itemId);
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
-    });
+    }, (url) => copied.get(url)?.url);
     own += rewritten.unresolved.length;
 
     const bytes = original?.length ?? 0;
@@ -323,7 +338,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
-      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values(), ...copied.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
       case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); for (const id of staged.keys()) if (status.get(id) === 'pending') status.set(id, 'ok'); return { bytes, wrote: 'here' };
@@ -340,10 +355,11 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   /** Stores the files a page uses, writes the page, and then either settles the files it used as ok or removes the objects it stored for a page that was not written. */
   const processItem = async (item: ImportItem): Promise<Step> => {
     const staged = new Map<string, StagedFile>();
-    const step = await processInner(item, staged);
+    const copied = new Map<string, StagedFile>();
+    const step = await processInner(item, staged, copied);
     // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
-    if (step.wrote === undefined && staged.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
-      for (const f of staged.values()) await deps.files.delete(f.row.key);
+    if (step.wrote === undefined && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
+      for (const f of [...staged.values(), ...copied.values()]) await deps.files.delete(f.row.key);
     }
     return step;
   };
