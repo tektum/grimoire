@@ -44,12 +44,16 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async addItems(tenantId, importId, items) {
       if (items.length === 0) return 0;
+      // A pending page item gets its page id and URL id here (a link to a page written later points at them); every other item has neither.
       const rows = await db.query(
-        `insert into import_items (tenant_id, import_id, path, kind)
-         select i.tenant_id, i.id, p.path, p.kind from imports i, unnest($3::text[], $4::text[]) as p (path, kind)
-         where i.tenant_id = $1 and i.id = $2
+        `insert into import_items (tenant_id, import_id, path, kind, status, message, page_id, url_id)
+         select i.tenant_id, i.id, p.path, p.kind, p.status, p.message,
+                case when p.kind = 'page' and p.status = 'pending' then gen_random_uuid() end,
+                case when p.kind = 'page' and p.status = 'pending' then grimoire_url_id() end
+           from imports i, unnest($3::text[], $4::text[], $5::text[], $6::text[]) as p (path, kind, status, message)
+          where i.tenant_id = $1 and i.id = $2
          on conflict (import_id, path) do nothing returning 1`,
-        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind)],
+        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind), items.map((i) => i.status ?? 'pending'), items.map((i) => (i.message === undefined ? null : cleanItemText(i.message)))],
       );
       return rows.length;
     },
@@ -67,7 +71,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async settle(tenantId, importId, itemId, outcome) {
       const rows = await db.query(
-        `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7
+        `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7, page_id = null, url_id = null
          where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' returning 1`,
         [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null],
       );
@@ -83,7 +87,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         const running = await tx.query(`select 1 from imports where tenant_id = $1 and id = $2 and status = 'running' for share`, [tenantId, importId]);
         if (running.length === 0) return { kind: 'not-running' };
         // The item, still pending and of this import: the row lock makes two writers of one item take turns, and the second finds it settled.
-        const item = await tx.query(`select 1 from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' for update`, [tenantId, importId, page.itemId]);
+        const item = await tx.query<{ page_id: string | null; url_id: string | null }>(`select page_id, url_id from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' for update`, [tenantId, importId, page.itemId]);
         if (item.length === 0) return { kind: 'not-pending' };
         if (page.parentId !== null) {
           const parent = await tx.query(`select 1 from pages where id = $1 and collection_id = $2 and deleted_at is null`, [page.parentId, page.collectionId]);
@@ -108,10 +112,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
         const c = page.content;
         if (c.state.length === 0) throw new Error('the editor state of an imported page cannot be empty');
         const made = await tx.query<{ id: string; url_id: string }>(
-          `insert into pages (collection_id, parent_id, position, title, created_by, last_edited_by, last_edited_at, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch, tenant_id)
-           values ($1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $5::uuid, to_timestamp($6::double precision / 1000.0), $7::bytea, $8::integer, $9::text, $10::text, $11::bytea, 0, $12::text)
+          `insert into pages (id, url_id, collection_id, parent_id, position, title, created_by, last_edited_by, last_edited_at, ydoc, ydoc_size, markdown, text_content, markdown_hash, state_epoch, tenant_id)
+           values (coalesce($13::uuid, gen_random_uuid()), coalesce($14::text, grimoire_url_id()), $1::uuid, $2::uuid, $3::text, $4::text, $5::uuid, $5::uuid, to_timestamp($6::double precision / 1000.0), $7::bytea, $8::integer, $9::text, $10::text, $11::bytea, 0, $12::text)
            returning id, url_id`,
-          [page.collectionId, page.parentId, position, page.title, page.createdBy, now, Buffer.from(c.state), c.state.length, c.markdown, c.text, c.hash, tenantId],
+          // The page is written under the ids its item was given when it was added, so the links made to it before now hold.
+          [page.collectionId, page.parentId, position, page.title, page.createdBy, now, Buffer.from(c.state), c.state.length, c.markdown, c.text, c.hash, tenantId, item[0]?.page_id ?? null, item[0]?.url_id ?? null],
         );
         const row = made[0] as { id: string; url_id: string };
         await tx.query(
@@ -166,9 +171,16 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       const rows = await db.query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);
       return rows.length === 1;
     },
+    async scanItems(tenantId, importId, options) {
+      const rows = await db.query<ItemRow>(
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
+        [tenantId, importId, options.afterId ?? null, options.limit],
+      );
+      return rows.map(item);
+    },
     async listItems(tenantId, importId, options) {
       const rows = await db.query<ItemRow>(
-        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by id limit $4`,
+        `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
         [tenantId, importId, options.afterId ?? null, options.limit],
       );
       return rows.map(item);

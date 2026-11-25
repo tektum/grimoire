@@ -28,6 +28,24 @@ describe('the PostgreSQL AdminRepo: users', () => {
     expect(await repo.listUsers('legacy', { limit: 10, q: '%' })).toEqual([]);
   });
 
+  it('pages through every user by the keyset in the order the keyset compares (the email is citext, selected as text under the same name)', async () => {
+    await reset();
+    // `email::text as email` is selected under the column's own name; a bare `order by email` would sort that text, not the citext the cursor compares, and the two orders differ for mixed case under a
+    // plain collation. Upper and lower case letters interleave on purpose.
+    const names = ['Zed', 'amy', 'Bob', 'carl', 'Dee', 'eve', 'Fay'];
+    for (const n of names) await addUser(t.app, n);
+    const repo = createAdmin(t.app);
+    const seen: string[] = [];
+    for (let after: [string, string] | undefined; ;) {
+      const page = await repo.listUsers('legacy', after === undefined ? { limit: 2 } : { limit: 2, after });
+      if (page.length === 0) break;
+      seen.push(...page.filter((u) => u.id !== SYSTEM_USER).map((u) => u.name));
+      const last = page.at(-1);
+      after = [last?.email as string, last?.id as string];
+    }
+    expect(seen).toEqual(['amy', 'Bob', 'carl', 'Dee', 'eve', 'Fay', 'Zed']);
+  });
+
   it('answers names for known ids only', async () => {
     await reset();
     const one = await addUser(t.app, 'one');

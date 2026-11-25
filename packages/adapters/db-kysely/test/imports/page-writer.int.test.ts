@@ -139,6 +139,29 @@ describe('writing a page of an import', () => {
   });
 });
 
+describe('the ids of a page item', () => {
+  it('a page is written under the page id and URL id its item was given when it was added, so a link made before holds', async () => {
+    const s = await started(['a.md', 'b.md']);
+    const repo = createImportRepo(t.app);
+    const before = await repo.scanItems('legacy', s.importId, { limit: 10 });
+    const a = before.find((i) => i.path === 'a.md');
+    expect(a?.pageId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(a?.urlId).toMatch(/^[0-9A-Za-z]{10}$/);
+    const out = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId), LIMITS, NOW);
+    expect(out).toEqual({ kind: 'ok', pageId: a?.pageId, urlId: a?.urlId });
+    const rows = await t.app.query<{ id: string; url_id: string }>('select id, url_id from pages where id = $1', [a?.pageId]);
+    expect(rows).toEqual([{ id: a?.pageId, url_id: a?.urlId }]);
+  });
+
+  it('an item added as skipped or failed has no ids and is not pending', async () => {
+    const s = await started([]);
+    const repo = createImportRepo(t.app);
+    await repo.addItems('legacy', s.importId, [{ path: 'x.md', kind: 'page', status: 'failed', message: 'bad_name' }]);
+    const [row] = await repo.scanItems('legacy', s.importId, { limit: 10 });
+    expect(row).toMatchObject({ status: 'failed', message: 'bad_name', pageId: null, urlId: null });
+  });
+});
+
 describe('the import must be running', () => {
   it.each([['cancelled'], ['done'], ['failed']])('a %s import takes no page: nothing is written and the item stays pending', async (status) => {
     const s = await started(['a.md']);

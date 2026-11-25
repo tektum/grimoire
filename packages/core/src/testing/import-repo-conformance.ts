@@ -59,7 +59,87 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       const items = await h.repo.pending(h.tenantId, made.id, 'page', 10);
       assert.deepEqual(items.map((i) => i.path), ['a.md', 'b.md', 'c.md']);
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'attachment', 10), [], 'the second a.md did not replace the first');
-      assert.deepEqual(items[0], { id: items[0]?.id, path: 'a.md', kind: 'page', status: 'pending', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0 });
+      const first = items[0];
+      assert.ok(typeof first?.pageId === 'string' && first.pageId !== '' && typeof first.urlId === 'string' && first.urlId !== '', 'a pending page item has both ids');
+      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0 });
+    },
+  },
+  {
+    name: 'a-settled-page-item-has-no-page-and-so-no-ids',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'b.md'));
+      const [a, b] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(a && b);
+      assert.ok(a.pageId !== null && a.urlId !== null);
+      await h.repo.settle(h.tenantId, made.id, a.id, { status: 'failed', message: 'content-lost' });
+      await h.repo.settle(h.tenantId, made.id, b.id, { status: 'skipped', message: 'too_large' });
+      for (const i of [a, b]) {
+        const row = await h.repo.getItem(h.tenantId, made.id, i.id);
+        assert.deepEqual([row?.pageId, row?.urlId], [null, null], i.path);
+      }
+    },
+  },
+  {
+    name: 'scan-items-pages-through-every-item-by-id',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [...pages('a.md', 'b.md', 'c.md'), { path: 'x', kind: 'other', status: 'skipped', message: 'ignored' }]);
+      const [a] = await h.repo.pending(h.tenantId, made.id, 'page', 1);
+      assert.ok(a);
+      await h.repo.settle(h.tenantId, made.id, a.id, { status: 'failed', message: 'internal' });
+      const seen: string[] = [];
+      let after: string | undefined;
+      for (;;) {
+        const batch = await h.repo.scanItems(h.tenantId, made.id, after === undefined ? { limit: 3 } : { limit: 3, afterId: after });
+        if (batch.length === 0) break;
+        seen.push(...batch.map((i) => i.path));
+        after = batch.at(-1)?.id;
+      }
+      assert.deepEqual(seen, ['a.md', 'b.md', 'c.md', 'x'], 'pending, settled and skipped alike, once each');
+      assert.deepEqual(await h.repo.scanItems(h.otherTenantId, made.id, { limit: 10 }), []);
+    },
+  },
+  {
+    name: 'an-added-items-message-is-kept-as-given-and-null-only-when-absent',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [
+        { path: 'a', kind: 'other', status: 'skipped', message: '' }, { path: 'b', kind: 'other', status: 'skipped', message: 'ignored' }, { path: 'c', kind: 'other', status: 'skipped' },
+      ]);
+      const rows = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(rows.map((i) => i.message), ['', 'ignored', null]);
+    },
+  },
+  {
+    name: 'a-pending-page-item-gets-its-page-id-and-url-id-when-it-is-added',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [...pages('a.md', 'b.md'), { path: 'img/x.png', kind: 'attachment' }, { path: 'c.md', kind: 'page', status: 'skipped', message: 'too_large' }]);
+      const items = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.equal(items.length, 2);
+      for (const i of items) assert.ok(typeof i.pageId === 'string' && typeof i.urlId === 'string' && i.pageId !== '' && i.urlId !== '', i.path);
+      assert.equal(new Set(items.flatMap((i) => [i.pageId, i.urlId])).size, 4, 'every id is distinct');
+      const [file] = await h.repo.pending(h.tenantId, made.id, 'attachment', 10);
+      assert.deepEqual([file?.pageId, file?.urlId], [null, null], 'only a page has ids');
+      // The ids are known before the page is written, so a link to a page that comes later can point at it; they do not change.
+      const again = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.deepEqual(again.map((i) => [i.pageId, i.urlId]), items.map((i) => [i.pageId, i.urlId]));
+    },
+  },
+  {
+    name: 'an-item-can-be-added-already-skipped-or-failed',
+    async run(h) {
+      const made = await h.seed('running');
+      const added = await h.repo.addItems(h.tenantId, made.id, [
+        { path: '__MACOSX/a', kind: 'other', status: 'skipped', message: 'ignored' }, { path: 'bad', kind: 'other', status: 'failed', message: 'bad_name' }, { path: 'p.md', kind: 'page' },
+      ]);
+      assert.equal(added, 3);
+      assert.deepEqual((await h.repo.pending(h.tenantId, made.id, 'page', 10)).map((i) => i.path), ['p.md']);
+      assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'other', 10), [], 'neither is pending');
+      const listed = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(listed.map((i) => [i.path, i.status, i.message]), [['__MACOSX/a', 'skipped', 'ignored'], ['bad', 'failed', 'bad_name'], ['p.md', 'pending', null]]);
+      assert.equal(listed[0]?.pageId, null);
     },
   },
   {
@@ -129,6 +209,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       const first = await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now);
       assert.equal(first.kind, 'ok');
       if (first.kind !== 'ok') return;
+      assert.deepEqual([first.pageId, first.urlId], [item.pageId, item.urlId], 'the page is written under the ids the item was given, so links made before it was written hold');
       const settled = await h.repo.getItem(h.tenantId, made.id, item.id);
       assert.deepEqual({ ...settled }, { ...item, status: 'ok', pageId: first.pageId, urlId: first.urlId, markdownBytes: 6, stateBytes: 3 });
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'page', 10), []);
