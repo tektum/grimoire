@@ -234,6 +234,20 @@ describe('TrashRepo.restore', () => {
   });
 });
 
+describe('TrashRepo.expiredBatches', () => {
+  it('lists the batches of one tenant deleted before the time, oldest first, up to the limit', async () => {
+    const [a, b, young] = [await make('old-a'), await make('old-b'), await make('young')];
+    for (const id of [a, b, young]) await remove(id);
+    await t.admin.query(`update pages set deleted_at = now() - interval '40 days' where id = $1`, [a]);
+    await t.admin.query(`update pages set deleted_at = now() - interval '35 days' where id = $1`, [b]);
+    const cutoff = Date.now() - 30 * 86_400_000;
+    const all = await trash().expiredBatches('legacy', cutoff, 100);
+    expect(all.filter((id) => [a, b, young].includes(id))).toEqual([a, b]);
+    expect(await trash().expiredBatches('legacy', cutoff, 1)).toEqual(all.slice(0, 1));
+    expect(await trash().expiredBatches('another-tenant', cutoff, 100)).toEqual([]);
+  });
+});
+
 describe('TrashRepo.purge and purgeBatch', () => {
   async function batchWithFiles(): Promise<{ root: string; child: string; other: string }> {
     const root = await make('root');
@@ -262,6 +276,14 @@ describe('TrashRepo.purge and purgeBatch', () => {
       [root],
     );
     expect(audit).toEqual([{ actor_id: user, action: 'page.purged', target_type: 'page', target_id: root, detail: { batch: root, pages: 2 } }]);
+  });
+
+  it('sees the attachments of its own tenant only', async () => {
+    const { root, child } = await batchWithFiles();
+    const key = `attachments/${child}/1/a.png`;
+    expect(await trash().attachmentKeys('another-tenant', root)).toEqual([]);
+    await trash().markFilesRemoved('another-tenant', [key]);
+    expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, child)).toBe(0);
   });
 
   it('is a no-op for a batch already gone: nothing deleted, no second audit row', async () => {
