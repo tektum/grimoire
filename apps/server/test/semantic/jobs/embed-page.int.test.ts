@@ -5,7 +5,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeEmbedder } from '@tektum/grimoire-core/testing/fake-embedder';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { registerJobs } from '../../../src/jobs/index.js';
-import { semanticModelId } from '../../../src/jobs/embed-page.js';
+import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import { createJobRunner } from '../../../src/jobs/runner.js';
 import { appUrl } from '../../server/support/harness.js';
 import { fakeJobDeps } from '../../jobs/deps.js';
@@ -29,7 +29,7 @@ describe('embed-page, through the runner', () => {
     });
     const config = makeFakeConfig({ database: { url: appUrl(DB) } });
     const embedder = new FakeEmbedder({ maxTokens: 512, dims: 8 });
-    const { deps } = fakeJobDeps({ config, embedder, embeddings: createEmbeddingStore(db.app) });
+    const { deps } = fakeJobDeps({ config, embedder, embeddings: createEmbeddingStore(db.app, db.ops) });
     const runner = createJobRunner({ config, log: deps.log, make: () => runtimeQueue(DB), jobs: registerJobs(deps) });
     await runner.start();
     const queue = await runtimeQueue(DB);
@@ -38,7 +38,7 @@ describe('embed-page, through the runner', () => {
       await queue.enqueue('embed-page', { tenantId: tenant.tenantId, pageId }, { singletonKey: `embed:${pageId}` });
       await vi.waitFor(async () => {
         const rows = (await db.sql(`select status, chunk_count, model from page_embedding_state where page_id = '${pageId}'`)) as { status: string; chunk_count: number; model: string }[];
-        expect(rows).toEqual([{ status: 'ready', chunk_count: 3, model: semanticModelId(embedder) }]);
+        expect(rows).toEqual([{ status: 'ready', chunk_count: 3, model: modelKey(embedder.model) }]);
       }, { timeout: 60_000, interval: 500 });
       const chunks = (await db.sql(`select chunk_index, vector_dims(embedding) as dims, char_start from page_chunks where page_id = '${pageId}' order by chunk_index`)) as { chunk_index: number; dims: number; char_start: number }[];
       expect(chunks.map((c) => [c.chunk_index, c.dims])).toEqual([[0, 8], [1, 8], [2, 8]]);

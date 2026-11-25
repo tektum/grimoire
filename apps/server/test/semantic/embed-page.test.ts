@@ -5,7 +5,8 @@ import { FakeEmbedder } from '@tektum/grimoire-core/testing/fake-embedder';
 import { FakeEmbeddingStore } from '@tektum/grimoire-core/testing/fake-embedding-store';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
-import { createEmbedPage, EMBED_BATCH, semanticModelId } from '../../src/jobs/embed-page.js';
+import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
+import { createEmbedPage, EMBED_BATCH } from '../../src/jobs/embed-page.js';
 import { createRateLimiter } from '../../src/jobs/rate-limit.js';
 
 // M7-T13: the embed-page job, on the fakes. The marker is a word placed in the page text: it must never reach a log line, an event or an error message.
@@ -24,7 +25,7 @@ function setup(text: string, options: { perMinute?: number; embedder?: FakeEmbed
   const logger = new FakeLogger();
   const limiter = createRateLimiter({ perMinute: options.perMinute ?? 100_000, now: () => clock.now(), sleep: (ms) => { clock.advance(ms); return Promise.resolve(); } });
   const handler = createEmbedPage({ embedder, store, log: createEventLog(logger), clock, limiter });
-  const model = semanticModelId(embedder);
+  const model = modelKey(embedder.model);
   const payload = { tenantId: 'legacy', pageId: PAGE };
   return { clock, store, embedder, logger, handler, model, payload };
 }
@@ -40,7 +41,7 @@ describe('the embed-page job', () => {
     expect(s.embedder.calls.map((c) => c.texts.length)).toEqual([EMBED_BATCH, 20 - EMBED_BATCH]);
     expect(s.embedder.calls[0]?.texts[0]?.startsWith('passage: ')).toBe(true);
     expect(s.logger.entries.find((e) => e.event === 'semantic.embedded')?.fields).toMatchObject({ pageId: PAGE, chunks: 20, reused: 0 });
-    expect(s.model).toBe('fake-e5@v1');
+    expect(s.model).toBe('fake-e5-v1');
   });
 
   it('embeds only the chunks that changed, and keeps the others with their stored vector', async () => {
@@ -121,6 +122,38 @@ describe('the embed-page job', () => {
     expect(asked.reduce((sum, a) => sum + a.chunks, 0)).toBe(200);
     expect(s.clock.now() - started).toBeGreaterThanOrEqual(190_000); // 200 chunks at 60 a minute take over three minutes
     expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(200);
+  });
+
+  it('keys the chunks by the model as it is when the job runs, not when it was built: the version of the weights is known only after the model has loaded', async () => {
+    const embedder = new FakeEmbedder({ maxTokens: 512 });
+    let version = 'loading';
+    Object.defineProperty(embedder, 'model', { get: () => ({ name: 'fake-e5', version, dims: 8, maxTokens: 512 }) });
+    const s = setup(paragraphs(2), { embedder });
+    version = 'int8@3fa9c0d1'; // the load finished after the job was built
+    await s.handler(s.payload, ctxOf());
+    expect(s.store.stored(PAGE, 'fake-e5-int8@3fa9c0d1').chunks).toHaveLength(2);
+    expect(s.store.stored(PAGE, 'fake-e5-loading').chunks).toEqual([]);
+  });
+
+  it('cuts chunks to the embedder\'s own limit when it is lower than the default, so no chunk is refused as too long', async () => {
+    const small = new FakeEmbedder({ maxTokens: 30 });
+    const s = setup(paragraphs(1, 200), { embedder: small }); // one 200-word paragraph, 30 tokens to a chunk
+    await s.handler(s.payload, ctxOf());
+    const chunks = s.store.stored(PAGE, s.model).chunks;
+    expect(chunks.length).toBeGreaterThan(5);
+    expect(Math.max(...chunks.map((c) => c.tokenCount))).toBeLessThanOrEqual(30);
+    expect(s.store.stored(PAGE, s.model).state).toMatchObject({ status: 'ready' });
+  });
+
+  it('stores the offsets in code points, which the store reads a passage by, also after emoji', async () => {
+    const text = `🙂🙂 ${paragraphs(1, 150, 'a')}\n\n🙂 ${paragraphs(1, 150, 'b')}`;
+    const s = setup(text);
+    await s.handler(s.payload, ctxOf());
+    const points = Array.from(text);
+    const chunks = s.store.stored(PAGE, s.model).chunks;
+    expect(chunks).toHaveLength(2);
+    for (const c of chunks) expect(points.slice(c.charStart, c.charEnd).join('')).toMatch(/^(🙂🙂 a0w0|🙂 b0w0) /);
+    expect(chunks[1]?.charStart).not.toBe(text.indexOf('🙂 b')); // the UTF-16 index of the second chunk is two units further than its code point
   });
 
   it('does nothing for a page that is gone, in the trash, or of another tenant, and drops a payload of the wrong shape with a warning', async () => {

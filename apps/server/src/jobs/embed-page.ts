@@ -3,6 +3,7 @@ import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
 import type { ChunkRow, EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import { chunkText } from '@tektum/grimoire-core/semantic/chunk';
+import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import type { EventLog } from '../events.js';
 import type { RateLimiter } from './rate-limit.js';
 import { isEmbedPagePayload, type EmbedPagePayload } from './types.js';
@@ -11,9 +12,6 @@ export type { EmbedPagePayload } from './types.js';
 
 /** Chunks embedded in one call of the embedder. */
 export const EMBED_BATCH = 16;
-
-/** What the `model` column holds: the name and the version of the weights, so a new build of the same model is a model change. */
-export const semanticModelId = (embedder: Embedder): string => `${embedder.model.name}@${embedder.model.version}`;
 
 const sameBytes = (a: Uint8Array | undefined, b: Uint8Array): boolean => a !== undefined && a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -33,7 +31,6 @@ export interface EmbedPageDeps {
  */
 export function createEmbedPage(deps: EmbedPageDeps): JobHandler<unknown> {
   const { embedder, store, log, clock, limiter } = deps;
-  const model = semanticModelId(embedder);
   return async (payload, ctx) => {
     if (!isEmbedPagePayload(payload)) { log.warn('jobs.payload_invalid', { name: 'embed-page', jobId: ctx.jobId }); return; }
     const { tenantId, pageId }: EmbedPagePayload = payload;
@@ -41,7 +38,9 @@ export function createEmbedPage(deps: EmbedPageDeps): JobHandler<unknown> {
     const page = await store.pageText(tenantId, pageId);
     if (page === undefined) return; // gone, in the trash, or without Markdown
     if (embedder.status() !== 'ready') throw new Error('embedder-unavailable'); // not the page's doing: no failure is recorded
-    const chunks = chunkText(page.text, (text) => embedder.countTokens(text), { model });
+    // The key of the model as it is now: the version of the weights is known only once the model has loaded, and new weights are a model change (every page is embedded again).
+    const model = modelKey(embedder.model);
+    const chunks = chunkText(page.text, (text) => embedder.countTokens(text), { model, maxTokens: Math.min(400, embedder.model.maxTokens) }); // under the embedder's own limit, which the model's special tokens and prefix already come off
     const existing = await store.existingHashes(tenantId, pageId, model);
     const changed = chunks.filter((c) => !sameBytes(existing.get(c.chunkIndex), c.contentHash));
     const vectors = new Map<number, Float32Array>();
