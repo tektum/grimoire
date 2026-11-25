@@ -1,0 +1,36 @@
+import { describe, expect, it } from 'vitest';
+import { jobQueues } from '../../src/jobs/queues.js';
+
+const byName = (queues = jobQueues()) => new Map(queues.map((q) => [q.name, q]));
+
+describe('jobQueues', () => {
+  it('lists the queues of the contract with their policy and expiry', () => {
+    expect(jobQueues().map((q) => [q.name, q.policy, q.expireInSeconds])).toEqual([
+      ['dead-letter', 'standard', 600],
+      ['import', 'stately', 900],
+      ['import-sweep', 'singleton', 300],
+      ['import-cleanup', 'stately', 600],
+      ['purge', 'singleton', 3600],
+      ['upload-cleanup', 'singleton', 600],
+      ['revision-catchup', 'singleton', 1800],
+      ['markdown-sweep', 'singleton', 300],
+    ]);
+  });
+
+  it('retries three times with growing delay and sends the exhausted jobs to the dead-letter queue, which has none of its own', () => {
+    const queues = byName();
+    for (const [name, q] of queues) {
+      expect({ name, retryLimit: q.retryLimit, delay: q.retryDelaySeconds, backoff: q.retryBackoff, retention: q.retentionSeconds }).toEqual({ name, retryLimit: 3, delay: 30, backoff: true, retention: 14 * 86400 });
+      expect(q.deadLetter).toBe(name === 'dead-letter' ? undefined : 'dead-letter');
+    }
+  });
+
+  it('puts the dead-letter queue first, because a queue can only name a dead-letter queue that exists', () => {
+    expect(jobQueues()[0]?.name).toBe('dead-letter');
+  });
+
+  it('takes the import expiry from the setting', () => {
+    expect(byName(jobQueues(20)).get('import')?.expireInSeconds).toBe(20);
+    expect(byName(jobQueues(20)).get('import-cleanup')?.expireInSeconds).toBe(600);
+  });
+});

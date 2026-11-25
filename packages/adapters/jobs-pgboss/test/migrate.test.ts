@@ -70,6 +70,8 @@ describe('migratePgBoss', () => {
     const b = {
       start: vi.fn(async () => b),
       stop: vi.fn(async () => {}),
+      getQueue: vi.fn<(name: string) => Promise<unknown>>(async () => null),
+      createQueue: vi.fn(async () => {}),
       on: vi.fn((event: string, fn: (e: Error) => void) => { handlers[event] = fn; return b; }),
     };
     return { b, handlers };
@@ -83,6 +85,30 @@ describe('migratePgBoss', () => {
     expect(make).toHaveBeenCalledWith({ connectionString: 'postgresql://example/db', schema: 'pgboss', migrate: true, createSchema: false, supervise: false, schedule: false, registerInstance: false });
     expect(b.stop).toHaveBeenCalledWith({ graceful: true, close: true, timeout: 2000 });
     expect(sql.some((q) => q.startsWith('grant select, insert'))).toBe(true);
+  });
+
+  it('creates the queues in order after the migration and before the grants, leaving an existing one alone', async () => {
+    const { b } = boss();
+    const order: string[] = [];
+    b.start.mockImplementation((async () => { order.push('start'); return b; }) as never);
+    b.createQueue.mockImplementation((async (name: string) => { order.push(`create ${name}`); }) as never);
+    b.getQueue.mockImplementation((async (name: string) => (name === 'old' ? {} : null)) as never);
+    const { db, sql } = recorder(['job']);
+    const q = (name: string) => ({ name, policy: 'standard', retryLimit: 1, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 60 }) as const;
+    await migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues: [q('first'), q('old'), q('second')] });
+    expect(order).toEqual(['start', 'create first', 'create second']);
+    expect(sql.findIndex((s) => s.startsWith('grant select, insert'))).toBeGreaterThan(-1);
+    expect(b.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes pg-boss when a queue cannot be created, and grants nothing', async () => {
+    const { b } = boss();
+    b.createQueue.mockRejectedValueOnce(new Error('no rights'));
+    const { db, sql } = recorder(['job']);
+    const queues = [{ name: 'x', policy: 'standard', retryLimit: 1, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 60 }] as const;
+    await expect(migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues })).rejects.toThrow('no rights');
+    expect(b.stop).toHaveBeenCalledTimes(1);
+    expect(sql.filter((s) => s.startsWith('grant'))).toEqual([]);
   });
 
   it('fails, and grants nothing, when pg-boss reported an error during the migration', async () => {

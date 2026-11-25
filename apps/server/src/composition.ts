@@ -1,6 +1,8 @@
 // Composition root: the only module that constructs adapters and wires them into the core ports.
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import { migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
+import { jobQueues } from '@tektum/grimoire-core/jobs/queues';
+import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config, FilesSetupConfig } from '@tektum/grimoire-core/ports/config';
 import type { CollabDeps, CollaborationHost } from '@tektum/grimoire-core/ports/collaboration-host';
@@ -158,11 +160,11 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
 export type CommandCompositionResult = { readonly ok: true; readonly ctx: CommandComposition } | { readonly ok: false; readonly code: 1 | 2; readonly log: EventLog };
 export interface MigrateOptions { readonly env?: Env; readonly dir?: string }
-/** Kysely migrations first, then pg-boss's own schema with its grants for the runtime role (the role name is fixed by the migrations), all of it under one lock: a second `migrate` waits. */
-export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string): Promise<{ readonly applied: string[]; readonly jobTables: number }> {
+/** Kysely migrations first, then pg-boss's own schema, the queues of `jobQueues()` and the grants for the runtime role (the role name is fixed by the migrations), all of it under one lock: a second `migrate` waits. */
+export async function migrateAdapter(db: KyselyDatabase, dir: string, migrationUrl: string, queues: readonly QueueDefinition[] = jobQueues()): Promise<{ readonly applied: string[]; readonly jobTables: number }> {
   return withMigrationLock(migrationUrl, async () => {
     const { applied } = await migrateDatabase(db, dir);
-    const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app' });
+    const granted = await migratePgBoss({ connectionString: migrationUrl, database: db, runtimeRole: 'grimoire_app', queues });
     return { applied, jobTables: granted.length }; // `applied` lists only the Kysely migrations
   });
 }
