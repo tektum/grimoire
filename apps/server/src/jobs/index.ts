@@ -2,6 +2,7 @@ import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { AttachmentRepo } from '@tektum/grimoire-core/ports/attachment-repo';
 import type { PageStore } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Config } from '@tektum/grimoire-core/ports/config';
+import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -9,6 +10,8 @@ import type { RevisionRepo } from '@tektum/grimoire-core/ports/revision-repo';
 import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import type { TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import type { EventLog } from '../events.js';
+import { handleEmbedPage } from './embed-page.js';
+import { handleEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { handleImportCleanup } from './import-cleanup.js';
 import { handleImportSweep } from './import-sweep.js';
@@ -37,6 +40,8 @@ export interface JobDeps {
   readonly revisions: RevisionRepo;
   readonly pages: PageStore;
   readonly converter: MarkdownConverter;
+  /** Absent when the semantic search is off or the role has none: the two embedding jobs are then not registered. */
+  readonly embedder?: Embedder;
 }
 
 /** The stale-Markdown sweep runs every minute (the finest a cron can say). */
@@ -75,5 +80,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     }]),
     { name: 'revision-catchup', schedule: config.jobs.revisionCron, handler: async (_payload, ctx) => { await runRevisionCatchUp({ revisions: deps.revisions, now: () => clock.now() }, ctx.signal); } },
     { name: 'markdown-sweep', schedule: MARKDOWN_SWEEP_CRON, handler: async (_payload, ctx) => { await sweep(ctx.signal); } },
+    // M7-T13 fills the handlers and decides the cadence of the sweep (`GRIMOIRE_SEMANTIC_SWEEP_SECONDS` is finer than a cron).
+    ...(deps.embedder === undefined ? [] : [{ name: 'embed-sweep', handler: handleEmbedSweep }, { name: 'embed-page', handler: handleEmbedPage as RegisteredJob['handler'] }]),
   ];
 }

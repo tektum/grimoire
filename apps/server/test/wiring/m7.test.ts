@@ -23,7 +23,7 @@ describe('the composition by role', () => {
   it.each(['api', 'all'])('role %s has the job runner and its shutdown hook in release-jobs, and no second converter pool (one pool for the process)', (role) => {
     const ctx = ctxOf({ GRIMOIRE_ROLE: role });
     expect(ctx.jobs).toBeDefined();
-    expect(ctx.shutdownHooks.filter((h) => h.phase === 'release-jobs').map((h) => h.name)).toEqual(['markdown-pool', 'jobs']);
+    expect(ctx.shutdownHooks.filter((h) => h.phase === 'release-jobs').map((h) => h.name)).toEqual(['markdown-pool', 'embedder', 'jobs']);
   });
 
   it('role collab has neither', () => {

@@ -1,5 +1,7 @@
 // Composition root: the only module that constructs adapters and wires them into the core ports.
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
+import { createOnnxEmbedder } from '@tektum/grimoire-adapter-embedder-onnx';
+import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
 import { createJobQueue, migratePgBoss, type MigrateOptions as MigratePgBossOptions } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { jobQueues } from '@tektum/grimoire-core/jobs/queues';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
@@ -46,6 +48,8 @@ export interface AppContext {
   readonly signInPolicy: SignInPolicy;
   readonly shutdown: Shutdown;
   /** The collaboration host and what it needs; absent when the role has none (`api`). */
+  /** The semantic search: built in the roles `api` and `all` when `GRIMOIRE_SEMANTIC_SEARCH` is on. The store and the routes that use it come with M7-T13 and M7-T14. */
+  readonly semantic?: { readonly embedder: Embedder };
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
   /** Every port the routes use, built here and nowhere else. */
   readonly http: HttpDeps;
@@ -153,23 +157,25 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     };
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
+  const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic);
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: registerJobs({
       config, log, clock: systemClock, tenants: createTenants(db), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
-      revisions: createRevisions(db), pages: createPageStore(db, systemClock), converter,
+      revisions: createRevisions(db), pages: createPageStore(db, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
     }),
     onError: () => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0 }); } });
   const shutdownHooks: ShutdownHook[] = [
     ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
     markdownPoolHook(converter),
+    ...(embedder === undefined ? [] : [{ name: 'embedder', phase: 'release-jobs' as const, deadlineMs: DERIVED_BUDGETS_MS.releaseJobs, run: () => embedder.close() }]),
     ...(jobs === undefined ? [] : [jobs.hook]),
     ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
-  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(collab ? { collab } : {}) } };
+  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder } }), ...(collab ? { collab } : {}) } };
 }
 
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
