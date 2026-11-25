@@ -37,6 +37,6 @@ describe('the job queue on the runtime role', () => {
   }, SOAK_MS + 120_000);
 
   it('cannot start the cron loop: create_queue is refused (the fallback of contracts section 3: schedules run in a process with a role of their own)', async () => {
-    await expect(createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined, cron: true }, shortLoops)).rejects.toThrow(/permission denied for function create_queue/);
+    await expect(createJobQueue({ connectionString: appUrl(DB), max: 2, onError: () => undefined }, (o) => shortLoops({ ...o, schedule: true }))).rejects.toThrow(/permission denied for function create_queue/);
   }, 60_000);
 });
