@@ -12,6 +12,8 @@ const CLI = path.join(ROOT, 'apps/server/dist/cli.js');
 const POSTGRES_URL = adminUrl('postgres');
 
 export interface TestDatabase {
+  /** The database's name, for a connection as another role. */
+  readonly name: string;
   /** The runtime role: what the product connects as. */
   readonly app: KyselyDatabase;
   /** The owner of the schema, for facts the runtime role may not read or write. */
@@ -34,7 +36,7 @@ export async function createTestDatabase(label: string): Promise<TestDatabase> {
   const app = createDatabase(appUrl(name), { maxConnections: 10 });
   const admin = createDatabase(migrator, { maxConnections: 2 });
   return {
-    app, admin,
+    name, app, admin,
     async drop() {
       await app.close();
       await admin.close();

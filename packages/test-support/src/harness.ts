@@ -16,10 +16,11 @@ export const slowEntry = path.join(serverDir, 'test/server/support/slow-route-en
 export const HOST = '127.0.0.1:55432';
 /** The password of the roles of the development database (the same in .env.example and compose.yaml: a published development value). The one place tests have it. */
 const DEV_PASSWORD = 'grimoire-dev';
-export const devDatabaseUrl = (role: 'grimoire_admin' | 'grimoire_app' | 'grimoire_migrator', db: string, host: string = HOST, password: string = DEV_PASSWORD): string => databaseUrl(role, password, host, db);
+export const devDatabaseUrl = (role: 'grimoire_admin' | 'grimoire_app' | 'grimoire_migrator' | 'grimoire_ops', db: string, host: string = HOST, password: string = DEV_PASSWORD): string => databaseUrl(role, password, host, db);
 export const adminUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_admin', db, host);
 export const appUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_app', db, host);
 export const migratorUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_migrator', db, host);
+export const opsUrl = (db: string, host: string = HOST): string => devDatabaseUrl('grimoire_ops', db, host);
 export function requireBuild(): void { if (!existsSync(mainJs)) throw new Error('apps/server/dist/main.js is missing: run `bun run build` first'); }
 
 export function freePort(): Promise<number> {

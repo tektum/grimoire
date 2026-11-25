@@ -8,9 +8,10 @@ import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-u
 const cli = path.join(serverDir, 'dist/cli.js');
 const APP = 'app-password-0123456789';
 const MIGRATOR = 'migrator-password-0123456789';
+const OPS = 'ops-password-0123456789';
 const ADMIN_PASSWORD = 'not-the-admin-password-0123';
 const run = (env: Record<string, string>) => runToEnd([cli, 'db-setup'], env);
-const leaks = (output: string): string[] => [APP, MIGRATOR, ADMIN_PASSWORD].filter((secret) => output.includes(secret));
+const leaks = (output: string): string[] => [APP, MIGRATOR, OPS, ADMIN_PASSWORD].filter((secret) => output.includes(secret));
 
 beforeAll(() => requireBuild());
 
@@ -24,7 +25,7 @@ describe('grimoire db-setup', () => {
   it('exits 2 and names every missing setting, without a value', async () => {
     const result = await run({});
     expect(result.code).toBe(2);
-    for (const name of ['GRIMOIRE_DATABASE_ADMIN_URL', 'GRIMOIRE_DB_APP_PASSWORD', 'GRIMOIRE_DB_MIGRATOR_PASSWORD']) expect(result.output).toContain(name);
+    for (const name of ['GRIMOIRE_DATABASE_ADMIN_URL', 'GRIMOIRE_DB_APP_PASSWORD', 'GRIMOIRE_DB_MIGRATOR_PASSWORD', 'GRIMOIRE_DB_OPS_PASSWORD']) expect(result.output).toContain(name);
     expect(result.output).toContain('db_setup.config_invalid');
   });
 
@@ -33,6 +34,7 @@ describe('grimoire db-setup', () => {
       GRIMOIRE_DATABASE_ADMIN_URL: `postgresql://grimoire_admin:${ADMIN_PASSWORD}@127.0.0.1:55432/grimoire`,
       GRIMOIRE_DB_APP_PASSWORD: APP,
       GRIMOIRE_DB_MIGRATOR_PASSWORD: MIGRATOR,
+      GRIMOIRE_DB_OPS_PASSWORD: OPS,
     });
     expect(result.code).toBe(1);
     expect(result.output).toContain('db_setup.failed');

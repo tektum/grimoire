@@ -24,6 +24,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
+  const opsPassword = password('DbOpsPassword'); // the operator role of docs/tenancy.md section 3.2
   // The managed database requires TLS: the connections verify it against Amazon's bundle, which the image holds (NODE_EXTRA_CA_CERTS names it).
   // Passwords and the connection strings that hold them go to the container as ECS secrets (Parameter Store SecureString, read by the execution role at start), never as
   // plain environment values: the task definition then holds only their ARNs.
@@ -53,6 +54,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
           GRIMOIRE_DATABASE_ADMIN_URL: secret('AdminUrl', urlOf(db.username, db.password)),
           GRIMOIRE_DB_APP_PASSWORD: secret('AppPassword', appPassword),
           GRIMOIRE_DB_MIGRATOR_PASSWORD: secret('MigratorPassword', migratorPassword),
+          GRIMOIRE_DB_OPS_PASSWORD: secret('OpsPassword', opsPassword),
         },
       },
       { name: 'migrate', image: IMAGE, command: ['apps/server/dist/cli.js', 'migrate'], environment: trust, ssm: { GRIMOIRE_DATABASE_MIGRATION_URL: secret('MigratorUrl', urlOf('grimoire_migrator', migratorPassword)) } },
@@ -78,9 +80,10 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
           GRIMOIRE_S3_ADDRESSING_STYLE: 'virtual',
           GRIMOIRE_S3_CORS_MODE: 'external',
         },
-        // Only the runtime role: the schema owner's credentials stay with the `migrate` step.
+        // The runtime role, and the operator role for the call sites that cross tenants: the schema owner's credentials stay with the `migrate` step.
         ssm: {
           GRIMOIRE_DATABASE_URL: secret('AppUrl', urlOf('grimoire_app', appPassword)),
+          GRIMOIRE_DATABASE_OPS_URL: secret('OpsUrl', urlOf('grimoire_ops', opsPassword)),
         },
       },
     ],

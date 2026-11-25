@@ -9,12 +9,14 @@ Run it before the first migration, in the same pre-rollout step, and again whene
 | `GRIMOIRE_DATABASE_ADMIN_URL` | the administrator's connection to the product database |
 | `GRIMOIRE_DB_APP_PASSWORD` | the password to give the runtime role `grimoire_app` (at least 16 characters) |
 | `GRIMOIRE_DB_MIGRATOR_PASSWORD` | the password to give the migration role `grimoire_migrator` (at least 16 characters) |
+| `GRIMOIRE_DB_OPS_PASSWORD` | the password to give the operator role `grimoire_ops` (at least 16 characters) |
 
 End state, in one transaction (a failure leaves the database as it was):
 
-- Both roles exist as plain `LOGIN` roles with no other attribute: no privilege attribute, no connection limit, no expiry. A role that exists already is reset to that, and the command refuses a role that is a member of another role.
+- The three roles exist as plain `LOGIN` roles with no other attribute: no privilege attribute, no connection limit, no expiry. A role that exists already is reset to that, and the command refuses a role that is a member of another role, except the one membership below.
+- The operator role `grimoire_ops` is a member of the runtime role `grimoire_app`, so it has exactly the runtime role's grants and none of its own, and it cannot become the migration role or the administrator. It is for the few call sites that cross tenants (`docs/tenancy.md` section 3.2): the row-level security policies name it. It has no `BYPASSRLS`: on a managed service the master user does not hold that attribute (on RDS only the service's own `rdsadmin` does), and PostgreSQL lets only a superuser or a role that holds it give it.
 - A non-superuser administrator can only reset a privilege attribute (`CREATEDB`, `CREATEROLE`, `REPLICATION`, `BYPASSRLS`) that it holds itself, on PostgreSQL 16 and later. When it cannot, the command fails, changes nothing and says to reset the role as a superuser or drop it. A clean database never hits this.
-- Both roles have the password you gave. A run with new passwords changes them.
+- The roles have the passwords you gave. A run with new passwords changes them.
 - The public may not connect to the database. A role that already holds an explicit grant keeps it: that is the administrator's decision.
 - The migration role owns schema `public` and the job queue's schema `pgboss`, also when `pgboss` was there before.
 - The runtime role may use `public` and nothing more. Each migration grants it what it needs.
@@ -22,7 +24,7 @@ End state, in one transaction (a failure leaves the database as it was):
 
 The server receives a SCRAM-SHA-256 verifier computed here, not the password, so the password is not in any statement the server may log or record (`log_statement`, pgaudit, `pg_stat_statements`). The command never logs it either.
 
-The server refuses to start when any of these three settings is set: only this step holds the administrator connection and the passwords.
+The server refuses to start when the administrator connection or a role password is set: only this step holds them. The server takes the operator role's connection as `GRIMOIRE_DATABASE_OPS_URL` (optional for now; nothing falls back to the runtime connection when it is missing).
 
 Tested against PostgreSQL 17 as a superuser and as a non-superuser with `CREATEROLE` (the shape of a managed master user). Not yet run on a real managed service: on one, the master user must be able to become the migration role to hand it the schemas, which the command arranges with `GRANT ... WITH SET TRUE`.
 

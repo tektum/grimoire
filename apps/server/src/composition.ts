@@ -21,7 +21,7 @@ import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadC
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
 import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import type { KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
+import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import { createJobRunner } from './jobs/runner.js';
 import type { JobRunner } from './jobs/runner.js';
@@ -206,12 +206,12 @@ export function runTenantAdopt(db: KyselyDatabase, request: TenantAdoptRequest):
   return adoptTenant(db, request);
 }
 
-export interface DbSetupComposition { readonly db: KyselyDatabase; readonly passwords: { readonly app: string; readonly migrator: string }; readonly log: EventLog }
+export interface DbSetupComposition { readonly db: KyselyDatabase; readonly passwords: DatabasePasswords; readonly log: EventLog }
 export type DbSetupCompositionResult = { readonly ok: true; readonly ctx: DbSetupComposition } | { readonly ok: false; readonly code: 2; readonly log: EventLog };
 
-/** `grimoire db-setup`: the administrator's connection and the two role passwords from the `db-setup` settings (no server settings, no runtime role). */
+/** `grimoire db-setup`: the administrator's connection and the three role passwords from the `db-setup` settings (no server settings, no runtime role). */
 /** The set-up step itself, bound to the database adapter here like the migrations are. */
-export function runDbSetup(db: KyselyDatabase, passwords: { readonly app: string; readonly migrator: string }): ReturnType<typeof setupDatabase> {
+export function runDbSetup(db: KyselyDatabase, passwords: DatabasePasswords): ReturnType<typeof setupDatabase> {
   return setupDatabase(db, passwords);
 }
 
@@ -224,7 +224,7 @@ export function composeDbSetup(options: { readonly env?: Env } = {}): DbSetupCom
   }
   const setup = config.dbSetup;
   if (setup === undefined) { log.error('db_setup.config_invalid', { settings: [{ setting: 'GRIMOIRE_DATABASE_ADMIN_URL', rule: 'is required to run db-setup' }] }); return { ok: false, code: 2, log }; }
-  return { ok: true, ctx: { db: createDatabase(setup.adminUrl, { maxConnections: 1 }), passwords: { app: setup.appPassword, migrator: setup.migratorPassword }, log } };
+  return { ok: true, ctx: { db: createDatabase(setup.adminUrl, { maxConnections: 1 }), passwords: { app: setup.appPassword, migrator: setup.migratorPassword, ops: setup.opsPassword }, log } };
 }
 
 export interface FilesSetupComposition { readonly setup: FilesSetupConfig; readonly allowedOrigins: readonly string[]; readonly log: EventLog }

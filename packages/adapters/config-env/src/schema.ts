@@ -94,6 +94,8 @@ type Raw = Readonly<Record<string, string>>;
 type S3Required = 'ENDPOINT' | 'BUCKET';
 const S3_ANY = ['ENDPOINT', 'PUBLIC_ENDPOINT', 'BUCKET', 'ACCESS_KEY', 'SECRET_KEY', 'REGION', 'ADDRESSING_STYLE'] as const;
 const SERVER_ONLY = 'is required to run the server';
+/** What only the db-setup step holds: the administrator connection and the role passwords. */
+const DB_SETUP_HELD = ['GRIMOIRE_DATABASE_ADMIN_URL', 'GRIMOIRE_DB_APP_PASSWORD', 'GRIMOIRE_DB_MIGRATOR_PASSWORD', 'GRIMOIRE_DB_OPS_PASSWORD'] as const;
 const SETUP_ONLY = 'is required to run files-setup';
 
 const MIME_RULE = 'must be a comma list of lowercase type/subtype names';
@@ -120,9 +122,12 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_LOG_LEVEL: field(z.enum(['debug', 'info', 'warn', 'error'], msg('must be one of: debug, info, warn, error'))).default('info'),
   GRIMOIRE_DATABASE_URL: field(dbUrl, purpose === 'server' ? SERVER_ONLY : undefined),
   GRIMOIRE_DATABASE_MIGRATION_URL: field(dbUrl, purpose === 'migrate' ? 'is required to run migrations' : undefined),
+  // The operator role's connection (docs/tenancy.md section 3.2): optional until a call site needs it, and then never replaced by the runtime connection.
+  GRIMOIRE_DATABASE_OPS_URL: field(dbUrl),
   GRIMOIRE_DATABASE_ADMIN_URL: field(dbUrl, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
   GRIMOIRE_DB_APP_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
   GRIMOIRE_DB_MIGRATOR_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
+  GRIMOIRE_DB_OPS_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
   GRIMOIRE_DESCOPE_PROJECT_ID: field(text),
   GRIMOIRE_DESCOPE_BASE_URL: field(descopeBaseUrl),
   GRIMOIRE_DESCOPE_MAX_TOKEN_LIFETIME_SECONDS: field(int(1, 86400)).default(86400),
@@ -359,8 +364,8 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       return !valid(r, 1, MAX_INT) || !valid(f, 1, MAX_INT) || r <= f;
     }, { path: ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'], when: always, error: () => `must not be larger than ${P}FILES_MAX_BYTES` })
     // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
-    .refine(() => !(server && (set('GRIMOIRE_DATABASE_ADMIN_URL') || set('GRIMOIRE_DB_APP_PASSWORD') || set('GRIMOIRE_DB_MIGRATOR_PASSWORD'))), {
-      path: [set('GRIMOIRE_DATABASE_ADMIN_URL') ? 'GRIMOIRE_DATABASE_ADMIN_URL' : set('GRIMOIRE_DB_APP_PASSWORD') ? 'GRIMOIRE_DB_APP_PASSWORD' : 'GRIMOIRE_DB_MIGRATOR_PASSWORD'], when: always,
+    .refine(() => !(server && DB_SETUP_HELD.some(set)), {
+      path: [DB_SETUP_HELD.find(set) ?? DB_SETUP_HELD[0]], when: always,
       error: () => 'must not be set for the server: only the db-setup step holds the administrator connection and the role passwords',
     })
     .refine(() => !(server && !local && set('GRIMOIRE_S3_ADMIN_ACCESS_KEY')), {
@@ -420,9 +425,10 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
   database: {
     ...(v.GRIMOIRE_DATABASE_URL !== undefined ? { url: v.GRIMOIRE_DATABASE_URL } : {}),
     ...(v.GRIMOIRE_DATABASE_MIGRATION_URL !== undefined ? { migrationUrl: v.GRIMOIRE_DATABASE_MIGRATION_URL } : {}),
+    ...(v.GRIMOIRE_DATABASE_OPS_URL !== undefined ? { opsUrl: v.GRIMOIRE_DATABASE_OPS_URL } : {}),
   },
-  ...(purpose === 'db-setup' && v.GRIMOIRE_DATABASE_ADMIN_URL !== undefined && v.GRIMOIRE_DB_APP_PASSWORD !== undefined && v.GRIMOIRE_DB_MIGRATOR_PASSWORD !== undefined
-    ? { dbSetup: { adminUrl: v.GRIMOIRE_DATABASE_ADMIN_URL, appPassword: v.GRIMOIRE_DB_APP_PASSWORD, migratorPassword: v.GRIMOIRE_DB_MIGRATOR_PASSWORD } }
+  ...(purpose === 'db-setup' && v.GRIMOIRE_DATABASE_ADMIN_URL !== undefined && v.GRIMOIRE_DB_APP_PASSWORD !== undefined && v.GRIMOIRE_DB_MIGRATOR_PASSWORD !== undefined && v.GRIMOIRE_DB_OPS_PASSWORD !== undefined
+    ? { dbSetup: { adminUrl: v.GRIMOIRE_DATABASE_ADMIN_URL, appPassword: v.GRIMOIRE_DB_APP_PASSWORD, migratorPassword: v.GRIMOIRE_DB_MIGRATOR_PASSWORD, opsPassword: v.GRIMOIRE_DB_OPS_PASSWORD } }
     : {}),
   ...(v.GRIMOIRE_DEV_TOKEN_SECRET !== undefined ? { devTokenSecret: v.GRIMOIRE_DEV_TOKEN_SECRET } : {}),
   localAllowNonLoopback: v.GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK === '1',

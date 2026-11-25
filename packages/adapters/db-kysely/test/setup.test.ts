@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { scramVerifier, setupDatabase } from '../src/index.js';
 import type { KyselyDatabase } from '../src/index.js';
 
-const PASSWORDS = { app: 'app-password-0123456789', migrator: 'migrator-password-0123456789' };
+const PASSWORDS = { app: 'app-password-0123456789', migrator: 'migrator-password-0123456789', ops: 'ops-password-0123456789' };
 
 /** A database that records every statement and parameter it is given, and answers the few questions `setupDatabase` asks. */
 function recorder() {
@@ -45,6 +45,7 @@ describe('what setupDatabase sends to the server', () => {
     const everything = seen.map((s) => `${s.text} ${JSON.stringify(s.params)}`).join('\n');
     expect(everything).not.toContain(PASSWORDS.app);
     expect(everything).not.toContain(PASSWORDS.migrator);
-    expect(seen.filter((s) => /^(create|alter) role/.test(s.text)).map((s) => s.text.match(/password '(SCRAM-SHA-256\$[^']+)'/)?.[1] !== undefined)).toEqual([true, true]);
+    expect(everything).not.toContain(PASSWORDS.ops);
+    expect(seen.filter((s) => /^(create|alter) role/.test(s.text)).map((s) => s.text.match(/password '(SCRAM-SHA-256\$[^']+)'/)?.[1] !== undefined)).toEqual([true, true, true]);
   });
 });

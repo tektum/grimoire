@@ -2,6 +2,9 @@
 -- The password is the GRIMOIRE_DEV_DB_PASSWORD value, passed as the psql variable :pw.
 CREATE ROLE grimoire_migrator LOGIN PASSWORD :'pw';
 CREATE ROLE grimoire_app LOGIN PASSWORD :'pw';
+-- The operator role (docs/tenancy.md section 3.2): the runtime role's grants through membership, a login of its own, no BYPASSRLS (as on a managed database).
+CREATE ROLE grimoire_ops LOGIN PASSWORD :'pw';
+GRANT grimoire_app TO grimoire_ops;
 
 REVOKE ALL ON DATABASE grimoire FROM PUBLIC;
 GRANT CONNECT ON DATABASE grimoire TO grimoire_migrator, grimoire_app;

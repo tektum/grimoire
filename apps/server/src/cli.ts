@@ -85,7 +85,7 @@ async function filesSetup(): Promise<number> {
 }
 
 /**
- * `grimoire db-setup`: makes a managed database ready for `grimoire migrate` (the two roles with their passwords, the schemas, citext), as the
+ * `grimoire db-setup`: makes a managed database ready for `grimoire migrate` (the three roles with their passwords, the schemas, citext), as the
  * database administrator, before the first migration and again whenever a password is rotated. Safe to run again. Prints which roles it made, never a password.
  */
 async function dbSetup(): Promise<number> {
