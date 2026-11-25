@@ -25,7 +25,9 @@ describe('migration 0010 on a database that db-setup has not set up again', () =
   }, 120_000);
 
   it('goes through once the administrator has made the extension, as db-setup does', async () => {
+    // What `db-setup` makes: every extension the migrations need, not only this one, or the first later migration that needs another stops the run (0011 needs `vector`).
     await sqlAdmin(DB, 'create extension pg_trgm');
+    await sqlAdmin(DB, 'create extension if not exists vector');
     const run = await migrate();
     expect(run.code, run.output).toBe(0);
     expect(await sqlAdmin(DB, `select indexname from pg_indexes where indexname = 'pages_title_trgm_idx'`)).toEqual([{ indexname: 'pages_title_trgm_idx' }]);
