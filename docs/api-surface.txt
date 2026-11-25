@@ -21,6 +21,7 @@ GET /v1/pages/{id} | op:getPage | policy:page:read:id | path:id:string<uuid> | q
 GET /v1/pages/{id}/markdown | op:getPageMarkdown | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:- | rate:- | idem:no
 GET /v1/pages/{id}/revisions | op:listRevisions | policy:page:read:id | path:id:string<uuid> | query:cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:{items:Revision[],nextCursor:string|null} | rate:- | idem:no
 GET /v1/pages/{id}/revisions/{rid} | op:getRevision | policy:page:read:id | path:id:string<uuid>,rid:string<uuid> | query:- | req:- | res:200:RevisionWithMarkdown | rate:- | idem:no
+GET /v1/search | op:search | policy:authenticated | path:- | query:collectionId?:string<uuid>,cursor?:string(..1024),limit?:integer(1..50)=20,q:string(1..200) | req:- | res:200:SearchPage | rate:30/60s | idem:no
 GET /v1/trash | op:listTrash | policy:authenticated | path:- | query:collectionId?:string<uuid>,cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:TrashList | rate:- | idem:no
 GET /v1/users | op:listUsers | policy:admin | path:- | query:cursor?:string(..1024),limit?:integer(1..100)=50,q?:string(1..200) | req:- | res:200:AdminUserList | rate:- | idem:no
 PATCH /v1/collections/{id} | op:patchCollection | policy:collection:admin:id | path:id:string<uuid> | query:- | req:PatchCollection | res:200:Collection,409:{error:{code:string,message:string}} | rate:- | idem:no
@@ -75,6 +76,9 @@ schema RestoreRevision = {markdown:string,safetyRevisionId:string<uuid>|null,tit
 schema Revision = {authors:RevisionAuthor[],createdAt:number,id:string<uuid>,lastAuthor:{id:string<uuid>,name:string}|null,reason:idle|last_editor_left|before_restore|manual|import,title:string}
 schema RevisionAuthor = {id:string<uuid>,name:string}
 schema RevisionWithMarkdown = Revision&{markdown:string}
+schema SearchItem = {collectionId:string<uuid>,pageId:string<uuid>,partial?:true,rank:number,snippet:SearchSnippet,title:string,updatedAt:string,urlId:string}
+schema SearchPage = {items:SearchItem[],nextCursor:string|null,semantic:boolean}
+schema SearchSnippet = {ranges:integer[](2..2)[],text:string}
 schema TrashItem = {collectionId:string<uuid>,daysLeft:integer,deletedAt:number,deletedBy:string<uuid>|null,id:string<uuid>,title:string}
 schema TrashList = {items:TrashItem[],nextCursor:string|null}
 schema UserNames = {items:{id:string<uuid>,name:string}[]}
