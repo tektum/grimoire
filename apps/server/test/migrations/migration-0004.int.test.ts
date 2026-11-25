@@ -7,7 +7,7 @@ import {
   appUrl, createTestDatabase, dropTestDatabase, eventually, get, migratorUrl, repoRoot, requireBuild, runToEnd, serverDir, sqlAdmin, startServer,
 } from '../server/support/harness.js';
 
-// Each `migrate` below starts the migrator as a process and runs the whole chain of migrations and pg-boss's own, two or three times in one case: that takes longer than vitest's 5 s default on a loaded runner (it failed at 5.0 s, here and in 0008, on the CI queue), so the file says how long it needs, as its siblings do.
+// Each `migrate` below starts the migrator as a process, and runs migrations and pg-boss's own, two or three times in one case: that takes longer than vitest's 5 s default on a loaded runner (in CI, the 0007 and 0008 tests of this family timed out at 5.0 s on a busy one).
 vi.setConfig({ testTimeout: 120_000 });
 
 const EMPTY = 'grimoire_m3t03_mig_empty';
