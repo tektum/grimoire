@@ -50,8 +50,9 @@ export async function createUpload(
   if (!Number.isSafeInteger(input.size) || input.size <= 0) return { kind: 'refused', reason: 'invalid' };
   const id = d.newId();
   const now = d.now();
+  const tenantId = input.tenantId ?? LEGACY;
   const created = await d.repo.createPending(
-    { id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: cleanFileName(input.fileName), contentType: input.contentType.toLowerCase(), size: input.size, key: attachmentKey(id, input.tenantId), ...(input.tenantId === undefined ? {} : { tenantId: input.tenantId }), expiresAt: now + PENDING_TTL_MS },
+    { id, pageId: input.pageId, uploaderId: input.uploaderId, fileName: cleanFileName(input.fileName), contentType: input.contentType.toLowerCase(), size: input.size, key: attachmentKey(id, input.tenantId), tenantId, expiresAt: now + PENDING_TTL_MS },
     limits.pendingMaxPerUser,
     now,
   );
@@ -60,7 +61,7 @@ export async function createUpload(
   try {
     return { kind: 'created', id, upload: await sign(d, created.row), markdownPath: markdownPathFor(id, created.row.fileName) };
   } catch (error) {
-    await d.repo.remove(id);
+    await d.repo.remove(tenantId, id);
     throw error;
   }
 }
@@ -73,8 +74,9 @@ export const markdownPathOf = (row: Pick<AttachmentRow, 'id' | 'fileName'>): str
  * expired, and a URL is never stored), for no longer than the row has left, so no upload can land after the clean-up has removed the row; after that the answer is `gone`. Only the uploader's own row answers.
  */
 export async function resignUpload(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<{ readonly kind: 'resigned'; readonly upload: SignedUpload; readonly markdownPath: string } | { readonly kind: 'gone' }> {
-  const row = await d.repo.get(id);
-  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
+  const tenant = tenantId ?? LEGACY;
+  const row = await d.repo.get(tenant, id);
+  if (row === undefined || (row.tenantId ?? LEGACY) !== tenant || row.uploaderId !== userId || row.status !== 'pending' || row.expiresAt === null || row.expiresAt <= d.now()) return { kind: 'gone' };
   const left = Math.floor((row.expiresAt - d.now()) / 1000);
   if (left < 1) return { kind: 'gone' };
   return { kind: 'resigned', upload: await sign(d, row, Math.min(UPLOAD_TTL_SECONDS, left)), markdownPath: markdownPathOf(row) };
@@ -82,8 +84,9 @@ export async function resignUpload(d: AttachmentDeps, id: string, userId: string
 
 /** The row an upload may be completed through: the caller's own, and either ready already or pending and not expired. Anything else is not found. */
 export async function findUploadOf(d: AttachmentDeps, id: string, userId: string, tenantId?: string): Promise<AttachmentRow | undefined> {
-  const row = await d.repo.get(id);
-  if (row === undefined || (row.tenantId ?? LEGACY) !== (tenantId ?? LEGACY) || row.uploaderId !== userId) return undefined;
+  const tenant = tenantId ?? LEGACY;
+  const row = await d.repo.get(tenant, id);
+  if (row === undefined || (row.tenantId ?? LEGACY) !== tenant || row.uploaderId !== userId) return undefined;
   if (row.status === 'pending' && (row.expiresAt === null || row.expiresAt <= d.now())) return undefined;
   return row;
 }
@@ -99,11 +102,12 @@ export type CompleteResult =
  * finished) is kept with its object and answered as ready, and one that is gone is gone.
  */
 async function discard(d: AttachmentDeps, row: AttachmentRow, reason: CompleteRefusal): Promise<CompleteResult> {
-  if (await d.repo.removeIfPending(row.id)) {
+  const tenant = row.tenantId ?? LEGACY;
+  if (await d.repo.removeIfPending(tenant, row.id)) {
     await d.files.delete(row.key);
     return { kind: 'refused', reason };
   }
-  const now = await d.repo.get(row.id);
+  const now = await d.repo.get(tenant, row.id);
   return now?.status === 'ready' ? { kind: 'ready', row: now } : { kind: 'gone' };
 }
 
@@ -142,9 +146,10 @@ export async function completeUpload(d: AttachmentDeps, row: AttachmentRow): Pro
   }
   if (head.size !== row.size) return discard(d, row, 'size_mismatch');
   if (isCheckedType(row.contentType) && (await d.sniff(await firstBytes(d, row.key))) !== row.contentType) return discard(d, row, 'type_mismatch');
-  const ready = await d.repo.markReady(row.id, d.now());
+  const tenant = row.tenantId ?? LEGACY;
+  const ready = await d.repo.markReady(tenant, row.id, d.now());
   if (ready !== undefined) return { kind: 'ready', row: ready };
   // Not pending any more: another completion won (the same row, ready), or the upload expired and a clean-up has it.
-  const now = await d.repo.get(row.id);
+  const now = await d.repo.get(tenant, row.id);
   return now?.status === 'ready' ? { kind: 'ready', row: now } : { kind: 'gone' };
 }

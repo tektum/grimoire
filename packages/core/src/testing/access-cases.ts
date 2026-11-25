@@ -124,7 +124,7 @@ export function factsOfCase(c: AccessCase, ids: CaseIds, epoch: number): AccessF
   const entries = [...(c.ownEntry ? [c.ownEntry] : []), ...c.groupEntries];
   const collection = { deleted: c.collection === 'deleted', defaultPermission: c.defaultPermission, entries };
   return {
-    request: { userId: ids.userId, pageId: ids.pageId },
+    request: { tenantId: 'legacy', userId: ids.userId, pageId: ids.pageId },
     ...(c.role ? { user: { role: c.role, suspended: c.suspended } } : {}),
     ...(c.page !== 'missing' ? { page: { deleted: c.page === 'deleted', epoch, collection } } : {}),
   };
@@ -133,7 +133,7 @@ export function factsOfCase(c: AccessCase, ids: CaseIds, epoch: number): AccessF
 export function collectionFactsOfCase(c: AccessCase, ids: CaseIds): CollectionFacts {
   const entries = [...(c.ownEntry ? [c.ownEntry] : []), ...c.groupEntries];
   return {
-    request: { userId: ids.userId, collectionId: ids.collectionId },
+    request: { tenantId: 'legacy', userId: ids.userId, collectionId: ids.collectionId },
     ...(c.role ? { user: { role: c.role, suspended: c.suspended } } : {}),
     ...(c.collection !== 'missing' ? { collection: { deleted: c.collection === 'deleted', defaultPermission: c.defaultPermission, entries } } : {}),
   };

@@ -64,7 +64,7 @@ function build(options: { files?: boolean } = {}) {
   const uploaded = async (who: string, pageId: string, bytes: Uint8Array = PNG, over: object = {}) => {
     const res = await create(who, pageId, { size: bytes.length, ...over });
     const body = (await res.json()) as { id: string };
-    await files.put((await attachments.get(body.id))!.key, bytes, { size: bytes.length, contentType: 'image/png' });
+    await files.put((await attachments.get('legacy', body.id))!.key, bytes, { size: bytes.length, contentType: 'image/png' });
     return body.id;
   };
   return { send, create, uploaded, meta, rw, ro, closed, world, attachments, files, logs: t.logger, clock: t.clock, uid: (name: string) => idRows[Object.keys(ROLES).indexOf(name)] as string };
@@ -82,7 +82,7 @@ describe('POST /v1/attachments', () => {
     expect(body.upload).toMatchObject({ method: 'PUT', headers: { 'content-type': 'image/png', 'if-none-match': '*' } });
     expect(body.upload.expiresAt).toBe(t.clock.now() + 600_000);
     expect(body.markdownPath).toBe(`attachments/${body.id}/a.png`);
-    expect(await t.attachments.get(body.id)).toMatchObject({ status: 'pending', pageId: t.rw, uploaderId: t.uid('writer'), size: PNG.length });
+    expect(await t.attachments.get('legacy', body.id)).toMatchObject({ status: 'pending', pageId: t.rw, uploaderId: t.uid('writer'), size: PNG.length });
   });
 
   it('refuses a type that is not allowed (422), a size that is too large (413), and a size that is not positive (422)', async () => {
@@ -171,7 +171,7 @@ describe('an Idempotency-Key on POST /v1/attachments', () => {
     t.clock.advance(3_600_001);
     const expired = await t.create('writer', t.rw, {}, key);
     expect([expired.status, await code(expired)]).toEqual([409, 'conflict']);
-    await t.attachments.remove(id);
+    await t.attachments.remove('legacy', id);
     expect((await t.create('writer', t.rw, {}, key)).status).toBe(409);
     const lost = build();
     await lost.create('writer', lost.rw, {}, key);
@@ -197,7 +197,7 @@ describe('POST /v1/attachments/{id}/complete', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(await res.json()).toEqual({ id, pageId: t.rw, fileName: 'a.png', contentType: 'image/png', size: PNG.length, markdownPath: `attachments/${id}/a.png` });
-    expect((await t.attachments.get(id))?.status).toBe('ready');
+    expect((await t.attachments.get('legacy', id))?.status).toBe('ready');
     expect((await complete(t, 'writer', id)).status).toBe(200);
   });
 
@@ -206,11 +206,11 @@ describe('POST /v1/attachments/{id}/complete', () => {
     const created = (await (await t.create('writer', t.rw)).json()) as { id: string };
     const missing = await complete(t, 'writer', created.id);
     expect([missing.status, await code(missing)]).toEqual([409, 'upload_missing']);
-    expect(await t.attachments.get(created.id)).toBeUndefined();
+    expect(await t.attachments.get('legacy', created.id)).toBeUndefined();
     const id = await t.uploaded('writer', t.rw, PNG.slice(0, 10), { size: PNG.length });
     const wrong = await complete(t, 'writer', id);
     expect([wrong.status, await code(wrong)]).toEqual([409, 'size_mismatch']);
-    expect(await t.attachments.get(id)).toBeUndefined();
+    expect(await t.attachments.get('legacy', id)).toBeUndefined();
     await expect(t.files.head(`tenants/legacy/attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
   });
 
@@ -220,7 +220,7 @@ describe('POST /v1/attachments/{id}/complete', () => {
     const id = await t.uploaded('writer', t.rw, text);
     const res = await complete(t, 'writer', id);
     expect([res.status, await code(res)]).toEqual([422, 'type_mismatch']);
-    expect(await t.attachments.get(id)).toBeUndefined();
+    expect(await t.attachments.get('legacy', id)).toBeUndefined();
     await expect(t.files.head(`tenants/legacy/attachments/${id}`)).rejects.toMatchObject({ kind: 'not-found' });
     const plain = await t.uploaded('writer', t.rw, text, { fileName: 'n.txt', contentType: 'text/plain' });
     expect((await complete(t, 'writer', plain)).status).toBe(200);
@@ -236,7 +236,7 @@ describe('POST /v1/attachments/{id}/complete', () => {
     t.world.collections[0]!.defaultPermission = 'read_write';
     t.world.pages[0]!.deleted = true;
     expect((await complete(t, 'writer', id)).status).toBe(404);
-    expect((await t.attachments.get(id))?.status).toBe('pending');
+    expect((await t.attachments.get('legacy', id))?.status).toBe('pending');
     t.world.pages[0]!.deleted = false;
     t.clock.advance(3_600_001);
     expect((await complete(t, 'writer', id)).status).toBe(404);
@@ -246,13 +246,13 @@ describe('POST /v1/attachments/{id}/complete', () => {
     const t = build();
     const id = await t.uploaded('writer', t.rw);
     const markReady = t.attachments.markReady.bind(t.attachments);
-    t.attachments.markReady = async (rowId, now) => { t.clock.advance(3_600_001); return markReady(rowId, now + 3_600_001); };
+    t.attachments.markReady = async (tenantId, rowId, now) => { t.clock.advance(3_600_001); return markReady(tenantId, rowId, now + 3_600_001); };
     expect((await complete(t, 'writer', id)).status).toBe(404);
     const down = build();
     const other = await down.uploaded('writer', down.rw);
     down.files.head = () => Promise.reject(new FileStorageError('unavailable', 'down'));
     expect((await complete(down, 'writer', other)).status).toBe(503);
-    expect((await down.attachments.get(other))?.status).toBe('pending');
+    expect((await down.attachments.get('legacy', other))?.status).toBe('pending');
   });
 
   it('is 503 when the store is not configured', async () => {
@@ -378,7 +378,7 @@ describe('attachments and tenants', () => {
   it('puts the key of a new upload under the caller\'s tenant', async () => {
     const t = build();
     const id = await t.uploaded('writer', t.rw);
-    expect((await t.attachments.get(id))?.key).toBe(`tenants/legacy/attachments/${id}`);
+    expect((await t.attachments.get('legacy', id))?.key).toBe(`tenants/legacy/attachments/${id}`);
   });
 
   it('is 404 for the link to a ready attachment of another tenant, even on a page the caller can read, and signs nothing', async () => {

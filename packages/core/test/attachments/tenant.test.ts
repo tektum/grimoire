@@ -27,7 +27,7 @@ describe('an upload of tenant A', () => {
     const { deps, repo } = setup();
     const r = await createUpload(deps, { ...input, tenantId: A }, LIMITS);
     if (r.kind !== 'created') throw new Error('not created');
-    const stored = await repo.get(r.id);
+    const stored = await repo.get(A, r.id);
     expect([stored?.tenantId, stored?.key]).toEqual([A, `tenants/${A}/attachments/${r.id}`]);
   });
 
@@ -46,7 +46,7 @@ describe('an upload of tenant A', () => {
     const { deps, files } = setup();
     const r = await createUpload(deps, { ...input, tenantId: A }, LIMITS);
     if (r.kind !== 'created') throw new Error('not created');
-    const stored = (await deps.repo.get(r.id))!;
+    const stored = (await deps.repo.get(A, r.id))!;
     await expect(signedDownload(files, stored, false, A)).resolves.toMatchObject({ url: expect.any(String) });
     expect(files.signed.at(-1)?.key).toBe(`tenants/${A}/attachments/${r.id}`);
     const before = files.signed.length;
@@ -81,7 +81,7 @@ describe('a row from before tenants', () => {
     const { deps, files } = setup();
     const r = await createUpload(deps, input, LIMITS);
     if (r.kind !== 'created') throw new Error('not created');
-    const stored = (await deps.repo.get(r.id))!;
+    const stored = (await deps.repo.get('legacy', r.id))!;
     expect(stored.key).toBe(`attachments/${r.id}`);
     expect(await findUploadOf(deps, r.id, USER)).toBeDefined();
     await expect(signedDownload(files, { ...stored, status: 'ready' }, false)).resolves.toBeDefined();

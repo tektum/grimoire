@@ -128,7 +128,7 @@ export const storedCreateAttachment = (body: unknown): unknown => {
 export const replayCreateAttachment: ReplayRebuild = async (stored, c) => {
   const { deps: d } = usable(c, 'create');
   const id = storedId(stored);
-  const row = await d.repo.get(id);
+  const row = await d.repo.get(callerTenant(c), id);
   if (row === undefined || row.tenantId !== callerTenant(c)) return fail('conflict');
   await guardPage(c, row.pageId, 'write');
   const again = await viaStore(c, 'create', () => resignUpload(d, id, caller(c).id, callerTenant(c)));
@@ -152,7 +152,7 @@ router.openapi(createAttachment, async (c) => {
 
 /** Writing to the page is checked again at completion: anything but read-write is 404, so the row of a page that was trashed, or lost, stays untouched. */
 async function mayWrite(c: Ctx, row: AttachmentRow): Promise<boolean> {
-  const access = await c.get('deps').access.pageAccess({ userId: caller(c).id, pageId: row.pageId });
+  const access = await c.get('deps').access.pageAccess({ tenantId: callerTenant(c), userId: caller(c).id, pageId: row.pageId });
   return access.result === 'allowed' && access.access === 'read-write';
 }
 
@@ -177,7 +177,7 @@ router.openapi(getAttachmentLink, async (c) => {
   const { id } = c.req.valid('param');
   const download = c.req.valid('query').download === 'true';
   const { deps: d } = usable(c, 'download');
-  const row = await d.repo.get(id);
+  const row = await d.repo.get(callerTenant(c), id);
   if (row === undefined || row.status !== 'ready' || row.tenantId !== callerTenant(c)) return fail('not_found');
   await guardPage(c, row.pageId, 'read');
   const link = await viaStore(c, 'download', async () => {
@@ -198,8 +198,8 @@ router.openapi(getAttachmentLinks, async (c) => {
   const user = caller(c);
   const { ids, download } = c.req.valid('json');
   const { deps: d } = usable(c, 'urls');
-  const rows = (await d.repo.getMany([...new Set(ids)])).filter((r) => r.status === 'ready' && r.tenantId === callerTenant(c));
-  const access = await c.get('deps').access.pageAccessMany(rows.map((r) => ({ userId: user.id, pageId: r.pageId })));
+  const rows = (await d.repo.getMany(callerTenant(c), [...new Set(ids)])).filter((r) => r.status === 'ready' && r.tenantId === callerTenant(c));
+  const access = await c.get('deps').access.pageAccessMany(rows.map((r) => ({ tenantId: callerTenant(c), userId: user.id, pageId: r.pageId })));
   const readable = rows.filter((_, i) => access[i]?.result === 'allowed');
   const urls = await viaStore(c, 'urls', () => Promise.all(readable.map(async (r) => ({ id: r.id, ...(await signedDownload(d.files, r, download === true, callerTenant(c))) }))));
   noStore(c);

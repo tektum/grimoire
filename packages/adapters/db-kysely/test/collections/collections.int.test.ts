@@ -66,7 +66,7 @@ describe('the PostgreSQL CollectionRepo', () => {
     const repo = createCollections(t.app);
     const authorizer = createAuthorizer(createAccessStore(t.app));
     const c = await repo.append('legacy', { name: 'visible', createdBy: admin }, after);
-    const ask = async () => (await authorizer.checkCollection({ userId: member, collectionId: c.id })).access;
+    const ask = async () => (await authorizer.checkCollection({ tenantId: 'legacy', userId: member, collectionId: c.id })).access;
     expect(await ask()).toBe('none');
     await repo.update('legacy', c.id, { defaultPermission: 'read' }, admin);
     expect(await ask()).toBe('read-only');
@@ -74,7 +74,7 @@ describe('the PostgreSQL CollectionRepo', () => {
     expect(await ask()).toBe('read-write');
     await repo.update('legacy', c.id, { defaultPermission: null }, admin);
     expect(await ask()).toBe('none');
-    expect((await authorizer.visibleCollections(member)).some((v) => v.collectionId === c.id)).toBe(false);
+    expect((await authorizer.visibleCollections('legacy', member)).some((v) => v.collectionId === c.id)).toBe(false);
   });
 });
 
@@ -99,7 +99,7 @@ describe('collection access entries', () => {
     const c = await repo.append('legacy', { name: 'acl2', createdBy: admin }, after);
     const group = await addGroup(t.app, 'Readers');
     await t.app.query(`insert into group_members (group_id, user_id) values ($1, $2)`, [group, member]);
-    const ask = async () => (await authorizer.checkCollection({ userId: member, collectionId: c.id })).access;
+    const ask = async () => (await authorizer.checkCollection({ tenantId: 'legacy', userId: member, collectionId: c.id })).access;
     expect(await ask()).toBe('none');
     const saved = await repo.upsertAccess('legacy', c.id, { principalType: 'group', principalId: group, permission: 'read' }, admin);
     if (saved.kind !== 'saved') throw new Error('not saved');
@@ -201,12 +201,12 @@ describe('visibleCollections and checkCollection', () => {
     await repo.softDelete('legacy', (made[5] as { id: string }).id, admin);
     const every = (await t.admin.query<{ id: string }>(`select id from collections`)).map((r) => r.id);
     for (const user of [admin, member, viewer, outsider]) {
-      const visible = new Map((await authorizer.visibleCollections(user)).map((v) => [v.collectionId, v.access]));
+      const visible = new Map((await authorizer.visibleCollections('legacy', user)).map((v) => [v.collectionId, v.access]));
       for (const id of every) {
-        const decided = await authorizer.checkCollection({ userId: user, collectionId: id });
+        const decided = await authorizer.checkCollection({ tenantId: 'legacy', userId: user, collectionId: id });
         expect([id, visible.get(id) ?? 'none']).toEqual([id, decided.access]);
       }
     }
-    expect((await authorizer.visibleCollections(viewer)).find((v) => v.collectionId === (made[3] as { id: string }).id)?.access).toBe('read-only');
+    expect((await authorizer.visibleCollections('legacy', viewer)).find((v) => v.collectionId === (made[3] as { id: string }).id)?.access).toBe('read-only');
   });
 });

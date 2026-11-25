@@ -49,7 +49,7 @@ describe('collapsed page access (R6.4): one answer for every denial, so existenc
     ['no user row', 'u-unknown', P.open],
     ['suspended user, even admin', U.suspended, P.open],
   ])('%s -> not-found, the identical value from every form', async (_label, userId, pageId) => {
-    const r = { userId, pageId };
+    const r = { tenantId: 'legacy', userId, pageId };
     expect(await access.checkAccess(r)).toBe('not-found');
     expect(await access.checkAccessMany([r])).toEqual(['not-found']);
     expect(await access.pageAccess(r)).toStrictEqual({ result: 'not-found' });
@@ -57,21 +57,21 @@ describe('collapsed page access (R6.4): one answer for every denial, so existenc
   });
 
   it('allowed carries the level and epoch for the host; the plain form says only allowed', async () => {
-    expect(await access.pageAccess({ userId: U.writer, pageId: P.closed })).toStrictEqual({ result: 'allowed', access: 'read-write', epoch: 5 });
-    expect(await access.pageAccess({ userId: U.reader, pageId: P.closed })).toStrictEqual({ result: 'allowed', access: 'read-only', epoch: 5 });
-    expect(await access.pageAccess({ userId: U.viewer, pageId: P.open })).toStrictEqual({ result: 'allowed', access: 'read-only', epoch: 3 });
-    expect(await access.checkAccess({ userId: U.reader, pageId: P.readable })).toBe('allowed');
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: U.writer, pageId: P.closed })).toStrictEqual({ result: 'allowed', access: 'read-write', epoch: 5 });
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: U.reader, pageId: P.closed })).toStrictEqual({ result: 'allowed', access: 'read-only', epoch: 5 });
+    expect(await access.pageAccess({ tenantId: 'legacy', userId: U.viewer, pageId: P.open })).toStrictEqual({ result: 'allowed', access: 'read-only', epoch: 3 });
+    expect(await access.checkAccess({ tenantId: 'legacy', userId: U.reader, pageId: P.readable })).toBe('allowed');
   });
 
   it('read but not write is the only case that is told apart: allowed at read-only, never not-found', async () => {
-    const d = await access.pageAccess({ userId: U.reader, pageId: P.readable });
+    const d = await access.pageAccess({ tenantId: 'legacy', userId: U.reader, pageId: P.readable });
     expect(d).toStrictEqual({ result: 'allowed', access: 'read-only', epoch: 4 });
   });
 
   it('many: one store round trip, same order', async () => {
     const store = counting(createFakeAccessStore(world()));
     const a = createPageAccess(store);
-    const rs = [{ userId: U.writer, pageId: P.missing }, { userId: U.writer, pageId: P.open }, { userId: U.none, pageId: P.closed }];
+    const rs = [{ tenantId: 'legacy', userId: U.writer, pageId: P.missing }, { tenantId: 'legacy', userId: U.writer, pageId: P.open }, { tenantId: 'legacy', userId: U.none, pageId: P.closed }];
     expect(await a.checkAccessMany(rs)).toEqual(['not-found', 'allowed', 'not-found']);
     expect(store.calls).toBe(1);
   });
@@ -79,21 +79,21 @@ describe('collapsed page access (R6.4): one answer for every denial, so existenc
   it('a missing page and a forbidden page cost the same: one store call each, no early return before it', async () => {
     const store = counting(createFakeAccessStore(world()));
     const a = createPageAccess(store);
-    await a.pageAccess({ userId: U.none, pageId: P.missing });
+    await a.pageAccess({ tenantId: 'legacy', userId: U.none, pageId: P.missing });
     expect(store.calls).toBe(1);
-    await a.pageAccess({ userId: U.none, pageId: P.closed });
+    await a.pageAccess({ tenantId: 'legacy', userId: U.none, pageId: P.closed });
     expect(store.calls).toBe(2);
   });
 
   it('includeDeleted reaches the decision (trash routes)', async () => {
-    expect(await access.checkAccess({ userId: U.admin, pageId: P.deleted }, { includeDeleted: true })).toBe('allowed');
-    expect(await access.checkAccessMany([{ userId: U.admin, pageId: P.deleted }], { includeDeleted: true })).toEqual(['allowed']);
+    expect(await access.checkAccess({ tenantId: 'legacy', userId: U.admin, pageId: P.deleted }, { includeDeleted: true })).toBe('allowed');
+    expect(await access.checkAccessMany([{ tenantId: 'legacy', userId: U.admin, pageId: P.deleted }], { includeDeleted: true })).toEqual(['allowed']);
   });
 
   it('a store that rejects makes the call reject: no answer is invented', async () => {
     const broken: AccessStore = { facts: () => Promise.reject(new Error('db down')), collectionFacts: () => Promise.reject(new Error('x')), visibleCollections: () => Promise.reject(new Error('x')) };
-    await expect(createPageAccess(broken).pageAccess({ userId: U.admin, pageId: P.open })).rejects.toThrow();
-    await expect(createPageAccess(broken).checkAccess({ userId: U.admin, pageId: P.open })).rejects.toThrow();
+    await expect(createPageAccess(broken).pageAccess({ tenantId: 'legacy', userId: U.admin, pageId: P.open })).rejects.toThrow();
+    await expect(createPageAccess(broken).checkAccess({ tenantId: 'legacy', userId: U.admin, pageId: P.open })).rejects.toThrow();
   });
 
   it('facts for another request, too few facts, or facts out of order are denied (fail closed)', async () => {
@@ -101,10 +101,10 @@ describe('collapsed page access (R6.4): one answer for every denial, so existenc
     const swapped: AccessStore = { ...real, facts: async (rs) => [...(await real.facts(rs))].reverse() };
     const short: AccessStore = { ...real, facts: async (rs) => (await real.facts(rs)).slice(1) };
     const other: AccessStore = { ...real, facts: async (rs) => real.facts(rs.map((r) => ({ ...r, userId: U.admin }))) };
-    const rs = [{ userId: U.none, pageId: P.closed }, { userId: U.writer, pageId: P.open }];
+    const rs = [{ tenantId: 'legacy', userId: U.none, pageId: P.closed }, { tenantId: 'legacy', userId: U.writer, pageId: P.open }];
     expect(await createPageAccess(swapped).pageAccessMany(rs)).toStrictEqual([{ result: 'not-found' }, { result: 'not-found' }]);
     expect(await createPageAccess(short).pageAccessMany(rs)).toStrictEqual([{ result: 'not-found' }, { result: 'not-found' }]);
-    expect(await createPageAccess(other).pageAccess({ userId: U.none, pageId: P.closed })).toStrictEqual({ result: 'not-found' });
+    expect(await createPageAccess(other).pageAccess({ tenantId: 'legacy', userId: U.none, pageId: P.closed })).toStrictEqual({ result: 'not-found' });
   });
 
   it('a decision with an unknown access value is not-found (default deny of the collapsing itself)', async () => {
@@ -112,6 +112,6 @@ describe('collapsed page access (R6.4): one answer for every denial, so existenc
       ...createFakeAccessStore(world()),
       facts: (rs) => Promise.resolve(rs.map((request): AccessFacts => ({ request, user: { role: 'superuser' as never, suspended: false }, page: { deleted: false, epoch: 1, collection: { deleted: false, defaultPermission: 'read_write', entries: [] } } }))),
     };
-    expect(await createPageAccess(weird).pageAccess({ userId: U.admin, pageId: P.open })).toStrictEqual({ result: 'not-found' });
+    expect(await createPageAccess(weird).pageAccess({ tenantId: 'legacy', userId: U.admin, pageId: P.open })).toStrictEqual({ result: 'not-found' });
   });
 });

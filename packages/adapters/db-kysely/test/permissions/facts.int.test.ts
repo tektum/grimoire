@@ -31,12 +31,12 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
       const id = ids[i];
       if (!id) throw new Error('row without ids');
       const authorizer = createAuthorizer(createAccessStore(db));
-      const d = await authorizer.check({ userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
+      const d = await authorizer.check({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }, { includeDeleted: c.includeDeleted });
       expect(label(d)).toBe(c.expect);
       if (d.access !== 'none') expect(d.epoch).toBe(i + 1);
       const want = collectionExpectOf(c);
       if (want !== 'skip') {
-        const k = await authorizer.checkCollection({ userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
+        const k = await authorizer.checkCollection({ tenantId: 'legacy', userId: id.userId, collectionId: id.collectionId }, { includeDeleted: c.includeDeleted });
         expect(label(k)).toBe(want);
       }
     });
@@ -45,11 +45,11 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
   it('gives the same decisions as the fake store for every row, with and without includeDeleted', async () => {
     const sql = createAuthorizer(createAccessStore(db));
     const fake = createAuthorizer(createFakeAccessStore(world));
-    const requests = ids.map((id) => ({ userId: id.userId, pageId: id.pageId }));
+    const requests = ids.map((id) => ({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }));
     expect(await sql.checkMany(requests)).toEqual(await fake.checkMany(requests));
     for (const includeDeleted of [false, true]) {
       for (const id of ids) {
-        expect(await sql.check({ userId: id.userId, pageId: id.pageId }, { includeDeleted })).toEqual(await fake.check({ userId: id.userId, pageId: id.pageId }, { includeDeleted }));
+        expect(await sql.check({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }, { includeDeleted })).toEqual(await fake.check({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId }, { includeDeleted }));
       }
     }
   });
@@ -59,8 +59,8 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
     // One user at a time, that user's collections checked at once (the pool is shared): the same comparisons, in far fewer sequential round trips.
     for (const includeDeleted of [false, true]) {
       for (const u of world.users) {
-        const listed = new Map((await a.visibleCollections(u.id, { includeDeleted })).map((r) => [r.collectionId, r.access]));
-        const decided = await Promise.all(world.collections.map((c) => a.checkCollection({ userId: u.id, collectionId: c.id }, { includeDeleted })));
+        const listed = new Map((await a.visibleCollections('legacy', u.id, { includeDeleted })).map((r) => [r.collectionId, r.access]));
+        const decided = await Promise.all(world.collections.map((c) => a.checkCollection({ tenantId: 'legacy', userId: u.id, collectionId: c.id }, { includeDeleted })));
         world.collections.forEach((c, i) => {
           expect(listed.get(c.id) ?? 'none', `${u.role} ${c.id} includeDeleted=${String(includeDeleted)}`).toBe(decided[i]?.access);
         });
@@ -76,32 +76,32 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
     const p = ids[pageRow];
     const c = ids[colRow];
     if (!p || !c) throw new Error('rows missing');
-    expect(await a.check({ userId: p.userId, pageId: p.pageId })).toMatchObject({ access: 'none', reason: 'deleted' });
-    expect(await a.check({ userId: p.userId, pageId: p.pageId }, { includeDeleted: true })).toMatchObject({ access: 'read-write' });
-    expect(await a.checkCollection({ userId: c.userId, collectionId: c.collectionId })).toMatchObject({ access: 'none', reason: 'deleted' });
-    expect(await a.checkCollection({ userId: c.userId, collectionId: c.collectionId }, { includeDeleted: true })).toEqual({ access: 'read-only' });
+    expect(await a.check({ tenantId: 'legacy', userId: p.userId, pageId: p.pageId })).toMatchObject({ access: 'none', reason: 'deleted' });
+    expect(await a.check({ tenantId: 'legacy', userId: p.userId, pageId: p.pageId }, { includeDeleted: true })).toMatchObject({ access: 'read-write' });
+    expect(await a.checkCollection({ tenantId: 'legacy', userId: c.userId, collectionId: c.collectionId })).toMatchObject({ access: 'none', reason: 'deleted' });
+    expect(await a.checkCollection({ tenantId: 'legacy', userId: c.userId, collectionId: c.collectionId }, { includeDeleted: true })).toEqual({ access: 'read-only' });
   });
 
   it('one statement for checkMany with 50 requests, one for collectionFacts with 50 requests, one for visibleCollections', async () => {
     const counter = counting(db);
     const a = createAuthorizer(createAccessStore(counter.db));
     const fifty = Array.from({ length: 50 }, (_, i) => ids[i % ids.length]).flatMap((id) => (id ? [id] : []));
-    await a.checkMany(fifty.map((id) => ({ userId: id.userId, pageId: id.pageId })));
+    await a.checkMany(fifty.map((id) => ({ tenantId: 'legacy', userId: id.userId, pageId: id.pageId })));
     expect(counter.statements()).toBe(1);
     counter.reset();
-    await createAccessStore(counter.db).collectionFacts(fifty.map((id) => ({ userId: id.userId, collectionId: id.collectionId })));
+    await createAccessStore(counter.db).collectionFacts(fifty.map((id) => ({ tenantId: 'legacy', userId: id.userId, collectionId: id.collectionId })));
     expect(counter.statements()).toBe(1);
     counter.reset();
-    await a.visibleCollections(ids[0]?.userId ?? '');
+    await a.visibleCollections('legacy', ids[0]?.userId ?? '');
     expect(counter.statements()).toBe(1);
   });
 
   it('malformed ids are denied without reaching the database, and an empty request list sends nothing', async () => {
     const counter = counting(db);
     const a = createAuthorizer(createAccessStore(counter.db));
-    expect(await a.check({ userId: 'not-a-uuid', pageId: 'x' })).toEqual({ access: 'none', reason: 'no-user' });
-    expect(await a.checkCollection({ userId: "'; drop table users; --", collectionId: 'x' })).toEqual({ access: 'none', reason: 'no-user' });
-    expect(await a.visibleCollections('nope')).toEqual([]);
+    expect(await a.check({ tenantId: 'legacy', userId: 'not-a-uuid', pageId: 'x' })).toEqual({ access: 'none', reason: 'no-user' });
+    expect(await a.checkCollection({ tenantId: 'legacy', userId: "'; drop table users; --", collectionId: 'x' })).toEqual({ access: 'none', reason: 'no-user' });
+    expect(await a.visibleCollections('legacy', 'nope')).toEqual([]);
     expect(await a.checkMany([])).toEqual([]);
     expect(counter.statements()).toBe(0);
   });
@@ -109,7 +109,7 @@ describe('the shared table through createAccessStore and createAuthorizer (Postg
   it('rejects when the database is unreachable', async () => {
     const down = createDatabase(appUrl('none', '127.0.0.1:1'), { connectionTimeoutMs: 300, closeTimeoutMs: 100 });
     try {
-      await expect(createAccessStore(down).facts([{ userId: ids[0]?.userId ?? '', pageId: ids[0]?.pageId ?? '' }])).rejects.toThrow();
+      await expect(createAccessStore(down).facts([{ tenantId: 'legacy', userId: ids[0]?.userId ?? '', pageId: ids[0]?.pageId ?? '' }])).rejects.toThrow();
     } finally {
       await down.close();
     }

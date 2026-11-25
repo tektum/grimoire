@@ -46,7 +46,7 @@ export function linkedAccessStore(users: FakeUserStore, world: World): AccessSto
   return Object.assign(s, {
     facts: (rs: readonly AccessRequest[]) => { s.calls++; return s.fail ? Promise.reject(s.fail) : current().facts(rs); },
     collectionFacts: (rs: Parameters<AccessStore['collectionFacts']>[0]) => current().collectionFacts(rs),
-    visibleCollections: (userId: string) => current().visibleCollections(userId),
+    visibleCollections: (tenantId: string, userId: string) => current().visibleCollections(tenantId, userId),
   });
 }
 

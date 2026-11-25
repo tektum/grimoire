@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PENDING_TTL_MS, completeUpload, createUpload, findUploadOf, resignUpload } from '../../src/attachments/uploads.js';
 import { FileStorageError } from '../../src/ports/file-storage.js';
 import type { FileStorage } from '../../src/ports/file-storage.js';
+import type { AttachmentRow } from '../../src/ports/attachment-repo.js';
 import { LIMITS, NOW, PAGE, USER, row, setup } from './support.js';
 
 const meta = { pageId: PAGE, uploaderId: USER, fileName: 'a.png', contentType: 'image/png', size: 10 };
@@ -19,7 +20,7 @@ describe('createUpload', () => {
     const result = await createUpload(deps, { ...meta, fileName: '../x y.png', contentType: 'IMAGE/PNG' }, LIMITS);
     expect(result.kind).toBe('created');
     if (result.kind !== 'created') return;
-    expect(await repo.get(result.id)).toMatchObject({ pageId: PAGE, uploaderId: USER, fileName: '_x y.png', contentType: 'image/png', size: 10, key: `attachments/${result.id}`, status: 'pending', expiresAt: NOW + PENDING_TTL_MS });
+    expect(await repo.get('legacy', result.id)).toMatchObject({ pageId: PAGE, uploaderId: USER, fileName: '_x y.png', contentType: 'image/png', size: 10, key: `attachments/${result.id}`, status: 'pending', expiresAt: NOW + PENDING_TTL_MS });
     expect(result.markdownPath).toBe(`attachments/${result.id}/_x%20y.png`);
     expect(result.upload).toMatchObject({ method: 'PUT', headers: { 'content-type': 'image/png', 'if-none-match': '*' } });
     expect(result.upload.headers['content-disposition']).toBeUndefined();
@@ -101,7 +102,7 @@ async function uploaded(over: { contentType?: string; size?: number; stored?: nu
   const made = await createUpload(t.deps, { ...meta, contentType: over.contentType ?? 'image/png', size: over.size ?? 4 }, LIMITS);
   if (made.kind !== 'created') throw new Error('setup');
   if (over.stored !== 0) await t.files.put(`attachments/${made.id}`, PNG.slice(0, over.stored ?? 4), { size: over.stored ?? 4, contentType: over.contentType ?? 'image/png' });
-  const stored = (await t.repo.get(made.id)) ?? row();
+  const stored = (await t.repo.get('legacy', made.id)) ?? row();
   return { ...t, id: made.id, stored };
 }
 
@@ -111,6 +112,14 @@ describe('completeUpload', () => {
     const result = await completeUpload(t.deps, t.stored);
     expect(result).toMatchObject({ kind: 'ready', row: { id: t.id, status: 'ready', expiresAt: null, readyAt: NOW } });
     expect(await completeUpload(t.deps, t.stored)).toMatchObject({ kind: 'ready' }); // the same call again is the same answer
+  });
+
+  it('completes or refuses a row that names no tenant (a test row that does not use tenants) in legacy', async () => {
+    const untenanted = (r: AttachmentRow): AttachmentRow => Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'tenantId')) as unknown as AttachmentRow;
+    const t = await uploaded();
+    expect(await completeUpload(t.deps, untenanted(t.stored))).toMatchObject({ kind: 'ready', row: { id: t.id } });
+    const missing = await uploaded({ stored: 0 });
+    expect(await completeUpload(missing.deps, untenanted(missing.stored))).toEqual({ kind: 'refused', reason: 'upload_missing' });
   });
 
   it('answers a ready row as it is, without touching the store', async () => {
@@ -123,16 +132,16 @@ describe('completeUpload', () => {
   it('refuses a missing object (upload_missing), a size that differs, and bytes of another type, each deleting the object and the row', async () => {
     const missing = await uploaded({ stored: 0 });
     expect(await completeUpload(missing.deps, missing.stored)).toEqual({ kind: 'refused', reason: 'upload_missing' });
-    expect(await missing.repo.get(missing.id)).toBeUndefined();
+    expect(await missing.repo.get('legacy', missing.id)).toBeUndefined();
     const wrongSize = await uploaded({ stored: 3 });
     expect(await completeUpload(wrongSize.deps, wrongSize.stored)).toEqual({ kind: 'refused', reason: 'size_mismatch' });
     await expect(wrongSize.files.head(wrongSize.stored.key)).rejects.toMatchObject({ kind: 'not-found' });
-    expect(await wrongSize.repo.get(wrongSize.id)).toBeUndefined();
+    expect(await wrongSize.repo.get('legacy', wrongSize.id)).toBeUndefined();
     for (const sniffed of ['image/jpeg', undefined]) {
       const wrongType = await uploaded({ sniffed });
       expect(await completeUpload(wrongType.deps, wrongType.stored)).toEqual({ kind: 'refused', reason: 'type_mismatch' });
       await expect(wrongType.files.head(wrongType.stored.key)).rejects.toMatchObject({ kind: 'not-found' });
-      expect(await wrongType.repo.get(wrongType.id)).toBeUndefined();
+      expect(await wrongType.repo.get('legacy', wrongType.id)).toBeUndefined();
     }
   });
 
@@ -142,7 +151,7 @@ describe('completeUpload', () => {
     const made = await createUpload(t.deps, { ...meta, fileName: 'n.txt', contentType: 'text/plain', size: 4 }, LIMITS);
     if (made.kind !== 'created') throw new Error('setup');
     await t.files.put(`attachments/${made.id}`, PNG, { size: 4, contentType: 'text/plain' });
-    expect(await completeUpload(t.deps, (await t.repo.get(made.id)) as never)).toMatchObject({ kind: 'ready' });
+    expect(await completeUpload(t.deps, (await t.repo.get('legacy', made.id)) as never)).toMatchObject({ kind: 'ready' });
     expect(looked).toBe(false);
   });
 
@@ -150,7 +159,7 @@ describe('completeUpload', () => {
     const t = await uploaded();
     const down: FileStorage = { ...t.files, head: () => Promise.reject(new FileStorageError('unavailable', 'down')) } as unknown as FileStorage;
     await expect(completeUpload({ ...t.deps, files: down }, t.stored)).rejects.toThrow('down');
-    expect(await t.repo.get(t.id)).toBeDefined();
+    expect(await t.repo.get('legacy', t.id)).toBeDefined();
     const other: FileStorage = { ...t.files, head: () => Promise.reject(new Error('boom')) } as unknown as FileStorage;
     await expect(completeUpload({ ...t.deps, files: other }, t.stored)).rejects.toThrow('boom');
   });
@@ -167,14 +176,14 @@ describe('completeUpload', () => {
       const made = await createUpload(t.deps, { ...meta, fileName: 'd.pdf', contentType: 'application/pdf', size: stored }, { ...LIMITS, maxBytes: 5000, pendingMaxPerUser: 50 });
       if (made.kind !== 'created') throw new Error('setup');
       await t.files.put(`attachments/${made.id}`, new Uint8Array(stored), { size: stored, contentType: 'application/pdf' });
-      expect(await completeUpload({ ...t.deps, files: chunked(sizes) }, (await t.repo.get(made.id)) as never)).toMatchObject({ kind: 'ready' });
+      expect(await completeUpload({ ...t.deps, files: chunked(sizes) }, (await t.repo.get('legacy', made.id)) as never)).toMatchObject({ kind: 'ready' });
     }
     expect(seen).toEqual([512, 150, 512]);
   });
 
   it('answers ready when another completion won the race, and gone when the row expired and was cleaned', async () => {
     const t = await uploaded();
-    const raced = { ...t.repo, markReady: async () => { await t.repo.markReady(t.id, NOW); return undefined; }, get: (id: string) => t.repo.get(id) } as unknown as typeof t.repo;
+    const raced = { ...t.repo, markReady: async () => { await t.repo.markReady('legacy', t.id, NOW); return undefined; }, get: (tenantId: string, id: string) => t.repo.get(tenantId, id) } as unknown as typeof t.repo;
     expect(await completeUpload({ ...t.deps, repo: raced }, t.stored)).toMatchObject({ kind: 'ready', row: { id: t.id } });
     const second = await uploaded();
     t.clock.at = second.clock.at;
@@ -199,15 +208,15 @@ describe('review: the two races', () => {
   it('does not delete an upload that another completion made ready while this one saw no object', async () => {
     const t = await uploaded({ stored: 0 });
     // The object arrives and the other completion finishes after this one looked.
-    const racing = { ...t.repo, removeIfPending: async () => { await t.files.put(t.stored.key, PNG, { size: 4, contentType: 'image/png' }); await t.repo.markReady(t.id, NOW); return false; }, get: (id: string) => t.repo.get(id) } as unknown as typeof t.repo;
+    const racing = { ...t.repo, removeIfPending: async () => { await t.files.put(t.stored.key, PNG, { size: 4, contentType: 'image/png' }); await t.repo.markReady('legacy', t.id, NOW); return false; }, get: (tenantId: string, id: string) => t.repo.get(tenantId, id) } as unknown as typeof t.repo;
     expect(await completeUpload({ ...t.deps, repo: racing }, t.stored)).toMatchObject({ kind: 'ready', row: { id: t.id, status: 'ready' } });
     expect((await t.files.head(t.stored.key)).size).toBe(4);
-    expect(await t.repo.get(t.id)).toMatchObject({ status: 'ready' });
+    expect(await t.repo.get('legacy', t.id)).toMatchObject({ status: 'ready' });
   });
 
   it('answers gone when the row to discard is already removed', async () => {
     const t = await uploaded({ stored: 0 });
-    await t.repo.remove(t.id);
+    await t.repo.remove('legacy', t.id);
     expect(await completeUpload(t.deps, t.stored)).toEqual({ kind: 'gone' });
   });
 });

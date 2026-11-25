@@ -6,6 +6,7 @@ import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createDatabase } from '../../src/index.js';
 import type { KyselyDatabase } from '../../src/index.js';
 import { createAccessStore } from '../../src/permissions.js';
+import { aroundScoped } from '../collections/support.js';
 import { createMigratedDatabase, dropDatabase, loadWorld, sqlAs, urlFor } from './support.js';
 
 // The plans of the main queries on 10,000 pages, 500 users and 200 groups. Printed (bun run test:integration shows them with --reporter verbose);
@@ -44,7 +45,8 @@ afterAll(async () => {
 
 async function plan(run: (store: ReturnType<typeof createAccessStore>) => Promise<unknown>): Promise<string> {
   recorded.length = 0;
-  await run(createAccessStore({ query: (sql, params) => { recorded.push({ sql, params: params ?? [] }); return db.query(sql, params); } }));
+  // The statements of the scoped connection, not its `begin` with the tenant nor its `commit`.
+  await run(createAccessStore(aroundScoped(db, (sql, go, params) => { if (!/^(begin|commit|rollback)\b/.test(sql)) recorded.push({ sql, params }); return go(); })));
   const q = recorded[0];
   if (!q) throw new Error('no statement');
   const rows = await sqlAs<{ 'QUERY PLAN': string }>(urlFor('grimoire_admin', DB), `explain (analyze, timing off) ${q.sql}`, [...q.params]);
@@ -52,12 +54,12 @@ async function plan(run: (store: ReturnType<typeof createAccessStore>) => Promis
 }
 
 describe('plans on 10,000 pages, 500 users, 200 groups', () => {
-  const pageRequests = Array.from({ length: 50 }, (_, i) => ({ userId: uuidOf('user', i + 1), pageId: uuidOf('page', i * 37 + 1) }));
-  const collectionRequests = Array.from({ length: 50 }, (_, i) => ({ userId: uuidOf('user', i + 1), collectionId: uuidOf('collection', (i % 100) + 1) }));
+  const pageRequests = Array.from({ length: 50 }, (_, i) => ({ tenantId: 'legacy', userId: uuidOf('user', i + 1), pageId: uuidOf('page', i * 37 + 1) }));
+  const collectionRequests = Array.from({ length: 50 }, (_, i) => ({ tenantId: 'legacy', userId: uuidOf('user', i + 1), collectionId: uuidOf('collection', (i % 100) + 1) }));
   const cases: [string, (s: ReturnType<typeof createAccessStore>) => Promise<unknown>][] = [
     ['facts (50 requests)', (s) => s.facts(pageRequests)],
     ['collectionFacts (50 requests)', (s) => s.collectionFacts(collectionRequests)],
-    ['visibleCollections (member)', (s) => s.visibleCollections(uuidOf('user', 1))],
+    ['visibleCollections (member)', (s) => s.visibleCollections('legacy', uuidOf('user', 1))],
   ];
   for (const [name, fn] of cases) {
     it(`${name}: no sequential scan of collection_access or group_members`, async () => {
@@ -78,6 +80,6 @@ describe('plans on 10,000 pages, 500 users, 200 groups', () => {
     const a = createAuthorizer(createAccessStore(db));
     const f = createAuthorizer(createFakeAccessStore(world));
     expect(await a.checkMany(pageRequests)).toEqual(await f.checkMany(pageRequests));
-    expect((await a.visibleCollections(uuidOf('user', 1))).filter((r) => r.collectionId !== '00000000-0000-4000-8000-000000000002')).toEqual(await f.visibleCollections(uuidOf('user', 1)));
+    expect((await a.visibleCollections('legacy', uuidOf('user', 1))).filter((r) => r.collectionId !== '00000000-0000-4000-8000-000000000002')).toEqual(await f.visibleCollections('legacy', uuidOf('user', 1)));
   });
 });

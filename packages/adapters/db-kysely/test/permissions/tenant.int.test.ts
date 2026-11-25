@@ -22,24 +22,24 @@ afterAll(async () => {
 
 describe('tenants in the facts and in the decision (PostgreSQL)', () => {
   it('reads the tenant of the user and of the page', async () => {
-    const facts = await createAccessStore(db).facts([{ userId: USER_A, pageId: PAGE_A }, { userId: USER_B, pageId: PAGE_B }, { userId: USER_A, pageId: PAGE_B }]);
+    const facts = await createAccessStore(db).facts([{ tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_A }, { tenantId: 'tenant-b', userId: USER_B, pageId: PAGE_B }, { tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_B }]);
     expect(facts.map((f) => [f.user?.tenantId, f.page?.tenantId])).toEqual([['tenant-a', 'tenant-a'], ['tenant-b', 'tenant-b'], ['tenant-a', 'tenant-b']]);
   });
 
   it('gives a user nothing on a page of another tenant (not found, as a page that is not there), and everything on its own', async () => {
     const authorizer = createAuthorizer(createAccessStore(db));
-    expect((await authorizer.check({ userId: USER_A, pageId: PAGE_B })).access).toBe('none');
-    expect((await authorizer.check({ userId: USER_B, pageId: PAGE_A })).access).toBe('none');
-    expect((await authorizer.check({ userId: USER_A, pageId: PAGE_A })).access).toBe('read-write');
-    expect((await authorizer.check({ userId: USER_B, pageId: PAGE_B })).access).toBe('read-write');
+    expect((await authorizer.check({ tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_B })).access).toBe('none');
+    expect((await authorizer.check({ tenantId: 'tenant-b', userId: USER_B, pageId: PAGE_A })).access).toBe('none');
+    expect((await authorizer.check({ tenantId: 'tenant-a', userId: USER_A, pageId: PAGE_A })).access).toBe('read-write');
+    expect((await authorizer.check({ tenantId: 'tenant-b', userId: USER_B, pageId: PAGE_B })).access).toBe('read-write');
   });
 
   it('lists to a user only the collections of its own tenant (an admin of A does not see B\'s)', async () => {
     const store = createAccessStore(db);
-    expect((await store.visibleCollections(USER_A)).map((c) => c.collectionId).sort()).toContain(COL_A);
-    expect((await store.visibleCollections(USER_A)).map((c) => c.collectionId)).not.toContain(COL_B);
-    expect((await store.visibleCollections(USER_B)).map((c) => c.collectionId)).toEqual([COL_B]);
-    const facts = await store.collectionFacts([{ userId: USER_A, collectionId: COL_B }]);
+    expect((await store.visibleCollections('tenant-a', USER_A)).map((c) => c.collectionId).sort()).toContain(COL_A);
+    expect((await store.visibleCollections('tenant-a', USER_A)).map((c) => c.collectionId)).not.toContain(COL_B);
+    expect((await store.visibleCollections('tenant-b', USER_B)).map((c) => c.collectionId)).toEqual([COL_B]);
+    const facts = await store.collectionFacts([{ tenantId: 'tenant-a', userId: USER_A, collectionId: COL_B }]);
     expect([facts[0]?.user?.tenantId, facts[0]?.collection?.tenantId]).toEqual(['tenant-a', 'tenant-b']);
   });
 

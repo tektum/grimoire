@@ -42,7 +42,7 @@ describe('runUploadCleanup', () => {
     const w = world();
     for (let i = 0; i < 5; i += 1) w.row(`a${String(i)}`, 'T-a');
     const first = w.repo.removeIfPending.bind(w.repo);
-    const racing = Object.assign(Object.create(w.repo) as typeof w.repo, { removeIfPending: (id: string) => (id === 'a0' ? Promise.resolve(false) : first(id)) });
+    const racing = Object.assign(Object.create(w.repo) as typeof w.repo, { removeIfPending: (tenantId: string, id: string) => (id === 'a0' ? Promise.resolve(false) : first(tenantId, id)) });
     expect(await runUploadCleanup({ ...w.deps, attachments: racing, batchSize: 2 }, new AbortController().signal)).toBe(4);
   });
 

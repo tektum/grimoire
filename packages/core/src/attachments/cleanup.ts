@@ -10,7 +10,7 @@ export async function cleanupExpiredAttachments(o: { readonly repo: AttachmentRe
   let removed = 0;
   for (const row of await o.repo.expiredPending(o.tenantId, o.now(), o.batch)) {
     await o.files.delete(row.key);
-    if (await o.repo.removeIfPending(row.id)) removed += 1;
+    if (await o.repo.removeIfPending(o.tenantId, row.id)) removed += 1;
   }
   return removed;
 }

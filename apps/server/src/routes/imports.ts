@@ -200,7 +200,7 @@ router.openapi(startImport, async (c) => {
   const record = await guardImport(c, id, 'creator');
   const deps = c.get('deps');
   // Write access to the target collection is checked again now: a person who has lost it finds no such import.
-  const decision = (await deps.collections.get(tenant, record.targetCollectionId)) === undefined ? undefined : await deps.authorizer.checkCollection({ userId: user.id, collectionId: record.targetCollectionId });
+  const decision = (await deps.collections.get(tenant, record.targetCollectionId)) === undefined ? undefined : await deps.authorizer.checkCollection({ tenantId: tenant, userId: user.id, collectionId: record.targetCollectionId });
   if (decision?.access !== 'read-write') return fail('not_found');
   if (record.status !== 'created' && record.status !== 'uploaded') return fail('already_started');
   const files = store(c, 'import-start');

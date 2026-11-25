@@ -76,7 +76,7 @@ describe(`host admission equals the authorisation rule (seed ${String(SEED)})`, 
             refused++;
             continue;
           }
-          const [facts] = await reference.facts([{ userId: user.id, pageId }]);
+          const [facts] = await reference.facts([{ tenantId: 'legacy', userId: user.id, pageId }]);
           const d = facts ? decide(facts) : { access: 'none' as const };
           if (d.access === 'none') {
             expect(outcome, where).toMatchObject({ ok: false, e: { reason: 'not-found' } });
