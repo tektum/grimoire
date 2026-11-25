@@ -27,7 +27,7 @@ export function createAdmin(db: KyselyDatabase): AdminRepo {
       }
       params.push(limit);
       return scoped(db, tenantId).query<AdminUser>(
-        `select ${USER_COLUMNS} from users where ${where.join(' and ')} order by email, id limit $${String(params.length)}`, params,
+        `select ${USER_COLUMNS} from users where ${where.join(' and ')} order by users.email, users.id limit $${String(params.length)}`, params,
       );
     },
     patchUser(tenantId, id, patch, actorId) {
