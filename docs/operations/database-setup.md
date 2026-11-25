@@ -20,7 +20,9 @@ End state, in one transaction (a failure leaves the database as it was):
 - The public may not connect to the database. A role that already holds an explicit grant keeps it: that is the administrator's decision.
 - The migration role owns schema `public` and the job queue's schema `pgboss`, also when `pgboss` was there before.
 - The runtime role may use `public` and nothing more. Each migration grants it what it needs.
-- The `citext` extension exists.
+- The `citext` and `pg_trgm` extensions exist. The migration role has only `CONNECT` on the database, so it cannot create an extension, not even a trusted one; migrations 0004 and 0010 only repeat `create extension if not exists`, a no-op once this step ran.
+
+**Run it again on every upgrade.** `db-setup` is not a one-time step: a release may need an extension that the previous one did not (`pg_trgm` came with title search), and only this step can create it. A managed database set up by an older release therefore needs `db-setup` before the `migrate` of the new one. The deploy does that by itself: the task starts `db-setup`, then `migrate`, then the app, on every deploy (`infra/stack/init-order.ts`; `tools/ci/test/stack-init-order.test.mjs` asserts that `migrate` waits for `db-setup` to exit with 0, and the recorded staging declaration pins the three containers). An operator who runs the commands by hand does the same two in that order. Run alone against a database that was not set up by the current version, `migrate` stops at 0010 with a message that names this step, and applies nothing: the migrations run in one transaction.
 
 The server receives a SCRAM-SHA-256 verifier computed here, not the password, so the password is not in any statement the server may log or record (`log_statement`, pgaudit, `pg_stat_statements`). The command never logs it either.
 
