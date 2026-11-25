@@ -544,7 +544,7 @@ Permission words used below: **signed-in** = valid session and an active account
 | Id | Endpoint | Who | Request | Response | Errors | Status |
 |---|---|---|---|---|---|---|
 | R6.9 | `GET /v1/me` | Signed-in | none | 200 `{id, email, name, role}`. The first call creates the user (R8.4). | 401; 403 `account_suspended`; 403 `not_allowed` (sign-in not permitted by R8.4) | Planned |
-| R6.10 | `GET /v1/config` | Signed-in | none | 200 `{collabUrl, minClientVersion}`: the WebSocket URL of the collaboration server and the lowest client version it accepts (R4.32) | 401 | Planned |
+| R6.10 | `GET /v1/config` | Signed-in | none | 200 `{collabUrl, minClientVersion, maxMarkdownBytes}`: the WebSocket URL of the collaboration server, the lowest client version it accepts (R4.32), and the largest Markdown of one page (R12.30; `null` when not announced), which the import report names for a page that was skipped for its size | 401 | Planned |
 | R6.11 | `GET /v1/pages/{id}/state` | (none) | | **No such endpoint.** Editing state is loaded through the Hocuspocus provider (R4.26). | | Rule |
 ### 6.3 Collections
 
@@ -600,7 +600,7 @@ Permission words used below: **signed-in** = valid session and an active account
 | R6.39 | `POST /v1/imports` | write(target collection) | `{collectionId, fileName, size, databaseMode?}` (`databaseMode` is provisional and has one value, `table`, the default: a source database is imported as a plain table on a page; Grimoire has no database features, so no other mode is added; decision 112, R10.8) | 201 `{id, upload: {method: "PUT", url, headers, expiresAt}}` for the zip | 401; 404; 413 over the import size limit; 422 | Planned |
 | R6.40 | `POST /v1/imports/{id}/start`| The creator | none | 202 `{status: "running"}`; the zip is checked first (R10.3) | 401; 404; 409 `upload_missing`, `already_started`; 422 `not_a_zip` | Planned |
 | R6.41 | `GET /v1/imports/{id}` | The creator, or admin | none | 200 `{status, counts: {pagesTotal, pagesDone, attachments, skipped, failed}, startedAt, finishedAt, error}` | 401; 404 | Planned |
-| R6.42 | `GET /v1/imports/{id}/items` | The creator, or admin | `?status=&limit&cursor` | 200 `{items: [{path, kind, pageId, status, message}], nextCursor}`: the per-file report | 401; 404 | Planned |
+| R6.42 | `GET /v1/imports/{id}/items` | The creator, or admin | `?status=&limit&cursor` | 200 `{items: [{id, path, kind, pageId, status, message, markdownBytes, stateBytes, hasSource}], nextCursor}`: the per-file report. `status` is `imported`, `skipped` or `failed`; for a skipped or failed file `message` is the code of the reason (at most 300 characters, never a path), which the client puts into words, taking any limit a code names from `GET /v1/config`; `hasSource` is true for a failed page whose original file is kept. `GET /v1/imports/{id}/items/{itemId}/source` (the creator, or admin) answers 200 `{url, expiresAt}`, a short-lived address to download that original; 404 when there is none | 401; 404 | Planned |
 | R6.43 | `POST /v1/imports/{id}/cancel` | The creator, or admin | none | 200. The pages already created are moved to the trash as one batch (R9.19), restorable for 30 days. | 401; 404; 409 `not_running` | Planned |
 
 ### 6.8 Administration

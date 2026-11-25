@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,8 +7,8 @@ import type { ApiLike } from '../../src/api/query';
 import { createWebApi } from '../../src/api/client';
 import { guardedFetch, markClientOutdated } from '../../src/gate/outdated';
 import { SessionContext, type Session } from '../../src/auth/session';
-import { POLL_MS } from '../../src/import/api';
-import type { ImportState } from '../../src/import/types';
+import { POLL_MS, useImportReport } from '../../src/import/api';
+import type { ImportItem, ImportState } from '../../src/import/types';
 import ImportScreen from '../../src/screens/import';
 import '../support/dom';
 
@@ -42,6 +42,12 @@ interface Options {
   /** One answer, or one after another (the last goes on for ever). */
   create?: Refusal | Refusal[];
   start?: Refusal | Refusal[];
+  /** The report, a page after another (the cursor is the index of the page). */
+  items?: ImportItem[][];
+  itemsFail?: () => boolean;
+  config?: Record<string, unknown> | undefined;
+  source?: { status: number; url?: string };
+  cancel?: { status: number; code?: string };
 }
 function fake(options: Options = {}) {
   const calls: string[] = [];
@@ -51,13 +57,24 @@ function fake(options: Options = {}) {
   let starts = 0;
   const answer = (status: number, body?: unknown, code?: string) => ({ data: status < 300 ? body : undefined, error: status < 300 ? undefined : { error: { code } }, response: new Response(null, { status }) });
   const api = {
-    GET: async (path: string) => {
+    GET: async (path: string, init?: { params?: unknown }) => {
       calls.push(`GET ${path}`);
       if (path === '/v1/me') return answer(200, { id: 'u', name: 'Alice', email: 'a@x', role: options.role ?? 'member' });
       if (path === '/v1/collections') return answer(200, { items: COLLECTIONS });
       if (path === '/v1/imports/{id}') {
         const states = options.states ?? [state()];
         return answer(200, states[Math.min(reads++, states.length - 1)]);
+      }
+      if (path === '/v1/config') return answer(200, options.config ?? {});
+      if (path === '/v1/imports/{id}/items') {
+        if (options.itemsFail?.() === true) return answer(503);
+        const pages = options.items ?? [[]];
+        const at = Number((init?.params as { query?: { cursor?: string } } | undefined)?.query?.cursor ?? 0);
+        return answer(200, { items: pages[at] ?? [], nextCursor: at + 1 < pages.length ? String(at + 1) : null });
+      }
+      if (path === '/v1/imports/{id}/items/{itemId}/source') {
+        const r = options.source ?? { status: 200, url: 'https://files.test/source/a.md?sig=1' };
+        return answer(r.status, { url: r.url, expiresAt: '2026-11-20T11:00:00Z' });
       }
       return answer(404);
     },
@@ -75,6 +92,10 @@ function fake(options: Options = {}) {
       if (path === '/v1/imports/{id}/start') {
         const s = nth(options.start, starts++, { status: 202 });
         return answer(s.status, { status: 'running' }, s.code);
+      }
+      if (path === '/v1/imports/{id}/cancel') {
+        const c = options.cancel ?? { status: 202 };
+        return answer(c.status, { status: 'cancelled' }, c.code);
       }
       return answer(404);
     },
@@ -323,6 +344,292 @@ describe('an answer that is not shaped as the contract says', () => {
     const u = fake({ states: [{ status: 'running' } as unknown as ImportState] });
     show(u.api, '/import?import=imp1');
     expect((await screen.findByRole('alert')).textContent).toContain('That import can’t be read.');
+  });
+});
+
+const item = (over: Partial<ImportItem> & { id: string }): ImportItem => ({
+  path: `docs/${over.id}.md`,
+  kind: 'page',
+  pageId: 'p1',
+  status: 'imported',
+  message: null,
+  markdownBytes: 10,
+  stateBytes: 20,
+  hasSource: false,
+  ...over,
+});
+const ended = (over: Partial<ImportState> & { done?: number; total?: number } = {}) => state({ status: 'done', done: 3, total: 3, ...over });
+
+describe('the report of an ended import', () => {
+  it('lists one row for each file with what happened to it, and the name of a file as text, never as markup', async () => {
+    const t = fake({
+      states: [ended()],
+      items: [[item({ id: 'a' }), item({ id: 'b', status: 'skipped', message: 'too_large' }), item({ id: 'c', path: '<b>bold</b>.md', status: 'failed', message: '<img src=x onerror=alert(1)>' })]],
+    });
+    show(t.api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(3));
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.getAttribute('data-status')),
+    ).toEqual(['imported', 'skipped', 'failed']);
+    expect(list.textContent).toContain('The page is larger than the limit for a page.');
+    expect(list.textContent).not.toContain('too_large');
+    expect(list.textContent).toContain('<b>bold</b>.md');
+    expect(list.textContent).not.toContain('onerror'); // a message that is not a code is never shown
+    expect(list.querySelector('b, img')).toBeNull();
+  });
+
+  it('asks nothing of the report while the import is running, and says when there is nothing to list', async () => {
+    const t = fake({ states: [state()], items: [[]] });
+    show(t.api, '/import?import=imp1');
+    await screen.findByRole('progressbar');
+    expect(t.calls.some((c) => c.includes('/items'))).toBe(false);
+    cleanup();
+    show(fake({ states: [ended()], items: [[]] }).api, '/import?import=imp1');
+    expect(await screen.findByText('There is nothing to list.')).toBeTruthy();
+  });
+
+  it('reads the next page when asked, and says so when the report cannot be read, with a way to try again', async () => {
+    let broken = false;
+    const t = fake({ states: [ended()], items: [[item({ id: 'a' })], [item({ id: 'b' })]], itemsFail: () => broken });
+    show(t.api, '/import?import=imp1');
+    await screen.findByText('docs/a.md');
+    broken = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
+    expect(screen.getByText('docs/a.md')).toBeTruthy(); // what came stays
+    broken = false;
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await screen.findByText('docs/b.md');
+    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  describe('the source of a failed page', () => {
+    const clicks: string[] = [];
+    const spy = () =>
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        clicks.push(this.href);
+      });
+    const failed = [[item({ id: 'a' }), item({ id: 'f', status: 'failed', hasSource: true, message: 'broken' }), item({ id: 'g', status: 'failed', hasSource: false })]];
+
+    it('offers it only for a failed page whose original is kept, and starts the download from the address the API gave', async () => {
+      clicks.length = 0;
+      const click = spy();
+      show(fake({ states: [ended({ counts: { pagesTotal: 3, pagesDone: 1, attachments: 0, skipped: 0, failed: 2 } })], items: failed }).api, '/import?import=imp1');
+      await screen.findByText('docs/f.md');
+      expect(screen.getAllByRole('button', { name: /^Download source of/ })).toHaveLength(1);
+      await userEvent.click(screen.getByRole('button', { name: 'Download source of docs/f.md' }));
+      await waitFor(() => expect(clicks).toEqual(['https://files.test/source/a.md?sig=1']));
+      click.mockRestore();
+    });
+
+    it.each([
+      ['an address that is not safe', { status: 200, url: 'javascript:alert(1)' }],
+      ['an answer that is a refusal', { status: 404 }],
+    ])('says it cannot be downloaded for %s, and starts nothing', async (_n, source) => {
+      clicks.length = 0;
+      const click = spy();
+      show(fake({ states: [ended()], items: failed, source }).api, '/import?import=imp1');
+      await userEvent.click(await screen.findByRole('button', { name: 'Download source of docs/f.md' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('The source can’t be downloaded right now.');
+      expect(clicks).toEqual([]);
+      click.mockRestore();
+    });
+  });
+});
+
+describe('the report of one import, then of another', () => {
+  it('shows the files of the import it was asked for, whichever answer comes last', async () => {
+    const later: Record<string, () => void> = {};
+    const answers: Record<string, ImportItem[]> = { a: [item({ id: 'a1' })], b: [item({ id: 'b1' })] };
+    const api = {
+      GET: (_path: string, init: { params: { path: { id: string } } }) =>
+        new Promise((resolve) => {
+          const id = init.params.path.id;
+          later[id] = () => resolve({ data: { items: answers[id], nextCursor: null }, response: new Response(null, { status: 200 }) });
+        }),
+    } as unknown as ApiLike;
+    const { result, rerender } = renderHook(({ id }) => useImportReport(api, id), { initialProps: { id: 'a' } });
+    await waitFor(() => expect(later['a']).toBeDefined());
+    rerender({ id: 'b' });
+    await waitFor(() => expect(later['b']).toBeDefined());
+    await act(async () => {
+      later['b']!();
+    });
+    await waitFor(() => expect(result.current.items.map((i) => i.id)).toEqual(['b1']));
+    await act(async () => {
+      later['a']!(); // the answer for the first import comes last
+    });
+    expect(result.current.items.map((i) => i.id)).toEqual(['b1']);
+    expect(result.current.phase).toBe('ready');
+  });
+
+  it('shows nothing of the first import while the second one is read', async () => {
+    const api = {
+      GET: (_p: string, init: { params: { path: { id: string } } }) =>
+        init.params.path.id === 'a' ? Promise.resolve({ data: { items: [item({ id: 'a1' })], nextCursor: null }, response: new Response(null, { status: 200 }) }) : new Promise(() => undefined),
+    } as unknown as ApiLike;
+    const { result, rerender } = renderHook(({ id }) => useImportReport(api, id), { initialProps: { id: 'a' } });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    rerender({ id: 'b' });
+    await waitFor(() => expect(result.current.items).toEqual([]));
+    expect(result.current.phase).toBe('loading');
+  });
+});
+
+describe('a report that is not shaped as the contract says', () => {
+  it.each([
+    ['a source flag that is a string', 'false'],
+    ['no source flag', undefined],
+  ])('is a report that cannot be read for %s, so that no Download button is shown by mistake', async (_n, hasSource) => {
+    const t = fake({ states: [ended()] });
+    const inner = (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET;
+    (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET = async (path: string, init?: unknown) =>
+      path === '/v1/imports/{id}/items'
+        ? { data: { items: [{ id: 'a', path: 'docs/a.md', status: 'failed', message: null, hasSource }], nextCursor: null }, response: new Response(null, { status: 200 }) }
+        : inner(path, init);
+    show(t.api, '/import?import=imp1');
+    expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
+    expect(screen.queryByRole('button', { name: /^Download source of/ })).toBeNull();
+  });
+
+  it('is a report that cannot be read, not rows with holes in them', async () => {
+    const t = fake({ states: [ended()] });
+    const inner = (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET;
+    (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET = async (path: string, init?: unknown) =>
+      path === '/v1/imports/{id}/items' ? { data: { items: [{ id: 'a', path: 'docs/a.md', status: 'exploded', message: null }], nextCursor: null }, response: new Response(null, { status: 200 }) } : inner(path, init);
+    show(t.api, '/import?import=imp1');
+    expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
+    expect(screen.queryByRole('listitem')).toBeNull();
+  });
+});
+
+const SKIPPED = ['ignored', 'duplicate_path', 'too_large', 'entry_too_large', 'type_not_allowed', 'type_mismatch', 'unreferenced', 'nested_archive', 'empty'];
+const FAILED = ['bad_name', 'invalid_encoding', 'size_mismatch', 'invalid-markdown', 'timeout', 'out-of-memory', 'state_too_large', 'content-lost', 'convert_failed', 'collection_full', 'internal'];
+
+describe('what a person is told about a file: the reason is a code, and the screen has the words', () => {
+  const reasons = (codes: string[], status: ImportItem['status'], config?: Record<string, unknown>) =>
+    fake({ states: [ended()], config, items: [codes.map((message, n) => item({ id: `r${String(n)}`, status, message }))] });
+  const messagesOf = async (list: HTMLElement, n: number) => {
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(n));
+    return within(list)
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.import-report-message')?.textContent?.trim() ?? '');
+  };
+
+  it.each([
+    ['skipped', SKIPPED],
+    ['failed', FAILED],
+  ] as const)('puts every code of a %s file into a sentence of words that is not the code, and never shows a code', async (status, codes) => {
+    show(reasons([...codes], status).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), codes.length);
+    expect(new Set(texts).size, 'one sentence for each code (the generic one is not used for a known code)').toBe(codes.length);
+    for (const [n, text] of texts.entries()) {
+      expect(text, codes[n]).toMatch(/^[A-Z].*\.$/);
+      expect(text.toLowerCase(), codes[n]).not.toContain(codes[n]!.replace(/[_-]/g, ' ').includes(' ') ? codes[n]! : '\u0000');
+      expect(text).not.toMatch(/[a-z]+[_-][a-z]+/);
+    }
+  });
+
+  it('takes the limit a code names from the configuration of the server, and says no number when the server does not say one', async () => {
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: 131072, maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
+    expect(texts[0]).toBe('The page is larger than the limit of 128 KB.');
+    expect(texts[1]).toBe('The file is larger than the limit of 25 MB.');
+    cleanup();
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: null, maxAttachmentBytes: null }).api, '/import?import=imp1');
+    const none = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
+    expect(none[0]).toBe('The page is larger than the limit for a page.');
+    expect(none[1]).toBe('The file is larger than the limit for a file.');
+    expect(none.join(' ')).not.toMatch(/\d/);
+  });
+
+  it('says the same words for the spelling the Markdown seed uses (too-large, too-deep), and names no number for the page whose converted state is over its own cap', async () => {
+    show(reasons(['too-large', 'too-deep', 'state_too_large'], 'skipped', { maxMarkdownBytes: 131072 }).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 3);
+    expect(texts[0]).toBe('The page is larger than the limit of 128 KB.'); // the same sentence as too_large
+    expect(texts[1]).toBe('The page has too many levels.');
+    expect(texts[2]).toBe('The converted page is larger than the limit for a page.'); // another limit than the Markdown cap: no number of it
+  });
+
+  it('says the generic sentence of the status for a code it does not know, for no reason and for text that is not a code, and never the text', async () => {
+    show(
+      fake({
+        states: [ended()],
+        items: [
+          [
+            item({ id: 'u1', status: 'skipped', message: 'some_new_code' }),
+            item({ id: 'u2', status: 'failed', message: null }),
+            item({ id: 'u3', status: 'failed', message: '/home/alice/notes/secret.md could not be read' }),
+          ],
+        ],
+      }).api,
+      '/import?import=imp1',
+    );
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    expect(await messagesOf(list, 3)).toEqual(['The file was left out.', 'The file could not be imported.', 'The file could not be imported.']);
+    expect(list.textContent).not.toContain('secret.md could');
+  });
+});
+
+describe('the progress bar of an ended import', () => {
+  it('is full for an import that is done, with the skipped and the failed counted as handled', async () => {
+    show(fake({ states: [ended({ done: 2, total: 4, counts: { pagesTotal: 4, pagesDone: 2, attachments: 0, skipped: 1, failed: 1 } })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100'));
+  });
+
+  it('counts the skipped and the failed as handled while it runs, and shows how far a cancelled import got', async () => {
+    show(fake({ states: [state({ done: 2, total: 10, counts: { pagesTotal: 10, pagesDone: 2, attachments: 0, skipped: 1, failed: 1 } })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40'));
+    cleanup();
+    show(fake({ states: [state({ status: 'cancelled', done: 3, total: 10 })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('30'));
+  });
+});
+
+describe('a cancel that was refused', () => {
+  it('is not said once the import has ended, which the read after the refusal shows', async () => {
+    const t = fake({ states: [state(), ended()], cancel: { status: 500 } });
+    show(t.api, '/import?import=imp1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel import' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Done'));
+    expect(screen.queryByText('The import could not be cancelled. Try again.')).toBeNull();
+  });
+});
+
+describe('cancelling an import', () => {
+  it('offers it while running only, and says what became of the import once it is cancelled, which then offers the report', async () => {
+    const t = fake({ states: [state({ done: 4 }), state({ status: 'cancelled', done: 4 })], items: [[item({ id: 'a' })]] });
+    show(t.api, '/import?import=imp1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel import' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Cancelled. The pages it created were moved to the trash.'));
+    expect(t.calls).toContain('POST /v1/imports/{id}/cancel');
+    expect(screen.queryByRole('button', { name: 'Cancel import' })).toBeNull();
+    expect(await screen.findByText('docs/a.md')).toBeTruthy();
+  });
+
+  it('is not offered for an import that has not started or has ended', async () => {
+    show(fake({ states: [ended()] }).api, '/import?import=imp1');
+    await screen.findByRole('status');
+    expect(screen.queryByRole('button', { name: 'Cancel import' })).toBeNull();
+  });
+
+  it('takes a 409 for an import that ended in the meantime: no alert, the state read says how', async () => {
+    const t = fake({ states: [state(), ended()], cancel: { status: 409, code: 'not_running' } });
+    show(t.api, '/import?import=imp1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel import' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Done'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says so when the cancel is refused for any other reason, and leaves the import running', async () => {
+    show(fake({ states: [state()], cancel: { status: 500 } }).api, '/import?import=imp1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The import could not be cancelled. Try again.');
+    expect(screen.getByRole('button', { name: 'Cancel import' })).toBeTruthy();
   });
 });
 

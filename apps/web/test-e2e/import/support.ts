@@ -11,6 +11,15 @@ export interface ScriptedState {
   readonly error?: string | null;
 }
 
+/** One file of the report as `GET /v1/imports/{id}/items` says it. */
+export interface ScriptedItem {
+  readonly id: string;
+  readonly path: string;
+  readonly status: 'imported' | 'skipped' | 'failed';
+  readonly message?: string;
+  readonly hasSource?: boolean;
+}
+
 export const stateOf = (s: ScriptedState) => ({
   status: s.status,
   counts: { pagesTotal: s.total ?? 0, pagesDone: s.done ?? 0, attachments: 0, skipped: s.skipped ?? 0, failed: s.failed ?? 0 },
@@ -30,8 +39,20 @@ const cors = (origin: string | undefined) => ({
  * (the last one for ever); the file store is a route that takes the PUT of the zip. What the client sent is kept, in order. When the real API is there, a specification of the stack is the same
  * without this.
  */
-export async function scriptedImports(page: Page, states: readonly ScriptedState[], options: { createStatus?: number; startStatus?: number; startCode?: string; startRefusals?: number } = {}) {
-  const sent: { creates: unknown[]; puts: { headers: Record<string, string>; bytes: number }[]; starts: number; reads: number } = { creates: [], puts: [], starts: 0, reads: 0 };
+export async function scriptedImports(
+  page: Page,
+  states: readonly ScriptedState[],
+  options: { createStatus?: number; startStatus?: number; startCode?: string; startRefusals?: number; items?: readonly ScriptedItem[] } = {},
+) {
+  const sent: { creates: unknown[]; puts: { headers: Record<string, string>; bytes: number }[]; starts: number; reads: number; cancels: number; sources: string[] } = {
+    creates: [],
+    puts: [],
+    starts: 0,
+    reads: 0,
+    cancels: 0,
+    sources: [],
+  };
+  let cancelled = false;
   await page.route(`${API}/v1/imports**`, async (route) => {
     const request = route.request();
     const origin = request.headers()['origin'];
@@ -49,10 +70,23 @@ export async function scriptedImports(page: Page, states: readonly ScriptedState
       if ((options.startStatus ?? 202) >= 400) return json(options.startStatus!, { error: { code: options.startCode ?? 'not_a_zip', message: 'No' } });
       return json(202, { status: 'running' });
     }
+    if (request.method() === 'POST' && path.endsWith('/cancel')) {
+      sent.cancels += 1;
+      cancelled = true;
+      return json(202, { status: 'cancelled' });
+    }
+    if (request.method() === 'GET' && /^\/v1\/imports\/[^/]+\/items$/.test(path)) {
+      return json(200, { items: (options.items ?? []).map((i) => ({ kind: 'page', pageId: null, markdownBytes: null, stateBytes: null, message: null, hasSource: false, ...i })), nextCursor: null });
+    }
+    const source = /^\/v1\/imports\/[^/]+\/items\/([^/]+)\/source$/.exec(path);
+    if (request.method() === 'GET' && source) {
+      sent.sources.push(source[1]!);
+      return json(200, { url: `${API}/__store/source/${source[1]!}.md`, expiresAt: '2026-11-20T11:00:00.000Z' });
+    }
     if (request.method() === 'GET' && /^\/v1\/imports\/[^/]+$/.test(path)) {
       const answer = states[Math.min(sent.reads, states.length - 1)]!;
       sent.reads += 1;
-      return json(200, stateOf(answer));
+      return json(200, stateOf(cancelled ? { ...answer, status: 'cancelled' } : answer));
     }
     return route.fallback();
   });
@@ -60,6 +94,7 @@ export async function scriptedImports(page: Page, states: readonly ScriptedState
     const request = route.request();
     const origin = request.headers()['origin'];
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(origin) });
+    if (request.method() === 'GET') return route.fulfill({ status: 200, headers: { ...cors(origin), 'content-type': 'text/markdown', 'content-disposition': 'attachment; filename="source.md"' }, body: '# the source\n' });
     // WebKit gives no body of a Blob to a route: the length is the header's.
     sent.puts.push({ headers: request.headers(), bytes: request.postDataBuffer()?.length ?? Number(request.headers()['content-length'] ?? 0) });
     return route.fulfill({ status: 200, headers: cors(origin), body: '' });

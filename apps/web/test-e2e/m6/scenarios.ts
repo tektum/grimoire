@@ -33,7 +33,7 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'search-palette', title: 'search and the palette find a page and open it (against the scripted search until the stack has the endpoint)', specs: [`${E}/search/palette.spec.ts`, `${E}/search/results.spec.ts`, `${E}/search/partial.spec.ts`, `${E}/search/passage.spec.ts`] },
   { id: 'history-restore', title: 'a restored version is seen by the second browser', specs: [`${E}/history/restore.spec.ts`] },
   { id: 'admin', title: 'the admin screens change a role, a group and the access of a collection', specs: [`${E}/admin/admin.spec.ts`] },
-  { id: 'import', title: 'the import screen takes a file into a collection', specs: [], pending: 'M6-T12a' },
+  { id: 'import', title: 'the import screen takes a file into a collection (against the scripted import until the stack has the import routes)', specs: [`${E}/import/upload.spec.ts`, `${E}/import/import.spec.ts`] },
   {
     id: 'xss',
     title: 'hostile content is shown as text or refused: links, images, raw HTML, names and titles',
