@@ -21,7 +21,7 @@ export const COLLECT = [
   ' for c in "/usr/share/doc/$p/copyright" "/usr/share/doc/$src/copyright" "$(dpkg -L "$p" 2>/dev/null | grep \'/copyright$\' | head -n 1)"; do',
   ' if [ -n "$c" ] && [ -r "$c" ]; then f=$c; break; fi; done;',
   ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -);',
-  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
+  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License,? Version [0-9.]+|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
   ' else l=-; fi;',
   " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
 ].join('');
@@ -46,7 +46,7 @@ const ALLOWED = new Set([...SHIPPED_LICENCES.map((l) => l.id), "Zlib", "Public-D
 
 /** The names in one `License:` value that stop it being permitted: `a and b` needs both, `a or b` needs one of them, and nothing is judged by its first word. */
 function refusedIn(expression) {
-  if (expression.startsWith("text:")) return expression === "text:Apache License" ? [] : [`free text: ${expression.slice(5)}`];
+  if (expression.startsWith("text:")) return /^text:Apache License,? Version 2\.0$/.test(expression) ? [] : [`free text: ${expression.slice(5)}`];
   return expression.split(/\s+and\s+/).flatMap((group) => {
     const alternatives = group.split(/\s+or\s+/).map((name) => normaliseLicence(name.trim())).filter((name) => name !== "");
     return alternatives.some((name) => ALLOWED.has(name)) ? [] : alternatives;
@@ -101,6 +101,7 @@ function composeImage(files, service) {
 
 function collect(image) {
   const r = spawnSync("docker", ["run", "--rm", "--entrypoint", "sh", image, "-c", COLLECT], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (r.error) throw new Error(`could not list the packages of ${image}: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`could not list the packages of ${image}: ${r.stderr.trim() || "docker failed"}`);
   return r.stdout;
 }

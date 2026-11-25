@@ -144,9 +144,16 @@ test("the image of a service is read from the resolved Compose JSON, and every w
 });
 
 test("a copyright file in free text is read by the licences it names, not as having none", () => {
-  const rows = evaluate(parseList(["free\t1\ttext:GNU General Public License", "apache\t1\ttext:Apache License", "none\t1\t"].join("\n")));
-  assert.deepEqual(rows.map((r) => [r.name, r.status]), [["free", "not-allowed"], ["apache", "allowed"], ["none", "unparsable"]]);
+  const rows = evaluate(parseList(["free\t1\ttext:GNU General Public License", "apache\t1\ttext:Apache License, Version 2.0", "apache1\t1\ttext:Apache License, Version 1.1", "none\t1\t"].join("\n")));
+  assert.deepEqual(rows.map((r) => [r.name, r.status]), [["free", "not-allowed"], ["apache", "allowed"], ["apache1", "not-allowed"], ["none", "unparsable"]]);
   assert.match(rows[0].detail, /free text: GNU General Public License/);
+});
+
+test("an image that cannot be run is reported by its cause, not by a TypeError (docker not on the path)", () => {
+  const r = spawnSync(process.execPath, [script, "--compare", "old-image", "new-image"], { encoding: "utf8", env: { PATH: "" } });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /could not list the packages of old-image/);
+  assert.doesNotMatch(r.stderr, /TypeError|Cannot read/);
 });
 
 test("the command says why it failed, once, when it exits 1", () => {
