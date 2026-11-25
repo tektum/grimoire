@@ -221,19 +221,38 @@ describe('the import screen', () => {
     expect(screen.queryByText('That import has already started.')).toBeNull();
   });
 
-  it('sends the file again, to the same import, when the start says it did not arrive', async () => {
-    const put = vi.fn(async () => new Response(null, { status: 200 }));
-    vi.stubGlobal('fetch', put);
-    const t = fake({ start: [{ status: 409, code: 'upload_missing' }, { status: 202 }] });
-    show(t.api);
-    await choose();
-    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('The file did not arrive. Try again.');
-    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
-    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
-    expect(put).toHaveBeenCalledTimes(2);
-    expect(t.calls.filter((c) => c === 'POST /v1/imports')).toHaveLength(1);
-  });
+  it.each([
+    ['upload_missing', 'The file did not arrive. Try again.', 1],
+    ['size_mismatch', 'The file that arrived is not the size it was said to be. Try again.', 2],
+  ])(
+    'when the start says it is %s: the file is sent again to the same import if nothing arrived, and a new import is made if something did (the address is create-only: a second PUT to it is refused)',
+    async (code, words, imports) => {
+      // The store keeps the first object: a PUT to an address that already has one is 412, as the real one answers (the address is signed with If-None-Match).
+      const taken = new Set<string>();
+      const put = vi.fn(async (url: string) => (code === 'size_mismatch' && taken.has(url) ? new Response(null, { status: 412 }) : (taken.add(url), new Response(null, { status: 200 }))));
+      vi.stubGlobal('fetch', put);
+      const t = fake({ start: [{ status: 409, code }, { status: 202 }] });
+      // A new import has an address of its own.
+      const create = (t.api as unknown as { POST: (p: string, i?: unknown) => Promise<unknown> }).POST;
+      let made = 0;
+      (t.api as unknown as { POST: (p: string, i?: unknown) => Promise<unknown> }).POST = async (path: string, init?: unknown) => {
+        if (path !== '/v1/imports') return create(path, init);
+        made += 1;
+        return {
+          data: { id: `imp${String(made)}`, upload: { method: 'PUT', url: `https://files.test/imports/imp${String(made)}.zip`, headers: {}, expiresAt: '2026-11-20T11:00:00Z' } },
+          response: new Response(null, { status: 201 }),
+        };
+      };
+      show(t.api);
+      await choose();
+      await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+      expect((await screen.findByRole('alert')).textContent).toBe(words);
+      await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+      await waitFor(() => expect(screen.getByTestId('where').textContent).toMatch(/^\/import\?import=imp/));
+      expect(put).toHaveBeenCalledTimes(2);
+      expect(made).toBe(imports);
+    },
+  );
 
   it('after a refusal of the creation, the same file tried again makes the import and goes on; after an expired upload address it makes a new one', async () => {
     vi.stubGlobal(
@@ -268,6 +287,7 @@ describe('the import screen', () => {
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
     ['not a zip', { start: { status: 422, code: 'not_a_zip' } }, 'That is not a zip file.'],
     ['a file that did not arrive', { start: { status: 409, code: 'upload_missing' } }, 'The file did not arrive. Try again.'],
+    ['a file of another size than was said', { start: { status: 409, code: 'size_mismatch' } }, 'The file that arrived is not the size it was said to be. Try again.'],
     ['a collection that cannot be written', { create: { status: 403 } }, 'You can’t import into that collection.'],
     ['a file that cannot be imported', { create: { status: 422 } }, 'That file can’t be imported.'],
     ['too many imports started', { create: { status: 429 } }, 'Too many imports were started. Try again in a while.'],

@@ -147,7 +147,8 @@ export class ZipReader {
   close(): void { this.zip.close(); }
 }
 
-const ZIP_MAGIC = [Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from([0x50, 0x4b, 0x05, 0x06])];
+/** The first four bytes of a zip: a local file header, or an end of directory record for an empty archive. */
+export const ZIP_MAGIC = [Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from([0x50, 0x4b, 0x05, 0x06])];
 
 /**
  * Stage 2 (contracts section 4): the first four bytes are `PK\x03\x04` (or `PK\x05\x06` for an empty archive), then the central directory is read through ranged `get` calls, the

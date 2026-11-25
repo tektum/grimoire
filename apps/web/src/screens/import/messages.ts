@@ -16,6 +16,7 @@ export function refusal(error: unknown): string {
   if (error.step === 'start') {
     if (error.code === 'upload_missing') return 'The file did not arrive. Try again.';
     if (error.code === 'not_a_zip') return 'That is not a zip file.';
+    if (error.code === 'size_mismatch') return 'The file that arrived is not the size it was said to be. Try again.';
   }
   return 'The import could not be started. Try again.';
 }

@@ -53,6 +53,7 @@ async function seen(res: Response, what: string): Promise<Response> {
 const codeOf = async (res: Response): Promise<string> => ((await res.clone().json()) as { error: { code: string } }).error.code;
 
 async function send(w: WorldBuilt, op: Operation, who: Who | undefined, hidden = false): Promise<Response> {
+  await w.prepareImport(op, hidden);
   const body = op.bodySchema === undefined ? undefined : exampleBody(op.bodySchema, bodyHints(w, hidden));
   return seen(await w.call(who, op.method, pathFor(op, w, hidden), body), `${op.key} as ${who ?? 'nobody'}${hidden ? ' on the hidden resource' : ''}`);
 }
@@ -81,6 +82,12 @@ function table(op: Operation): { who: Who; hidden?: boolean; outcome: Outcome; c
     }
     // The uploader's own pending upload, by the member who made it: nobody else (an administrator included) finds it, and the member does not on a page they cannot write.
     case 'uploader': return [{ who: 'member', hidden: true, outcome: 404, code: 'not_found' }, { who: 'viewer', outcome: 404, code: 'not_found' }, { who: 'admin', outcome: 404, code: 'not_found' }, { who: 'member', outcome: 'pass' }];
+    // An import is the creator's, and an administrator's of the workspace for the policy that says so: the member's own import passes for the member, the administrator's is 404 for the member
+    // (it does not exist for them), and a viewer, who cannot make one, finds neither. `creator` alone is not even the administrator's for another person's import.
+    case 'import': {
+      const who = (op.policy as { who: string }).who;
+      return [{ who: 'member', hidden: true, outcome: 404, code: 'not_found' }, { who: 'viewer', hidden: true, outcome: 404, code: 'not_found' }, { who: 'member', outcome: 'pass' }, { who: 'viewer', outcome: 404, code: 'not_found' }, who === 'creator' ? { who: 'admin', outcome: 404, code: 'not_found' } : { who: 'admin', outcome: 'pass' }, { who: 'admin', hidden: true, outcome: 'pass' }];
+    }
     default: throw new Error(`${op.key}: the walk does not know the policy ${p.kind}`);
   }
 }
