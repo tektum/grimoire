@@ -32,7 +32,7 @@ jobs:
   audit:
     name: Package audit of the database image
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ format('runs-on={0}-{1}-audit/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,7 +69,7 @@ jobs:
   pgvector-087:
     name: pgvector 0.8.7 (second image)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ format('runs-on={0}-{1}-pgv087/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -27,10 +27,8 @@ test('the Firefox and WebKit job is a matrix of exactly those two browsers, and 
 
 test('it has the runner, the condition and the pinned actions of the Chromium job', () => {
   assert.equal(line(browsers, 'if'), line(chromium, 'if'));
-  const runner = (text) => /runner=([^/']+)\/spot=([a-z]+)/.exec(line(text, 'runs-on') ?? '')?.slice(1, 3).join(' ');
-  assert.equal(runner(browsers), runner(chromium));
-  assert.equal(runner(browsers), '4cpu-linux-x64 false');
-  assert.match(line(browsers, 'runs-on') ?? '', /matrix\.browser/, 'a runner of its own for each browser');
+  assert.equal(line(browsers, 'runs-on'), line(chromium, 'runs-on'));
+  assert.equal(line(browsers, 'runs-on'), 'runs-on: ubuntu-latest');
   const uses = [...browsers.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
   assert.ok(uses.length >= 4);
   for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, `${u} is pinned to a commit`);

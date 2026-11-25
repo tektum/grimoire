@@ -1,6 +1,6 @@
-# RunsOn label convention for heavy jobs that arrive with the code (not used
-# yet: every job below is a tiny gate job on ubuntu-latest):
-#   runs-on: runs-on=${{ github.run_id }}-${{ github.run_attempt }}-<job>/runner=4cpu-linux-x64
+# Runners: every job runs on GitHub's `ubuntu-latest` (4 vCPU, 16 GB of memory, about 14 GB of free disk on this public repository). RunsOn is for a job that cannot: more memory or disk
+# than that (show the peak), another architecture, or a network the hosted runners cannot be in. Such a job says why in a comment next to its `runs-on`, and tools/ci/test/runners.test.mjs
+# refuses a RunsOn label with no reason.
 # The mise binary is pinned below (version and the sha256 of the extracted binary). Bump both by hand
 # together, and keep min_version in mise.toml at or below it; Renovate updates the tools in mise.toml and mise.lock.
 name: CI
@@ -105,7 +105,7 @@ jobs:
     name: Static checks
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-static/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,7 +131,7 @@ jobs:
     name: OpenAPI check
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-openapi/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -163,7 +163,7 @@ jobs:
     name: Unit tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-unit/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     permissions:
       id-token: write # Codecov upload by OIDC; contents stays read
       contents: read
@@ -227,7 +227,7 @@ jobs:
     name: Licence check
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-licence/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -274,7 +274,7 @@ jobs:
     name: Integration tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-integration/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     permissions:
       id-token: write # Codecov upload by OIDC; contents stays read
       contents: read
@@ -379,7 +379,7 @@ jobs:
     name: Image and stack
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-image/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -424,7 +424,7 @@ jobs:
     name: Exit test M1
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m1/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -468,7 +468,7 @@ jobs:
     name: Exit test M2
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m2/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -512,7 +512,7 @@ jobs:
     name: Exit test M3
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m3/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -555,7 +555,7 @@ jobs:
     name: Exit test M4
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m4/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -598,7 +598,7 @@ jobs:
     name: Exit test M5
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-m5/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -643,7 +643,7 @@ jobs:
     name: Web browser tests
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-web/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -688,7 +688,7 @@ jobs:
     name: Web browser tests (${{ matrix.browser }})
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-e2e-web-{2}/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt, matrix.browser) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
@@ -746,7 +746,7 @@ jobs:
     name: Semantic models
     needs: changes
     if: needs.changes.outputs.semantic == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-semantic-models/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

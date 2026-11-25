@@ -21,7 +21,7 @@ jobs:
   benchmark:
     name: Benchmarks (informational)
     if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-benchmark/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,7 +61,7 @@ jobs:
   m1-office:
     name: M1 office scenario
     if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-m1-office/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,7 +101,7 @@ jobs:
   m1-mutation:
     name: M1 limit mutations
     if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-m1-mutation/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,7 +141,7 @@ jobs:
   m2-hostile-mutation:
     name: M2 hostile-neighbour mutation proof
     if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-m2-hostile-mutation/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -181,7 +181,7 @@ jobs:
   m3-mutation:
     name: M3 mutation proofs
     if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ format('runs-on={0}-{1}-m3-mutation/runner=4cpu-linux-x64', github.run_id, github.run_attempt) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
