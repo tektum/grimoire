@@ -163,6 +163,7 @@ test("the free-text grep reads the version without the full stop that ends a sen
   assert.equal(out("Licensed under the Apache License, Version 2.0."), "Apache License, Version 2.0");
   assert.equal(out("Apache License Version 2.0 applies"), "Apache License Version 2.0");
   assert.equal(out("Apache License, Version 1.1, and"), "Apache License, Version 1.1");
+  assert.equal(out("Apache License Version 2x5"), "Apache License Version 2"); // the dot is a literal dot in the pattern grep gets
 });
 
 test("the command says why it failed, once, when it exits 1", () => {
@@ -175,6 +176,15 @@ test("the command exits 2, saying what it could not run, when Compose cannot be 
   const r = spawnSync(process.execPath, [script, "--compare", "old", "--new-from-compose", "compose.yaml", "--old-list", "/dev/null"], { encoding: "utf8", env: { PATH: "" } });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /could not run `docker compose`/);
+});
+
+test("a flag in the place of the new image, or of the Compose file, is a usage error", () => {
+  const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8", env: { PATH: "" } });
+  for (const args of [["--compare", "old", "--new-from-compose", "--service", "postgres"], ["--compare", "old", "--out", "x.md"], ["--compare", "old", "--new-from-compose"]]) {
+    const r = run(...args);
+    assert.equal(r.status, 2, args.join(" "));
+    assert.match(r.stderr, /usage:/);
+  }
 });
 
 test("the command exits 2 on a missing argument", () => {

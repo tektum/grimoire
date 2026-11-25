@@ -21,7 +21,7 @@ export const COLLECT = [
   ' for c in "/usr/share/doc/$p/copyright" "/usr/share/doc/$src/copyright" "$(dpkg -L "$p" 2>/dev/null | grep \'/copyright$\' | head -n 1)"; do',
   ' if [ -n "$c" ] && [ -r "$c" ]; then f=$c; break; fi; done;',
   ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -);',
-  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License,? Version [0-9]+(\.[0-9]+)*|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
+  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License,? Version [0-9]+(\\.[0-9]+)*|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
   ' else l=-; fi;',
   " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
 ].join('');
@@ -111,7 +111,10 @@ function main(argv) {
   const at = argv.indexOf("--compare");
   const fromCompose = opt("--new-from-compose");
   const [oldImage, positionalNew] = at === -1 ? [] : [argv[at + 1], argv[at + 2]];
-  if (!oldImage || (!positionalNew && !fromCompose) || (fromCompose && positionalNew?.startsWith("--") === false)) { console.error("usage: image-packages.mjs --compare OLD (NEW | --new-from-compose FILE[,FILE]) [--service NAME] [--out FILE] [--exceptions FILE]"); return 2; }
+  const isValue = (v) => v !== undefined && v !== "" && !v.startsWith("--");
+  // A flag in the place of a value is a usage error: `--compare OLD --out FILE` has no new image, `--new-from-compose --service X` has no Compose file.
+  const usable = isValue(oldImage) && (argv.includes("--new-from-compose") ? isValue(fromCompose) && !isValue(positionalNew) : isValue(positionalNew));
+  if (!usable) { console.error("usage: image-packages.mjs --compare OLD (NEW | --new-from-compose FILE[,FILE]) [--service NAME] [--out FILE] [--exceptions FILE]"); return 2; }
   try {
     const newImage = fromCompose ? composeImage(fromCompose.split(","), opt("--service") ?? "postgres") : positionalNew;
     const oldList = parseList(opt("--old-list") ? readFileSync(opt("--old-list"), "utf8") : collect(oldImage));
