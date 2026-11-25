@@ -2,6 +2,7 @@ import { markdownProfile } from '../markdown-profile.js';
 import type { ImportProfile } from '../profile.js';
 import { convertConstructs } from './constructs.js';
 import { resolveNotionLink } from './links.js';
+import { csvToMarkdownTable } from './table.js';
 import { idOf, splitName, titleOf } from './names.js';
 
 /** A path without `.` and empty segments, as the engine and `resolveLinkPath` read it. */
@@ -46,7 +47,17 @@ function pagesNamed(lowerPaths: ReadonlySet<string>): ReadonlyMap<string, number
  */
 export const notionProfile: ImportProfile = {
   source: 'notion_md_csv',
-  classify: markdownProfile.classify,
+  /**
+   * A page file is a page; a database's CSV is the database (`database_csv`, decision 112: it becomes a page holding its table): `X <id>_all.csv`, or `X <id>.csv` when the export has
+   * no `_all.csv` of it (contracts section 4: the `_all` one is preferred; a real export has only that one). Everything else is a file a page may use.
+   */
+  classify(entry, lowerPaths) {
+    const kind = markdownProfile.classify(entry);
+    if (kind !== 'attachment' || !/\.csv$/i.test(entry.path) || idOf(entry.path) === undefined) return kind;
+    if (/_all\.csv$/i.test(entry.path)) return 'database_csv';
+    const all = segmentsOf(entry.path).join('/').replace(/\.csv$/i, '_all.csv').normalize('NFC').toLowerCase();
+    return lowerPaths?.has(all) === true ? 'attachment' : 'database_csv';
+  },
   titleOf,
   /** A page goes under the folder it sits in; which page stands for that folder is `folderPathOf`'s answer. */
   parentPathOf(path) {
@@ -76,4 +87,5 @@ export const notionProfile: ImportProfile = {
   preprocess: (markdown, ctx) => convertConstructs(markdownProfile.preprocess(markdown, ctx)),
   resolveLink: resolveNotionLink,
   idOf,
+  csvToMarkdown: csvToMarkdownTable,
 };

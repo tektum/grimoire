@@ -192,6 +192,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'a-pending-database-item-gets-its-page-id-and-url-id-too-it-becomes-a-page',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'Tasks 0123456789abcdef0123456789abcdef_all.csv', kind: 'database_csv' }, { path: 'Notes.csv', kind: 'attachment' }]);
+      const [database] = await h.repo.pending(h.tenantId, made.id, 'database_csv', 10);
+      assert.ok(typeof database?.pageId === 'string' && database.pageId !== '' && typeof database.urlId === 'string' && database.urlId !== '', 'a database item has the ids of the page it becomes');
+      const [file] = await h.repo.pending(h.tenantId, made.id, 'attachment', 10);
+      assert.deepEqual([file?.pageId, file?.urlId], [null, null]);
+    },
+  },
+  {
     name: 'an-item-can-be-added-already-skipped-or-failed',
     async run(h) {
       const made = await h.seed('running');

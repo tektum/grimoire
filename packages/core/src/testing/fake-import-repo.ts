@@ -55,7 +55,8 @@ export class FakeImportRepo implements ImportRepo {
       if (this.stored.some((s) => s.importId === importId && s.item.path === path)) continue;
       const id = String(this.next++);
       const pending = item.status === undefined;
-      const ids = pending && item.kind === 'page' ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
+      // A page, and a database that becomes one, gets its ids as it is added.
+      const ids = pending && (item.kind === 'page' || item.kind === 'database_csv') ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
       this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} } });
       added += 1;
     }

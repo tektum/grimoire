@@ -13,6 +13,7 @@ import { normalizePage } from './normalize.js';
 import { createRemoteBudget } from './remote-images/index.js';
 import type { RemoteImageFetcher } from './remote-images/index.js';
 import { buildLinkIndex } from './link-index.js';
+import { readCsv } from './notion/table.js';
 import type { ImportProfile, IndexedItem } from './profile.js';
 import { stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
@@ -82,9 +83,9 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     if (duplicates.has(at)) { rows.push({ path: free(e.path, e.index), kind: 'other', status: 'skipped', message: 'duplicate_path' }); return; }
     if (isIgnoredEntry(e.path, e.isDirectory)) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'ignored' }); return; }
     if (/\.zip$/i.test(e.path) && !options.allowNestedZips) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'nested_archive' }); return; }
-    const kind = profile.classify({ path: e.path });
+    const kind = profile.classify({ path: e.path }, lowerPaths);
     rows.push({ path: e.path, kind });
-    if (kind === 'page') pagePaths.push(e.path);
+    if (kind === 'page' || kind === 'database_csv') pagePaths.push(e.path);
   });
 
   // What pass one kept, not the raw entries: a zip it set apart (macOS litter, a bad name, a duplicate) says nothing about the archive.
@@ -136,7 +137,8 @@ export interface PassTwoDeps {
   readonly remote?: { readonly fetcher: RemoteImageFetcher | undefined; readonly config: ImportConfig['remote'] };
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
-  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number };
+  /** `maxTableBytes`: the largest Markdown table a database becomes (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES`, the contract's default when absent). */
+  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number };
   readonly pageLimits: TenantPageLimits;
   readonly now: () => number;
 }
@@ -161,6 +163,25 @@ const DEFAULT_BATCH_PAGES = 25;
 const DEFAULT_BATCH_BYTES = 8 * 1024 * 1024;
 const MAX_TITLE = 255;
 const decoder = new TextDecoder('utf-8', { fatal: true });
+
+/** The contract's largest table (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES` default) and most rows of a database's table (M7 contracts section 4). */
+const MAX_TABLE_BYTES = 262_144;
+const MAX_TABLE_ROWS = 1000;
+/** The largest record of a database's CSV (contracts section 4: `max_record_size` 1 MiB). */
+const MAX_CSV_RECORD_BYTES = 1_048_576;
+
+/**
+ * A database's CSV as the Markdown table its page holds (decision 112: a source database is a plain table on a page), or why it cannot be: the CSV cannot be read (`csv_malformed`,
+ * `csv_field_too_large`, `invalid_encoding`), or the table is over the caps (`table_too_large`: more than 1,000 rows, or more Markdown than `maxTableBytes` or the seed cap, the lower).
+ */
+function databaseTable(bytes: Buffer, profile: ImportProfile, maxTableBytes: number): { readonly ok: true; readonly markdown: string } | { readonly ok: false; readonly reason: string } {
+  if (profile.csvToMarkdown === undefined) return { ok: false, reason: 'internal' };
+  const csv = readCsv(bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES });
+  if (!csv.ok) return { ok: false, reason: csv.reason };
+  if (csv.rows.length - 1 > MAX_TABLE_ROWS) return { ok: false, reason: 'table_too_large' };
+  const markdown = profile.csvToMarkdown(csv.rows);
+  return Buffer.byteLength(markdown) > maxTableBytes ? { ok: false, reason: 'table_too_large' } : { ok: true, markdown };
+}
 const segmentsOf = (path: string): string[] => path.split('/').filter((s) => s !== '' && s !== '.');
 const folderKey = (folder: string): string => segmentsOf(folder).join('/').normalize('NFC').toLowerCase();
 
@@ -198,12 +219,13 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     after = batch.at(-1)?.id;
   }
   const status = new Map(all.map((i) => [i.id, i.status]));
-  const pageItems = all.filter((i) => i.kind === 'page');
+  // A database becomes a page (its table): it is written in the tree like one.
+  const pageItems = all.filter((i) => i.kind === 'page' || i.kind === 'database_csv');
   const isContainer = (i: ImportItem): boolean => i.path.endsWith('/');
 
   // The link index: files of the archive by their canonical path (NFC, `.` and empty segments dropped), as `resolveLinkPath` makes its targets.
   const index = buildLinkIndex(
-    all.filter((i) => (i.kind === 'page' || i.kind === 'attachment') && !isContainer(i)).map((i): IndexedItem => ({ itemId: i.id, path: i.path, kind: i.kind === 'page' ? 'page' : 'attachment' })),
+    all.filter((i) => (i.kind === 'page' || i.kind === 'database_csv' || i.kind === 'attachment') && !isContainer(i)).map((i): IndexedItem => ({ itemId: i.id, path: i.path, kind: i.kind === 'attachment' ? 'attachment' : 'page' })),
     profile.idOf?.bind(profile),
   );
   const itemById = new Map(all.map((i) => [i.id, i]));
@@ -242,7 +264,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     let pagesDone = 0, attachments = 0, skipped = 0, failed = 0;
     for (const i of all) {
       const s = status.get(i.id);
-      if (s === 'ok' && i.kind === 'page') pagesDone++;
+      if (s === 'ok' && (i.kind === 'page' || i.kind === 'database_csv')) pagesDone++;
       else if (s === 'ok' && i.kind === 'attachment') attachments++;
       else if (s === 'skipped') skipped++;
       else if (s === 'failed') failed++;
@@ -288,12 +310,21 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     } else {
       const entry = entryByPath.get(item.path);
       if (entry === undefined) { await settle(item, 'failed', 'missing_entry'); return { bytes: 0 }; }
-      const read = await readEntry(deps.reader, deps.limits, entry, deps.limits.seedMaxMarkdownBytes);
+      const database = item.kind === 'database_csv';
+      // A database's CSV is read whole (its rows decide the table); a page's Markdown up to the seed cap.
+      const read = await readEntry(deps.reader, deps.limits, entry, database ? deps.limits.maxEntryBytes : deps.limits.seedMaxMarkdownBytes);
       if (read.kind === 'too_large') { await settle(item, 'skipped', 'too_large', { markdownBytes: entry.size }); return { bytes: 0 }; }
       if (read.kind === 'failed') { await settle(item, 'failed', read.reason); return { bytes: 0 }; }
       original = read.bytes;
-      try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
-      markdown = profile.preprocess(titleSource, { path: item.path });
+      if (database) {
+        // The table is seeded like any page, so the seed cap bounds it too (decision 10: the engine checks the cap, the converter never refuses it).
+        const table = databaseTable(read.bytes, profile, Math.min(deps.limits.maxTableBytes ?? MAX_TABLE_BYTES, deps.limits.seedMaxMarkdownBytes));
+        if (!table.ok) { await settle(item, 'failed', table.reason); return { bytes: read.bytes.length }; }
+        markdown = table.markdown;
+      } else {
+        try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
+        markdown = profile.preprocess(titleSource, { path: item.path });
+      }
       name = profile.titleOf(item.path, titleSource);
     }
     const { title, cut } = cutTitle(name);

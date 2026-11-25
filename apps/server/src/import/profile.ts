@@ -21,7 +21,8 @@ export interface Target { readonly kind: 'page' | 'attachment'; readonly itemId:
  */
 export interface ImportProfile {
   readonly source: 'markdown_zip' | 'notion_md_csv';
-  classify(entry: { readonly path: string }): ImportItemKind;
+  /** What an entry is; `lowerPaths` as for `parentPathOf` (a profile whose answer depends on the other entries reads it). */
+  classify(entry: { readonly path: string }, lowerPaths?: ReadonlySet<string>): ImportItemKind;
   titleOf(path: string, markdown: string): string;
   /**
    * The path of the folder (or page) this page goes under, or null at the top. `lowerPaths` is every path of the archive, canonical (`.` and empty segments dropped) and lower-cased: a profile whose answer depends on the

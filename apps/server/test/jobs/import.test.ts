@@ -228,6 +228,55 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(plain.repo.written[0]?.page.content.markdown).toContain('<aside>');
   });
 
+  describe('a database of an export of Notion (decision 112: a source database is a plain table on a page)', () => {
+    const csv = (name: string, text: string) => ({ name, data: Buffer.from(text) });
+
+    it('its _all.csv becomes one page holding its table, titled with its name, and a link to it opens that page', async () => {
+      const t = await setup([md(`Home ${ID1}.md\u0000# Home\n\n[tasks](Tasks%20${ID2}.csv)\n`), csv(`Tasks ${ID2}_all.csv`, 'Name,Done\nWrite,Yes\nRead,No\n')], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const items = await t.items();
+      const database = items.find((i) => i.path === `Tasks ${ID2}_all.csv`);
+      expect(database).toMatchObject({ kind: 'database_csv', status: 'ok' });
+      expect(t.repo.written.find((w) => w.page.title === 'Tasks')?.page.content.markdown).toBe('| Name | Done |\n| --- | --- |\n| Write | Yes |\n| Read | No |\n');
+      expect(items.find((i) => i.path === `Home ${ID1}.md`)).toMatchObject({ status: 'ok', warnings: 0 });
+      expect(t.repo.written.find((w) => w.page.title === 'Home')?.page.content.markdown).toContain(`/p/${database?.urlId ?? 'none'}`);
+      expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesTotal: 2, pagesDone: 2 } });
+    });
+
+    it('a CSV that cannot be read, and a table over 1,000 rows, are failed database items with their reason, and the import goes on', async () => {
+      const ID3 = '00112233445566778899aabbccddeeff';
+      const rows = Array.from({ length: 1001 }, (_v, i) => `r${String(i)},x`).join('\n');
+      const t = await setup([md(`Home ${ID1}.md\u0000# Home\n`), csv(`Broken ${ID2}_all.csv`, 'a,"b\nc,d\n'), csv(`Big ${ID3}_all.csv`, `Name,Value\n${rows}\n`)], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const items = await t.items();
+      expect(items.find((i) => i.path === `Broken ${ID2}_all.csv`)).toMatchObject({ status: 'failed', message: 'csv_malformed' });
+      expect(items.find((i) => i.path === `Big ${ID3}_all.csv`)).toMatchObject({ status: 'failed', message: 'table_too_large' });
+      expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 1, failed: 2 } });
+    });
+
+    it('a table whose Markdown is over the seed cap, though not over the table cap, is a failed database item table_too_large (the engine checks the cap before the converter)', async () => {
+      const rows = Array.from({ length: 600 }, (_v, i) => `row ${String(i)},${'x'.repeat(240)}`).join('\n');
+      const t = await setup([csv(`Wide ${ID2}_all.csv`, `Name,Value\n${rows}\n`)], { source: 'notion_md_csv', files: true });
+      await t.run();
+      expect((await t.items()).find((i) => i.path === `Wide ${ID2}_all.csv`)).toMatchObject({ status: 'failed', message: 'table_too_large' });
+      expect(t.repo.written).toEqual([]);
+    });
+
+    it('the plain CSV beside its _all.csv is not a second database: it is a file', async () => {
+      const t = await setup([csv(`Tasks ${ID2}_all.csv`, 'Name\nWrite\n'), csv(`Tasks ${ID2}.csv`, 'Name\nWrite\n')], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const items = await t.items();
+      expect(items.find((i) => i.path === `Tasks ${ID2}_all.csv`)?.kind).toBe('database_csv');
+      expect(items.find((i) => i.path === `Tasks ${ID2}.csv`)?.kind).toBe('attachment');
+    });
+
+    it('a plain Markdown zip keeps a CSV a file, as before', async () => {
+      const t = await setup([csv(`Tasks ${ID2}_all.csv`, 'Name\nWrite\n')], { files: true });
+      await t.run();
+      expect((await t.items()).find((i) => i.path === `Tasks ${ID2}_all.csv`)?.kind).toBe('attachment');
+    });
+  });
+
   it('the same archive as a plain Markdown zip (markdown_zip, the default): titles from the first heading, and the folder is an empty page of its own', async () => {
     const t = await setup(exported);
     await t.run();
@@ -368,4 +417,5 @@ describe('a failure of the job', () => {
     expect(cleanup(t)).toHaveLength(1);
   });
 });
+
 
