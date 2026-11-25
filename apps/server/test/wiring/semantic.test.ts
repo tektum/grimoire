@@ -6,11 +6,13 @@ import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
 import { registerJobs } from '../../src/jobs/index.js';
 import { FakeEmbedder } from '@tektum/grimoire-core/testing/fake-embedder';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 import { fakeJobDeps } from '../jobs/deps.js';
 
 // M7-T11: the semantic search is built in the roles `api` and `all` when it is on, and in no other; the two embedding jobs are registered with it.
 const base = {
   GRIMOIRE_DATABASE_URL: `postgresql://grimoire_app:${randomBytes(12).toString('hex')}@127.0.0.1:1/grimoire`,
+  GRIMOIRE_DATABASE_OPS_URL: placeholderDatabaseUrl('127.0.0.1:1'),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DEV_TOKEN_SECRET: randomBytes(24).toString('hex'),
   GRIMOIRE_LOCAL: '1',
