@@ -155,4 +155,17 @@ export interface ImportRepo {
   listItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;
   /** `running` or `uploaded` (accepted and waiting for its turn) becomes `cancelled` (`finishedAt` set) and the row is returned; any other status is left as it is and nothing is returned. */
   cancel(tenantId: string, id: string, now: number): Promise<ImportRecord | undefined>;
+  // What the jobs of M7-T05 use. They walk the tenants one by one (the tenant list is the operator's), so every call here names its tenant like the rest.
+  /** The ids of the tenant's imports in `running` (a tenant has at most one): the sweep asks the queue whether each still has a live job. */
+  running(tenantId: string): Promise<readonly string[]>;
+  /** The ids of the imports still `created` or `uploaded` that were created at or before `createdBefore` (milliseconds), oldest first, at most `limit`: uploads that were never finished. */
+  stale(tenantId: string, createdBefore: number, limit: number): Promise<readonly string[]>;
+  /** `created` or `uploaded` becomes `failed` with the error `abandoned` (`finishedAt` set); false, and nothing changed, for any other status, so it is safe to repeat. */
+  abandon(tenantId: string, id: string, now: number): Promise<boolean>;
+  /**
+   * Moves the pages the import created to the trash, as deleting a page does: every live page of an `ok` page item, with its live descendants (a page a person added under an imported one goes with
+   * it, so one restore brings them back together), each subtree in a batch of its own named by its root's id (as a page delete does: one restore checks what it must), deleted by the importer.
+   * Pages already in the trash are left as they are, so a second call finds nothing (`pages: 0`, `batches: []`). `undefined` when the tenant has no such import. The status is not looked at: the job that calls it decides.
+   */
+  trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined>;
 }

@@ -193,5 +193,48 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       );
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
+    async running(tenantId) {
+      const rows = await db.query<{ id: string }>(`select id from imports where tenant_id = $1 and status = 'running' order by id`, [tenantId]);
+      return rows.map((r) => r.id);
+    },
+    async stale(tenantId, createdBefore, limit) {
+      const rows = await db.query<{ id: string }>(
+        `select id from imports where tenant_id = $1 and status in ('created', 'uploaded') and created_at <= to_timestamp($2::double precision / 1000.0)
+         order by created_at, id limit $3`,
+        [tenantId, createdBefore, limit],
+      );
+      return rows.map((r) => r.id);
+    },
+    async abandon(tenantId, id, now) {
+      const rows = await db.query(
+        `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
+         where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`,
+        [tenantId, id, now],
+      );
+      return rows.length === 1;
+    },
+    async trashImported(tenantId, id) {
+      const found = await db.query<{ created_by: string | null }>(`select created_by from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
+      if (found[0] === undefined) return undefined;
+      return scoped(db, tenantId).transaction(async (tx) => {
+        // The live pages the import's `ok` page items name, and below them every live page (one a person added under an imported page too). Each subtree is deleted under its own root's id as the batch, as a
+        // page delete does, so a restore of one root checks what it must (a batch with several roots would bring the others back unchecked). A page under another imported page belongs to that page's subtree.
+        const seeds = `select p.id, p.collection_id from pages p where p.tenant_id = $1 and p.deleted_at is null
+          and p.id in (select page_id from import_items where tenant_id = $1 and import_id = $2 and kind = 'page' and status = 'ok' and page_id is not null)`;
+        // The collections first, in id order, as create, move and a page delete take them: a create under an imported page cannot commit between this read of the tree and the delete.
+        await tx.query(`select 1 from collections where id in (select collection_id from (${seeds}) s) order by id for no key update`, [tenantId, id]);
+        const moved = await tx.query<{ id: string; root: string }>(
+          `with recursive down as (
+             select s.id, s.id as root, 0 as depth from (${seeds}) s
+             union all
+             select c.id, down.root, down.depth + 1 from pages c join down on c.parent_id = down.id where c.tenant_id = $1 and c.deleted_at is null),
+           owned as (select distinct on (id) id, root from down order by id, depth desc)
+           update pages set deleted_at = now(), deleted_by = $3, deleted_batch = owned.root
+             from owned where pages.id = owned.id and pages.tenant_id = $1 and pages.deleted_at is null returning pages.id, owned.root`,
+          [tenantId, id, found[0]?.created_by ?? null],
+        );
+        return { batches: [...new Set(moved.map((r) => r.root))], pages: moved.length };
+      });
+    },
   };
 }

@@ -9,7 +9,8 @@ export interface ImportRepoHarness {
   readonly otherTenantId: string;
   /** A user that exists, as the importer of a written page. */
   readonly userId: string;
-  seed(status: ImportStatus): Promise<ImportRecord>;
+  /** `createdAt` (milliseconds) is when the row was made: now when absent. */
+  seed(status: ImportStatus, createdAt?: number): Promise<ImportRecord>;
   /** Sets the status of a seeded import (a cancel, which the routes of M7-T05 own). */
   seedStatus(id: string, status: ImportStatus): Promise<void>;
   readonly now: number;
@@ -378,6 +379,105 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.equal(withdrawn?.status, 'cancelled');
       assert.equal(withdrawn?.finishedAt, h.now + 3);
       assert.equal(await h.repo.start(h.tenantId, waiting.id, h.now), undefined, 'a cancelled import is not started');
+    },
+  },
+  {
+    name: 'running-lists-the-running-import-of-the-tenant-only',
+    async run(h) {
+      assert.deepEqual(await h.repo.running(h.tenantId), []);
+      await h.seed('uploaded');
+      await h.seed('done');
+      const made = await h.seed('running');
+      assert.deepEqual(await h.repo.running(h.tenantId), [made.id]);
+      assert.deepEqual(await h.repo.running(h.otherTenantId), []);
+      await h.seedStatus(made.id, 'failed');
+      assert.deepEqual(await h.repo.running(h.tenantId), []);
+    },
+  },
+  {
+    name: 'stale-lists-unfinished-uploads-created-at-or-before-the-cutoff-oldest-first',
+    async run(h) {
+      const hour = 3_600_000;
+      const newer = await h.seed('uploaded', h.now - 25 * hour);
+      const older = await h.seed('created', h.now - 30 * hour);
+      await h.seed('uploaded', h.now - 2 * hour); // too young
+      await h.seed('done', h.now - 99 * hour); // not an unfinished upload
+      await h.seed('failed', h.now - 99 * hour);
+      await h.seed('cancelled', h.now - 99 * hour);
+      const cutoff = h.now - 24 * hour;
+      assert.deepEqual(await h.repo.stale(h.tenantId, cutoff, 10), [older.id, newer.id]);
+      assert.deepEqual(await h.repo.stale(h.tenantId, cutoff, 1), [older.id]);
+      assert.deepEqual(await h.repo.stale(h.tenantId, h.now - 30 * hour - 1, 10), [], 'the cutoff is inclusive of nothing older than itself');
+      assert.deepEqual(await h.repo.stale(h.otherTenantId, cutoff, 10), []);
+    },
+  },
+  {
+    name: 'abandon-fails-an-unfinished-upload-once-and-leaves-any-other-status-alone',
+    async run(h) {
+      for (const status of ['created', 'uploaded'] as const) {
+        const made = await h.seed(status);
+        assert.equal(await h.repo.abandon(h.tenantId, made.id, h.now + 7), true, status);
+        const row = await h.repo.get(h.tenantId, made.id);
+        assert.deepEqual([row?.status, row?.error, row?.finishedAt], ['failed', 'abandoned', h.now + 7], status);
+        assert.equal(await h.repo.abandon(h.tenantId, made.id, h.now + 99), false, 'a second call changes nothing');
+        assert.equal((await h.repo.get(h.tenantId, made.id))?.finishedAt, h.now + 7);
+      }
+      const mine = await h.seed('created');
+      assert.equal(await h.repo.abandon(h.otherTenantId, mine.id, h.now), false, 'another tenant cannot');
+      assert.equal((await h.repo.get(h.tenantId, mine.id))?.status, 'created');
+      for (const status of ['running', 'done', 'cancelled', 'failed'] as const) {
+        const made = await h.seed(status);
+        assert.equal(await h.repo.abandon(h.tenantId, made.id, h.now), false, status);
+        assert.equal((await h.repo.get(h.tenantId, made.id))?.status, status);
+      }
+    },
+  },
+  {
+    name: 'trash-imported-moves-the-pages-of-ok-page-items-once',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [...pages('a.md', 'b.md', 'c.md', 'd.md'), { path: 'img.png', kind: 'attachment' as const }]);
+      const items = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.equal(items.length, 4);
+      for (const item of items.slice(0, 2)) assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId }), limits, h.now)).kind, 'ok');
+      await h.repo.settle(h.tenantId, made.id, items[2]!.id, { status: 'failed', message: 'too big' });
+      await h.repo.settle(h.tenantId, made.id, items[3]!.id, { status: 'skipped', message: 'ignored' });
+      await h.seedStatus(made.id, 'cancelled');
+      const first = await h.repo.trashImported(h.tenantId, made.id);
+      assert.equal(first?.pages, 2, 'the two written pages; a failed or skipped item has none');
+      assert.equal(first?.batches.length, 2, 'each imported root is a batch of its own');
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'a second call finds nothing left to move');
+    },
+  },
+  {
+    name: 'trash-imported-finds-only-the-import-of-the-tenant',
+    async run(h) {
+      const made = await h.seed('cancelled');
+      assert.equal(await h.repo.trashImported(h.otherTenantId, made.id), undefined);
+      assert.equal(await h.repo.trashImported(h.tenantId, '00000000-0000-4000-8000-000000000000'), undefined);
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'an import with no pages is found, and has nothing to move');
+    },
+  },
+  {
+    name: 'trash-imported-names-one-batch-for-each-outermost-imported-page',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'a/b.md', 'a/b/c.md', 'z.md'));
+      const items = new Map((await h.repo.pending(h.tenantId, made.id, 'page', 10)).map((i) => [i.path, i]));
+      const write = async (path: string, parentId: string | null) => {
+        const item = items.get(path)!;
+        const out = await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId, parentId }), limits, h.now);
+        assert.equal(out.kind, 'ok', path);
+        return out.kind === 'ok' ? out.pageId : '';
+      };
+      const a = await write('a.md', null);
+      const b = await write('a/b.md', a);
+      await write('a/b/c.md', b);
+      const z = await write('z.md', null);
+      await h.seedStatus(made.id, 'failed');
+      const moved = await h.repo.trashImported(h.tenantId, made.id);
+      assert.equal(moved?.pages, 4);
+      assert.deepEqual([...(moved?.batches ?? [])].sort(), [a, z].sort(), 'a page under another imported page is in the subtree of its outermost imported ancestor');
     },
   },
 ];

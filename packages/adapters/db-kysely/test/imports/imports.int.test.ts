@@ -22,9 +22,10 @@ afterAll(async () => { await t?.drop(); });
 // The runtime role may not delete (migration 0005 grants select, insert and update), so the schema owner's connection clears them; the items go with their import.
 beforeEach(async () => { await t.admin.query(`delete from imports where tenant_id = 'legacy'`); });
 
-const seed = async (status: string): Promise<{ id: string }> => {
+const seed = async (status: string, createdAt?: number): Promise<{ id: string }> => {
   const rows = await t.app.query<{ id: string }>(
-    `insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', $2, $3) returning id`, [collectionId, status, userId],
+    `insert into imports (tenant_id, target_collection_id, source, status, created_by, created_at)
+     values ('legacy', $1, 'markdown_zip', $2, $3, coalesce(to_timestamp($4::double precision / 1000.0), now())) returning id`, [collectionId, status, userId, createdAt ?? null],
   );
   return rows[0] as { id: string };
 };
@@ -35,8 +36,8 @@ describe('the PostgreSQL ImportRepo meets the conformance cases', () => {
       await c.run({
         repo: createImportRepo(t.app), tenantId: 'legacy', otherTenantId: 'other', userId, now: NOW, collectionId,
         seedStatus: async (id, status) => { await t.app.query('update imports set status = $2 where id = $1', [id, status]); },
-        seed: async (status) => {
-          const made = await seed(status);
+        seed: async (status, createdAt) => {
+          const made = await seed(status, createdAt);
           const row = await createImportRepo(t.app).get('legacy', made.id);
           if (row === undefined) throw new Error('the seeded import is missing');
           return row;

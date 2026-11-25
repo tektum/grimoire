@@ -10,9 +10,12 @@ export class FakeImportRepo implements ImportRepo {
   private readonly rows: ImportRecord[] = [];
   private readonly stored: Stored[] = [];
   private next = 1;
+  private readonly createdAt = new Map<string, number>();
+  private readonly trashed = new Set<string>();
 
-  seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy' | 'bytes' | 's3Key'> & Partial<ImportRecord>): ImportRecord {
+  seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy' | 'bytes' | 's3Key'> & Partial<ImportRecord>, createdAt?: number): ImportRecord {
     const full: ImportRecord = { bytes: null, s3Key: null, source: 'markdown_zip', targetCollectionId: 'c', createdBy: null, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, ...row };
+    if (createdAt !== undefined) this.createdAt.set(full.id, createdAt);
     const at = this.find(full.tenantId, full.id);
     if (at === -1) this.rows.push(full);
     else this.rows[at] = full;
@@ -150,5 +153,38 @@ export class FakeImportRepo implements ImportRepo {
     const status = this.rows[at]?.status;
     if (status !== 'running' && status !== 'uploaded') return Promise.resolve(undefined);
     return Promise.resolve(this.replace(at, { status: 'cancelled', finishedAt: now }));
+  }
+
+  running(tenantId: string): Promise<readonly string[]> {
+    return Promise.resolve(this.rows.filter((r) => r.tenantId === tenantId && r.status === 'running').map((r) => r.id));
+  }
+
+  stale(tenantId: string, createdBefore: number, limit: number): Promise<readonly string[]> {
+    const old = this.rows
+      .filter((r) => r.tenantId === tenantId && (r.status === 'created' || r.status === 'uploaded') && (this.createdAt.get(r.id) ?? Number.MAX_SAFE_INTEGER) <= createdBefore)
+      .sort((a, b) => (this.createdAt.get(a.id) as number) - (this.createdAt.get(b.id) as number));
+    return Promise.resolve(old.slice(0, limit).map((r) => r.id));
+  }
+
+  abandon(tenantId: string, id: string, now: number): Promise<boolean> {
+    const at = this.find(tenantId, id);
+    const status = this.rows[at]?.status;
+    if (status !== 'created' && status !== 'uploaded') return Promise.resolve(false);
+    this.replace(at, { status: 'failed', error: 'abandoned', finishedAt: now });
+    return Promise.resolve(true);
+  }
+
+  /** The fake keeps the parent of each page it wrote: a page under another page of the import is part of that page's subtree, so the batches are the outermost roots, as in the database. A page a person added has nowhere to be here (the database case checks those). */
+  trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined> {
+    if (this.find(tenantId, id) === -1) return Promise.resolve(undefined);
+    const live = this.stored.filter((s) => s.tenantId === tenantId && s.importId === id && s.item.kind === 'page' && s.item.status === 'ok' && s.item.pageId !== null && !this.trashed.has(s.item.pageId));
+    const ids = new Set(live.map((s) => s.item.pageId as string));
+    const parentOf = new Map(this.written.filter((w) => w.tenantId === tenantId && w.importId === id).map((w) => [this.stored.find((s) => s.tenantId === tenantId && s.importId === id && s.item.id === w.page.itemId)?.item.pageId ?? '', w.page.parentId]));
+    const underAnother = (pageId: string): boolean => {
+      for (let parent = parentOf.get(pageId) ?? null; parent !== null; parent = parentOf.get(parent) ?? null) if (ids.has(parent)) return true;
+      return false;
+    };
+    for (const pageId of ids) this.trashed.add(pageId);
+    return Promise.resolve({ batches: [...ids].filter((pageId) => !underAnother(pageId)), pages: ids.size });
   }
 }
