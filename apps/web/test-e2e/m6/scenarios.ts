@@ -30,10 +30,18 @@ export const SCENARIOS: readonly Scenario[] = [
     specs: [`${E}/status/messages.spec.ts`, `${E}/editor/signal-rows.spec.ts`, `${E}/editor/connection-signals.spec.ts`],
   },
   { id: 'images', title: 'an image pasted into a page is uploaded, and an expired image address is refreshed', specs: [`${E}/attachments/upload-flow.spec.ts`, `${E}/attachments/url-refresh.spec.ts`] },
-  { id: 'search-palette', title: 'search and the palette find a page and open it (against the scripted search until the stack has the endpoint)', specs: [`${E}/search/palette.spec.ts`, `${E}/search/results.spec.ts`, `${E}/search/partial.spec.ts`, `${E}/search/passage.spec.ts`] },
+  {
+    id: 'search-palette',
+    title: 'search and the palette find a page and open it (against the real search of the stack; scripted answers only for what the stack cannot give: a passage by meaning, a page too long to be searched whole)',
+    specs: [`${E}/search/stack.spec.ts`, `${E}/search/palette.spec.ts`, `${E}/search/results.spec.ts`, `${E}/search/partial.spec.ts`, `${E}/search/passage.spec.ts`],
+  },
   { id: 'history-restore', title: 'a restored version is seen by the second browser', specs: [`${E}/history/restore.spec.ts`] },
   { id: 'admin', title: 'the admin screens change a role, a group and the access of a collection', specs: [`${E}/admin/admin.spec.ts`] },
-  { id: 'import', title: 'the import screen takes a file into a collection (against the scripted import until the stack has the import routes)', specs: [`${E}/import/upload.spec.ts`, `${E}/import/import.spec.ts`] },
+  {
+    id: 'import',
+    title: 'the import screen takes a file into a collection (the real routes and file store of the stack accept it and hold it; what an import does once it runs is scripted until the engine is in)',
+    specs: [`${E}/import/stack.spec.ts`, `${E}/import/upload.spec.ts`, `${E}/import/import.spec.ts`],
+  },
   {
     id: 'xss',
     title: 'hostile content is shown as text or refused: links, images, raw HTML, names and titles',
