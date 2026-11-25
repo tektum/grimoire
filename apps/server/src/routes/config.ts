@@ -12,6 +12,7 @@ export const ClientConfigSchema = z
     fileStoreOrigin: z.string().nullable().describe('Public origin of the file store; null when no store is configured'),
     maxAttachmentBytes: z.number().int().nullable().describe('The largest upload the server accepts, in bytes; null when no store is configured'),
     pendingUploadsMax: z.number().int().nullable().describe('How many unfinished uploads one person may have at once; null when no store is configured'),
+    maxMarkdownBytes: z.number().int().describe('The largest Markdown of one page, in bytes (the configured seed cap): a page over it is refused, and the import report names it for a page it skipped'),
   })
   .openapi('ClientConfig');
 
@@ -52,6 +53,7 @@ router.openapi(getConfig, (c) => {
       fileStoreOrigin: config.files?.publicOrigin ?? null,
       maxAttachmentBytes: config.files?.maxBytes ?? null,
       pendingUploadsMax: config.files?.pendingMaxPerUser ?? null,
+      maxMarkdownBytes: config.collab.seedMaxMarkdownBytes,
     },
     200,
   );
