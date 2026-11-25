@@ -1,6 +1,6 @@
 # Search latency over 10,000 pages (R9.10)
 
-Measured by `packages/adapters/db-kysely/test/search/latency.int.test.ts`, in the Integration job of this pull request's CI run (a shared runner of the project's CI, PostgreSQL 17 with the pgvector image of the Compose stack, run 45552114341). The figures are what that job printed; they are not from a developer machine, and a loaded runner can be slower.
+Measured by `packages/adapters/db-kysely/test/search/latency.int.test.ts`, in the Integration job of this pull request's CI run (a shared runner of the project's CI, PostgreSQL 17 with the pgvector image of the Compose stack, run 45568768871, on the head whose test also guarantees a hit for every search). The figures are what that job printed; they are not from a developer machine, and a loaded runner can be slower.
 
 ## What was measured
 
@@ -12,11 +12,11 @@ Measured by `packages/adapters/db-kysely/test/search/latency.int.test.ts`, in th
 
 | Who asks | Collections readable | Median | Worst of 7 | Limit |
 |---|---|---|---|---|
-| a person in the big tenant who reads every collection | 100 of 100 | 72 ms | 81 ms | 1,000 ms (R9.10) |
-| a person in the big tenant who reads one collection in a hundred | 1 of 100 | 5 ms | 5 ms | 100 ms |
-| a person in a small tenant | 2 of 2 | 3 ms | 4 ms | 100 ms |
+| a person in the big tenant who reads every collection | 100 of 100 | 73 ms | 120 ms | 1,000 ms (R9.10) |
+| a person in the big tenant who reads one collection in a hundred | 1 of 100 | 11 ms | 16 ms | 100 ms |
+| a person in a small tenant | 2 of 2 | 6 ms | 17 ms | 100 ms |
 
-The 100% case returned a full page of 20; the 1% case returned 6 (all that one collection holds for the query); the small tenant returned 2. Asking as the small tenant for the big tenant's collection ids returns nothing: the tenant predicate holds whatever collections are named.
+The 100% case returned a full page of 20; the 1% case returned 12 (all that one collection holds for the query, with the page the test adds); the small tenant returned 4. Asking as the small tenant for the big tenant's collection ids returns nothing: the tenant predicate holds whatever collections are named.
 
 ## What it says
 
