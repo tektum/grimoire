@@ -107,6 +107,31 @@ export interface RevisionsTable {
   created_at: Date;
 }
 
+/** One vector for each chunk of a page (migration 0011). `embedding` is the text form of a pgvector value, `[1,2,3]`: the dimension is whatever the model made. */
+export interface PageChunksTable {
+  page_id: string;
+  tenant_id: string;
+  chunk_index: number;
+  model: string;
+  content_hash: Buffer;
+  char_start: number;
+  char_end: number;
+  token_count: number;
+  embedding: string;
+}
+
+export interface PageEmbeddingStateTable {
+  page_id: string;
+  tenant_id: string;
+  markdown_hash: Buffer;
+  model: string;
+  status: 'ready' | 'failed';
+  chunk_count: Generated<number>;
+  attempts: Generated<number>;
+  error: string | null;
+  embedded_at: Date | null;
+}
+
 export interface AttachmentsTable {
   tenant_id: Generated<string>;
   id: Generated<string>;
@@ -186,6 +211,8 @@ export interface GrimoireTables {
   collection_access: CollectionAccessTable;
   revisions: RevisionsTable;
   attachments: AttachmentsTable;
+  page_chunks: PageChunksTable;
+  page_embedding_state: PageEmbeddingStateTable;
   imports: ImportsTable;
   import_items: ImportItemsTable;
   audit_events: AuditEventsTable;
@@ -242,5 +269,11 @@ export const declaredColumns = {
   },
   idempotency_keys: { tenant_id: 'required',
     user_id: 'required', key: 'required', request_hash: 'required', status: 'nullable', response: 'nullable', created_at: 'required',
+  },
+  page_chunks: {
+    page_id: 'required', tenant_id: 'required', chunk_index: 'required', model: 'required', content_hash: 'required', char_start: 'required', char_end: 'required', token_count: 'required', embedding: 'required',
+  },
+  page_embedding_state: {
+    page_id: 'required', tenant_id: 'required', markdown_hash: 'required', model: 'required', status: 'required', chunk_count: 'required', attempts: 'required', error: 'nullable', embedded_at: 'nullable',
   },
 } as const satisfies { [T in keyof GrimoireTables]: Nullability<GrimoireTables[T]> };

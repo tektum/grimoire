@@ -6,7 +6,7 @@ import { recordProgram } from './support/record-stage.mjs';
 import { fileURLToPath } from 'node:url';
 import { projectConfig } from '../../../infra/descope/config.ts';
 import stage from '../../../infra/stage.ts';
-import { stageConfig, stageSettings, stages } from '../../../infra/stages.ts';
+import { POSTGRES_VERSION, stageConfig, stageSettings, stages } from '../../../infra/stages.ts';
 
 // The owner's rule: all stages are the same with minor configuration changes, otherwise nothing can be tested on one and promoted to the next. One function builds a stage; the stages differ
 // in a row of data and in the settings of their environment, and nothing in the code looks at a stage's name.
@@ -89,4 +89,14 @@ test('the dev stack declares the same resources as the staging one: they differ 
   const dev = normal(record('dev', 'dev.example.test'), 'dev.example.test', '0.25 vCPU', 'Grimoire dev stage', 'development');
   const staging = normal(record('staging', 'dev.example.test'), 'dev.example.test', '0.5 vCPU', 'Grimoire staging', 'staging');
   assert.equal(dev, staging);
+});
+
+test('every stage runs one pinned Postgres minor, never below 17.3, so no stage can start with a pgvector older than the embedding migration needs', () => {
+  const minor = /^17\.(\d+)$/.exec(POSTGRES_VERSION);
+  assert.ok(minor, `POSTGRES_VERSION is "17.<minor>", not a bare major that lets RDS pick: ${POSTGRES_VERSION}`);
+  assert.ok(Number(minor[1]) >= 3, 'RDS for PostgreSQL 17 has pgvector 0.8.0 from 17.3; 17.2 has 0.7.4');
+  for (const name of NAMES) {
+    const versions = record(name, 'any.example.test').filter((c) => c.type === 'sst.aws:Postgres').map((c) => c.args.version);
+    assert.deepEqual(versions, [POSTGRES_VERSION], `${name} declares the pinned version`);
+  }
 });

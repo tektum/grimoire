@@ -36,8 +36,10 @@ describe('migration 0009 on an empty database', () => {
     expect(first.code, first.output).toBe(0);
     expect(await sqlAdmin(EMPTY, `select id, name, domain from tenants`)).toEqual([{ id: 'legacy', name: 'Legacy workspace', domain: null }]);
     const columns = await sqlAdmin<{ table_name: string; is_nullable: string; column_default: string | null }>(EMPTY, `select table_name, is_nullable, column_default from information_schema.columns where table_schema = 'public' and column_name = 'tenant_id' order by table_name`);
-    expect(columns.map((c) => c.table_name).sort()).toEqual([...TABLES].sort());
-    for (const c of columns) expect([c.table_name, c.is_nullable, c.column_default]).toEqual([c.table_name, 'NO', "'legacy'::text"]);
+    // The tables of 0009 only: a later migration adds tenant tables of its own (0011's carry no default: the writer names the tenant).
+    const own = columns.filter((c) => (TABLES as readonly string[]).includes(c.table_name));
+    expect(own.map((c) => c.table_name).sort()).toEqual([...TABLES].sort());
+    for (const c of own) expect([c.table_name, c.is_nullable, c.column_default]).toEqual([c.table_name, 'NO', "'legacy'::text"]);
     const second = await migrate(EMPTY);
     expect(second.output).toContain('migrate.nothing_pending');
   });

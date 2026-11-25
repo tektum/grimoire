@@ -20,7 +20,7 @@ describe('/readyz follows the database', () => {
       await sqlAdmin(DB, 'drop schema public cascade; create schema public');
       await eventually(async () => ((await get(url)).status === 503 ? true : undefined), 4000, '/readyz 503 after the schema is dropped');
       // Recreated and fully migrated: ready again; then the newest migration is made pending by hand.
-      await sqlAdmin(DB, 'drop schema public cascade; create schema public; alter schema public owner to grimoire_migrator; grant usage on schema public to grimoire_app');
+      await sqlAdmin(DB, 'drop schema public cascade; create schema public; alter schema public owner to grimoire_migrator; grant usage on schema public to grimoire_app; create extension if not exists vector'); // vector went with the schema, and only the administrator can make it again
       const dir = path.join(serverDir, '../../db/migrations');
       const again = await runToEnd([path.join(serverDir, 'dist/cli.js'), 'migrate', '--dir', dir], { GRIMOIRE_DATABASE_MIGRATION_URL: migratorUrl(DB) });
       expect(again.code).toBe(0);

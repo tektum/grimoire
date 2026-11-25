@@ -98,6 +98,7 @@ export async function setupDatabase(
     await tx.query(`alter schema pgboss owner to ${migrator}`); // a schema that was already there under another owner is handed over
     await tx.query('create extension if not exists citext');
     await tx.query('create extension if not exists pg_trgm'); // title search
+    await tx.query('create extension if not exists vector'); // semantic search: not a trusted extension, so the migration role could not make it; on a managed service this needs the administrator's rds_superuser-like right
     return { created, updated };
   });
 }

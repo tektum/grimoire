@@ -69,8 +69,8 @@ export function insertPage(run: RunSql, overrides: Columns = {}): Promise<string
   });
 }
 
-/** The tables that carry `tenant_id` (migration 0009). */
-export const TENANT_TABLES = ['users', 'groups', 'group_members', 'collections', 'collection_access', 'pages', 'revisions', 'attachments', 'audit_events', 'idempotency_keys', 'imports', 'import_items'] as const;
+/** The tables that carry `tenant_id` (migrations 0009 and 0011). */
+export const TENANT_TABLES = ['users', 'groups', 'group_members', 'collections', 'collection_access', 'pages', 'revisions', 'attachments', 'audit_events', 'idempotency_keys', 'imports', 'import_items', 'page_chunks', 'page_embedding_state'] as const;
 
 /** One row in every tenant table, all in `tenantId` (whose `tenants` row must exist), around a new person of that tenant; returns that person's id. */
 export async function insertTenantRows(run: RunSql, tenantId: string): Promise<string> {
@@ -89,5 +89,7 @@ export async function insertTenantRows(run: RunSql, tenantId: string): Promise<s
   await run(insertSql('idempotency_keys', { user_id: user, key: 'k', request_hash: hash, ...tenant }));
   const imported = await insertRow(run, 'imports', { target_collection_id: collection, source: 'markdown_zip', ...tenant });
   await run(insertSql('import_items', { import_id: imported, path: 'a.md', kind: 'page', ...tenant }));
+  await run(insertSql('page_chunks', { page_id: page, chunk_index: 0, model: 'test', content_hash: hash, char_start: 0, char_end: 1, token_count: 1, embedding: '[1,2,3]', ...tenant }));
+  await run(insertSql('page_embedding_state', { page_id: page, markdown_hash: hash, model: 'test', status: 'ready', ...tenant }));
   return user;
 }

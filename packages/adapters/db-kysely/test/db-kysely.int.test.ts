@@ -63,7 +63,8 @@ const sqlMigration = (stmt: string): string =>
 async function resetDatabase(): Promise<void> {
   const init = await readFile(path.join(ROOT, 'db/init/roles.psql'), 'utf8');
   const tail = init.slice(init.indexOf('ALTER SCHEMA public OWNER'));
-  await sqlAs(URLS.admin, `DROP SCHEMA public CASCADE; CREATE SCHEMA public; ${tail}`);
+  // `vector` goes with the schema, and the migration role cannot make it again (it is not a trusted extension): the administrator does, as it does before the first migrate.
+  await sqlAs(URLS.admin, `DROP SCHEMA public CASCADE; CREATE SCHEMA public; ${tail}; CREATE EXTENSION IF NOT EXISTS vector`);
 }
 
 beforeAll(async () => {
@@ -211,12 +212,12 @@ describe('least privilege', () => {
     await expect(sqlAs(URLS.app, 'select * from nogrant')).rejects.toMatchObject({ code: '42501' });
   });
 
-  it('\\dp-equivalent: the runtime role holds rights only on the permission tables, the 0005 tables and the tenants, each with its exact privileges', async () => {
+  it('\\dp-equivalent: the runtime role holds rights only on the permission tables, the 0005 tables, the tenants and the embedding tables, each with its exact privileges', async () => {
     expect((await migrate()).code).toBe(0);
     const rows = await sqlAs<{ t: string; p: string }>(URLS.admin, "select c.relname as t, string_agg(p, ',' order by p) as p from pg_class c cross join (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE'),('TRUNCATE'),('REFERENCES'),('TRIGGER')) v(p) where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and has_table_privilege('grimoire_app', c.oid, p) group by 1");
     const crud = 'DELETE,INSERT,SELECT,UPDATE';
     const expected = [
-      ...['collection_access', 'collections', 'group_members', 'groups', 'pages', 'users', 'attachments', 'idempotency_keys'].map((t) => ({ t, p: crud })),
+      ...['collection_access', 'collections', 'group_members', 'groups', 'pages', 'users', 'attachments', 'idempotency_keys', 'page_chunks', 'page_embedding_state'].map((t) => ({ t, p: crud })),
       ...['revisions', 'audit_events', 'tenants'].map((t) => ({ t, p: 'INSERT,SELECT' })),
       ...['imports', 'import_items'].map((t) => ({ t, p: 'INSERT,SELECT,UPDATE' })),
     ].sort((a, b) => a.t.localeCompare(b.t));

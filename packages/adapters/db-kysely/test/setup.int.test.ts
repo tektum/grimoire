@@ -27,7 +27,7 @@ const ROTATED = { app: 'rotated-app-password-0123456789', migrator: 'rotated-mig
 
 beforeAll(async () => {
   await asSuperuser('postgres', (q) => q(`drop database if exists ${DATABASE} with (force)`));
-  await asSuperuser('postgres', (q) => q(`create database ${DATABASE}`));
+  await asSuperuser('postgres', (q) => q(`create database ${DATABASE} template template0`)); // template0: template1 carries `vector` (db/init/03-vector.sql), which would make the check below mean nothing
 }, 60_000);
 afterAll(async () => {
   await asSuperuser('postgres', async (q) => {
@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 
 describe('setupDatabase against a PostgreSQL superuser', () => {
-  it('creates the three roles, locks the database to them, hands the schemas to the migration role and installs citext and pg_trgm', async () => {
+  it('creates the three roles, locks the database to them, hands the schemas to the migration role and installs citext, pg_trgm and vector', async () => {
     const first = await setup(SUPER, PASSWORDS);
     expect(first).toEqual({ created: [ROLES.migrator, ROLES.app, ROLES.ops], updated: [] });
     expect(await canConnect(ROLES.app, PASSWORDS.app)).toBe(true);
@@ -50,12 +50,14 @@ describe('setupDatabase against a PostgreSQL superuser', () => {
       appCan: await q(`select has_schema_privilege($1, 'public', 'usage') as usage, has_schema_privilege($1, 'public', 'create') as make, has_schema_privilege($1, 'pgboss', 'usage') as boss`, [ROLES.app]),
       citext: await q(`select 1 from pg_extension where extname = 'citext'`),
       trgm: await q(`select 1 from pg_extension where extname = 'pg_trgm'`),
+      vector: await q(`select 1 from pg_extension where extname = 'vector'`),
     }));
     expect(state.owners).toEqual([{ schema: 'pgboss', owner: ROLES.migrator }, { schema: 'public', owner: ROLES.migrator }]);
     expect(String((state.acl[0] as { acl: string }).acl)).not.toMatch(/(^\{|,)=/); // no entry for PUBLIC
     expect(state.appCan).toEqual([{ usage: true, make: false, boss: false }]); // the runtime role gets the job queue's grants from `grimoire migrate`, not here
     expect(state.citext).toHaveLength(1);
     expect(state.trgm).toHaveLength(1);
+    expect(state.vector).toHaveLength(1);
   });
 
   it('is safe to run again, and a run with new passwords rotates them', async () => {
@@ -83,7 +85,7 @@ describe('setupDatabase on a database that is not clean', () => {
   const reset = () => asSuperuser('postgres', async (q) => {
     await q(`drop database if exists ${DATABASE} with (force)`);
     for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
-    await q(`create database ${DATABASE}`);
+    await q(`create database ${DATABASE} template template0`);
   });
   const roleFlags = (role: string) => asSuperuser('postgres', (q) => q(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1`, [role]));
 
@@ -138,8 +140,10 @@ describe('setupDatabase as the master user of a managed service (not a superuser
       await q(`drop database if exists ${DATABASE} with (force)`);
       for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
       await q(`create role ${MANAGED_ADMIN} login createrole password 'managed-admin-password-0123'`);
-      await q(`create database ${DATABASE} owner ${MANAGED_ADMIN}`);
+      await q(`create database ${DATABASE} template template0 owner ${MANAGED_ADMIN}`);
     });
+    // pgvector is not a trusted extension: a managed master user may create it only through a role such as rds_superuser, which a test role cannot hold. It is made here, as the provider's own tooling would, so the step's `if not exists` finds it.
+    await asSuperuser(DATABASE, (q) => q('create extension if not exists vector'));
     const result = await setup({ role: MANAGED_ADMIN, password: 'managed-admin-password-0123' }, PASSWORDS);
     expect(result).toEqual({ created: [ROLES.migrator, ROLES.app, ROLES.ops], updated: [] });
     expect(await canConnect(ROLES.ops, PASSWORDS.ops)).toBe(true); // the master user could make it a member of the runtime role
