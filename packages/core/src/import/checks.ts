@@ -17,7 +17,7 @@ export type HeaderCheck = { readonly ok: true } | { readonly ok: false; readonly
 
 /**
  * The longest entry path kept, in bytes of UTF-8. The path is half of the unique index `(import_id, path)`, and a btree entry holds about 2,700 bytes (less than that for a path
- * that does not compress); this leaves room for the import id and the entry's header. A Notion export puts a 32-character id in every segment and nests as deep as the page tree
+ * that does not compress); this leaves room for the import id and the entry's header. A page-tree export puts a 32-character id in every segment and nests as deep as the page tree
  * allows, which stays well under it.
  */
 export const MAX_ENTRY_PATH_BYTES = 2048;
@@ -37,8 +37,14 @@ export const isBadName = (path: string): boolean => CONTROL.test(path) || tooLon
 // A UTF-16 unit is at most three bytes of UTF-8, so a short string is not measured.
 const tooLong = (path: string): boolean => path.length * 3 > MAX_ENTRY_PATH_BYTES && new TextEncoder().encode(path).length > MAX_ENTRY_PATH_BYTES;
 
-/** What is kept of a bad name to report it: control characters removed, at most `MAX_REPORTED_NAME_LENGTH` characters. */
-export const reportedName = (path: string): string => path.replace(CONTROL_GLOBAL, '').slice(0, MAX_REPORTED_NAME_LENGTH);
+/** What is kept of a bad name to report it: control characters removed, at most `MAX_REPORTED_NAME_LENGTH` UTF-16 units, never ending in half of a surrogate pair. */
+export function reportedName(path: string): string {
+  const clean = path.replace(CONTROL_GLOBAL, '');
+  if (clean.length <= MAX_REPORTED_NAME_LENGTH) return clean;
+  const cut = clean.slice(0, MAX_REPORTED_NAME_LENGTH);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut; // never half of a surrogate pair
+}
 
 /** A name that could write outside the import: a `..` segment, an absolute path, a drive letter, a backslash or a NUL. Those are attacks, and they refuse the whole archive. */
 function unsafe(path: string): boolean {

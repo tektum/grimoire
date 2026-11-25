@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_BYTES, reportedName } from '../../../src/import/checks.js';
+import { checkHeader, duplicateIndexes, isBadName, MAX_ENTRY_PATH_BYTES, MAX_REPORTED_NAME_LENGTH, reportedName } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
 import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
@@ -42,7 +42,7 @@ describe('a name that cannot be kept and shown as it is is one failed item (bad_
     expect([isBadName(fits4), isBadName(`${fits4}${four}`)]).toEqual([false, true]);
   });
 
-  it('a Notion-shaped name (32-character ids in every segment, nested deeply) and ordinary non-ASCII names are fine', () => {
+  it('a name from a page-tree export (a 32-character id in every segment, nested deeply) and ordinary non-ASCII names are fine', () => {
     const segment = `Some page title ${'0123456789abcdef'.repeat(2)}`;
     expect([`${Array.from({ length: 32 }, () => segment).join('/')}.md`, 'caf\u00e9/\u65e5\u672c\u8a9e a.md', 'a b/c d.md'].map(isBadName)).toEqual([false, false, false]);
   });
@@ -51,6 +51,16 @@ describe('a name that cannot be kept and shown as it is is one failed item (bad_
     expect(reportedName('a\u001b[31m\nb.md')).toBe('a[31mb.md');
     expect(reportedName(`${'x'.repeat(400)}\u0007`)).toBe('x'.repeat(300));
     expect(reportedName('plain/name.md')).toBe('plain/name.md');
+  });
+
+  it('a reported name is never cut in the middle of a surrogate pair, whatever is removed before the cut', () => {
+    const emoji = '\u{1f600}';
+    const cut = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 1)}\n${emoji}`);
+    expect(cut).toBe('a'.repeat(MAX_REPORTED_NAME_LENGTH - 1));
+    expect(cut.isWellFormed()).toBe(true);
+    const whole = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
+    expect(whole).toBe(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
+    expect(reportedName(`${'\u{1f600}'.repeat(200)}`).isWellFormed()).toBe(true);
   });
 
   it('a NUL, a backslash, a drive, an absolute path or a .. segment are still attacks and still refuse the archive', () => {
