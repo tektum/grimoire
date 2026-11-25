@@ -61,4 +61,29 @@ describe('a queue found with another policy', () => {
       await queue.stop({ graceMs: 0 });
     }
   }, 90_000);
+
+  it('waits for a worker that is claiming a job and then sees it as active: the check and the deletion cannot be split by a claim', async () => {
+    await migrate([def('r-race', 'singleton')]);
+    const queue = await startQueue(databaseUrl(DB));
+    const worker = new pg.Client({ connectionString: databaseUrl(DB) }); // a running server's fetch: it holds the job row while it moves it to active
+    await worker.connect();
+    try {
+      await queue.enqueue('r-race', {});
+      await worker.query('begin');
+      await worker.query(`select id from pgboss.job where name = 'r-race' for update`);
+      const dropped: unknown[] = [];
+      const migrating = migrate([def('r-race', 'stately')], dropped).catch((e: unknown) => e as Error);
+      await vi.waitFor(async () => {
+        expect(await rows(`select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%for update%' and pid <> pg_backend_pid()`)).toHaveLength(1);
+      }, { timeout: 20_000, interval: 100 });
+      await worker.query(`update pgboss.job set state = 'active' where name = 'r-race'`);
+      await worker.query('commit');
+      expect(((await migrating) as Error).message).toMatch(/r-race.*active/);
+      expect(dropped).toEqual([]);
+      expect(await rows(`select policy from pgboss.queue where name = 'r-race'`)).toEqual([{ policy: 'singleton' }]);
+    } finally {
+      await worker.end();
+      await queue.stop({ graceMs: 0 });
+    }
+  }, 90_000);
 });

@@ -1,5 +1,5 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
-import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
 import { PGBOSS_SCHEMA, queueOptions } from './index.js';
 
@@ -31,13 +31,13 @@ export interface MigrateOptions {
   /** Connection string of the migration role (it creates and changes the pgboss schema). */
   readonly connectionString: string;
   /** The migration role's database, used for the grants. */
-  readonly database: Queryable;
+  readonly database: Pick<Database, 'query' | 'transaction'>;
   /** The role the server runs as. */
   readonly runtimeRole: string;
   /** Queues to create (in this order) after the migration and before the grants, so the runtime role gets their partitions. */
   readonly queues?: readonly QueueDefinition[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
-  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue' | 'deleteQueue'>;
+  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
   /** Called for each queue that was recreated because it had another policy: pg-boss cannot change a policy, and the scheduled queues keep no state worth keeping (they are sent again at start). */
   readonly onQueueRecreated?: (e: { readonly queue: string; readonly from: string; readonly to: string; readonly pending: number; readonly finished: number }) => void;
 }
@@ -45,17 +45,21 @@ export interface MigrateOptions {
 /**
  * A queue found with another policy than the definition's is deleted and created again, unless a job of it is running: then it is left and the migration stops
  * with the queue's name. Created and retry jobs go with it (the scheduler sends the next run at start), as do finished ones; the counts are reported.
+ * The check and the deletion are one transaction that holds the queue's job rows, which servers still running skip (they fetch with `skip locked`), so none can claim a job in between.
  */
-async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue' | 'deleteQueue'>, db: Queryable, definition: QueueDefinition, options: MigrateOptions): Promise<void> {
+async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, db: MigrateOptions['database'], definition: QueueDefinition, options: MigrateOptions): Promise<void> {
   const existing = await boss.getQueue(definition.name);
   if (existing === null) return boss.createQueue(definition.name, queueOptions(definition));
   const from = existing.policy ?? 'standard';
   if (from === definition.policy) return;
-  const rows = await db.query<{ state: string; count: number }>(`select state::text as state, count(*)::int as count from ${PGBOSS_SCHEMA}.job where name = $1 group by state`, [definition.name]);
-  const count = (...states: string[]): number => rows.filter((r) => states.includes(r.state)).reduce((sum, r) => sum + r.count, 0);
-  if (count('active') > 0) throw new Error(`queue ${definition.name} has policy ${from}, the definition says ${definition.policy}, and a job of it is active: stop the running servers, then run the migration again`);
-  await boss.deleteQueue(definition.name);
+  const states = await db.transaction(async (tx) => {
+    const rows = await tx.query<{ state: string }>(`select state::text as state from ${PGBOSS_SCHEMA}.job where name = $1 for update`, [definition.name]);
+    if (rows.some((r) => r.state === 'active')) throw new Error(`queue ${definition.name} has policy ${from}, the definition says ${definition.policy}, and a job of it is active: stop the running servers, then run the migration again`);
+    await tx.query(`select ${PGBOSS_SCHEMA}.delete_queue($1)`, [definition.name]);
+    return rows.map((r) => r.state);
+  });
   await boss.createQueue(definition.name, queueOptions(definition));
+  const count = (...wanted: string[]): number => states.filter((s) => wanted.includes(s)).length;
   options.onQueueRecreated?.({ queue: definition.name, from, to: definition.policy, pending: count('created', 'retry'), finished: count('completed', 'cancelled', 'failed') });
 }
 

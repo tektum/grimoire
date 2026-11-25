@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import { grantRuntimeRole, migratePgBoss, requireSchemaAccess } from '../src/migrate.js';
 
 const functions = ['create_queue', 'delete_queue', 'job_table_run', 'job_now'];
@@ -14,7 +14,7 @@ function recorder(tables: string[], access: { owns: boolean | null; can_create?:
       return (text.includes('pg_class') ? tables.map((name) => ({ name })) : []) as Row[];
     },
   };
-  return { db, sql };
+  return { db: { ...db, transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn(db), ping: async () => {}, close: async () => {} } satisfies Database, sql };
 }
 
 describe('grantRuntimeRole', () => {
@@ -133,12 +133,16 @@ describe('migratePgBoss, a queue made with another policy', () => {
       start: vi.fn(async () => b), stop: vi.fn(async () => {}), on: vi.fn(() => b),
       getQueue: vi.fn(async (name: string) => (name in existing ? { policy: existing[name] } : null)),
       createQueue: vi.fn(async (name: string) => { calls.push(`create ${name}`); }),
-      deleteQueue: vi.fn(async (name: string) => { calls.push(`delete ${name}`); }),
     };
     const base = recorder(['job']).db;
-    const db: Queryable = {
-      query: async <Row>(text: string, params: readonly unknown[] = []) =>
-        (text.includes('pgboss.job') && text.includes('group by state') ? Object.entries(jobs).map(([state, count]) => ({ state, count })) : base.query<Row>(text, params)) as Promise<Row[]>,
+    const db: Database = {
+      ...base,
+      query: async <Row>(text: string, params: readonly unknown[] = []) => {
+        if (text.startsWith('select pgboss.delete_queue(')) { calls.push(`delete ${String(params[0])}`); return [] as Row[]; }
+        if (text.includes('pgboss.job') && text.includes('for update')) return Object.entries(jobs).flatMap(([state, count]) => Array.from({ length: count }, () => ({ state }))) as Row[];
+        return base.query<Row>(text, params);
+      },
+      transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn({ query: (t, p) => db.query(t, p) }),
     };
     const dropped: unknown[] = [];
     const go = (queues: ReturnType<typeof def>[]) => migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues, onQueueRecreated: (e) => dropped.push(e) });
