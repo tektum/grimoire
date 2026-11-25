@@ -157,7 +157,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     };
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
-  const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic);
+  const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: registerJobs({

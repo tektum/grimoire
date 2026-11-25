@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
 import { registerJobs } from '../../src/jobs/index.js';
@@ -25,9 +25,9 @@ function ctxOf(extra: Record<string, string> = {}): AppContext {
 }
 
 describe('the composition and the semantic search', () => {
-  it.each(['api', 'all'])('role %s builds the embedder (it reports unavailable until the model is wired in) and closes it in release-jobs', async (role) => {
-    const ctx = ctxOf({ GRIMOIRE_ROLE: role });
-    expect(ctx.semantic?.embedder.status()).toBe('unavailable');
+  it.each(['api', 'all'])('role %s builds the embedder (it starts loading, and with no model in the folder it reports unavailable) and closes it in release-jobs', async (role) => {
+    const ctx = ctxOf({ GRIMOIRE_ROLE: role, GRIMOIRE_SEMANTIC_MODEL_DIR: resolve(import.meta.dirname, 'no-such-models') });
+    await vi.waitFor(() => { expect(ctx.semantic?.embedder.status()).toBe('unavailable'); }, { timeout: 10_000, interval: 50 });
     expect(ctx.semantic?.embedder.model).toMatchObject({ name: 'multilingual-e5-base', dims: 768 });
     const hook = ctx.shutdownHooks.find((h) => h.name === 'embedder');
     expect(hook?.phase).toBe('release-jobs');
