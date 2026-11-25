@@ -87,3 +87,16 @@ test('the file button is reached with the keyboard, shows the chosen name after 
   await input.setInputFiles(smallZip('a-longer-name-of-an-export.zip'));
   await expect(page.locator('.import-file-name')).toHaveText('a-longer-name-of-an-export.zip');
 });
+
+test('after a refused start the same file is tried again: the import already made is gone on with, the file is sent again, and the progress is watched', async ({ page, context }) => {
+  const sent = await open(page, context, [{ status: 'running', total: 10, done: 2 }], { startRefusals: 1 });
+  await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
+  await page.getByRole('button', { name: 'Import' }).click();
+  await expect(page.getByRole('alert')).toHaveText('The file did not arrive. Try again.');
+  await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Import' }).click();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
+  expect(sent.creates).toHaveLength(1);
+  expect(sent.puts).toHaveLength(2);
+  expect(sent.starts).toBe(2);
+});

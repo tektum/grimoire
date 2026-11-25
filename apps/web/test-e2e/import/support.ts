@@ -30,7 +30,7 @@ const cors = (origin: string | undefined) => ({
  * (the last one for ever); the file store is a route that takes the PUT of the zip. What the client sent is kept, in order. When the real API is there, a specification of the stack is the same
  * without this.
  */
-export async function scriptedImports(page: Page, states: readonly ScriptedState[], options: { createStatus?: number; startStatus?: number; startCode?: string } = {}) {
+export async function scriptedImports(page: Page, states: readonly ScriptedState[], options: { createStatus?: number; startStatus?: number; startCode?: string; startRefusals?: number } = {}) {
   const sent: { creates: unknown[]; puts: { headers: Record<string, string>; bytes: number }[]; starts: number; reads: number } = { creates: [], puts: [], starts: 0, reads: 0 };
   await page.route(`${API}/v1/imports**`, async (route) => {
     const request = route.request();
@@ -45,6 +45,7 @@ export async function scriptedImports(page: Page, states: readonly ScriptedState
     }
     if (request.method() === 'POST' && path.endsWith('/start')) {
       sent.starts += 1;
+      if (sent.starts <= (options.startRefusals ?? 0)) return json(409, { error: { code: 'upload_missing', message: 'No' } });
       if ((options.startStatus ?? 202) >= 400) return json(options.startStatus!, { error: { code: options.startCode ?? 'not_a_zip', message: 'No' } });
       return json(202, { status: 'running' });
     }

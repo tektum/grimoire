@@ -38,9 +38,20 @@ const okOr = (step: ImportError['step'], { data, error, response }: Reply): unkn
   return data;
 };
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const STATUSES: readonly unknown[] = ['created', 'uploaded', 'running', 'done', 'failed', 'cancelled'];
+const isCreated = (v: unknown): v is CreatedImport => isObject(v) && typeof v.id === 'string' && isObject(v.upload) && v.upload.method === 'PUT' && typeof v.upload.url === 'string' && isObject(v.upload.headers);
+const isState = (v: unknown): v is ImportState =>
+  isObject(v) && STATUSES.includes(v.status) && isObject(v.counts) && ['pagesTotal', 'pagesDone', 'skipped', 'failed'].every((k) => typeof (v.counts as Record<string, unknown>)[k] === 'number');
+/** The routes are not in the generated client yet, so the answers are not typed for us: what is not shaped as it is used is an error of that step, not a failure later and elsewhere. */
+function shaped<T>(step: ImportError['step'], value: unknown, is: (v: unknown) => v is T): T {
+  if (!is(value)) throw new ImportError(step, 200, undefined);
+  return value;
+}
+
 /** Makes the import (R6.39): the zip is not sent yet. */
 export async function createImport(api: ApiLike, body: { collectionId: string; fileName: string; size: number }): Promise<CreatedImport> {
-  return okOr('create', await api.POST('/v1/imports' as never, { body } as never)) as CreatedImport;
+  return shaped('create', okOr('create', await api.POST('/v1/imports' as never, { body } as never)), isCreated);
 }
 
 /** PUTs the zip where the API said, with the headers it said (they are part of what the signature covers). A network failure is a status 0. */
@@ -68,7 +79,7 @@ export function useImportState(api: ApiLike, id: string | null) {
     enabled: id !== null,
     retry: false,
     queryKey: queryKey('GET', '/v1/imports/{id}', { params: { path: { id } } }),
-    queryFn: async ({ signal }) => okOr('read', await api.GET('/v1/imports/{id}' as never, { params: { path: { id } }, signal } as never)) as ImportState,
+    queryFn: async ({ signal }) => shaped('read', okOr('read', await api.GET('/v1/imports/{id}' as never, { params: { path: { id } }, signal } as never)), isState),
     // Not once it has ended, and not while the last read failed: a failure is shown with a way to try again (`refetch`), which goes on polling when it works.
     refetchInterval: (query) => (query.state.status === 'error' || (query.state.data !== undefined && ENDED.includes(query.state.data.status)) ? false : POLL_MS),
   });

@@ -34,16 +34,22 @@ const state = (over: Partial<ImportState> & { done?: number; total?: number } = 
   ...(over.error === undefined ? {} : { error: over.error }),
 });
 
+type Refusal = { status: number; code?: string };
+const nth = (v: Refusal | Refusal[] | undefined, n: number, dflt: Refusal): Refusal => (v === undefined ? dflt : Array.isArray(v) ? (v[Math.min(n, v.length - 1)] ?? dflt) : v);
+
 interface Options {
   role?: string;
   states?: ImportState[];
-  create?: { status: number; code?: string };
-  start?: { status: number; code?: string };
+  /** One answer, or one after another (the last goes on for ever). */
+  create?: Refusal | Refusal[];
+  start?: Refusal | Refusal[];
 }
 function fake(options: Options = {}) {
   const calls: string[] = [];
   const bodies: unknown[] = [];
   let reads = 0;
+  let creates = 0;
+  let starts = 0;
   const answer = (status: number, body?: unknown, code?: string) => ({ data: status < 300 ? body : undefined, error: status < 300 ? undefined : { error: { code } }, response: new Response(null, { status }) });
   const api = {
     GET: async (path: string) => {
@@ -60,7 +66,7 @@ function fake(options: Options = {}) {
       calls.push(`POST ${path}`);
       if (init?.body !== undefined) bodies.push(init.body);
       if (path === '/v1/imports') {
-        const c = options.create ?? { status: 201 };
+        const c = nth(options.create, creates++, { status: 201 });
         return answer(
           c.status,
           { id: 'imp1', upload: { method: 'PUT', url: 'https://files.test/imports/imp1.zip?sig=x', headers: { 'content-type': 'application/zip', 'if-none-match': '*' }, expiresAt: '2026-11-20T11:00:00Z' } },
@@ -68,7 +74,7 @@ function fake(options: Options = {}) {
         );
       }
       if (path === '/v1/imports/{id}/start') {
-        const s = options.start ?? { status: 202 };
+        const s = nth(options.start, starts++, { status: 202 });
         return answer(s.status, { status: 'running' }, s.code);
       }
       return answer(404);
@@ -164,6 +170,64 @@ describe('the import screen', () => {
     expect(await screen.findByRole('progressbar')).toBeTruthy();
   });
 
+  it('goes on with the import it made when the start was refused and the person tries again: one import, one PUT, a second start', async () => {
+    const put = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', put);
+    const t = fake({ start: [{ status: 500 }, { status: 202 }] });
+    show(t.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The import could not be started. Try again.');
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(t.calls.filter((c) => c === 'POST /v1/imports')).toHaveLength(1); // no second import is made
+    expect(put).toHaveBeenCalledTimes(1); // and the file that arrived is not sent again
+    expect(t.calls.filter((c) => c === 'POST /v1/imports/{id}/start')).toHaveLength(2);
+  });
+
+  it('sends the file again, to the same import, when the start says it did not arrive', async () => {
+    const put = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', put);
+    const t = fake({ start: [{ status: 409, code: 'upload_missing' }, { status: 202 }] });
+    show(t.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The file did not arrive. Try again.');
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(t.calls.filter((c) => c === 'POST /v1/imports')).toHaveLength(1);
+  });
+
+  it('after a refusal of the creation, the same file tried again makes the import and goes on; after an expired upload address it makes a new one', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const t = fake({ create: [{ status: 429 }, { status: 201 }] });
+    show(t.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Too many imports were started. Try again in a while.');
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    cleanup();
+    const refused = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 403 }))
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', refused);
+    const u = fake();
+    show(u.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(u.calls.filter((c) => c === 'POST /v1/imports')).toHaveLength(2); // the address the 403 refused was not used again
+  });
+
   it.each([
     ['too large for an import', { create: { status: 413 } }, 'That file is larger than an import may be.'],
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
@@ -204,6 +268,28 @@ describe('the import screen', () => {
       expect(t.calls).not.toContain('POST /v1/imports/{id}/start');
       cleanup();
     }
+  });
+});
+
+describe('an answer that is not shaped as the contract says', () => {
+  it('is an import that cannot be started when the creation answers without the upload, and an import that cannot be read when the state has no counts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const t = fake();
+    const post = (t.api as unknown as { POST: (p: string, i?: unknown) => Promise<unknown> }).POST;
+    (t.api as unknown as { POST: (p: string, i?: unknown) => Promise<unknown> }).POST = async (path: string, init?: unknown) =>
+      path === '/v1/imports' ? { data: { id: 'imp1' }, response: new Response(null, { status: 201 }) } : post(path, init);
+    show(t.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The import could not be started. Try again.');
+    expect(t.calls).not.toContain('POST /v1/imports/{id}/start');
+    cleanup();
+    const u = fake({ states: [{ status: 'running' } as unknown as ImportState] });
+    show(u.api, '/import?import=imp1');
+    expect((await screen.findByRole('alert')).textContent).toContain('That import can’t be read.');
   });
 });
 

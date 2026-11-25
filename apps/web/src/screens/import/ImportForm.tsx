@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { createImport, startImport, uploadZip, useQuietApi } from '../../import/api';
+import { useRef, useState } from 'react';
+import { createImport, ImportError, startImport, uploadZip, useQuietApi } from '../../import/api';
+import type { CreatedImport } from '../../import/types';
 import { useCollections } from '../collections/useCollections';
 import { Button } from '../../ui/primitives';
 import { refusal } from './messages';
@@ -19,19 +20,41 @@ export function ImportForm({ onStarted, send }: { readonly onStarted: (id: strin
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [problem, setProblem] = useState<string | null>(null);
+  // The import made for this file and collection, so that a try again after a refusal goes on with it and does not make a second one that the first would leave in `created`.
+  const made = useRef<{ key: string; created: CreatedImport; uploaded: boolean } | null>(null);
   const target = collectionId === '' ? writable[0]?.id : collectionId;
 
   const begin = async (): Promise<void> => {
     if (file === null || target === undefined) return;
     setProblem(null);
     try {
-      setPhase('creating');
-      const created = await createImport(api, { collectionId: target, fileName: file.name, size: file.size });
-      setPhase('uploading');
-      await uploadZip(created.upload, file, send);
+      const key = `${target}|${file.name}|${String(file.size)}|${String(file.lastModified)}`;
+      if (made.current?.key !== key) {
+        setPhase('creating');
+        made.current = { key, created: await createImport(api, { collectionId: target, fileName: file.name, size: file.size }), uploaded: false };
+      }
+      const job = made.current;
+      if (!job.uploaded) {
+        setPhase('uploading');
+        try {
+          await uploadZip(job.created.upload, file, send);
+        } catch (error) {
+          // A refused PUT means the address is no good any more (it is signed for a time): the next try makes a new import.
+          if (error instanceof ImportError && error.status === 403) made.current = null;
+          throw error;
+        }
+        job.uploaded = true;
+      }
       setPhase('starting');
-      await startImport(api, created.id);
-      onStarted(created.id);
+      try {
+        await startImport(api, job.created.id);
+      } catch (error) {
+        if (error instanceof ImportError && error.code === 'upload_missing') job.uploaded = false; // it did not arrive: send it again, to the same import
+        if (error instanceof ImportError && error.code === 'already_started') made.current = null;
+        throw error;
+      }
+      made.current = null;
+      onStarted(job.created.id);
     } catch (error) {
       setProblem(refusal(error));
       setPhase('idle');
