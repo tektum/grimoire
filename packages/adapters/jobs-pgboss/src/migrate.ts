@@ -1,6 +1,7 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import { PGBOSS_SCHEMA } from './index.js';
+import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
+import { PGBOSS_SCHEMA, ensureQueueOn } from './index.js';
 
 /**
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
@@ -33,12 +34,14 @@ export interface MigrateOptions {
   readonly database: Queryable;
   /** The role the server runs as. */
   readonly runtimeRole: string;
+  /** Queues to create (in this order) after the migration and before the grants, so the runtime role gets their partitions. */
+  readonly queues?: readonly QueueDefinition[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
-  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on'>;
+  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
 }
 
 /**
- * Installs or upgrades pg-boss's schema with the migration role, then grants the runtime role what each table
+ * Installs or upgrades pg-boss's schema with the migration role, creates the queues, then grants the runtime role what each table
  * needs. The table list is read from the schema after the migration, because the library's list is not verified.
  * Safe to run again: the library's migration is a no-op when current, and GRANT is idempotent.
  * Partitions are included: the common job partition is written directly. Objects the migration role creates later get default privileges. Returns the tables it granted on, in order.
@@ -50,7 +53,11 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
   let failure: Error | undefined;
   boss.on('error', (e: Error) => { failure = e; });
   await boss.start();
-  await boss.stop({ graceful: true, close: true, timeout: 2000 });
+  try {
+    for (const queue of options.queues ?? []) await ensureQueueOn(boss, queue);
+  } finally {
+    await boss.stop({ graceful: true, close: true, timeout: 2000 });
+  }
   if (failure) throw failure;
   return grantRuntimeRole(options.database, options.runtimeRole);
 }

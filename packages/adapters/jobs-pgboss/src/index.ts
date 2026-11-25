@@ -19,6 +19,20 @@ function asDatabase(tx: Queryable): PgBossDatabase {
   return { executeSql: async (text: string, values?: unknown[]) => ({ rows: [...(await tx.query(text, values))] }) };
 }
 
+/** Creates the queue unless it exists; an existing one is left as it is. */
+export async function ensureQueueOn(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, definition: QueueDefinition): Promise<void> {
+  if (await boss.getQueue(definition.name)) return;
+  await boss.createQueue(definition.name, {
+    policy: definition.policy,
+    retryLimit: definition.retryLimit,
+    retryDelay: definition.retryDelaySeconds,
+    retryBackoff: definition.retryBackoff,
+    expireInSeconds: definition.expireInSeconds,
+    retentionSeconds: definition.retentionSeconds,
+    ...(definition.deadLetter === undefined ? {} : { deadLetter: definition.deadLetter }),
+  });
+}
+
 export class PgBossJobQueue implements JobQueue {
   /** The abort controllers of the handlers that are running now. */
   private readonly running = new Set<AbortController>();
@@ -29,17 +43,8 @@ export class PgBossJobQueue implements JobQueue {
   ) {}
 
   /** Creates the queue unless it exists. Run it with a role that may create tables (`grimoire migrate`), before `work`, `schedule` or `enqueue` use the name. */
-  async ensureQueue(definition: QueueDefinition): Promise<void> {
-    if (await this.boss.getQueue(definition.name)) return;
-    await this.boss.createQueue(definition.name, {
-      policy: definition.policy,
-      retryLimit: definition.retryLimit,
-      retryDelay: definition.retryDelaySeconds,
-      retryBackoff: definition.retryBackoff,
-      expireInSeconds: definition.expireInSeconds,
-      retentionSeconds: definition.retentionSeconds,
-      ...(definition.deadLetter === undefined ? {} : { deadLetter: definition.deadLetter }),
-    });
+  ensureQueue(definition: QueueDefinition): Promise<void> {
+    return ensureQueueOn(this.boss, definition);
   }
 
   async enqueue<Payload>(name: string, payload: Payload, options: EnqueueOptions = {}, tx?: Queryable): Promise<string | null> {
