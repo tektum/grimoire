@@ -59,6 +59,16 @@ function PaletteDialog() {
     setOpen((was) => !was);
   }, []);
   useShortcut(toggle);
+  // While the dialog is open the rest of the app is `inert` (not focusable, not clickable, not read): the library only marks it `aria-hidden`, and a hidden region that still holds focusable elements is an
+  // accessibility violation (axe: aria-hidden-focus). The dialog is in a portal, outside the shell, so it is not made inert with it.
+  useEffect(() => {
+    const shell = document.querySelector('.shell');
+    if (!open || shell === null) return;
+    shell.setAttribute('inert', '');
+    return () => {
+      shell.removeAttribute('inert');
+    };
+  }, [open]);
   useEffect(() => {
     if (!open && opened.current) {
       const back = returnTo.current;
