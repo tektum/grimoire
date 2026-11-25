@@ -84,6 +84,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
     } catch {
       // Nothing started here may keep running: a queue made but not set up is stopped now, with no grace (nothing is running on it).
       if (made !== undefined) await made.stop({ graceMs: 0 }).catch(() => undefined);
+      if (stopped) return; // a start that fails after the stop began changes nothing: the state stays `stopped`, and no event says jobs are unavailable
       if (attempts >= MAX_START_ATTEMPTS) { state = 'down'; log.error('jobs.unavailable', { attempts }); return; }
       log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0 });
       if (!stopped) { timer = setTimeout(() => { inFlight = attempt(); }, START_RETRY_MS); timer.unref(); }
@@ -113,6 +114,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           let wait: NodeJS.Timeout | undefined;
           const settled = await Promise.race([inFlight.then(() => true), new Promise<boolean>((resolve) => { wait = setTimeout(() => { resolve(false); }, waitMs); wait.unref(); })]);
           if (wait !== undefined) clearTimeout(wait);
+          // Not for ever, by decision: shutdown never waits on a hung database for jobs. What the late attempt may still do is bounded: it registers no handler once `stopped` is set, and
+          // it stops its own queue with no grace when it ends.
           if (!settled) { abandoned = true; return; }
         }
         if (queue === undefined) return;

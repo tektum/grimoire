@@ -154,10 +154,12 @@ describe('the job runner', () => {
     const queue = new RecordingQueue();
     let open: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { open = resolve; });
-    queue.work = async (name: string) => { queue.worked.push(name); if (queue.worked.length === 1) await gate; };
+    let reached: () => void = () => undefined;
+    const firstWork = new Promise<void>((resolve) => { reached = resolve; }); // the first work() call has been made
+    queue.work = async (name: string) => { queue.worked.push(name); if (queue.worked.length === 1) { reached(); await gate; } };
     const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => Promise.resolve(queue) });
     const starting = runner.start();
-    await Promise.resolve();
+    await firstWork; // an explicit gate, not a count of microtasks
     const stopping = runner.hook.run();
     open();
     await Promise.all([starting, stopping]);
@@ -210,5 +212,21 @@ describe('the job runner', () => {
     await vi.advanceTimersByTimeAsync(100 + 500 - 1);
     expect(done).toBe(true);
     await stopping;
+  });
+
+  it('a start that fails after the stop began changes nothing: the state stays stopped and no unavailable event is logged', async () => {
+    vi.useFakeTimers();
+    const logger = new FakeLogger();
+    let fail: (e: Error) => void = () => undefined;
+    const pending = new Promise<RecordingQueue>((_resolve, reject) => { fail = reject; });
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(logger), make: () => pending });
+    void runner.start();
+    const stopping = runner.hook.run();
+    await vi.advanceTimersByTimeAsync(START_STOP_WAIT_MS);
+    await stopping;
+    fail(new Error('late'));
+    await vi.advanceTimersByTimeAsync(START_RETRY_MS * (MAX_START_ATTEMPTS + 1));
+    expect(runner.state()).toBe('stopped');
+    expect(logger.entries.filter((e) => e.event === 'jobs.unavailable' || e.event === 'jobs.failed')).toEqual([]);
   });
 });
