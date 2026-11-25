@@ -31,6 +31,14 @@ const ROUNDS = 3; // each limit is judged on the median of this many p95 values 
 const check = (value: number, limit: number): void => {
   if (ASSERT) expect(value).toBeLessThanOrEqual(limit);
 };
+/** An experiment is recorded, never asserted: an error in it is recorded as its result and does not fail the job (the assertions above are the job's verdict). */
+const experiment = async (name: string, body: () => Promise<void>): Promise<void> => {
+  try {
+    await body();
+  } catch (error) {
+    record(name, { error: error instanceof Error ? error.message : String(error) });
+  }
+};
 const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] as number;
 const model = { name: 'seeded', version: 'v1', dims: DIMS, maxTokens: 504 };
 const run = (sql: string) => sqlAdmin(DB, sql);
@@ -188,77 +196,81 @@ describe('the semantic statement without an index', () => {
   // Evidence for the decision between tuning the table and an approximate index, recorded after the assertions (it changes the table): the plan is a parallel scan of `page_chunks` with one worker
   // (the table's own pages are few, because each 768-dimension vector sits out of line in the TOAST table) and the buffers say how much of the time is reading. Never asserted.
   it('records what two table settings do to the statement: more workers for the scan, and the vector stored in the row', { timeout: 1_800_000 }, async () => {
-    // One round to warm the cache, then the 30 queries; and the workers the scan really got, read from the plan of one query.
-    const measure = async (): Promise<{ p95Ms: number; workersLaunched: string; scan: string }> => {
-      await statement(collections);
-      const p95Ms = Math.round(p95(await statement(collections)));
-      const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
-      const plan = (await run(`explain (analyze, costs off) select c.page_id from page_chunks c where c.model = '${modelKey(model)}' order by c.embedding <=> '${vectorText}'::vector limit 300`)) as {
-        'QUERY PLAN': string;
-      }[];
-      const lines = plan.map((r) => r['QUERY PLAN']);
-      return {
-        p95Ms,
-        workersLaunched: lines.find((l) => l.includes('Workers Launched'))?.trim() ?? 'none',
-        scan:
-          lines
-            .find((l) => l.includes('Scan on page_chunks'))
-            ?.trim()
-            .slice(0, 80) ?? '',
+    await experiment('experimentTableSettings', async () => {
+      // One round to warm the cache, then the 30 queries; and the workers the scan really got, read from the plan of one query.
+      const measure = async (): Promise<{ p95Ms: number; workersLaunched: string; scan: string }> => {
+        await statement(collections);
+        const p95Ms = Math.round(p95(await statement(collections)));
+        const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
+        const plan = (await run(`explain (analyze, costs off) select c.page_id from page_chunks c where c.model = '${modelKey(model)}' order by c.embedding <=> '${vectorText}'::vector limit 300`)) as {
+          'QUERY PLAN': string;
+        }[];
+        const lines = plan.map((r) => r['QUERY PLAN']);
+        return {
+          p95Ms,
+          workersLaunched: lines.find((l) => l.includes('Workers Launched'))?.trim() ?? 'none',
+          scan:
+            lines
+              .find((l) => l.includes('Scan on page_chunks'))
+              ?.trim()
+              .slice(0, 80) ?? '',
+        };
       };
-    };
-    record('experimentBaseline', await measure());
-    await run('alter table page_chunks set (parallel_workers = 4)');
-    record('experimentParallelWorkers4', await measure());
-    await run('alter table page_chunks reset (parallel_workers)');
-    // The vector stored in the row: the new setting only applies to a value written after it, and an update that writes the same value keeps its out-of-line copy, so the value is made again (a text round trip).
-    await run('alter table page_chunks alter column embedding set storage main');
-    await run('update page_chunks set embedding = (embedding::text)::vector');
-    await run('vacuum (analyze) page_chunks');
-    record('experimentStorageMain', await measure());
-    await run('alter table page_chunks set (parallel_workers = 4)');
-    record('experimentStorageMainAndWorkers4', await measure());
-    const sizes = await run(`select pg_size_pretty(pg_relation_size('page_chunks')) as heap, pg_size_pretty(pg_total_relation_size('page_chunks') - pg_relation_size('page_chunks')) as rest`);
-    record('tableSizesAfterStorageMain', sizes);
+      record('experimentBaseline', await measure());
+      await run('alter table page_chunks set (parallel_workers = 4)');
+      record('experimentParallelWorkers4', await measure());
+      await run('alter table page_chunks reset (parallel_workers)');
+      // The vector stored in the row: the new setting only applies to a value written after it, and an update that writes the same value keeps its out-of-line copy, so the value is made again (a text round trip).
+      await run('alter table page_chunks alter column embedding set storage main');
+      await run('update page_chunks set embedding = (embedding::text)::vector');
+      await run('vacuum (analyze) page_chunks');
+      record('experimentStorageMain', await measure());
+      await run('alter table page_chunks set (parallel_workers = 4)');
+      record('experimentStorageMainAndWorkers4', await measure());
+      const sizes = await run(`select pg_size_pretty(pg_relation_size('page_chunks')) as heap, pg_size_pretty(pg_total_relation_size('page_chunks') - pg_relation_size('page_chunks')) as rest`);
+      record('tableSizesAfterStorageMain', sizes);
+    });
   });
 
-  // The approximate index, for the decision, on this data and this database: build time and size, the time of the statement, and how much of the exact answer it returns (recall of the 300 nearest
+  // The approximate index, for the decision, on this data and this database (the column has no fixed dimension, so the index is on `embedding::vector(768)` and a statement has to say the same to use it): build time and size, the time of the statement, and how much of the exact answer it returns (recall of the 300 nearest
   // chunks). The vectors here are uniformly random, which is the worst case for a graph index (real embeddings cluster), so the recall is a floor. The filter on collections is the point of the
   // 1% line: an index scan finds its nearest first and the permission filter comes after (iterative scan keeps going until it has enough). Never asserted.
   it('records the approximate index: build, size, time and recall against the exact scan, for all collections and for 1%', { timeout: 2_400_000 }, async () => {
-    const key = modelKey(model);
-    // One statement for each call (the connection speaks the extended protocol): the settings are the database's own, set before, and the exact scan is forced by an expression the index cannot serve.
-    const query = (v: Float32Array, ids: readonly string[], hnsw: boolean): string =>
-      `select c.page_id::text || ':' || c.chunk_index as k from page_chunks c join pages p on p.id = c.page_id
-        where c.model = '${key}' and p.deleted_at is null and p.collection_id = any('{${ids.join(',')}}'::uuid[]) order by ${hnsw ? '' : '0 + '}(c.embedding <=> '[${[...v].join(',')}]'::vector) limit 300`;
-    const keys = async (v: Float32Array, ids: readonly string[], hnsw: boolean): Promise<string[]> => ((await run(query(v, ids, hnsw))) as { k: string }[]).map((r) => r.k);
-    const built = performance.now();
-    await run(`alter database ${DB} set maintenance_work_mem = '512MB'`);
-    await run(`alter database ${DB} set hnsw.iterative_scan = 'relaxed_order'`);
-    await run(`alter database ${DB} set hnsw.ef_search = 400`);
-    await run(`create index page_chunks_hnsw on page_chunks using hnsw (embedding vector_cosine_ops) where model = '${key}'`);
-    const buildSeconds = Math.round((performance.now() - built) / 1000);
-    await run('analyze page_chunks');
-    const size = await run(`select pg_size_pretty(pg_relation_size('page_chunks_hnsw')) as size`);
-    const lines: Record<string, unknown> = { buildSeconds, size };
-    for (const [label, ids] of [
-      ['all', collections],
-      ['onePercent', [collections[0] as string]],
-    ] as const) {
-      const times: number[] = [];
-      const recalls: number[] = [];
-      const counts: number[] = [];
-      for (const v of queryVectors.slice(0, 10)) {
-        const exact = await keys(v, ids, false);
-        const t = performance.now();
-        const approximate = await keys(v, ids, true);
-        times.push(performance.now() - t);
-        const wanted = new Set(exact);
-        recalls.push(exact.length === 0 ? 1 : approximate.filter((k) => wanted.has(k)).length / exact.length);
-        counts.push(approximate.length);
+    await experiment('experimentHnsw', async () => {
+      const key = modelKey(model);
+      // One statement for each call (the connection speaks the extended protocol): the settings are the database's own, set before, and the exact scan is forced by an expression the index cannot serve.
+      const query = (v: Float32Array, ids: readonly string[], hnsw: boolean): string =>
+        `select c.page_id::text || ':' || c.chunk_index as k from page_chunks c join pages p on p.id = c.page_id
+        where c.model = '${key}' and p.deleted_at is null and p.collection_id = any('{${ids.join(',')}}'::uuid[]) order by ${hnsw ? '' : '0 + '}(c.embedding::vector(${DIMS}) <=> '[${[...v].join(',')}]'::vector(${DIMS})) limit 300`;
+      const keys = async (v: Float32Array, ids: readonly string[], hnsw: boolean): Promise<string[]> => ((await run(query(v, ids, hnsw))) as { k: string }[]).map((r) => r.k);
+      const built = performance.now();
+      await run(`alter database ${DB} set maintenance_work_mem = '512MB'`);
+      await run(`alter database ${DB} set hnsw.iterative_scan = 'relaxed_order'`);
+      await run(`alter database ${DB} set hnsw.ef_search = 400`);
+      await run(`create index page_chunks_hnsw on page_chunks using hnsw ((embedding::vector(${DIMS})) vector_cosine_ops) where model = '${key}'`);
+      const buildSeconds = Math.round((performance.now() - built) / 1000);
+      await run('analyze page_chunks');
+      const size = await run(`select pg_size_pretty(pg_relation_size('page_chunks_hnsw')) as size`);
+      const lines: Record<string, unknown> = { buildSeconds, size };
+      for (const [label, ids] of [
+        ['all', collections],
+        ['onePercent', [collections[0] as string]],
+      ] as const) {
+        const times: number[] = [];
+        const recalls: number[] = [];
+        const counts: number[] = [];
+        for (const v of queryVectors.slice(0, 10)) {
+          const exact = await keys(v, ids, false);
+          const t = performance.now();
+          const approximate = await keys(v, ids, true);
+          times.push(performance.now() - t);
+          const wanted = new Set(exact);
+          recalls.push(exact.length === 0 ? 1 : approximate.filter((k) => wanted.has(k)).length / exact.length);
+          counts.push(approximate.length);
+        }
+        lines[label] = { p95Ms: Math.round(p95(times)), meanRecall: Number((recalls.reduce((a, b) => a + b, 0) / recalls.length).toFixed(3)), minRows: Math.min(...counts), exactRows: 300 };
       }
-      lines[label] = { p95Ms: Math.round(p95(times)), meanRecall: Number((recalls.reduce((a, b) => a + b, 0) / recalls.length).toFixed(3)), minRows: Math.min(...counts), exactRows: 300 };
-    }
-    record('experimentHnsw', lines);
+      record('experimentHnsw', lines);
+    });
   });
 });
