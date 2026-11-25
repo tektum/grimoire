@@ -67,6 +67,19 @@ describe('the snippet of a search result', () => {
     expect(container.textContent).toBe(typeof snippet === 'string' ? snippet : typeof (snippet as { text?: unknown } | undefined)?.text === 'string' ? (snippet as { text: string }).text : '');
   });
 
+  it.each([
+    ['null', [null]],
+    ['numbers instead of a pair', [1, 2]],
+    ['a pair with a string in it', [['0', '3']]],
+    ['one number', [[1]]],
+    ['three numbers', [[0, 1, 2]]],
+    ['an object', [{ start: 0, end: 3 }]],
+  ])('ignores a range element that is %s, keeps the good ones, and does not throw', (_name, bad) => {
+    const { container } = draw('one two', [...(bad as unknown as [number, number][]), [4, 7]]);
+    expect([...container.querySelectorAll('mark')].map((m) => m.textContent)).toEqual(['two']);
+    expect(container.textContent).toBe('one two');
+  });
+
   it('draws plain text when there is nothing to mark', () => {
     const { container } = draw('nothing here', []);
     expect(container.querySelector('mark')).toBeNull();

@@ -20,7 +20,7 @@ bun install --frozen-lockfile && make down && make up && make test-m6 && make do
 | `offline` | An edit made offline is kept and merged on reconnect | `apps/web/test-e2e/editor/offline.spec.ts` | proved |
 | `status-messages` | Every status message is shown for the signal that causes it, with the server stopped and with the scripted server | `apps/web/test-e2e/status/messages.spec.ts`<br>`apps/web/test-e2e/editor/signal-rows.spec.ts`<br>`apps/web/test-e2e/editor/connection-signals.spec.ts` | proved |
 | `images` | An image pasted into a page is uploaded, and an expired image address is refreshed | `apps/web/test-e2e/attachments/upload-flow.spec.ts`<br>`apps/web/test-e2e/attachments/url-refresh.spec.ts` | proved |
-| `search-palette` | Search and the palette find a page and open it | `apps/web/test-e2e/search/palette.spec.ts` | proved |
+| `search-palette` | Search and the palette find a page and open it (against the scripted search: the stack has no search endpoint until M7-T01, and the same specifications point at it then; a run against the stack before that would get a 404) | `apps/web/test-e2e/search/palette.spec.ts` | proved |
 | `history-restore` | A restored version is seen by the second browser | `apps/web/test-e2e/history/restore.spec.ts` | proved |
 | `admin` | The admin screens change a role, a group and the access of a collection | `apps/web/test-e2e/admin/admin.spec.ts` | proved |
 | `import` | The import screen takes a file into a collection | (to come) | pending M6-T12a |

@@ -7,7 +7,11 @@ import type { SearchSnippet } from './types';
  */
 export function usableRanges(text: string, ranges: readonly (readonly [number, number])[] | undefined): [number, number][] {
   if (!Array.isArray(ranges)) return [];
-  const sorted = ranges.filter(([start, end]) => Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end > start && end <= text.length).toSorted((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const sorted = ranges
+    // An element that is not a pair of numbers is not a range (the answer is not trusted to have the shape: `[null]` and `[1, 2]` are refused here, not destructured).
+    .filter((range): range is readonly [number, number] => Array.isArray(range) && range.length === 2 && Number.isInteger(range[0]) && Number.isInteger(range[1]))
+    .filter(([start, end]) => start >= 0 && end > start && end <= text.length)
+    .toSorted((a, b) => a[0] - b[0] || a[1] - b[1]);
   const kept: [number, number][] = [];
   for (const [start, end] of sorted) if (kept.length === 0 || start >= kept[kept.length - 1]![1]) kept.push([start, end]);
   return kept;
