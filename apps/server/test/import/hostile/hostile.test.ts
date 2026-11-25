@@ -143,6 +143,17 @@ describe('a long read', () => {
   });
 });
 
+describe('a consumer that is late', () => {
+  it('an entry that is aborted before anyone reads it fails the read that comes later, and is not an uncaught error', async () => {
+    const s = store([{ name: 'lie.md', data: Buffer.alloc(500, 0x61), declaredSize: 10 }]);
+    const { reader, entries } = await ok(s);
+    const stream = await reader.openEntry(entries[0]!, limits);
+    await new Promise<void>((resolve) => { setTimeout(resolve, 20); }); // the abort happens now, with nobody listening
+    const read = async (): Promise<void> => { for await (const chunk of stream) void chunk; };
+    await expect(read()).rejects.toMatchObject({ reason: 'size_mismatch' });
+  });
+});
+
 describe('the lying archive', () => {
   it('an entry that declares 100 bytes and holds 5 MB is aborted as size_mismatch after the declared bytes plus one chunk', async () => {
     const s = store([{ name: 'lies.bin', data: Buffer.alloc(5 * MiB, 7), method: 'deflate', declaredSize: 100 }]);

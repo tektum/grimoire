@@ -130,6 +130,9 @@ export class ZipReader {
         const abort = (reason: EntryAbortReason): void => { stream.destroy(); out.destroy(new EntryAbort(reason)); };
         // A consumer that stops reading (a `break`, its own limit) destroys `out`: the source stream goes with it, or it would wait for a drain that never comes.
         out.once('close', () => { stream.destroy(); });
+        // An entry can be aborted before its consumer has attached (the first chunk may arrive in the tick the stream is returned): the error is kept on the stream and the consumer's read fails
+        // with it, so it must not also surface as an uncaught `error` event with nobody listening.
+        out.on('error', () => undefined);
         stream.on('data', (chunk: Buffer) => {
           seen += chunk.length;
           if (seen > entry.size) { abort('size_mismatch'); return; }

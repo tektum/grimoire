@@ -4,7 +4,8 @@ import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-con
 /** How a page ends stage 4c. `ok` carries what the page row stores, the seeded `state` included (the page writer decides whether the row keeps it, see the PR); `retry` is not the page's fault (a busy converter), so the item stays pending. */
 export type PageOutcome =
   | { readonly kind: 'ok'; readonly markdown: string; readonly text: string; readonly hash: Buffer; readonly state: Uint8Array; readonly markdownBytes: number; readonly stateBytes: number }
-  | { readonly kind: 'skipped' | 'failed'; readonly reason: string; readonly markdownBytes: number; readonly stateBytes?: number }
+  | { readonly kind: 'skipped'; readonly reason: string; readonly markdownBytes: number }
+  | { readonly kind: 'failed'; readonly reason: string; readonly markdownBytes: number; readonly stateBytes?: number }
   | { readonly kind: 'retry'; readonly reason: string };
 
 /** The converter is busy or shutting down, not at fault: the same refusals the collaboration save counts as busy. */

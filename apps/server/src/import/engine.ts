@@ -1,7 +1,17 @@
 import { duplicateIndexes, isBadName, reportedName } from '@tektum/grimoire-core/import/checks';
 import { isIgnoredEntry } from '@tektum/grimoire-core/import/types';
-import type { ImportRepo, NewImportItem } from '@tektum/grimoire-core/ports/import-repo';
-import type { ImportProfile } from './profile.js';
+import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
+import type { ImportCounts, ImportItem, ImportRecord, ImportRepo, NewImportItem, WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
+import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
+import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
+import type { Ordering } from '@tektum/grimoire-core/tree/position';
+import { importFailedKey } from './keys.js';
+import { rewriteMarkdown } from './markdown-rewrite.js';
+import type { Resolved } from './markdown-rewrite.js';
+import { normalizePage } from './normalize.js';
+import type { ImportProfile, IndexedItem, LinkIndex } from './profile.js';
+import { EntryAbort } from './zip-reader.js';
+import type { ZipEntry, ZipReader } from './zip-reader.js';
 
 /** What pass one reads of an entry of the archive: its place in the central directory, its name, and whether it is a directory. */
 export interface PassOneEntry {
@@ -95,4 +105,230 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     skipped: all.filter((r) => r.status === 'skipped').length,
     failed: all.filter((r) => r.status === 'failed').length,
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Pass two (M7 contracts section 4, stage 4, without the attachments of 4d)
+
+export interface PassTwoDeps {
+  readonly repo: ImportRepo;
+  readonly files: FileStorage;
+  readonly converter: MarkdownConverter;
+  readonly profile: ImportProfile;
+  readonly ordering: Pick<Ordering, 'between'>;
+  readonly reader: Pick<ZipReader, 'openEntry'>;
+  /** The entries of the archive, as `openArchive` read them. */
+  readonly entries: readonly ZipEntry[];
+  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number };
+  readonly pageLimits: TenantPageLimits;
+  readonly now: () => number;
+}
+
+export interface PassTwoOptions {
+  /** Pages per batch (default 25). */
+  readonly batchPages?: number;
+  /** Bytes of Markdown per batch (default 8 MiB). */
+  readonly batchBytes?: number;
+  readonly signal?: AbortSignal;
+}
+
+export type PassTwoStop = 'not_running' | 'aborted' | 'collection_deleted';
+export type PassTwoResult =
+  | { readonly kind: 'done'; readonly counts: ImportCounts }
+  /** The run ended before every page was dealt with; what was done is kept, and the counts say so. */
+  | { readonly kind: 'stopped'; readonly reason: PassTwoStop; readonly counts: ImportCounts }
+  /** The converter is busy: the item is still pending and the caller tries again later. */
+  | { readonly kind: 'busy'; readonly counts: ImportCounts };
+
+const DEFAULT_BATCH_PAGES = 25;
+const DEFAULT_BATCH_BYTES = 8 * 1024 * 1024;
+const MAX_TITLE = 255;
+const decoder = new TextDecoder('utf-8', { fatal: true });
+const segmentsOf = (path: string): string[] => path.split('/').filter((s) => s !== '' && s !== '.');
+const folderKey = (folder: string): string => segmentsOf(folder).join('/').normalize('NFC').toLowerCase();
+
+type Read = { readonly kind: 'ok'; readonly bytes: Buffer } | { readonly kind: 'skipped'; readonly reason: 'too_large' } | { readonly kind: 'failed'; readonly reason: 'size_mismatch' | 'ratio' };
+
+/** The bytes of an entry counted as they come, at most `cap` of them: more is `too_large` (the entry is not read on), and a header that lies is `size_mismatch`. */
+async function readEntry(deps: PassTwoDeps, entry: ZipEntry, cap: number): Promise<Read> {
+  if (entry.size > cap) return { kind: 'skipped', reason: 'too_large' };
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    const stream = await deps.reader.openEntry(entry, deps.limits);
+    for await (const chunk of stream) {
+      total += (chunk as Buffer).length;
+      if (total > cap) { stream.destroy(); return { kind: 'skipped', reason: 'too_large' }; }
+      chunks.push(chunk as Buffer);
+    }
+  } catch (e) {
+    if (!(e instanceof EntryAbort)) throw e;
+    return e.reason === 'entry_too_large' ? { kind: 'skipped', reason: 'too_large' } : { kind: 'failed', reason: e.reason };
+  }
+  return { kind: 'ok', bytes: Buffer.concat(chunks) };
+}
+
+const cutTitle = (title: string): { readonly title: string; readonly cut: boolean } => {
+  const points = [...title.trim()];
+  return points.length <= MAX_TITLE ? { title: points.join(''), cut: false } : { title: points.slice(0, MAX_TITLE).join(''), cut: true };
+};
+
+/**
+ * Pass two (M7 contracts section 4, stage 4), pages only: each pending page item in tree order (a page after its folder's page, so a child never comes before its parent), read,
+ * decoded, cleaned by the profile, its links to other pages rewritten to `/p/<url_id>` (a link that matches nothing stays as written and is a warning; a file the page uses stays
+ * as written until the attachments are handled), seeded and converted fail-closed, and written in one transaction under the page id its item was given. A page the converter refuses
+ * keeps its original Markdown as an object for the person to download (the report's source), and creates no page. Batches of 25 pages or 8 MiB: before each one the import is read
+ * again, and a run that is no longer `running` stops. A failed or skipped parent does not take its children: they go under the nearest page that was written.
+ *
+ * Known limit: a link to a page that is written later but then fails points at `/p/<url_id>` of a page that does not exist; only links to pages already dealt with are known to be good.
+ */
+export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: PassTwoOptions = {}): Promise<PassTwoResult> {
+  const { repo, profile } = deps;
+  const tenantId = record.tenantId;
+  const importId = record.id;
+  const batchPages = options.batchPages ?? DEFAULT_BATCH_PAGES;
+  const batchBytes = options.batchBytes ?? DEFAULT_BATCH_BYTES;
+  if (record.createdBy === null) throw new Error('the importer of this import no longer exists');
+  const importer = record.createdBy;
+
+  const all: ImportItem[] = [];
+  for (let after: string | undefined; ;) {
+    const batch = await repo.scanItems(tenantId, importId, after === undefined ? { limit: 1000 } : { limit: 1000, afterId: after });
+    if (batch.length === 0) break;
+    all.push(...batch);
+    after = batch.at(-1)?.id;
+  }
+  const status = new Map(all.map((i) => [i.id, i.status]));
+  const pageItems = all.filter((i) => i.kind === 'page');
+  const isContainer = (i: ImportItem): boolean => i.path.endsWith('/');
+
+  // The link index: files of the archive by their canonical path (NFC, `.` and empty segments dropped), as `resolveLinkPath` makes its targets.
+  const byPath = new Map<string, IndexedItem>();
+  for (const i of all) if ((i.kind === 'page' || i.kind === 'attachment') && !isContainer(i)) byPath.set(segmentsOf(i.path).join('/').normalize('NFC'), { itemId: i.id, path: i.path, kind: i.kind === 'page' ? 'page' : 'attachment' });
+  const index: LinkIndex = { byPath, byId: new Map() };
+  const itemById = new Map(all.map((i) => [i.id, i]));
+  const lowerPaths: ReadonlySet<string> = new Set(all.filter((i) => !isContainer(i) && i.kind !== 'other').map((i) => segmentsOf(i.path).join('/').normalize('NFC').toLowerCase()));
+  const entryByPath = new Map(deps.entries.map((e) => [e.path, e]));
+
+  // Which page stands for which folder: a folder's own page file, else its container.
+  const folderPage = new Map<string, ImportItem>();
+  for (const i of pageItems) if (!isContainer(i)) { const f = profile.folderPathOf(i.path, lowerPaths); if (f !== undefined && !folderPage.has(folderKey(f))) folderPage.set(folderKey(f), i); }
+  for (const i of pageItems) if (isContainer(i) && !folderPage.has(folderKey(i.path))) folderPage.set(folderKey(i.path), i);
+  const parentOf = (i: ImportItem): ImportItem | undefined => {
+    const folder = isContainer(i) ? segmentsOf(i.path).slice(0, -1).join('/') : profile.parentPathOf(i.path, lowerPaths);
+    if (folder === null || folder === '') return undefined;
+    const parent = folderPage.get(folderKey(folder));
+    return parent === i ? undefined : parent;
+  };
+  const depthMemo = new Map<string, number>();
+  const depthOf = (i: ImportItem): number => {
+    const known = depthMemo.get(i.id);
+    if (known !== undefined) return known;
+    depthMemo.set(i.id, 0); // a cycle (not possible from paths) reads as a root
+    const parent = parentOf(i);
+    const depth = parent === undefined ? 0 : depthOf(parent) + 1;
+    depthMemo.set(i.id, depth);
+    return depth;
+  };
+
+  const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  let warnings = record.counts.warnings;
+  const counts = (): ImportCounts => {
+    let pagesDone = 0, skipped = 0, failed = 0;
+    for (const i of all) {
+      const s = status.get(i.id);
+      if (s === 'ok' && i.kind === 'page') pagesDone++;
+      else if (s === 'skipped') skipped++;
+      else if (s === 'failed') failed++;
+    }
+    return { pagesTotal: pageItems.length, pagesDone, attachments: record.counts.attachments, skipped, failed, warnings };
+  };
+  const settle = async (item: ImportItem, s: 'skipped' | 'failed', message: string, sizes: { markdownBytes?: number; stateBytes?: number } = {}): Promise<void> => {
+    if (await repo.settle(tenantId, importId, item.id, { status: s, message, ...sizes })) status.set(item.id, s);
+  };
+  /** The page a child goes under: its folder's page if that was written, else the nearest ancestor that was. */
+  const parentPageId = (item: ImportItem): string | null => {
+    for (let p = parentOf(item); p !== undefined; p = parentOf(p)) if (status.get(p.id) === 'ok') return p.pageId;
+    return null;
+  };
+
+  type Step = { readonly stop?: PassTwoStop | 'busy'; readonly bytes: number };
+  const processItem = async (item: ImportItem): Promise<Step> => {
+    let original: Buffer | undefined;
+    let markdown = '';
+    let titleSource = '';
+    let name = '';
+    if (isContainer(item)) {
+      name = segmentsOf(item.path).at(-1) ?? item.path;
+    } else {
+      const entry = entryByPath.get(item.path);
+      if (entry === undefined) { await settle(item, 'failed', 'missing_entry'); return { bytes: 0 }; }
+      const read = await readEntry(deps, entry, deps.limits.seedMaxMarkdownBytes);
+      if (read.kind === 'skipped') { await settle(item, 'skipped', read.reason, { markdownBytes: entry.size }); return { bytes: 0 }; }
+      if (read.kind === 'failed') { await settle(item, 'failed', read.reason); return { bytes: 0 }; }
+      original = read.bytes;
+      try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
+      markdown = profile.preprocess(titleSource, { path: item.path });
+      name = profile.titleOf(item.path, titleSource);
+    }
+    const { title, cut } = cutTitle(name);
+    if (cut) warnings++;
+    const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
+      if (kind === 'image') return undefined;
+      const found = profile.resolveLink(target, item.path, index);
+      if (found === undefined || found.kind !== 'page') return undefined;
+      const targetItem = itemById.get(found.itemId);
+      return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
+    });
+    warnings += rewritten.unresolved.length;
+
+    const bytes = original?.length ?? 0;
+    const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);
+    if (outcome.kind === 'retry') return { stop: 'busy', bytes };
+    if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes }); return { bytes }; }
+    if (outcome.kind === 'failed') {
+      // The original, not the rewritten text: what the person wrote, to take elsewhere.
+      if (original !== undefined) await deps.files.put(importFailedKey(tenantId, importId, item.id), original, { size: original.length, contentType: 'text/markdown' });
+      await settle(item, 'failed', outcome.reason, { markdownBytes: outcome.markdownBytes, ...(outcome.stateBytes === undefined ? {} : { stateBytes: outcome.stateBytes }) });
+      return { bytes };
+    }
+    const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
+      itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, attachments: [],
+    }, deps.pageLimits, deps.now());
+    switch (written.kind) {
+      case 'ok': status.set(item.id, 'ok'); return { bytes };
+      case 'not-pending': status.set(item.id, 'ok'); return { bytes };
+      case 'not-running': return { stop: 'not_running', bytes };
+      case 'collection-deleted': return { stop: 'collection_deleted', bytes };
+      case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
+      case 'tenant-pages-full': await settle(item, 'failed', 'tenant_pages_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
+      case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
+      case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes }); return { bytes };
+    }
+  };
+
+  const finish = async (result: (c: ImportCounts) => PassTwoResult): Promise<PassTwoResult> => {
+    const c = counts();
+    await repo.setCounts(tenantId, importId, c);
+    return result(c);
+  };
+
+  for (let at = 0; at < queue.length; ) {
+    if (options.signal?.aborted === true) return finish((c) => ({ kind: 'stopped', reason: 'aborted', counts: c }));
+    // Before each batch the import is read again: a cancel (or a failure) stops the run here.
+    if ((await repo.get(tenantId, importId))?.status !== 'running') return finish((c) => ({ kind: 'stopped', reason: 'not_running', counts: c }));
+    let pages = 0;
+    let bytes = 0;
+    while (at < queue.length && pages < batchPages && bytes < batchBytes) {
+      const step = await processItem(queue[at] as ImportItem);
+      at++;
+      pages++;
+      bytes += step.bytes;
+      if (step.stop === 'busy') return finish((c) => ({ kind: 'busy', counts: c }));
+      if (step.stop !== undefined) return finish((c) => ({ kind: 'stopped', reason: step.stop as PassTwoStop, counts: c }));
+    }
+    await repo.setCounts(tenantId, importId, counts());
+  }
+  return finish((c) => ({ kind: 'done', counts: c }));
 }
