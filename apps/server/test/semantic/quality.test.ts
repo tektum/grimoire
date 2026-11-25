@@ -26,8 +26,9 @@ describe('the quality corpus', () => {
     expect(hebrewPassages.size).toBeGreaterThanOrEqual(1);
     for (const q of corpus.queries.filter((x) => x.kind === 'english-to-hebrew')) {
       expect(hebrew.test(q.q), q.q).toBe(false);
+      // Only a Hebrew passage answers it: the English original of a Hebrew passage would make the query pass without the model crossing the language.
       expect(
-        q.relevant.some((id) => hebrewPassages.has(id)),
+        q.relevant.every((id) => hebrewPassages.has(id)),
         q.q,
       ).toBe(true);
     }
