@@ -120,6 +120,29 @@ describe('the search screen', () => {
     expect(screen.queryByRole('list')).toBeNull();
   });
 
+  it('says "Search is busy, try again." when a later page is refused with 503 (the cursor of a hybrid answer cannot go on without the semantic search), and Try again starts over from the first page, without the cursor', async () => {
+    let refuse = true;
+    const t = fake((_q, cursor) => {
+      if (cursor === null) return { items: [hit('1', 'First', 'a')], nextCursor: 'CUR1' };
+      return refuse ? { status: 503 } : { items: [hit('2', 'Second', 'b')], nextCursor: null };
+    });
+    show(t.api, '/search?q=a');
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more results' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Search is busy, try again.');
+    expect(alert.textContent).not.toContain('More results could not be loaded');
+    expect(t.requests.map((r) => r.cursor)).toEqual([null, 'CUR1']);
+    refuse = false;
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    // Starts over: the first page again, with no cursor (the cursor that was refused is not sent a second time), and its own next cursor.
+    await waitFor(() => expect(t.requests.map((r) => r.cursor)).toEqual([null, 'CUR1', null]));
+    expect(await screen.findByRole('button', { name: 'Show more results' })).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(1); // the first page only: the second is read when it is asked for
+    await userEvent.click(screen.getByRole('button', { name: 'Show more results' }));
+    expect(await screen.findByRole('link', { name: 'Second' })).toBeTruthy();
+  });
+
   it('paginates: "Show more results" makes a second request that carries the cursor, appends the page, and goes when there is no next cursor', async () => {
     const t = fake((_q, cursor) => (cursor === null ? { items: [hit('1', 'First', 'a')], nextCursor: 'CUR1' } : { items: [hit('2', 'Second', 'b')], nextCursor: null }));
     show(t.api, '/search?q=a');
@@ -151,9 +174,9 @@ describe('the search screen', () => {
     expect(await screen.findByRole('link', { name: 'Back' })).toBeTruthy();
   });
 
-  it('keeps the results already read when only the next page fails, says so beside them, and tries only that page again', async () => {
+  it('keeps the results already read when only the next page fails (a 500, the network: not the 503 above), says so beside them, and tries only that page again', async () => {
     let failSecond = true;
-    const t = fake((_q, cursor) => (cursor === null ? { items: [hit('1', 'First', 'a')], nextCursor: 'CUR1' } : failSecond ? { status: 503 } : { items: [hit('2', 'Second', 'b')], nextCursor: null }));
+    const t = fake((_q, cursor) => (cursor === null ? { items: [hit('1', 'First', 'a')], nextCursor: 'CUR1' } : failSecond ? { status: 500 } : { items: [hit('2', 'Second', 'b')], nextCursor: null }));
     show(t.api, '/search?q=a');
     await userEvent.click(await screen.findByRole('button', { name: 'Show more results' }));
     expect((await screen.findByRole('alert')).textContent).toContain('More results could not be loaded.');
