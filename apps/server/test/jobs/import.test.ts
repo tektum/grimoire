@@ -62,13 +62,23 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
 const cleanup = (t: { enqueued: { name: string; payload: unknown }[] }) => t.enqueued.filter((e) => e.name === 'import-cleanup');
 
 describe('a job that has nothing to do', () => {
-  it.each([['cancelled'], ['done'], ['failed'], ['created']] as const)('an import that is %s: it returns, touches nothing, retries nothing', async (status) => {
+  it.each([['cancelled'], ['created']] as const)('an import that is %s: it returns, touches nothing, retries nothing', async (status) => {
     const t = await setup([md('a.md\u0000# A\n')], { status });
     const get = vi.spyOn(t.files, 'get');
     await expect(t.run()).resolves.toBeUndefined();
     expect(get).not.toHaveBeenCalled();
     expect(t.converter.seeds).toBe(0);
     expect(t.enqueued).toEqual([]);
+    expect((await t.record())?.status).toBe(status);
+  });
+
+  it.each([['done'], ['failed']] as const)('an import that is already %s: nothing is run, but the clean-up is asked for again (a retry after the end was recorded and the first ask was lost)', async (status) => {
+    const t = await setup([md('a.md\u0000# A\n')], { status });
+    const get = vi.spyOn(t.files, 'get');
+    await expect(t.run()).resolves.toBeUndefined();
+    expect(get).not.toHaveBeenCalled();
+    expect(t.converter.seeds).toBe(0);
+    expect(t.enqueued).toEqual([{ name: 'import-cleanup', payload: { importId: IMPORT, tenantId: TENANT }, options: undefined }]);
     expect((await t.record())?.status).toBe(status);
   });
 

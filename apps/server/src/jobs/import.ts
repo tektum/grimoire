@@ -60,7 +60,12 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
     if (!isImportPayload(payload)) { log.warn('import.failed', { importId: 'unknown', reason: 'bad_payload' }); return; }
     const { tenantId, importId } = payload;
     const record = await imports.start(tenantId, importId, now()); // an `ImportBusyError` goes up: the queue retries later
-    if (record === undefined) return;
+    if (record === undefined) {
+      // An end that was recorded but whose clean-up ask was lost (the enqueue failed, the job was retried) is asked for again: the clean-up is idempotent.
+      const ended = await imports.get(tenantId, importId);
+      if (ended?.status === 'done' || ended?.status === 'failed') await deps.queue.enqueueImportCleanup({ importId, tenantId });
+      return;
+    }
     log.info('import.started', { importId });
 
     const key = `import:${importId}`;
