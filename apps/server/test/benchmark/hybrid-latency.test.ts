@@ -173,16 +173,36 @@ describe('the semantic statement without an index', () => {
   // Evidence for the decision between tuning the table and an approximate index, recorded after the assertions (it changes the table): the plan is a parallel scan of `page_chunks` with one worker
   // (the table's own pages are few, because each 768-dimension vector sits out of line in the TOAST table) and the buffers say how much of the time is reading. Never asserted.
   it('records what two table settings do to the statement: more workers for the scan, and the vector stored in the row', { timeout: 1_800_000 }, async () => {
-    const measure = async (): Promise<number> => Math.round(p95(await statement(collections)));
+    // One round to warm the cache, then the 30 queries; and the workers the scan really got, read from the plan of one query.
+    const measure = async (): Promise<{ p95Ms: number; workersLaunched: string; scan: string }> => {
+      await statement(collections);
+      const p95Ms = Math.round(p95(await statement(collections)));
+      const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
+      const plan = (await run(`explain (analyze, costs off) select c.page_id from page_chunks c where c.model = '${modelKey(model)}' order by c.embedding <=> '${vectorText}'::vector limit 300`)) as {
+        'QUERY PLAN': string;
+      }[];
+      const lines = plan.map((r) => r['QUERY PLAN']);
+      return {
+        p95Ms,
+        workersLaunched: lines.find((l) => l.includes('Workers Launched'))?.trim() ?? 'none',
+        scan:
+          lines
+            .find((l) => l.includes('Scan on page_chunks'))
+            ?.trim()
+            .slice(0, 80) ?? '',
+      };
+    };
+    record('experimentBaseline', await measure());
     await run('alter table page_chunks set (parallel_workers = 4)');
-    record('experimentParallelWorkers4P95Ms', await measure());
+    record('experimentParallelWorkers4', await measure());
     await run('alter table page_chunks reset (parallel_workers)');
+    // The vector stored in the row: the new setting only applies to a value written after it, and an update that writes the same value keeps its out-of-line copy, so the value is made again (a text round trip).
     await run('alter table page_chunks alter column embedding set storage main');
-    await run('update page_chunks set embedding = embedding');
+    await run('update page_chunks set embedding = (embedding::text)::vector');
     await run('vacuum (analyze) page_chunks');
-    record('experimentStorageMainP95Ms', await measure());
+    record('experimentStorageMain', await measure());
     await run('alter table page_chunks set (parallel_workers = 4)');
-    record('experimentStorageMainAndWorkers4P95Ms', await measure());
+    record('experimentStorageMainAndWorkers4', await measure());
     const sizes = await run(`select pg_size_pretty(pg_relation_size('page_chunks')) as heap, pg_size_pretty(pg_total_relation_size('page_chunks') - pg_relation_size('page_chunks')) as rest`);
     record('tableSizesAfterStorageMain', sizes);
   });
