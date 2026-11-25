@@ -55,10 +55,13 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   let state: JobsState = 'starting';
   let timer: NodeJS.Timeout | undefined;
   let inFlight: Promise<void> | undefined;
+  /** True while an attempt is running (the stop then waits for it, and that wait is taken out of the grace). */
+  let attempting = false;
   const attempt = async (): Promise<void> => {
     timer = undefined;
     if (stopped || queue !== undefined) return;
     attempts++;
+    attempting = true;
     let made: JobQueue | undefined;
     try {
       const url = config.database.url;
@@ -84,6 +87,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       if (attempts >= MAX_START_ATTEMPTS) { state = 'down'; log.error('jobs.unavailable', { attempts }); return; }
       log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0 });
       if (!stopped) { timer = setTimeout(() => { inFlight = attempt(); }, START_RETRY_MS); timer.unref(); }
+    } finally {
+      attempting = false;
     }
   };
   return {
@@ -98,6 +103,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       name: 'jobs', phase: 'release-jobs', deadlineMs: config.jobs.stopGraceMs + SHUTDOWN_BUDGET_MS.jobsHookOverhead,
       run: async () => {
         const began = Date.now();
+        const waiting = attempting; // a start is under way: the stop waits for it, and the wait comes out of the grace
         stopped = true;
         if (state !== 'down') state = 'stopped';
         if (timer !== undefined) clearTimeout(timer);
@@ -110,7 +116,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           if (!settled) { abandoned = true; return; }
         }
         if (queue === undefined) return;
-        const { inFlight: running } = await queue.stop({ graceMs: Math.max(1, config.jobs.stopGraceMs - (Date.now() - began)) });
+        const { inFlight: running } = await queue.stop({ graceMs: waiting ? Math.max(1, config.jobs.stopGraceMs - (Date.now() - began)) : config.jobs.stopGraceMs });
         log.info('jobs.stopped', { inFlight: running });
       },
     },
