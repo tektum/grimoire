@@ -283,7 +283,7 @@ describe('the import screen', () => {
   });
 
   it.each([
-    ['too large for an import', { create: { status: 413 } }, 'That file is larger than an import may be.'],
+    ['too large for an import', { create: { status: 413 } }, 'That file is larger than an import can take. Zip the export again without its big files, such as videos, and import that.'],
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
     ['not a zip', { start: { status: 422, code: 'not_a_zip' } }, 'That is not a zip file.'],
     ['a file that did not arrive', { start: { status: 409, code: 'upload_missing' } }, 'The file did not arrive. Try again.'],
@@ -889,6 +889,16 @@ describe('the progress of an import', () => {
     cleanup();
     show(fake({ states: [state({ status: 'cancelled' })] }).api, '/import?import=imp1');
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Cancelled. The pages it created were moved to the trash.'));
+  });
+
+  it('says in plain words what to do for an export in parts and for a zip over the limits, and creates no page for either', async () => {
+    show(fake({ states: [state({ status: 'failed', error: 'nested_or_split_export' })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('The import failed: this zip holds other zips, the way an export in parts does. Unzip the parts into one folder, zip that folder, and import it.'));
+  });
+
+  it('says in plain words what to do for a zip that holds more than an import can take', async () => {
+    show(fake({ states: [state({ status: 'failed', error: 'too_large' })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('The import failed: the zip holds more than an import can take. Zip the export again without its big files, such as videos, and import that.'));
   });
 
   it('is read again every two seconds while it runs, and not any more once it has ended', async () => {

@@ -37,8 +37,11 @@ export interface PassOneOptions {
 
 export type PassOneResult =
   | { readonly ok: true; readonly pagesTotal: number; readonly attachments: number; readonly skipped: number; readonly failed: number }
-  /** The archive has more pages than a collection holds, containers included: nothing was added. */
-  | { readonly ok: false; readonly reason: 'collection_full'; readonly pagesTotal: number };
+  /**
+   * Nothing was added: the archive has more pages than a collection holds, containers included (`collection_full`), or it has no page and holds other zips, the way an export in parts
+   * zipped once more does (`nested_or_split_export`: the person unzips the parts into one folder and zips that).
+   */
+  | { readonly ok: false; readonly reason: 'collection_full' | 'nested_or_split_export'; readonly pagesTotal: number };
 
 /** Items are added in batches of this many (contracts section 4, stage 3). */
 const BATCH = 500;
@@ -82,6 +85,8 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     rows.push({ path: e.path, kind });
     if (kind === 'page') pagePaths.push(e.path);
   });
+
+  if (pagePaths.length === 0 && entries.some((e) => !e.isDirectory && /\.zip$/i.test(e.path))) return { ok: false, reason: 'nested_or_split_export', pagesTotal: 0 };
 
   // The folders that have a page of their own, and the folders above pages that have none: those get a container. Folders are the same folder by the key duplicate detection uses (NFC,
   // lower case, `.` and empty segments dropped), so `Dir` and `dir` are one; a container keeps the spelling it was first seen under.

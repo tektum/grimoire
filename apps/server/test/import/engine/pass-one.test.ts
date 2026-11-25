@@ -54,6 +54,15 @@ describe('classification', () => {
     expect((await run(entries('a.md', 'inner.zip'))).byPath('inner.zip')).toMatchObject({ status: 'skipped', message: 'nested_archive' });
     expect((await run(entries('a.md', 'inner.ZIP'), { allowNestedZips: true })).byPath('inner.ZIP')).toMatchObject({ kind: 'attachment', status: 'pending' });
   });
+
+  it('an archive with no page and only nested archives (an export in parts, zipped once more) is refused as nested_or_split_export, allowed or not, and nothing is added', async () => {
+    for (const allowNestedZips of [false, true]) {
+      const { result, items } = await run(entries('Export-p-Part-1.zip', 'Export-p-Part-2.zip'), { allowNestedZips });
+      expect(result).toEqual({ ok: false, reason: 'nested_or_split_export', pagesTotal: 0 });
+      expect(items).toEqual([]);
+    }
+    expect((await run(entries('a.md', 'inner.zip'))).result.ok).toBe(true); // pages beside a nested zip: an ordinary import
+  });
 });
 
 describe('pages get their ids now, and a folder with no page of its own gets an empty container page', () => {

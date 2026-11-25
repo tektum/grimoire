@@ -152,6 +152,15 @@ describe('an archive that cannot be imported ends the import as failed, with the
     expect(cleanup(t)).toHaveLength(1);
   });
 
+  it('a zip that holds the parts of an export, and no page: failed as nested_or_split_export, before any page, and the clean-up is asked for', async () => {
+    const part = (n: number) => ({ name: `Export-p-Part-${String(n)}.zip`, data: buildZip([md(`Page ${String(n)}.md\u0000# P\n`)]) });
+    const t = await setup([part(1), part(2)]);
+    await t.run();
+    expect(await t.record()).toMatchObject({ status: 'failed', error: 'nested_or_split_export' });
+    expect(t.repo.written).toEqual([]);
+    expect(cleanup(t)).toHaveLength(1);
+  });
+
   it('something that is not a zip, and an upload that is missing', async () => {
     const notZip = await setup(Buffer.from('this is not a zip file at all, just text that is long enough'));
     await notZip.run();
