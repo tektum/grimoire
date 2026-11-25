@@ -57,7 +57,7 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     return Promise.resolve(new Map(rows.map((c) => [c.chunkIndex, c.contentHash])));
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- async so that a throw is a rejection, as the real store's is
+  // async so that a throw is a rejection, as the real store's is
   async replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);
     if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return 'stale';
