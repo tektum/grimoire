@@ -214,7 +214,7 @@ router.openapi(startImport, async (c) => {
   if (!(await deps.imports.markUploaded(tenant, id))) return fail('already_started');
   // The job moves the import to `running` when its turn comes: a workspace has one running import at a time, held by the database, so a second one waits as `uploaded` and its job tries again.
   try {
-    await deps.enqueue('import', { importId: id, tenantId: tenant }, { singletonKey: id });
+    await deps.enqueueImport({ importId: id, tenantId: tenant }, { singletonKey: id });
   } catch {
     // The work could not be queued: the import stays `uploaded`, and the person may start it again.
     deps.log.error('files.unavailable', { operation: 'import-start' });

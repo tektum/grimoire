@@ -88,9 +88,9 @@ function build(options: { files?: boolean; enqueueFails?: boolean } = {}) {
       provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
       access: createPageAccess(store),
       authorizer: createAuthorizer(store),
-      enqueue: (name, payload, opts) => {
+      enqueueImport: (payload, opts) => {
         if (options.enqueueFails === true) return Promise.reject(new Error('jobs-unavailable'));
-        enqueued.push({ name, payload, options: opts });
+        enqueued.push({ name: 'import', payload, options: opts });
         return Promise.resolve('job-1');
       },
     },
