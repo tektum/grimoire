@@ -59,7 +59,9 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       const items = await h.repo.pending(h.tenantId, made.id, 'page', 10);
       assert.deepEqual(items.map((i) => i.path), ['a.md', 'b.md', 'c.md']);
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'attachment', 10), [], 'the second a.md did not replace the first');
-      assert.deepEqual({ ...items[0], pageId: null, urlId: null }, { id: items[0]?.id, path: 'a.md', kind: 'page', status: 'pending', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0 });
+      const first = items[0];
+      assert.ok(typeof first?.pageId === 'string' && first.pageId !== '' && typeof first.urlId === 'string' && first.urlId !== '', 'a pending page item has both ids');
+      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0 });
     },
   },
   {
@@ -96,6 +98,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       }
       assert.deepEqual(seen, ['a.md', 'b.md', 'c.md', 'x'], 'pending, settled and skipped alike, once each');
       assert.deepEqual(await h.repo.scanItems(h.otherTenantId, made.id, { limit: 10 }), []);
+    },
+  },
+  {
+    name: 'an-added-items-message-is-kept-as-given-and-null-only-when-absent',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [
+        { path: 'a', kind: 'other', status: 'skipped', message: '' }, { path: 'b', kind: 'other', status: 'skipped', message: 'ignored' }, { path: 'c', kind: 'other', status: 'skipped' },
+      ]);
+      const rows = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(rows.map((i) => i.message), ['', 'ignored', null]);
     },
   },
   {

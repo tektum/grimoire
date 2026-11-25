@@ -47,13 +47,13 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       // A pending page item gets its page id and URL id here (a link to a page written later points at them); every other item has neither.
       const rows = await db.query(
         `insert into import_items (tenant_id, import_id, path, kind, status, message, page_id, url_id)
-         select i.tenant_id, i.id, p.path, p.kind, p.status, nullif(p.message, ''),
+         select i.tenant_id, i.id, p.path, p.kind, p.status, p.message,
                 case when p.kind = 'page' and p.status = 'pending' then gen_random_uuid() end,
                 case when p.kind = 'page' and p.status = 'pending' then grimoire_url_id() end
            from imports i, unnest($3::text[], $4::text[], $5::text[], $6::text[]) as p (path, kind, status, message)
           where i.tenant_id = $1 and i.id = $2
          on conflict (import_id, path) do nothing returning 1`,
-        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind), items.map((i) => i.status ?? 'pending'), items.map((i) => cleanItemText(i.message ?? ''))],
+        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind), items.map((i) => i.status ?? 'pending'), items.map((i) => (i.message === undefined ? null : cleanItemText(i.message)))],
       );
       return rows.length;
     },
