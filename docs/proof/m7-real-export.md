@@ -1,6 +1,6 @@
 # The import against a real export of Notion (M7-T08)
 
-The owner's own export of a Notion workspace was imported by the engine on a developer machine, to check the rules that M7-T06 built from the export format's documentation and other importers' tests. This page holds aggregates only: no title, folder or file name, text, link or person from the export appears here, and the export never left the owner's private checkout. The scripts that counted are not in the repository, because they read the export.
+A real Notion export was imported by the engine on a developer machine, to check the rules that M7-T06 built from the export format's documentation and other importers' tests. This page holds aggregates only: no title, folder or file name, text, link or person from the export appears here, and the export never left the machine it was read on. The scripts that counted are not in the repository, because they read the export.
 
 ## The export
 
@@ -66,7 +66,9 @@ Both passes of the engine, the real Markdown converter, the Notion profile (`not
 
 ### The import job on PostgreSQL
 
-The import job end to end on a local PostgreSQL, with the generic profile (`markdown_zip`, main at 473e388, before the Notion rules). Caveat: that PostgreSQL was an embedded PostgreSQL 19 with pgvector 0.8.5, not the PostgreSQL 17 that the project runs, because the run did not use Docker.
+The import job end to end on a local PostgreSQL, twice: with the generic profile (`markdown_zip`, main at 473e388, before the Notion rules), and with the Notion profile at the head of the M7-T06 stack (fb7b04d). Caveat: that PostgreSQL was an embedded PostgreSQL 19 with pgvector 0.8.5, not the PostgreSQL 17 that the project runs, because the runs did not use Docker.
+
+With the generic profile:
 
 | What | Result |
 |---|---|
@@ -77,8 +79,16 @@ The import job end to end on a local PostgreSQL, with the generic profile (`mark
 | Database size after the import | 91.5 MB |
 | Cancelled after 10 s | Stopped at once with 234 pages written. The counts lag by up to one batch: 224 counted |
 
+With the Notion profile:
+
+| What | Result |
+|---|---|
+| Killed with `kill -9` after 26 s, then started again | The resumed job ended `done` in 99 s with the same items, counts and pages as the in-memory run above (4,361 pages written), none written twice |
+| Peak memory | 523 MB for the resumed process |
+| Cancelled after 10 s | Stopped at once with 168 pages written. The counts lag by up to one batch: 150 counted |
+
 ## What is still open
 
-- None of the three zips can be uploaded as it is: each is over 500 MiB (owner question Q100). An export without its video files fits.
+- None of the three zips can be uploaded as it is: each is over 500 MiB. An export without its video files fits.
 - The 21 database CSVs that no reader parsed are read by #471 (21 of 272 failed before, 0 after).
-- The construct counts in the import's report (`report.constructs`) and a second run of the job on PostgreSQL with the Notion profile follow when the M7-T06 stack is on main.
+- The construct counts in the import's report (`report.constructs`) follow when the M7-T06 stack is on main.
