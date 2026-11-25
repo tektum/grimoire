@@ -71,6 +71,7 @@ class FakeBackend implements Backend {
 
 const dirs: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
@@ -112,6 +113,15 @@ function setup(options: { files?: boolean; lock?: boolean } = {}) {
 }
 const ready = (e: ReturnType<ReturnType<typeof setup>['make']>) => vi.waitFor(() => expect(e.status()).toBe('ready'));
 
+/** The retry timers of a test's embedder, seen from outside: how many were set with this delay (each test that counts gives its embedder a delay of its own, so that an embedder another test left running is not counted), and how many timers were cleared. */
+function watchTimers(delay: number) {
+  const set = vi.spyOn(globalThis, 'setTimeout');
+  const cleared = vi.spyOn(globalThis, 'clearTimeout');
+  return { retries: () => set.mock.calls.filter((call) => call[1] === delay).length, cleared: () => cleared.mock.calls.length };
+}
+/** One turn of the event loop: every continuation that was waiting on a promise has run. */
+const turn = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 describe('loading', () => {
   it('is loading, then ready; the version is the start of the weights hash, and tokens are counted by the tokenizer once it is loaded', async () => {
     const s = setup();
@@ -134,11 +144,12 @@ describe('loading', () => {
 
   it('is unavailable with model-missing for no lock or no file, says so once, and loads when the files come (the retry)', async () => {
     const s = setup({ files: false });
-    const e = s.make();
+    const timers = watchTimers(21);
+    const e = s.make({ retryMs: 21 });
     await vi.waitFor(() => expect(s.logs).toHaveLength(1));
     expect(e.status()).toBe('unavailable');
     expect(s.logs[0]).toEqual({ event: 'semantic.unavailable', fields: { reason: 'model-missing' } });
-    await new Promise((resolve) => setTimeout(resolve, 100)); // several retries, none says it again
+    await vi.waitFor(() => expect(timers.retries()).toBeGreaterThanOrEqual(3)); // the load was tried three times and failed three times: none said it again
     expect(s.logs).toHaveLength(1);
     s.put();
     await ready(e);
@@ -202,15 +213,19 @@ describe('loading', () => {
 
   it('does not start a model, or retry, once it is closed', async () => {
     const s = setup({ files: false });
-    const e = s.make();
+    const timers = watchTimers(22);
+    const e = s.make({ retryMs: 22 });
     await vi.waitFor(() => expect(s.logs).toHaveLength(1));
+    const clearedBefore = timers.cleared();
     await e.close();
+    expect(timers.cleared()).toBeGreaterThan(clearedBefore); // the pending retry is cancelled, so nothing can load the files that come now
     s.put();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await turn();
     expect(s.backends).toHaveLength(0);
     expect(e.status()).toBe('unavailable');
     const early = setup().make();
     await early.close(); // closed while the files are still being checked
+    // There is no event for a start that does not happen. The check reads two files of a few bytes: 100 ms is many times what it takes, and a start that was not prevented would show as a model.
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(early.status()).toBe('unavailable');
   });
@@ -248,17 +263,25 @@ describe('a tokenizer that cannot be read', () => {
     await e.close();
     // Closed while the tokenizer is being read: the throw finds the embedder closed.
     const t = setup();
+    const timers = watchTimers(23);
+    const retriesBefore = timers.retries();
     let closeNow: () => void = () => undefined;
+    let threw: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (threw = resolve));
     const closing = t.make({
+      retryMs: 23,
       loadTokenCounter: () => {
         closeNow();
+        threw();
         throw new Error('not a tokenizer');
       },
     });
     closeNow = () => void closing.close();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await gate;
+    await turn(); // the catch of the load runs in the same turn as the throw; this turn is after it
     expect(t.logs).toEqual([]);
     expect(t.backends).toHaveLength(0);
+    expect(timers.retries()).toBe(retriesBefore); // no retry was set
   });
 });
 
@@ -273,12 +296,15 @@ describe('closing while the model starts', () => {
         entered = true;
         fail = reject;
       });
-    const e = s.make({ makeBackend: () => slow });
+    const e = s.make({ makeBackend: () => slow, retryMs: 24 });
     await vi.waitFor(() => expect(entered).toBe(true));
+    const timers = watchTimers(24);
+    const retriesBefore = timers.retries();
     await e.close();
     fail(new Error('refused'));
     await vi.waitFor(() => expect(slow.closed).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 100)); // five retry periods
+    await turn(); // the rest of the failed start (the report and the retry it would have made) runs on promises: after this turn it has run or it never will
+    expect(timers.retries()).toBe(retriesBefore);
     expect(s.logs).toEqual([]);
     expect(s.backends).toHaveLength(0);
     expect(e.status()).toBe('unavailable');
