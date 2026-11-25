@@ -92,6 +92,18 @@ describe('a link inside a Markdown file', () => {
     expect(resolveLinkPath('./a:b/c.md', 'dir/b.md'), 'a colon in a name below the root is a name').toBe('dir/a:b/c.md');
   });
 
+  it('keeps a link to a root-level entry whose name has a colon, when the link names it with a leading ./', () => {
+    expect(resolveLinkPath('./notes:2026.md', 'index.md')).toBe('notes:2026.md');
+    expect(resolveLinkPath('./notes:2026.md', 'dir/index.md')).toBe('dir/notes:2026.md');
+  });
+
+  it('judges a page path with . and empty segments as the path without them (what the header check accepts and the duplicate check merges)', () => {
+    expect(resolveLinkPath('../x', './b.md')).toBeUndefined();
+    expect(resolveLinkPath('../target.md', 'dir/./index.md')).toBe('target.md');
+    expect(resolveLinkPath('c.md', 'dir//index.md')).toBe('dir/c.md');
+    expect(resolveLinkPath('../c.md', 'a//b/./index.md')).toBe('a/c.md');
+  });
+
   it('decodes once: a double-encoded dot stays a name, not a parent', () => {
     expect(resolveLinkPath('%252e%252e/x', 'a/b.md')).toBe('a/%2e%2e/x');
   });
