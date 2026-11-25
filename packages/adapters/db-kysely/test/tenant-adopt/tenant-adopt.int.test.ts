@@ -117,4 +117,13 @@ describe('the tables adopt moves are the ones the database says carry a tenant',
       await run(`drop table adopt_extra`);
     }
   });
+
+  it('refuses, before any change, when a tenant table has a name it will not put into a statement', async () => {
+    await run(`create table "Adopt Odd" (tenant_id text not null default 'legacy' references tenants (id))`);
+    try {
+      await expect(adoptTenant(t.admin, { from: 'legacy', to: 'vacant' })).rejects.toThrow('will not put into a statement');
+    } finally {
+      await run(`drop table "Adopt Odd"`);
+    }
+  });
 });
