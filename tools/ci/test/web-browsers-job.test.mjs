@@ -28,7 +28,7 @@ test('the Firefox and WebKit job is a matrix of exactly those two browsers, and 
 test('it has the runner, the condition and the pinned actions of the Chromium job', () => {
   assert.equal(line(browsers, 'if'), line(chromium, 'if'));
   assert.equal(line(browsers, 'runs-on'), line(chromium, 'runs-on'));
-  assert.equal(line(browsers, 'runs-on'), 'runs-on: ubuntu-latest');
+  assert.equal(line(browsers, 'runs-on'), 'runs-on: ubuntu-24.04'); // the system libraries of WebKit are those of 24.04 (see the comment on the job)
   const uses = [...browsers.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
   assert.ok(uses.length >= 4);
   for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, `${u} is pinned to a commit`);
@@ -37,7 +37,7 @@ test('it has the runner, the condition and the pinned actions of the Chromium jo
 
 test('it installs its browser with its system libraries, caches the browsers, runs the target of its browser and keeps what a failure leaves', () => {
   assert.match(browsers, /bunx playwright install --with-deps "\$BROWSER"\n {8}env:\n {10}BROWSER: \$\{\{ matrix\.browser \}\}/);
-  assert.match(browsers, /path: ~\/\.cache\/ms-playwright\n {10}key: playwright-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.browser \}\}-\$\{\{ hashFiles\('bun\.lock'\) \}\}/);
+  assert.match(browsers, /path: ~\/\.cache\/ms-playwright\n {10}key: playwright-\$\{\{ runner\.os \}\}-24\.04-\$\{\{ matrix\.browser \}\}-\$\{\{ hashFiles\('bun\.lock'\) \}\}/);
   assert.match(browsers, /- run: make test-web-e2e-browser\n {8}env:\n {10}BROWSER: \$\{\{ matrix\.browser \}\}/);
   assert.match(browsers, /if: failure\(\)\n {8}uses: actions\/upload-artifact@[0-9a-f]{40} # v[\d.]+\n {8}with:\n {10}name: e2e-web-results-\$\{\{ matrix\.browser \}\}/);
   assert.match(browsers, /- name: Tear down\n {8}if: always\(\)\n {8}run: make down-volumes/);

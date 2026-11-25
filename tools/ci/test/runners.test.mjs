@@ -26,3 +26,12 @@ test('the header of ci.yml states the rule', () => {
   assert.match(ci.split('\n').slice(0, 6).join('\n'), /ubuntu-latest/);
   assert.doesNotMatch(ci.split('\n').slice(0, 6).join('\n'), /runner=4cpu/);
 });
+
+test('the jobs that run Playwright stay on the Ubuntu its browsers get their system libraries for, until Playwright supports the latest', () => {
+  const ci = readFileSync(path.join(dir, 'ci.yml'), 'utf8');
+  for (const name of ['e2e-m5', 'e2e-web', 'e2e-web-browsers']) {
+    const job = ci.match(new RegExp(`\\n  ${name}:\\n[\\s\\S]*?(?=\\n  [a-z0-9-]+:\\n|$)`))?.[0] ?? '';
+    assert.match(job, /\n {4}runs-on: ubuntu-24\.04\n/, name);
+    assert.match(job, /playwright install --with-deps/, name);
+  }
+});
