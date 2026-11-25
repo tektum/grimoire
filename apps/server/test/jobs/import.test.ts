@@ -314,6 +314,52 @@ describe('the profile an import is read with is the one of its source', () => {
         expect(items.find((i) => i.path === `Roadmap/Polish ${R2}.md`)).toMatchObject({ status: 'skipped', message: 'database_row' });
         expect(t.repo.written).toHaveLength(4); // the page, the database, Ship it, Notes: no empty page for the folder
       });
+
+      it('a row of a database that failed is kept as a page: no table shows it', async () => {
+        const rows = Array.from({ length: 1001 }, (_v, i) => `r${String(i)},Open`).join('\n');
+        const t = await setup([csv(`Tasks ${ID2}_all.csv`, `Name,Status\n${rows}\n`), md(`Tasks/r1 ${R1}.md\u0000# r1\n\nStatus: Open\n`)], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const items = await t.items();
+        expect(items.find((i) => i.path === `Tasks ${ID2}_all.csv`)).toMatchObject({ status: 'failed', message: 'table_too_large' });
+        expect(items.find((i) => i.path === `Tasks/r1 ${R1}.md`)).toMatchObject({ status: 'ok' });
+      });
+
+      it('a row is matched to its table in one Unicode form: a title with a decomposed accent is the row its table spells composed', async () => {
+        const ID3 = '00112233445566778899aabbccddeeff';
+        const t = await setup([
+          md(`Menu ${ID1}.md\u0000# Menu\n\nWhat we serve.\n`),
+          csv(`Menu ${ID3}_all.csv`, 'Name,Kind\nCaf\u00e9,Drink\n'),
+          md(`Menu/Cafe\u0301 ${R1}.md\u0000# Cafe\u0301\n\nKind: Drink\n\nServed hot.\n`),
+        ], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const db = (await t.items()).find((i) => i.path === `Menu ${ID3}_all.csv`);
+        expect(t.repo.written.find((w) => w.page.title.normalize('NFC') === 'Caf\u00e9')?.page.parentId).toBe(db?.pageId);
+      });
+    });
+
+    it('a table of exactly 1,000 rows, and one whose Markdown is exactly the cap, are database pages: the limits are inclusive', async () => {
+      const ID3 = '00112233445566778899aabbccddeeff';
+      const thousand = `Name,Value\n${Array.from({ length: 1000 }, (_v, i) => `r${String(i)},x`).join('\n')}\n`;
+      // The seed cap of the fake configuration is 131,072 bytes: `| Name |\n` and `| --- |\n` take 17, the one row 5 more than its cell.
+      const exact = `Name\n${'x'.repeat(131_072 - 22)}\n`;
+      const t = await setup([csv(`Rows ${ID2}_all.csv`, thousand), csv(`Wide ${ID3}_all.csv`, exact)], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const items = await t.items();
+      expect(items.find((i) => i.path === `Rows ${ID2}_all.csv`)).toMatchObject({ status: 'ok' });
+      expect(items.find((i) => i.path === `Wide ${ID3}_all.csv`)).toMatchObject({ status: 'ok' });
+      expect(Buffer.byteLength(t.repo.written.find((w) => w.page.title === 'Wide')?.page.content.markdown ?? '')).toBe(131_072);
+    });
+
+    it('a CSV over four times the table cap makes no table under it: it is table_too_large without being read as a table (even a malformed one), and its CSV is kept', async () => {
+      const text = `a,"b\n${'x'.repeat(600_000)}\n`; // over 4 x 131,072 bytes, and never closes its quote
+      const t = await setup([csv(`Huge ${ID2}_all.csv`, text)], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const huge = (await t.items()).find((i) => i.path === `Huge ${ID2}_all.csv`);
+      expect(huge).toMatchObject({ status: 'failed', message: 'table_too_large' });
+      const stored = await t.files.get(importFailedKey(TENANT, IMPORT, huge?.id ?? 'none'));
+      const chunks: Uint8Array[] = [];
+      for await (const c of stored.body) chunks.push(c);
+      expect(Buffer.concat(chunks).toString()).toBe(text);
     });
 
     it('a failed database item keeps its CSV for the report to offer (decision 168), as a failed page keeps its Markdown', async () => {
