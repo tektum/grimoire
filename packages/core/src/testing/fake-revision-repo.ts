@@ -82,10 +82,10 @@ export class FakeRevisionRepo implements RevisionRepo {
     return Promise.resolve({ kind: 'created', id: created.id });
   }
 
-  snapshotBeforeRestore(_tenantId: string, pageId: string): Promise<BeforeRestoreResult> {
+  snapshotBeforeRestore(tenantId: string, pageId: string): Promise<BeforeRestoreResult> {
     this.calls.push(`snapshotBeforeRestore:${pageId}`);
     if (this.failNext !== undefined) { const e = this.failNext; this.failNext = undefined; return Promise.reject(e); }
-    const page = this.pageStates.get(pageId);
+    const page = (this.pageTenants.get(pageId) ?? 'legacy') === tenantId ? this.pageStates.get(pageId) : undefined;
     if (page === undefined) return Promise.resolve({ kind: 'no-page' });
     if (page.stale === true || (page.markdown === null && page.hasState === true)) return Promise.resolve({ kind: 'stale' });
     if (page.markdown === null) return Promise.resolve({ kind: 'nothing-saved' });
