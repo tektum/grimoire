@@ -20,7 +20,7 @@ export interface PurgeDeps {
  * same function serves the administrator's `DELETE /v1/trash/{id}` and the daily job.
  */
 export async function purgeBatch(deps: PurgeDeps, tenantId: string, batch: string, actorId: string): Promise<{ readonly pages: number; readonly files: number }> {
-  const keys = await deps.trash.attachmentKeys(batch);
+  const keys = await deps.trash.attachmentKeys(tenantId, batch);
   if (keys.length > 0) {
     try {
       await deps.deleteFiles(keys);
@@ -30,7 +30,7 @@ export async function purgeBatch(deps: PurgeDeps, tenantId: string, batch: strin
       // The marker is tried twice; if it still fails, the store's failure is the one reported (a retry of the purge marks the rows of any page a restore brought back).
       for (let attempt = 0; attempt < 2 && error.removed.length > 0; attempt += 1) {
         try {
-          await deps.trash.markFilesRemoved(error.removed);
+          await deps.trash.markFilesRemoved(tenantId, error.removed);
           break;
         } catch {
           // try again, then give up

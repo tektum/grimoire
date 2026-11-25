@@ -251,7 +251,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
 
   it('deletes the batch rows in one statement with their revisions and attachment rows, writes one audit row, and leaves other batches', async () => {
     const { root, child, other } = await batchWithFiles();
-    expect(await trash().attachmentKeys(root)).toEqual([`attachments/${child}/1/a.png`]);
+    expect(await trash().attachmentKeys('legacy', root)).toEqual([`attachments/${child}/1/a.png`]);
     expect(await trash().purge('legacy', root, user, [`attachments/${child}/1/a.png`])).toEqual({ pages: 2 });
     expect(await Promise.all([root, child, other].map(state))).toEqual(['gone', 'gone', 'deleted']);
     expect(await count(`select count(*) as n from revisions where page_id = $1`, child)).toBe(0);
@@ -275,12 +275,12 @@ describe('TrashRepo.purge and purgeBatch', () => {
     const { root, child } = await batchWithFiles();
     const [row] = await t.admin.query<{ s3_key: string }>(`select s3_key from attachments where page_id = $1`, [child]);
     const key = (row as { s3_key: string }).s3_key;
-    await trash().markFilesRemoved([]);
-    await trash().markFilesRemoved(['attachments/not-a-key']);
+    await trash().markFilesRemoved('legacy', []);
+    await trash().markFilesRemoved('legacy', ['attachments/not-a-key']);
     expect(await count(`select count(*) as n from attachments where s3_key = $1 and deleted_at is not null`, key)).toBe(0);
-    await trash().markFilesRemoved([key]);
+    await trash().markFilesRemoved('legacy', [key]);
     expect(await count(`select count(*) as n from attachments where s3_key = $1 and deleted_at is not null`, key)).toBe(1);
-    await trash().markFilesRemoved([key]); // again: unchanged
+    await trash().markFilesRemoved('legacy', [key]); // again: unchanged
     expect(await count(`select count(*) as n from attachments where page_id = $1 and deleted_at is not null`, child)).toBe(1);
     expect(await purgeBatch({ trash: trash(), deleteFiles: () => Promise.resolve() }, 'legacy', root, user)).toMatchObject({ pages: 2 });
   });
@@ -315,7 +315,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     await t.admin.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'e.png', 'image/png', 3, $2, 'ready')`, [early, `attachments/${early}/1/e.png`]);
     await remove(early);
     await remove(parent);
-    expect(await trash().attachmentKeys(parent)).toEqual([`attachments/${early}/1/e.png`]);
+    expect(await trash().attachmentKeys('legacy', parent)).toEqual([`attachments/${early}/1/e.png`]);
     expect(await trash().purge('legacy', parent, user, [`attachments/${early}/1/e.png`])).toEqual({ pages: 2 });
     expect(await Promise.all([parent, early].map(state))).toEqual(['gone', 'gone']);
   });
@@ -325,7 +325,7 @@ describe('TrashRepo.purge and purgeBatch', () => {
     const key = `attachments/${root}/1/r.png`;
     await t.admin.query(`insert into attachments (page_id, file_name, content_type, size, s3_key, status) values ($1, 'r.png', 'image/png', 3, $2, 'ready')`, [root, key]);
     await remove(root);
-    const keys = await trash().attachmentKeys(root);
+    const keys = await trash().attachmentKeys('legacy', root);
     expect((await trash().restore('legacy', root, collection, limits, place)).kind).toBe('restored');
     expect(await trash().purge('legacy', root, user, keys)).toEqual({ pages: 0 });
     expect(await state(root)).toBe('live');

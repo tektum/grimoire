@@ -63,8 +63,8 @@ export interface AttachmentRepo {
   remove(id: string): Promise<void>;
   /** Deletes a row only while it is still pending, so a clean-up cannot remove an upload that completed in the meantime. False when it was not. */
   removeIfPending(id: string): Promise<boolean>;
-  /** Pending rows that expired before `now`, oldest first, at most `limit`. */
-  expiredPending(now: number, limit: number): Promise<readonly AttachmentRow[]>;
+  /** Pending rows of the tenant that expired before `now`, oldest first, at most `limit`. */
+  expiredPending(tenantId: string, now: number, limit: number): Promise<readonly AttachmentRow[]>;
   /** Stores a ready row, inside the caller's transaction when `tx` is given, so it commits or rolls back with the page the importer is writing. */
   insertReady(row: NewReady, tx?: Queryable): Promise<AttachmentRow>;
 }

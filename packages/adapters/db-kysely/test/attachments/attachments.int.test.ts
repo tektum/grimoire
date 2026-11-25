@@ -121,6 +121,6 @@ describe('what only the database does', () => {
     const next = randomUUID();
     const again = await repo.createPending({ id: next, pageId, uploaderId: owner, fileName: 'q.png', contentType: 'image/png', size: 5, key: `attachments/${next}`, expiresAt: now + 3_600_000 }, 1, now);
     expect(again.kind).toBe('created'); // the marked row does not use up the cap of one
-    expect((await repo.expiredPending(now + 4_000_000, 1000)).map((r) => r.id)).toContain(id);
+    expect((await repo.expiredPending('legacy', now + 4_000_000, 1000)).map((r) => r.id)).toContain(id);
   });
 });

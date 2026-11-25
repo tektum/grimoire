@@ -61,7 +61,7 @@ describe('purgeBatch', () => {
     const flaky = build(() => Promise.reject(new PartialFileDeletion(['attachments/a/1/x.png'], new Error('store down'))));
     const real = flaky.trash.markFilesRemoved.bind(flaky.trash);
     let calls = 0;
-    flaky.trash.markFilesRemoved = (keys) => { calls += 1; return calls === 1 ? Promise.reject(new Error('db blip')) : real(keys); };
+    flaky.trash.markFilesRemoved = (tenantId, keys) => { calls += 1; return calls === 1 ? Promise.reject(new Error('db blip')) : real(tenantId, keys); };
     await expect(purgeBatch(flaky.deps, 'legacy', flaky.root, ADMIN)).rejects.toThrow('store down');
     expect([calls, flaky.trash.keyDeleted('attachments/a/1/x.png')]).toEqual([2, true]);
     const broken = build(() => Promise.reject(new PartialFileDeletion(['attachments/a/1/x.png'], new Error('store down'))));

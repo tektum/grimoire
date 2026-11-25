@@ -95,13 +95,23 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
       });
     },
 
-    async attachmentKeys(batch) {
-      const rows = await db.query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) order by a.s3_key`, [batch]);
+    async attachmentKeys(tenantId, batch) {
+      const rows = await db.query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) and a.tenant_id = $2 order by a.s3_key`, [batch, tenantId]);
       return rows.map((r) => r.s3_key);
     },
 
-    async markFilesRemoved(keys) {
-      if (keys.length > 0) await db.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and deleted_at is null`, [[...keys]]);
+    async markFilesRemoved(tenantId, keys) {
+      if (keys.length > 0) await db.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and tenant_id = $2 and deleted_at is null`, [[...keys], tenantId]);
+    },
+
+    async expiredBatches(tenantId, deletedBefore, limit) {
+      const rows = await db.query<{ batch: string }>(
+        `select p.deleted_batch as batch from pages p
+          where p.tenant_id = $1 and p.deleted_at is not null and p.deleted_batch is not null and p.deleted_at < to_timestamp($2::double precision / 1000.0)
+          group by p.deleted_batch order by min(p.deleted_at), p.deleted_batch limit $3`,
+        [tenantId, deletedBefore, limit],
+      );
+      return rows.map((r) => r.batch);
     },
 
     purge(tenantId, batch, actorId, removedKeys) {

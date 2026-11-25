@@ -75,10 +75,10 @@ export function createAttachments(db: KyselyDatabase): AttachmentRepo {
     async removeIfPending(id) {
       return (await db.query(`delete from attachments where id = $1 and status = 'pending' returning id`, [id])).length > 0;
     },
-    async expiredPending(now, limit) {
+    async expiredPending(tenantId, now, limit) {
       return (await db.query<Row>(
-        `select ${COLUMNS} from attachments where status = 'pending' and expires_at < to_timestamp($1::double precision / 1000.0) order by expires_at, id limit $2`,
-        [now, limit],
+        `select ${COLUMNS} from attachments where tenant_id = $3 and status = 'pending' and expires_at < to_timestamp($1::double precision / 1000.0) order by expires_at, id limit $2`,
+        [now, limit, tenantId],
       )).map(record);
     },
     async insertReady(row, tx?: Queryable) {
