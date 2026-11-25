@@ -7,7 +7,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 
 import { join, resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bunLockToPackages } from "./bun-lock.mjs";
-import { validateExceptions, validatePending, validateImagesText, checkLock, checkImages, extractImages, summarise, SHIPPED_ALLOWED, DEV_ALLOWED } from "./licence.mjs";
+import { validateModels, validateExceptions, validatePending, validateImagesText, checkLock, checkImages, extractImages, summarise, SHIPPED_ALLOWED, DEV_ALLOWED } from "./licence.mjs";
 
 const toolDir = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -21,6 +21,8 @@ const exceptionsFile = resolve(opt("--exceptions") ?? join(root, "licence-except
 const imagesFile = resolve(opt("--images") ?? join(toolDir, "images.json"));
 const composeFile = resolve(opt("--compose") ?? join(root, "compose.yaml"));
 const pendingFile = resolve(opt("--pending") ?? join(toolDir, "pending.json"));
+const modelsFile = resolve(opt("--models") ?? join(toolDir, "models.json"));
+const modelLockFile = join(root, "models", "models.lock.json");
 const today = opt("--today") ?? new Date().toISOString().slice(0, 10);
 const allowPending = args.includes("--allow-pending");
 const imagesOnly = args.includes("--check-images");
@@ -50,7 +52,10 @@ function findDockerfiles(dir, found = []) {
 const exceptions = existsSync(exceptionsFile) ? readJson(exceptionsFile, "exceptions file") : [];
 const pending = existsSync(pendingFile) ? readJson(pendingFile, "pending file") : [];
 const imageErrors = validateImagesText(readFileSync(imagesFile, "utf8"));
-const inputErrors = [...validateExceptions(exceptions, today), ...validatePending(pending), ...imageErrors];
+// The models the image ships (M7-T12): listed with their licence and the SHA-256 of the lock, and checked against the lock when there is one.
+const models = existsSync(modelsFile) ? readJson(modelsFile, "models list") : [];
+const modelErrors = existsSync(modelLockFile) ? validateModels(models, readJson(modelLockFile, "model lock")) : [];
+const inputErrors = [...validateExceptions(exceptions, today), ...validatePending(pending), ...imageErrors, ...modelErrors];
 if (inputErrors.length) {
   console.error("licence: invalid input files:");
   for (const e of inputErrors) console.error(`  ${e}`);
@@ -117,6 +122,8 @@ if (!imagesOnly) {
   for (const p of packageResult.packages.filter((p) => p.exception))
     console.log(`exception applied: ${p.name}@${p.version} (${p.licence}) until ${p.exception.expires} - ${p.exception.reason}`);
 }
+console.log("Models");
+for (const m of models) console.log(`  ${pad(m.name, 26)}${pad(m.licence, 8)}[${m.source}]`);
 console.log("Container images");
 for (const i of imageResult.images)
   console.log(`  ${i.image.split("@")[0]}  ${i.licence}${i.exception ? " (exception)" : ""}  [${i.from}]`);
