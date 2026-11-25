@@ -97,6 +97,7 @@ export async function setupDatabase(
     await tx.query(`create schema if not exists pgboss authorization ${migrator}`);
     await tx.query(`alter schema pgboss owner to ${migrator}`); // a schema that was already there under another owner is handed over
     await tx.query('create extension if not exists citext');
+    await tx.query('create extension if not exists pg_trgm'); // title search
     return { created, updated };
   });
 }

@@ -25,10 +25,10 @@ const SEARCH = `
     select p.id, p.url_id, p.title, p.collection_id, p.search_partial,
            (extract(epoch from coalesce(p.last_edited_at, p.updated_at)) * 1000000)::bigint as edited_us,
            greatest(ts_rank_cd(p.tsv, q.q),
-                    case when length($1::text) >= 3 and (p.title % $1::text or p.title ilike '%' || $8::text || '%')
+                    case when (length($1::text) >= 3 and (p.title % $1::text or p.title ilike '%' || $8::text || '%')) or ($10::boolean and p.title ilike '%' || $8::text || '%')
                          then greatest(similarity(p.title, $1::text), 0.1) * 0.5 else 0 end)::float4 as rank
       from pages p, (select websearch_to_tsquery('simple', $1::text) as q) q
-     where (p.tsv @@ q.q or (length($1::text) >= 3 and (p.title % $1::text or p.title ilike '%' || $8::text || '%')))
+     where (p.tsv @@ q.q or (length($1::text) >= 3 and (p.title % $1::text or p.title ilike '%' || $8::text || '%')) or ($10::boolean and p.title ilike '%' || $8::text || '%'))
        and p.deleted_at is null
        and p.tenant_id = $9::text
        and p.collection_id = any($2::uuid[])
@@ -44,7 +44,7 @@ const HEADLINES = `
                      'StartSel=' || chr(1) || ',StopSel=' || chr(2) || ',MaxFragments=2,MaxWords=12,MinWords=5') as headline,
          replace(replace(left(p.text_content, 200), chr(1), ' '), chr(2), ' ') as lead
     from pages p
-   where p.id = any($1::uuid[]) and p.tenant_id = $3::text`;
+   where p.id = any($1::uuid[]) and p.tenant_id = $3::text and p.deleted_at is null and p.collection_id = any($4::uuid[])`;
 
 interface Row {
   readonly id: string;
@@ -64,6 +64,12 @@ function isCancelled(error: unknown): boolean {
   return false;
 }
 
+/**
+ * A query of two characters or more that holds a non-ASCII character may match a title by substring: the `simple` parser indexes a run of Chinese or Japanese
+ * as one token, so a title is found by the words of it only this way. A short ASCII query matches no title (it would match nearly all of them).
+ */
+const shortSubstring = (query: string): boolean => query.length >= 2 && /[^\u0000-\u007f]/.test(query);
+
 /** The characters `ilike` treats as its own, escaped, so that a title is found by the characters of the query and nothing else. */
 const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
@@ -82,17 +88,18 @@ export function createSearchRepo(db: Database, options: SearchOptions): SearchRe
           await tx.query(`set local pg_trgm.similarity_threshold = 0.3`);
           const rows = await tx.query<Row>(SEARCH, [
             request.query, [...request.collectionIds], request.collectionId ?? null,
-            key?.rank ?? null, key?.editedAt ?? null, key?.id ?? null, request.limit + 1, escapeLike(request.query), request.tenantId,
+            key?.rank ?? null, key?.editedAt ?? null, key?.id ?? null, request.limit + 1, escapeLike(request.query), request.tenantId, shortSubstring(request.query),
           ]);
           const page = rows.slice(0, request.limit);
-          const texts = page.length === 0 ? [] : await tx.query<{ id: string; headline: string | null; lead: string | null }>(HEADLINES, [page.map((r) => r.id), request.query, request.tenantId]);
+          const texts = page.length === 0 ? [] : await tx.query<{ id: string; headline: string | null; lead: string | null }>(HEADLINES, [page.map((r) => r.id), request.query, request.tenantId, [...request.collectionIds]]);
           const byId = new Map(texts.map((t) => [t.id, t]));
-          const hits: SearchHit[] = page.map((r) => {
+          // A page that was moved out of reach or trashed since the first statement has no row here: it is left out, never read.
+          const hits: SearchHit[] = page.flatMap((r) => {
             const t = byId.get(r.id);
-            return {
-              pageId: r.id, urlId: r.url_id, title: r.title, collectionId: r.collection_id, snippet: splitSnippet(t?.headline ?? null, t?.lead ?? ''),
+            return t === undefined ? [] : [{
+              pageId: r.id, urlId: r.url_id, title: r.title, collectionId: r.collection_id, snippet: splitSnippet(t.headline, t.lead ?? ''),
               partial: r.search_partial, updatedAt: Number(r.edited_us) / 1000, rank: r.rank,
-            };
+            }];
           });
           const last = page[page.length - 1];
           return rows.length > request.limit && last !== undefined
