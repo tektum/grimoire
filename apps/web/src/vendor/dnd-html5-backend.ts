@@ -11,6 +11,11 @@ export function getEmptyImage(): HTMLImageElement {
     emptyImage = document.createElement('canvas');
     emptyImage.width = 1;
     emptyImage.height = 1;
+    // In the page, off the screen and out of the way of the pointer and of assistive technology: Safari draws its own picture for a drag image that is not in the document. Set through the
+    // CSSOM, which the policy's `style-src` lets be (an attribute would not be).
+    Object.assign(emptyImage.style, { position: 'fixed', left: '-100px', top: '-100px', pointerEvents: 'none' });
+    emptyImage.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(emptyImage);
   }
   return emptyImage as unknown as HTMLImageElement;
 }
