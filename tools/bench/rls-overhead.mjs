@@ -44,7 +44,7 @@ async function seedData(admin) {
   await q(`
     insert into pages (collection_id, created_by, tenant_id, title, position, markdown, text_content)
     select c.id, c.created_by, c.tenant_id, 'page ' || n, lpad(n::text, 5, '0'), repeat('word ', 800), repeat('word ', 800)
-      from collections c cross join lateral generate_series(1, case when c.tenant_id = 'big' then 133 else 50 end) n`);
+      from collections c cross join lateral generate_series(1, case when c.tenant_id = 'big' then 133 else 50 end) n where c.tenant_id <> 'legacy'`);
   // Chains of up to three levels, so the breadcrumb has work to do.
   await q(`
     with r as (select id, lag(id) over (partition by collection_id order by position) as prev, row_number() over (partition by collection_id order by position) as rn from pages)
@@ -58,8 +58,8 @@ async function seedData(admin) {
       from pages p cross join generate_series(0, 13) n join bench_vectors v on v.id = 1 + (abs(hashtext(p.id::text)) + n) % 500`);
   await q('drop table bench_vectors');
   await q('vacuum analyze');
-  const [{ c, p }] = await q(`select (select count(*) from collections)::int as c, (select count(*) from pages)::int as p`);
-  console.log(`data: ${c} collections, ${p} pages, 41 tenants`);
+  const [{ c, p }] = await q(`select (select count(*) from collections where tenant_id <> 'legacy')::int as c, (select count(*) from pages)::int as p`);
+  console.log(`data: ${c} collections, ${p} pages, 41 tenants (the migration's legacy tenant holds no pages and gets no requests)`);
 }
 
 async function loadTargets(admin) {
