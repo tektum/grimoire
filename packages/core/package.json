@@ -45,10 +45,6 @@
       "types": "./dist/search/*.d.ts",
       "default": "./dist/search/*.js"
     },
-    "./semantic/*": {
-      "types": "./dist/semantic/*.d.ts",
-      "default": "./dist/semantic/*.js"
-    },
     "./import/*": {
       "types": "./dist/import/*.d.ts",
       "default": "./dist/import/*.js"
