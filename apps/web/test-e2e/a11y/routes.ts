@@ -13,7 +13,7 @@ export interface Stop {
   /** What to wait for once the page is open (the default is a first-level heading). */
   readonly ready?: (page: Page, world: World) => Promise<void>;
   /** The task whose screen is not built yet: the route shows a placeholder, and the stop says so in the report until the screen lands (then the mark goes and its own steps come). */
-  readonly pending?: 'M6-T12a';
+  readonly pending?: string;
 }
 
 /** Every route of the route table (contracts section 3), each with the page it is visited at. The tour fails when the route table has a route that is not here. */
@@ -26,7 +26,7 @@ export const STOPS: readonly Stop[] = [
   { route: '/p/:slug/history/:revisionId', who: 'member', path: (w) => `${w.alpha.path}/history/${w.revisionId}` },
   { route: '/search', who: 'member', path: () => '/search?q=paragraph' },
   { route: '/trash', who: 'member', path: () => '/trash' },
-  { route: '/import', who: 'member', path: () => '/import', pending: 'M6-T12a' },
+  { route: '/import', who: 'member', path: () => '/import' },
   { route: '/admin/users', who: 'admin', path: () => '/admin/users' },
   { route: '/admin/groups', who: 'admin', path: () => '/admin/groups' },
   {

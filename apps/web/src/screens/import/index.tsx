@@ -59,7 +59,7 @@ function Importing() {
         </>
       ) : state.isError ? (
         <p role="alert">
-          That import can&rsquo;t be read.{' '}
+          That import can&rsquo;t be read. <Button onClick={() => void state.refetch()}>Try again</Button>{' '}
           <Button
             onClick={() => {
               setParams({});

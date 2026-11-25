@@ -271,6 +271,26 @@ describe('the import screen', () => {
   });
 });
 
+describe('the first read of an import fails', () => {
+  it('offers to read it again, which shows the import that is running, before it offers to start again', async () => {
+    const t = fake({ states: [state({ done: 4 })] });
+    const inner = (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET;
+    let broken = true;
+    (t.api as unknown as { GET: (p: string) => Promise<unknown> }).GET = async (path: string) => (path === '/v1/imports/{id}' && broken ? { error: {}, response: new Response(null, { status: 503 }) } : inner(path));
+    show(t.api, '/import?import=imp1');
+    const alert = await screen.findByRole('alert');
+    expect(
+      within(alert)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Try again', 'Start again']);
+    broken = false;
+    await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
 describe('an answer that is not shaped as the contract says', () => {
   it('is an import that cannot be started when the creation answers without the upload, and an import that cannot be read when the state has no counts', async () => {
     vi.stubGlobal(
