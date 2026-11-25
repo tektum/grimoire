@@ -70,6 +70,8 @@ describe('the limits, at exactly their values and one past', () => {
 describe('duplicate paths', () => {
   it('reports the later of two names that are equal once NFC-normalised and lower-cased', () => {
     expect([...duplicateIndexes(['A.md', 'x.md', 'a.md', 'caf\u00e9.md', 'cafe\u0301.md', 'a.md'])]).toEqual([2, 4, 5]);
+    // `.` and empty segments name the same file as the path without them (a link resolves the same way)
+    expect([...duplicateIndexes(['docs/page.md', 'docs/./page.md', 'docs//page.md', './docs/page.md', 'docs/other.md'])]).toEqual([1, 2, 3]);
     expect([...duplicateIndexes(['a.md', 'b.md'])]).toEqual([]);
   });
 });
@@ -83,6 +85,11 @@ describe('a link inside a Markdown file', () => {
     expect(resolveLinkPath('./sub/../c.md', 'a/b.md')).toBe('a/c.md');
     expect(resolveLinkPath('c%20d.md', 'a/b.md')).toBe('a/c d.md');
     expect(resolveLinkPath('c.md', 'b.md')).toBe('c.md');
+  });
+
+  it('gives undefined when the joined result would read as a scheme or a drive, however it got there', () => {
+    for (const url of ['sub/../C:/outside', 'C%3A/x', '%68ttps://x', 'a/../javascript:alert', 'D%3a%5cx']) expect(resolveLinkPath(url, 'b.md'), url).toBeUndefined();
+    expect(resolveLinkPath('./a:b/c.md', 'dir/b.md'), 'a colon in a name below the root is a name').toBe('dir/a:b/c.md');
   });
 
   it('decodes once: a double-encoded dot stays a name, not a parent', () => {

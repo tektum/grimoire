@@ -41,12 +41,13 @@ export function checkHeader(entries: readonly ArchiveEntry[], archiveBytes: numb
   return { ok: true };
 }
 
-/** The indexes of the entries whose path equals an earlier one once NFC-normalised and lower-cased (the later one is the duplicate). */
+/** The indexes of the entries whose path equals an earlier one once NFC-normalised, lower-cased and cleared of `.` and empty segments (the later one is the duplicate). */
 export function duplicateIndexes(paths: readonly string[]): ReadonlySet<number> {
   const seen = new Set<string>();
   const out = new Set<number>();
   for (const [index, path] of paths.entries()) {
-    const key = path.normalize('NFC').toLowerCase();
+    // `.` and empty segments name the same file as the path without them, as a link resolves it.
+    const key = path.normalize('NFC').toLowerCase().split('/').filter((segment) => segment !== '' && segment !== '.').join('/');
     if (seen.has(key)) out.add(index);
     else seen.add(key);
   }
