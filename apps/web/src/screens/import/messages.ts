@@ -14,7 +14,6 @@ export function refusal(error: unknown): string {
   if (error.step === 'upload') return 'The file could not be sent. Try again.';
   if (error.step === 'start') {
     if (error.code === 'upload_missing') return 'The file did not arrive. Try again.';
-    if (error.code === 'already_started') return 'That import has already started.';
     if (error.code === 'not_a_zip') return 'That is not a zip file.';
   }
   return 'The import could not be started. Try again.';

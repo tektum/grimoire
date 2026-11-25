@@ -186,6 +186,21 @@ describe('the import screen', () => {
     expect(t.calls.filter((c) => c === 'POST /v1/imports/{id}/start')).toHaveLength(2);
   });
 
+  it('goes on to watch the import when the retry of a start that did reach the server says it has already started', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const t = fake({ start: [{ status: 503 }, { status: 409, code: 'already_started' }] });
+    show(t.api);
+    await choose();
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(screen.queryByText('That import has already started.')).toBeNull();
+  });
+
   it('sends the file again, to the same import, when the start says it did not arrive', async () => {
     const put = vi.fn(async () => new Response(null, { status: 200 }));
     vi.stubGlobal('fetch', put);
@@ -233,7 +248,6 @@ describe('the import screen', () => {
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
     ['not a zip', { start: { status: 422, code: 'not_a_zip' } }, 'That is not a zip file.'],
     ['a file that did not arrive', { start: { status: 409, code: 'upload_missing' } }, 'The file did not arrive. Try again.'],
-    ['an import that has already started', { start: { status: 409, code: 'already_started' } }, 'That import has already started.'],
     ['a collection that cannot be written', { create: { status: 403 } }, 'You can’t import into that collection.'],
     ['a file that cannot be imported', { create: { status: 422 } }, 'That file can’t be imported.'],
     ['too many imports started', { create: { status: 429 } }, 'Too many imports were started. Try again in a while.'],

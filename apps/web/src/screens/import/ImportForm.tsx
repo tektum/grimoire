@@ -50,7 +50,12 @@ export function ImportForm({ onStarted, send }: { readonly onStarted: (id: strin
         await startImport(api, job.created.id);
       } catch (error) {
         if (error instanceof ImportError && error.code === 'upload_missing') job.uploaded = false; // it did not arrive: send it again, to the same import
-        if (error instanceof ImportError && error.code === 'already_started') made.current = null;
+        // The import is ours: a 409 on it is the start that did reach the server before the answer was lost, so it is running, and the person goes on to watch it.
+        if (error instanceof ImportError && error.code === 'already_started') {
+          made.current = null;
+          onStarted(job.created.id);
+          return;
+        }
         throw error;
       }
       made.current = null;
