@@ -171,6 +171,8 @@ describe('the image node view', () => {
 
   it.each([
     ['https://evil.test/p.png', 'External image not loaded: evil.test'],
+    ['http://a.example:8080/x.png', 'External image not loaded: a.example'],
+    ['//photos.example.com/x.png', 'External image not loaded: photos.example.com'], // what an import leaves when it did not copy an image: no scheme, a host
     ['data:image/png;base64,AAAA', 'External image not loaded: embedded data'],
     ['./x.png', 'External image not loaded: ./x.png'],
   ])('puts a placeholder in place of %j, with no img element and so no request', async (src, text) => {
