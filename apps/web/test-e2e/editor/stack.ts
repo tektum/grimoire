@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { expect } from '@playwright/test';
 import { apiUrl } from '../support/env';
 import { repoRoot } from '../support/env';
+import { storeOrigin } from '../attachments/real-stack';
 
 const run = promisify(execFile);
 
@@ -13,6 +14,15 @@ export async function compose(...args: string[]): Promise<string> {
 }
 
 /**
+ * The environment `docker compose` recreates the app with: this process's, the web overlay, the address the browser reaches the file store at, and the settings given. The store address is
+ * set by `make up` for the first start only, and a recreate that did not repeat it would sign every upload link for the store's in-network name, which a browser cannot reach: every
+ * spec that uploads and runs after a recreate would fail (as the import specifications did).
+ */
+export function recreateEnv(settings: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return { ...process.env, COMPOSE_FILE: 'compose.yaml:compose.m6.yaml', GRIMOIRE_S3_PUBLIC_ENDPOINT: process.env['GRIMOIRE_S3_PUBLIC_ENDPOINT'] ?? storeOrigin(), ...settings };
+}
+
+/**
  * Recreates the app with test settings of the web overlay (`compose.m6.yaml`: `M6_REQUIRE_HANDSHAKE`, `M6_MAX_CONNECTIONS_PER_PAGE`, `M6_RECHECK_SECONDS`,
  * `M6_MIN_CLIENT_VERSION`) and waits until it answers. With no settings it returns the app to the stack's defaults: a spec that changed them calls it in `finally`.
  */
@@ -20,7 +30,7 @@ export async function recreateApp(settings: Record<string, string> = {}): Promis
   await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
     cwd: repoRoot,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, COMPOSE_FILE: 'compose.yaml:compose.m6.yaml', ...settings },
+    env: recreateEnv(settings),
   });
   await waitReady();
 }
