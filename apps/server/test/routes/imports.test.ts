@@ -129,9 +129,10 @@ describe('POST /v1/imports', () => {
     const { res, id } = await t.made();
     expect(res.status).toBe(201);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    const body = (await res.json()) as { id: string; upload: { method: string; headers: Record<string, string>; expiresAt: number } };
+    const body = (await res.json()) as { id: string; upload: { method: string; headers: Record<string, string>; expiresAt: string } };
     expect(body.upload).toMatchObject({ method: 'PUT', headers: { 'content-type': 'application/zip', 'if-none-match': '*' } });
-    expect(body.upload.expiresAt - t.clock.now()).toBeGreaterThanOrEqual(3_000_000);
+    expect(body.upload.expiresAt).toBe(new Date(body.upload.expiresAt).toISOString()); // an ISO string, as every time in the API
+    expect(Date.parse(body.upload.expiresAt) - t.clock.now()).toBeGreaterThanOrEqual(3_000_000);
     expect(await t.imports.get('T-a', id)).toMatchObject({ status: 'created', createdBy: t.uid('ada'), targetCollectionId: t.rw.id, bytes: ZIP.length, s3Key: importZipKey('T-a', id), source: 'markdown_zip' });
   });
 
@@ -431,8 +432,9 @@ describe('GET /v1/imports/{id}/items/{itemId}/source', () => {
     const res = await t.call('ada', 'GET', `/v1/imports/${id}/items/${broken.id}/source`);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    const body = (await res.json()) as { url: string; expiresAt: number };
-    expect(body.expiresAt - t.clock.now()).toBeLessThanOrEqual(300_000);
+    const body = (await res.json()) as { url: string; expiresAt: string };
+    expect(body.expiresAt).toBe(new Date(body.expiresAt).toISOString());
+    expect(Date.parse(body.expiresAt) - t.clock.now()).toBeLessThanOrEqual(300_000);
     expect(sign).toHaveBeenCalledWith(
       importFailedKey('T-a', id, broken.id),
       expect.objectContaining({ disposition: 'attachment', contentType: 'application/octet-stream', fileName: expect.stringContaining('broken') as string }),

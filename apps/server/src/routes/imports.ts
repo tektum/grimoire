@@ -35,7 +35,7 @@ const CreateBody = z
   })
   .strict()
   .openapi('CreateImport');
-const Upload = z.object({ method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.number().int().describe('Epoch milliseconds') }).openapi('ImportUpload');
+const Upload = z.object({ method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.string().describe('ISO 8601') }).openapi('ImportUpload');
 const Created = z.object({ id: z.string().uuid(), upload: Upload }).openapi('ImportCreated');
 const Status = z.enum(['created', 'uploaded', 'running', 'done', 'failed', 'cancelled']);
 const State = z
@@ -62,7 +62,7 @@ const Item = z
   .openapi('ImportItem');
 const Items = z.object({ items: z.array(Item), nextCursor: z.string().nullable() }).openapi('ImportItems');
 const Started = z.object({ status: z.literal('uploaded').describe('The import waits for its turn: the job moves it to `running` (one import of a workspace runs at a time)') }).openapi('ImportStarted');
-const Source = z.object({ url: z.string(), expiresAt: z.number().int().describe('Epoch milliseconds') }).openapi('ImportSource');
+const Source = z.object({ url: z.string(), expiresAt: z.string().describe('ISO 8601') }).openapi('ImportSource');
 
 export const createImport = defineRoute({
   method: 'post', path: '/v1/imports', operationId: 'createImport', summary: 'Make an import: a signed address to PUT the zip to', tags: ['imports'],
@@ -190,7 +190,7 @@ router.openapi(createImport, async (c) => {
   await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: 'markdown_zip', bytes: body.size, s3Key: key });
   log.info('import.created', { importId: id });
   noStore(c);
-  return c.json({ id, upload }, 201);
+  return c.json({ id, upload: { ...upload, expiresAt: new Date(upload.expiresAt).toISOString() } }, 201);
 });
 
 router.openapi(startImport, async (c) => {
@@ -278,7 +278,7 @@ router.openapi(getImportItemSource, async (c) => {
   const parts = cleanItemText(item.path).split('/');
   const link = await viaStore(c, 'import-source', () => files.signDownload(key, { ttlSeconds: SOURCE_TTL_SECONDS, disposition: 'attachment', fileName: cleanFileName(parts[parts.length - 1] as string), contentType: 'application/octet-stream' }));
   noStore(c);
-  return c.json(link, 200);
+  return c.json({ url: link.url, expiresAt: new Date(link.expiresAt).toISOString() }, 200);
 });
 
 router.openapi(cancelImport, async (c) => {
