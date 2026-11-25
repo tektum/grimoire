@@ -5,7 +5,11 @@ import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
 import { registerJobs } from './index.js';
 
+/** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
+export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
+
 export interface JobRunner {
+  state(): JobsState;
   /** Starts the queue and registers the handlers; a second call does nothing. Rejects when the queue cannot start (the server then fails to start). */
   start(): Promise<void>;
   /** Stops the queue in the `release-jobs` phase, with the grace of the settings. */
@@ -44,6 +48,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   let running = false;
   let stopped = false;
   let attempts = 0;
+  let state: JobsState = 'starting';
   let timer: NodeJS.Timeout | undefined;
   let inFlight: Promise<void> | undefined;
   const attempt = async (): Promise<void> => {
@@ -58,15 +63,17 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       if (stopped) { queue = made; return; } // stopped while starting: no handler is registered, and the hook stops this queue
       for (const job of registerJobs({ config })) await made.work(job.name, job.handler);
       queue = made;
+      state = 'up';
     } catch {
       // Nothing started here may keep running: a queue made but not set up is stopped now, with no grace (nothing is running on it).
       if (made !== undefined) await made.stop({ graceMs: 0 }).catch(() => undefined);
-      if (attempts >= MAX_START_ATTEMPTS) { log.error('jobs.failed', { name: 'queue-start-gave-up', jobId: '-', attempt: attempts, ms: 0 }); return; }
+      if (attempts >= MAX_START_ATTEMPTS) { state = 'down'; log.error('jobs.unavailable', { attempts }); return; }
       log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0 });
       if (!stopped) { timer = setTimeout(() => { inFlight = attempt(); }, START_RETRY_MS); timer.unref(); }
     }
   };
   return {
+    state: () => state,
     start: async () => {
       if (running) return;
       running = true;
@@ -77,6 +84,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       name: 'jobs', phase: 'release-jobs', deadlineMs: config.jobs.stopGraceMs + SHUTDOWN_BUDGET_MS.jobsHookOverhead,
       run: async () => {
         stopped = true;
+        if (state !== 'down') state = 'stopped';
         if (timer !== undefined) clearTimeout(timer);
         await inFlight; // a start under way settles first, so shutdown cannot release what it is still using
         if (queue === undefined) return;

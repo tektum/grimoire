@@ -126,6 +126,6 @@ describe('the job runner', () => {
     await runner.start();
     await vi.advanceTimersByTimeAsync(START_RETRY_MS * (MAX_START_ATTEMPTS + 5));
     expect(attempts).toBe(MAX_START_ATTEMPTS);
-    expect(logger.entries.filter((e) => e.event === 'jobs.failed').map((e) => e.fields['name']).at(-1)).toBe('queue-start-gave-up');
+    expect(logger.entries.filter((e) => e.event === 'jobs.unavailable')).toHaveLength(1);
   });
 });

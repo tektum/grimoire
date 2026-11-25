@@ -13,6 +13,8 @@ export interface HealthDeps {
   readonly expectedMigration: string;
   /** How long a readiness probe waits for the database before answering 503. */
   readonly probeTimeoutMs?: number;
+  /** The state of the job queue for a role that runs jobs; `/readyz` reports it in `X-Grimoire-Jobs` and stays 200 (the API still serves). */
+  readonly jobs?: () => string;
 }
 
 /**
@@ -87,6 +89,7 @@ export function healthRoutes(deps: HealthDeps): Hono {
     if (deps.isDraining()) { deps.log.debug('health.not_ready', { reason: 'draining' }); return c.text('unavailable', 503); }
     const outcome = await probe();
     if (outcome !== 'ready') { deps.log.debug('health.not_ready', { reason: outcome }); return c.text('unavailable', 503); }
+    if (deps.jobs !== undefined) c.header('x-grimoire-jobs', deps.jobs());
     return c.text('ok');
   });
   return app;

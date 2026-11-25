@@ -106,6 +106,8 @@ export interface WarnEvents {
 
 export interface ErrorEvents {
   'jobs.failed': JobEvent;
+  /** The queue could not be started after every try: the server serves without background jobs (imports, sweeps) until it is restarted. `/readyz` says so in a header. */
+  'jobs.unavailable': { attempts: number };
   /** The file store did not answer (or is not configured): the operation that needed it, nothing of the request, the key or the store's message. */
   'files.unavailable': { operation: 'create' | 'complete' | 'download' | 'urls' | 'cleanup' | 'delete' };
   'http.request_failed': { errorName: string };
