@@ -35,6 +35,8 @@ export interface RevisionListQuery {
 
 /** What the host's rules ask of the repository when a page's saved state should become a revision (R9.2). */
 export interface PageRevisionRequest {
+  /** The tenant of the connections that edited the page (docs/tenancy.md section 3.2): the revision is made in it, and a page of another tenant is no page. */
+  readonly tenantId: string;
   readonly pageId: string;
   readonly reason: 'idle' | 'last_editor_left' | 'before_restore';
   /** Everyone who changed the page since the previous revision, user ids; ids that are not users are ignored. */

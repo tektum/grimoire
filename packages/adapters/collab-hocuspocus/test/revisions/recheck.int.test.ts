@@ -23,8 +23,8 @@ async function live(): Promise<{ l: Live; revisions: FakeRevisionRepo }> {
     t.verifier.verify = (token: string): Promise<VerifyResult> => Promise.resolve({ kind: 'ok', userId: token, expiresAt: t.clock.now() + 3_600_000 });
     // The revision repository reads the saved state the page store holds: every converted save is what a revision would copy.
     const store = t.pages.store.bind(t.pages);
-    t.pages.store = async (id: string, w: PageWrite) => {
-      const outcome = await store(id, w);
+    t.pages.store = async (tenantId: string, id: string, w: PageWrite) => {
+      const outcome = await store(tenantId, id, w);
       if (w.kind === 'converted' && outcome.written) revisions.setPage(id, { title: 'Title', markdown: w.markdown });
       return outcome;
     };

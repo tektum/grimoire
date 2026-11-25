@@ -40,7 +40,7 @@ describe('the markdown sweep', () => {
     const w = world();
     w.stalePage('p1', 5);
     w.converter.enqueueConvert(async () => {
-      await w.pages.store('p1', { kind: 'converted', state: state(2), markdown: '# typed meanwhile', text: 't', epoch: 0, editedAt: T0 });
+      await w.pages.store('legacy', 'p1', { kind: 'converted', state: state(2), markdown: '# typed meanwhile', text: 't', epoch: 0, editedAt: T0 });
       return { ok: true, markdown: '# from the old state', text: 'old' };
     });
     expect(await w.run()).toEqual({ repaired: 0, skipped: 1, failed: 0 });
@@ -52,7 +52,7 @@ describe('the markdown sweep', () => {
     const w = world();
     w.stalePage('p1', 5);
     w.converter.enqueueConvert(async () => {
-      await w.pages.store('p1', { kind: 'state-only', state: state(3), epoch: 0 });
+      await w.pages.store('legacy', 'p1', { kind: 'state-only', state: state(3), epoch: 0 });
       return { ok: true, markdown: '# old', text: 'old' };
     });
     expect((await w.run()).skipped).toBe(1);
@@ -102,7 +102,7 @@ describe('the markdown sweep', () => {
     const w = world({ convert });
     w.stalePage('p1', 5);
     await w.run();
-    await w.pages.store('p1', { kind: 'converted', state: state(2), markdown: 'saved', text: 't', epoch: 0, editedAt: T0 }); // an editor save clears the mark
+    await w.pages.store('legacy', 'p1', { kind: 'converted', state: state(2), markdown: 'saved', text: 't', epoch: 0, editedAt: T0 }); // an editor save clears the mark
     await w.run(); // the sweep sees p1 is no longer stale and drops what it knew
     w.pages.stale.set('p1', T0 - 5 * MIN);
     expect((await w.run()).failed).toBe(1); // not delayed by the old retry time

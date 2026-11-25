@@ -21,7 +21,7 @@ async function host(slow: readonly string[], options: Parameters<typeof startLiv
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => { release = resolve; });
   const load = l.t.pages.load.bind(l.t.pages);
-  l.t.pages.load = async (id: string) => { if (slow.includes(id)) await held; return load(id); };
+  l.t.pages.load = async (tenantId: string, id: string) => { if (slow.includes(id)) await held; return load(tenantId, id); };
   return { l, release };
 }
 const open = (l: Live, page: string) => {
@@ -87,7 +87,7 @@ describe('an admission taken at arrival is released on every path that never con
   it('the page load fails', async () => {
     const { l } = await host([], {}, 1);
     const load = l.t.pages.load.bind(l.t.pages);
-    l.t.pages.load = (id: string) => (id === PAGES[1] ? Promise.reject(new Error('database down')) : load(id));
+    l.t.pages.load = (tenantId: string, id: string) => (id === PAGES[1] ? Promise.reject(new Error('database down')) : load(tenantId, id));
     for (let i = 0; i < 3; i++) await refused(l, PAGES[1]!);
     await admitted(l, PAGES[0]!);
   });
@@ -106,7 +106,7 @@ describe('an admission taken at arrival is released on every path that never con
     let fail: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { fail = resolve; });
     const load = l.t.pages.load.bind(l.t.pages);
-    l.t.pages.load = async (id: string) => { if (id === PAGES[1]) { await gate; throw new Error('database down'); } return load(id); };
+    l.t.pages.load = async (tenantId: string, id: string) => { if (id === PAGES[1]) { await gate; throw new Error('database down'); } return load(tenantId, id); };
     const denied = new Set<string>();
     const first = open(l, PAGES[1]!); first.c.provider.on('authenticationFailed', () => { denied.add('first'); });
     const second = open(l, PAGES[1]!); second.c.provider.on('authenticationFailed', () => { denied.add('second'); });
@@ -163,7 +163,7 @@ describe('a refusal closes the socket only when the socket holds nothing admitte
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => { release = resolve; });
     const load = l.t.pages.load.bind(l.t.pages);
-    l.t.pages.load = async (id: string) => { if (id === slow) await held; return load(id); };
+    l.t.pages.load = async (tenantId: string, id: string) => { if (id === slow) await held; return load(tenantId, id); };
     const socket = new HocuspocusProviderWebsocket({ url: l.url, WebSocketPolyfill: originSocket(ALLOWED_ORIGIN) });
     const closes: number[] = [];
     socket.on('close', ({ event }: { event: { code: number } }) => { closes.push(event.code); });

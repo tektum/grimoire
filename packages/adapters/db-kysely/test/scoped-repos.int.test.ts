@@ -96,7 +96,7 @@ beforeAll(async () => {
   const page = await make(collection, null, 'A');
   const child = (await make(collection, null, 'B')).id;
   await make(other, null, 'C');
-  const revision = await createRevisions(t.app, t.ops).createFromPage({ pageId: page.id, reason: 'idle', authorIds: [boss], lastAuthorId: boss, at: Date.now() });
+  const revision = await createRevisions(t.app, t.ops).createFromPage({ tenantId: TENANT, pageId: page.id, reason: 'idle', authorIds: [boss], lastAuthorId: boss, at: Date.now() });
   if (revision.kind !== 'created') throw new Error(revision.kind);
   s = { boss, member, group, collection, other, page: page.id, urlId: page.urlId, child, revision: revision.id, importId: randomUUID() };
 }, 120_000);
@@ -160,9 +160,17 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     list: async (tn) => [await revisions().list(tn, s.page, { limit: 10 }), await revisions().list(tn, s.page, { limit: 10, after: [Date.now() * 1000, s.revision] })],
     get: (tn) => revisions().get(tn, s.page, s.revision),
     snapshotBeforeRestore: (tn) => revisions().snapshotBeforeRestore(tn, s.page),
+    createFromPage: (tn) => revisions().createFromPage({ tenantId: tn, pageId: s.page, reason: 'idle', authorIds: [s.boss], lastAuthorId: s.boss, at: Date.now() }),
   },
   pageState: {
     reset: (tn) => pageState().reset({ tenantId: tn, pageId: s.page, actorId: s.boss, confirmStale: true }),
+  },
+  // The collaboration host's calls, in the tenant of the connection that loaded the page (the sweep: the tenant `listStale` named).
+  pageStore: {
+    load: (tn) => pageStore().load(tn, s.page),
+    seed: (tn) => pageStore().seed(tn, s.page, () => Promise.resolve(new Uint8Array([1]))),
+    store: (tn) => pageStore().store(tn, s.page, { kind: 'state-only', state: new Uint8Array([2]), epoch: 99 }),
+    repairMarkdown: (tn) => pageStore().repairMarkdown(tn, s.page, { state: new Uint8Array([2]), epoch: 99 }, { markdown: 'x', text: 'x' }),
   },
   trash: {
     roots: (tn) => trash().roots(tn, null, 10, { deletedAt: Date.now() + 60_000, id: s.page }),
@@ -249,10 +257,8 @@ const operatorCalls: Record<string, Record<string, () => Promise<unknown>>> = {
   pageStore: { listStale: () => pageStore().listStale(10) },
   embeddings: { counts: () => embeddings().counts('guard') },
 };
-// The methods not moved yet: step 3 scopes them by a tenant their callers know, or gives them to the operator connection.
-const crossTenant: Record<string, readonly string[]> = {
-  revisions: ['createFromPage'], pageStore: ['load', 'seed', 'store', 'repairMarkdown'],
-};
+// No method is left that crosses tenants without the operator connection (step 3 is complete for these repositories).
+const crossTenant: Record<string, readonly string[]> = {};
 
 describe('the tenant-scoped repositories', () => {
   it('list every method here, as scoped, on the operator connection, or as crossing tenants', () => {

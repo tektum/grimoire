@@ -72,6 +72,8 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
   const saved = new Map<string, number>();
   const alarmed = new Set<string>();
   const epochs = new Map<string, number>();
+  /** The tenant each loaded page was loaded in: the first connection's, which admission checked against the page (docs/tenancy.md section 3.2). Saves run in it. */
+  const tenants = new Map<string, string>();
   /** Pages whose save was refused (stale epoch or deleted row): never saved or logged again until the document unloads. */
   const epochRefused = new Set<string>();
   /** Pages with a save in progress, and those among them that unloaded meanwhile (their loaded epoch is gone: nothing may be written for them). */
@@ -148,7 +150,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
           state, epoch: epochs.get(pageId) ?? 0, editedBy: editorColumn(record?.latest), editedAt: record?.at ?? o.deps.clock.now(),
         });
         const started = performance.now();
-        const outcome = await pages.store(pageId, write);
+        const outcome = await pages.store(tenants.get(pageId) ?? 'legacy', pageId, write);
         if (unloadedWhileSaving.has(pageId)) return { busy: false }; // the page unloaded during the write: nothing is recorded or logged for a page that is gone
         if (outcome.written && conversion.ok) {
           busyAttempts.delete(pageId);
@@ -237,9 +239,10 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
 
     async onLoadDocument(data: HookPayloadByName['onLoadDocument']): Promise<undefined> {
       const pageId = data.documentName;
+      const tenantId = readContext(data.context).tenantId ?? 'legacy';
       let stored;
       try {
-        stored = await pages.load(pageId);
+        stored = await pages.load(tenantId, pageId);
         loadFailures = 0;
       } catch (e) {
         // One streak for the whole process, not per page: a name a client makes up cannot grow a map during an outage.
@@ -265,7 +268,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
         try {
           // `reseed` TRUSTS this Markdown (our own serialiser's, lenient limits). A row with Markdown and no state must never hold user-supplied text:
           // user Markdown goes through `seed` and is stored as state (spec R7.13).
-          const seeded = await pages.seed(pageId, async (markdown) => {
+          const seeded = await pages.seed(tenantId, pageId, async (markdown) => {
             const r = await converter.reseed(markdown, pageId);
             if (!r.ok) { failure = { reason: r.reason, busy: isBusy(r.reason, r.detail) }; throw new SeedError(r.reason); }
             return reidentify(r.state, pageId, markdown);
@@ -286,6 +289,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
         }
       }
       epochs.set(pageId, epoch);
+      tenants.set(pageId, tenantId);
       staleOnLoad.delete(pageId); // a marker left by an earlier load that failed half way must not make this load look stale
       epochRefused.delete(pageId); // a fresh load starts without an earlier load's refusal
       if (stored.markdownStaleSince !== null) staleOnLoad.add(pageId);
@@ -323,7 +327,7 @@ export function createPersistenceExtension(o: PersistenceOptions): PersistenceEx
 
     async afterUnloadDocument(data: HookPayloadByName['afterUnloadDocument']): Promise<void> {
       const pageId = data.documentName;
-      for (const m of [failures, changes, saved, epochs, busyAttempts]) m.delete(pageId);
+      for (const m of [failures, changes, saved, epochs, tenants, busyAttempts]) m.delete(pageId);
       alarmed.delete(pageId);
       epochRefused.delete(pageId);
       if (savingNow.has(pageId)) unloadedWhileSaving.add(pageId);

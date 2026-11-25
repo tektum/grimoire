@@ -66,11 +66,11 @@ export function createRevisions(db: KyselyDatabase, ops: OperatorDatabase): Revi
       // A user id that is not a UUID (a development token's name) is no author: dropped here, before any cast.
       const authorIds = request.authorIds.filter((id) => UUID.test(id));
       const lastAuthorId = request.lastAuthorId !== null && UUID.test(request.lastAuthorId) ? request.lastAuthorId : null;
-      return db.transaction(async (tx): Promise<PageRevisionResult> => {
+      return scoped(db, request.tenantId).transaction(async (tx): Promise<PageRevisionResult> => {
         await lockPage(tx, request.pageId);
         const page = (await tx.query<{ title: string; markdown: string | null; stale: boolean; edited_ms: string | null; editor: string | null }>(
           `select title, markdown, markdown_stale_since is not null as stale, (extract(epoch from last_edited_at) * 1000)::bigint::text as edited_ms, last_edited_by as editor
-             from pages where id = $1 and deleted_at is null for share`, [request.pageId],
+             from pages where id = $1 and tenant_id = $2 and deleted_at is null for share`, [request.pageId, request.tenantId],
         ))[0];
         if (page === undefined) return { kind: 'no-page' };
         if (page.stale) return { kind: 'stale' };

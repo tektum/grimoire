@@ -95,7 +95,7 @@ describe('the PostgreSQL PageRepo updateMeta', () => {
     expect(hash?.equals(markdownHash('New', 'canonical'))).toBe(true);
     const sent: string[] = [];
     const store = createPageStore(counted(t.app, sent), t.ops, { now: () => Date.now() });
-    const outcome = await store.store(id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: 'canonical', text: 'canonical', epoch: 0, editedAt: Date.now() });
+    const outcome = await store.store('legacy', id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: 'canonical', text: 'canonical', epoch: 0, editedAt: Date.now() });
     expect(outcome).toEqual({ written: false, reason: 'unchanged' });
     expect(sent.some((s) => /^\s*update/i.test(s))).toBe(false);
   });

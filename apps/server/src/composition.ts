@@ -305,8 +305,8 @@ export function composeSeed(options: { readonly env?: Env } = {}): CommandCompos
 }
 
 /** TEST FACILITY (local mode only, see config-env test-facilities): loading the one named page takes `ms` longer. Everything else is the store itself. */
-function withSlowLoad<S extends { load(id: string): Promise<unknown> }>(store: S, slow: { readonly pageId: string; readonly ms: number } | undefined): S {
+function withSlowLoad<S extends { load(tenantId: string, id: string): Promise<unknown> }>(store: S, slow: { readonly pageId: string; readonly ms: number } | undefined): S {
   if (slow === undefined) return store;
   const load = store.load.bind(store);
-  return Object.assign(Object.create(store) as S, { load: async (id: string) => { if (id === slow.pageId) await new Promise<void>((resolve) => { setTimeout(resolve, slow.ms); }); return load(id); } });
+  return Object.assign(Object.create(store) as S, { load: async (tenantId: string, id: string) => { if (id === slow.pageId) await new Promise<void>((resolve) => { setTimeout(resolve, slow.ms); }); return load(tenantId, id); } });
 }

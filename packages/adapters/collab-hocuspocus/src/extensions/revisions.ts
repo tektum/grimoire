@@ -36,7 +36,8 @@ export function createRevisionsExtension(o: RevisionsOptions): RevisionsExtensio
       scheduler.opened();
     },
     async onChange(data: HookPayloadByName['onChange']): Promise<void> {
-      scheduler.changed(data.documentName, readContext(data.context).userId);
+      const c = readContext(data.context);
+      scheduler.changed(data.documentName, c.userId, c.tenantId ?? 'legacy');
     },
     // Revision work never holds up the host: a slow or hung database must not delay a store, an unload or the shutdown. The scheduler
     // catches and logs its own failures, so the promises it returns never reject.

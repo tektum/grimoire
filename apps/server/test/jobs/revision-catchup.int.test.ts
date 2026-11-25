@@ -39,7 +39,7 @@ describe('the revision catch-up job on a real database', () => {
     const revisionRepo = createRevisions(db.app, db.ops);
     await Promise.all([
       runRevisionCatchUp({ revisions: revisionRepo, now: () => Date.now() }, new AbortController().signal),
-      revisionRepo.createFromPage({ pageId: page, reason: 'idle', authorIds: [tenant.userId], lastAuthorId: tenant.userId, at: Date.now() - 6 * 60_000 }),
+      revisionRepo.createFromPage({ tenantId: tenant.tenantId, pageId: page, reason: 'idle', authorIds: [tenant.userId], lastAuthorId: tenant.userId, at: Date.now() - 6 * 60_000 }),
     ]);
     expect(await revisions(page)).toHaveLength(1);
   }, 60_000);

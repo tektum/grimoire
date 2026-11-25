@@ -27,22 +27,28 @@ export type PageWrite =
 
 export type WriteOutcome = { written: true } | { written: false; reason: 'unchanged' | 'epoch-mismatch' | 'no-row' };
 
-/** Where a page's collaborative state and Markdown live (table `pages`). */
+/**
+ * Where a page's collaborative state and Markdown live (table `pages`). `tenantId` is the tenant the page is read and written in (docs/tenancy.md section
+ * 3.2): the collaboration connection's, which admission has checked against the page, or the one `listStale` named. A page of another tenant is no row.
+ */
 export interface PageStore {
   /** `undefined` = there is no such row (the page does not exist). */
-  load(id: string): Promise<StoredPage | undefined>;
+  load(tenantId: string, id: string): Promise<StoredPage | undefined>;
   /** One transaction under a row lock: returns the stored state, or builds it from the row's Markdown, writes it and returns it (`seeded: true`). `state: null`: nothing to seed. */
-  seed(id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>;
+  seed(tenantId: string, id: string, build: (markdown: string) => Promise<Uint8Array>): Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>;
   /** One transaction under a row lock. Rejects when the database cannot take it; the host retries. */
-  store(id: string, w: PageWrite): Promise<WriteOutcome>;
-  /** Pages whose Markdown is stale, oldest mark first, each with the time of its mark (epoch milliseconds): the sweep's query. A page whose mark was cleared and set again has a new time. */
-  listStale(limit: number): Promise<{ readonly id: string; readonly staleSince: number }[]>;
+  store(tenantId: string, id: string, w: PageWrite): Promise<WriteOutcome>;
+  /**
+   * Pages whose Markdown is stale in every tenant, oldest mark first, each with its tenant and the time of its mark (epoch milliseconds): the sweep's query.
+   * A page whose mark was cleared and set again has a new time.
+   */
+  listStale(limit: number): Promise<{ readonly id: string; readonly tenantId: string; readonly staleSince: number }[]>;
   /**
    * The sweep's write, a compare-and-set: stores `markdown` and `text` for a page whose Markdown is stale, only while its row still holds exactly the `state`
    * and `epoch` the conversion was made from (checked under the row lock), and clears the mark. Anything else (a save in between, a reset, no mark, no row)
    * writes nothing and answers `skipped`; the page is tried again at the next sweep. The editor state and the last edit are never touched.
    */
-  repairMarkdown(id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'>;
+  repairMarkdown(tenantId: string, id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'>;
 }
 
 export interface CollabDeps {

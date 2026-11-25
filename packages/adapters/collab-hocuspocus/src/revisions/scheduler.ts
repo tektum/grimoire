@@ -34,6 +34,8 @@ export interface SchedulerReport {
 
 /** What has happened to a page since its last revision. */
 interface Pending {
+  /** The tenant of the connections that edit the page (docs/tenancy.md section 3.2): the revision is made in it. */
+  readonly tenantId: string;
   /** Each author with the version of their latest change: a revision takes the authors up to the version it was made from. */
   readonly authors: Map<string, number>;
   latest: string | undefined;
@@ -54,8 +56,8 @@ export interface SchedulerOptions {
 }
 
 export interface RevisionScheduler {
-  /** A change arrived on the page from `userId` (undefined: no known user). Restarts the page's 5-minute timer. */
-  changed(pageId: string, userId: string | undefined): void;
+  /** A change arrived on the page from `userId` (undefined: no known user) of `tenantId`. Restarts the page's 5-minute timer. */
+  changed(pageId: string, userId: string | undefined, tenantId: string): void;
   /** A save of the page finished: a deferred revision is tried again. */
   saved(pageId: string): Promise<void>;
   /** The page was unloaded (its last connection left and its last save is done): the last editor left. */
@@ -133,7 +135,7 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
       const at = state.lastEditAt;
       try {
         const result = await o.repo.createFromPage({
-          pageId, reason, authorIds, lastAuthorId, at,
+          tenantId: state.tenantId, pageId, reason, authorIds, lastAuthorId, at,
         });
         outcome(pageId, reason, state, seen, result);
       } catch (error) {
@@ -145,10 +147,10 @@ export function createRevisionScheduler(o: SchedulerOptions): RevisionScheduler 
     });
 
   return {
-    changed(pageId, userId) {
+    changed(pageId, userId, tenantId) {
       if (stopped) return;
       const at = o.clock.now();
-      const state = pending.get(pageId) ?? { authors: new Map<string, number>(), latest: undefined, version: 0, lastEditAt: at, timer: undefined, deferred: undefined };
+      const state = pending.get(pageId) ?? { tenantId, authors: new Map<string, number>(), latest: undefined, version: 0, lastEditAt: at, timer: undefined, deferred: undefined };
       state.version += 1;
       const editor = editorColumn(userId);
       if (editor !== undefined) state.authors.set(editor, state.version);
