@@ -117,3 +117,18 @@ describe('FakeEmbeddingStore', () => {
     expect((await store.counts('m')).pagesPending).toBe(1);
   });
 });
+
+describe('FakeEmbeddingStore, one state per page', () => {
+  it('a write for another model replaces the page chunks and state, as the tables do', async () => {
+    const store = new FakeEmbeddingStore(() => NOW);
+    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), editedAt: 0 });
+    await store.replacePage('legacy', 'p1', hash(1), 'm1', [chunk(0, 'alpha')]);
+    await store.replacePage('legacy', 'p1', hash(1), 'm2', [chunk(0, 'beta')]);
+    expect(store.stored('p1', 'm1')).toEqual({ chunks: [], state: undefined });
+    expect(await store.existingHashes('legacy', 'p1', 'm1')).toEqual(new Map());
+    expect(await store.counts('m1')).toMatchObject({ chunks: 0, pagesReady: 0, pagesPending: 1 });
+    expect(await store.pagesNeedingEmbedding('legacy', 'm1', { olderThanSeconds: 1, limit: 5 })).toHaveLength(1);
+    expect(await store.search('legacy', vectorOf('passage: beta', 8), { model: 'm1', collectionIds: ['open'], limit: 5, minSimilarity: 0 })).toEqual([]);
+    expect(await store.counts('m2')).toMatchObject({ chunks: 1, pagesReady: 1 });
+  });
+});

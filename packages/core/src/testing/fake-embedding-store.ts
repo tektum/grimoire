@@ -1,7 +1,7 @@
 import type { ChunkHit, ChunkRow, EmbeddingStore } from '../ports/embedding-store.js';
 
 interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean }
-interface StateRow { markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
+interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -11,8 +11,9 @@ const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length &&
  */
 export class FakeEmbeddingStore implements EmbeddingStore {
   private readonly pages = new Map<string, PageFact>();
-  private readonly chunks = new Map<string, Map<string, ChunkRow[]>>(); // page id -> model -> chunks
-  private readonly states = new Map<string, Map<string, StateRow>>(); // page id -> model -> state
+  // One set of chunks and one state per page, as the tables' keys (page_id; page_id, chunk_index) allow: `model` is a column, so a write for another model replaces them.
+  private readonly chunks = new Map<string, { model: string; rows: ChunkRow[] }>();
+  private readonly states = new Map<string, StateRow>();
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
@@ -33,7 +34,8 @@ export class FakeEmbeddingStore implements EmbeddingStore {
 
   /** What is stored for a page and model, for assertions. */
   stored(pageId: string, model: string): { readonly chunks: readonly ChunkRow[]; readonly state: Readonly<StateRow> | undefined } {
-    return { chunks: this.chunks.get(pageId)?.get(model) ?? [], state: this.states.get(pageId)?.get(model) };
+    const state = this.states.get(pageId);
+    return { chunks: this.rowsOf(pageId, model), state: state?.model === model ? state : undefined };
   }
 
   private page(tenantId: string, pageId: string): PageFact | undefined {
@@ -42,24 +44,23 @@ export class FakeEmbeddingStore implements EmbeddingStore {
   }
 
   existingHashes(tenantId: string, pageId: string, model: string): Promise<Map<number, Uint8Array>> {
-    const rows = this.page(tenantId, pageId) === undefined ? [] : (this.chunks.get(pageId)?.get(model) ?? []);
+    const rows = this.page(tenantId, pageId) === undefined ? [] : this.rowsOf(pageId, model);
     return Promise.resolve(new Map(rows.map((c) => [c.chunkIndex, c.contentHash])));
   }
 
   replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);
     if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return Promise.resolve('stale');
-    this.byModel(this.chunks, pageId).set(model, [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex));
-    this.byModel(this.states, pageId).set(model, { markdownHash, status: 'ready', attempts: 0, error: null });
+    this.chunks.set(pageId, { model, rows: [...chunks].sort((a, b) => a.chunkIndex - b.chunkIndex) });
+    this.states.set(pageId, { model, markdownHash, status: 'ready', attempts: 0, error: null });
     return Promise.resolve('ok');
   }
 
   markFailed(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, error: string): Promise<void> {
     const page = this.page(tenantId, pageId);
     if (page?.markdownHash == null || !same(page.markdownHash, markdownHash)) return Promise.resolve();
-    const states = this.byModel(this.states, pageId);
-    const before = states.get(model);
-    states.set(model, { markdownHash, status: 'failed', attempts: (before !== undefined && same(before.markdownHash, markdownHash) ? before.attempts : 0) + 1, error });
+    const before = this.states.get(pageId);
+    this.states.set(pageId, { model, markdownHash, status: 'failed', attempts: (before?.model === model && same(before.markdownHash, markdownHash) ? before.attempts : 0) + 1, error });
     return Promise.resolve();
   }
 
@@ -68,8 +69,8 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     const due = [...this.pages]
       .filter(([, p]) => p.tenantId === tenantId && !p.deleted && p.markdownHash !== null && p.editedAt < cutoff)
       .filter(([id, p]) => {
-        const state = this.states.get(id)?.get(model);
-        return state === undefined || !same(state.markdownHash, p.markdownHash as Uint8Array);
+        const state = this.states.get(id);
+        return state?.model !== model || !same(state.markdownHash, p.markdownHash as Uint8Array);
       })
       .sort((a, b) => a[1].editedAt - b[1].editedAt || (a[0] < b[0] ? -1 : 1));
     return Promise.resolve(due.slice(0, o.limit).map(([pageId, p]) => ({ pageId, markdownHash: p.markdownHash as Uint8Array })));
@@ -81,10 +82,10 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     o: { readonly model: string; readonly collectionIds: readonly string[]; readonly collectionId?: string; readonly limit: number; readonly minSimilarity: number },
   ): Promise<readonly ChunkHit[]> {
     const hits: ChunkHit[] = [];
-    for (const [pageId, byModel] of this.chunks) {
+    for (const pageId of this.chunks.keys()) {
       const page = this.page(tenantId, pageId);
       if (page === undefined || page.deleted || !o.collectionIds.includes(page.collectionId) || (o.collectionId !== undefined && page.collectionId !== o.collectionId)) continue;
-      for (const c of byModel.get(o.model) ?? []) {
+      for (const c of this.rowsOf(pageId, o.model)) {
         if (c.embedding.length !== queryVector.length) continue; // another dimension is another model's
         const similarity = c.embedding.reduce((sum, x, i) => sum + x * (queryVector[i] as number), 0);
         if (similarity >= o.minSimilarity) hits.push({ pageId, chunkIndex: c.chunkIndex, charStart: c.charStart, charEnd: c.charEnd, similarity });
@@ -99,19 +100,18 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     let pagesFailed = 0;
     let pagesPending = 0;
     for (const [id, page] of this.pages) {
-      chunks += this.chunks.get(id)?.get(model)?.length ?? 0;
+      chunks += this.rowsOf(id, model).length;
       if (page.deleted || page.markdownHash === null) continue;
-      const state = this.states.get(id)?.get(model);
-      if (state === undefined || !same(state.markdownHash, page.markdownHash)) pagesPending += 1;
+      const state = this.states.get(id);
+      if (state?.model !== model || !same(state.markdownHash, page.markdownHash)) pagesPending += 1;
       else if (state.status === 'ready') pagesReady += 1;
       else pagesFailed += 1;
     }
     return Promise.resolve({ chunks, pagesReady, pagesFailed, pagesPending });
   }
 
-  private byModel<T>(map: Map<string, Map<string, T>>, pageId: string): Map<string, T> {
-    let m = map.get(pageId);
-    if (m === undefined) map.set(pageId, (m = new Map()));
-    return m;
+  private rowsOf(pageId: string, model: string): readonly ChunkRow[] {
+    const c = this.chunks.get(pageId);
+    return c?.model === model ? c.rows : [];
   }
 }

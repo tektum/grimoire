@@ -29,7 +29,7 @@ export interface EmbeddingStore {
   /** The content hash of each chunk of the page that is stored for `model`, by chunk index. */
   existingHashes(tenantId: string, pageId: string, model: string): Promise<Map<number, Uint8Array>>;
   /**
-   * Stores `chunks` as the page's chunks for `model` (those of this model that are not among them are removed) and marks the page `ready` at `markdownHash`, in one
+   * Stores `chunks` as the page's chunks (every other chunk of the page is removed, whatever its model: a page has one set and one state, `model` is a column) and marks the page `ready` for `model` at `markdownHash`, in one
    * transaction that first checks the page's Markdown hash is still `markdownHash`: when it is not, the page changed while it was embedded, nothing is written and the answer is `stale`.
    */
   replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'>;
