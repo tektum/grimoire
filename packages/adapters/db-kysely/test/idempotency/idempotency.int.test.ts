@@ -46,31 +46,31 @@ describe('the PostgreSQL IdempotencyStore', () => {
   it('claims once; a second claim is refused while the first runs; after complete the same request replays the stored JSON', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    expect(await store.claim(user, 'k', HASH_A)).toEqual({ kind: 'claimed' });
-    expect(await store.claim(user, 'k', HASH_A)).toEqual({ kind: 'conflict' });
-    await store.complete(user, 'k', answer);
-    expect(await store.claim(user, 'k', HASH_A)).toEqual({ kind: 'replay', response: answer });
+    expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'claimed' });
+    expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'conflict' });
+    await store.complete('legacy', user, 'k', answer);
+    expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'replay', response: answer });
   });
 
   it('refuses the same key with another request hash, running or finished', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    await store.claim(user, 'k', HASH_A);
-    expect(await store.claim(user, 'k', HASH_B)).toEqual({ kind: 'conflict' });
-    await store.complete(user, 'k', answer);
-    expect(await store.claim(user, 'k', HASH_B)).toEqual({ kind: 'conflict' });
+    await store.claim('legacy', user, 'k', HASH_A);
+    expect(await store.claim('legacy', user, 'k', HASH_B)).toEqual({ kind: 'conflict' });
+    await store.complete('legacy', user, 'k', answer);
+    expect(await store.claim('legacy', user, 'k', HASH_B)).toEqual({ kind: 'conflict' });
   });
 
   it('keeps users apart: the same key and hash is a fresh claim for another user', async () => {
     const store = createIdempotency(db, ops);
-    expect((await store.claim(randomUUID(), 'shared', HASH_A)).kind).toBe('claimed');
-    expect((await store.claim(randomUUID(), 'shared', HASH_A)).kind).toBe('claimed');
+    expect((await store.claim('legacy', randomUUID(), 'shared', HASH_A)).kind).toBe('claimed');
+    expect((await store.claim('legacy', randomUUID(), 'shared', HASH_A)).kind).toBe('claimed');
   });
 
   it('lets exactly one of many simultaneous first claims win', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    const results = await Promise.all(Array.from({ length: 20 }, () => store.claim(user, 'race', HASH_A)));
+    const results = await Promise.all(Array.from({ length: 20 }, () => store.claim('legacy', user, 'race', HASH_A)));
     expect(results.filter((r) => r.kind === 'claimed')).toHaveLength(1);
     expect(results.filter((r) => r.kind === 'conflict')).toHaveLength(19);
   });
@@ -78,44 +78,47 @@ describe('the PostgreSQL IdempotencyStore', () => {
   it('stores a response without a body and replays it as null', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    await store.claim(user, 'k', HASH_A);
-    await store.complete(user, 'k', { status: 204, body: null });
-    expect(await store.claim(user, 'k', HASH_A)).toEqual({ kind: 'replay', response: { status: 204, body: null } });
+    await store.claim('legacy', user, 'k', HASH_A);
+    await store.complete('legacy', user, 'k', { status: 204, body: null });
+    expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'replay', response: { status: 204, body: null } });
   });
 
   it('release frees a running claim, and never removes a finished answer', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    await store.claim(user, 'run', HASH_A);
-    await store.release(user, 'run');
-    expect(await store.claim(user, 'run', HASH_B)).toEqual({ kind: 'claimed' });
-    await store.claim(user, 'done', HASH_A);
-    await store.complete(user, 'done', answer);
-    await store.release(user, 'done');
-    expect((await store.claim(user, 'done', HASH_A)).kind).toBe('replay');
+    await store.claim('legacy', user, 'run', HASH_A);
+    await store.release('legacy', user, 'run');
+    expect(await store.claim('legacy', user, 'run', HASH_B)).toEqual({ kind: 'claimed' });
+    await store.claim('legacy', user, 'done', HASH_A);
+    await store.complete('legacy', user, 'done', answer);
+    await store.release('legacy', user, 'done');
+    expect((await store.claim('legacy', user, 'done', HASH_A)).kind).toBe('replay');
   });
 
   it('deletes the rows created before the cutoff and only those, and the key is usable again', async () => {
     const store = createIdempotency(db, ops);
     const user = randomUUID();
-    await store.claim(user, 'old', HASH_A);
-    await store.complete(user, 'old', answer);
+    await store.claim('legacy', user, 'old', HASH_A);
+    await store.complete('legacy', user, 'old', answer);
     await db.query(`update idempotency_keys set created_at = now() - interval '25 hours' where user_id = $1 and key = 'old'`, [user]);
-    await store.claim(user, 'young', HASH_A);
+    await store.claim('legacy', user, 'young', HASH_A);
     expect(await store.deleteCreatedBefore(Date.now() - 24 * 60 * 60 * 1000)).toBeGreaterThanOrEqual(1);
-    expect((await store.claim(user, 'old', HASH_B)).kind).toBe('claimed');
-    expect((await store.claim(user, 'young', HASH_A)).kind).toBe('conflict');
+    expect((await store.claim('legacy', user, 'old', HASH_B)).kind).toBe('claimed');
+    expect((await store.claim('legacy', user, 'young', HASH_A)).kind).toBe('conflict');
   });
 
-  it('stores a key in the tenant of its user, and in legacy for a user it does not know', async () => {
+  it('stores a key in the caller\'s tenant, and another tenant can neither replay, complete nor release it', async () => {
     const store = createIdempotency(db, ops);
     await db.query(`insert into tenants (id, name) values ('T-idem', 'T-idem')`);
     const rows = await db.query<{ id: string }>(`insert into users (descope_user_id, email, name, role, tenant_id) values ('idem', 'idem@example.com', 'idem', 'member', 'T-idem') returning id`);
     const user = rows[0]!.id;
-    const unknown = randomUUID();
-    await store.claim(user, 'k', HASH_A);
-    await store.claim(unknown, 'k', HASH_A);
-    const tenants = await db.query<{ tenant_id: string }>(`select tenant_id from idempotency_keys where user_id in ($1, $2) order by user_id = $1 desc`, [user, unknown]);
-    expect(tenants.map((row) => row.tenant_id)).toEqual(['T-idem', 'legacy']);
+    expect(await store.claim('T-idem', user, 'k', HASH_A)).toEqual({ kind: 'claimed' });
+    await store.complete('legacy', user, 'k', { status: 201, body: { other: true } });
+    await store.release('legacy', user, 'k');
+    expect(await store.claim('legacy', user, 'k', HASH_A)).toEqual({ kind: 'conflict' });
+    const stored = await db.query<{ tenant_id: string; status: number | null }>(`select tenant_id, status from idempotency_keys where user_id = $1`, [user]);
+    expect(stored).toEqual([{ tenant_id: 'T-idem', status: null }]);
+    await store.complete('T-idem', user, 'k', { status: 201, body: { mine: true } });
+    expect(await store.claim('T-idem', user, 'k', HASH_A)).toEqual({ kind: 'replay', response: { status: 201, body: { mine: true } } });
   });
 });

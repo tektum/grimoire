@@ -10,6 +10,7 @@ import { createCollections } from '../src/collections.js';
 import { createEmbeddingStore } from '../src/embeddings.js';
 import { createIdempotency } from '../src/idempotency.js';
 import { createPageStore } from '../src/page-store.js';
+import { createPageState } from '../src/page-state.js';
 import { createPages } from '../src/pages.js';
 import { createRevisions } from '../src/revisions.js';
 import { createTenants } from '../src/tenants.js';
@@ -110,6 +111,7 @@ const tenants = () => createTenants(t.ops);
 const pageStore = () => createPageStore(t.app, t.ops, { now: () => Date.now() });
 const embeddings = () => createEmbeddingStore(t.app, t.ops);
 const vector = Float32Array.from([1, 0, 0]);
+const pageState = () => createPageState(t.app);
 const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>> = {
   admin: {
     listUsers: (tn) => admin().listUsers(tn, { q: 'guard', limit: 10, after: ['a@example.com', s.boss] }),
@@ -146,13 +148,27 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
   revisions: {
     list: async (tn) => [await revisions().list(tn, s.page, { limit: 10 }), await revisions().list(tn, s.page, { limit: 10, after: [Date.now() * 1000, s.revision] })],
     get: (tn) => revisions().get(tn, s.page, s.revision),
+    snapshotBeforeRestore: (tn) => revisions().snapshotBeforeRestore(tn, s.page),
+  },
+  pageState: {
+    reset: (tn) => pageState().reset({ tenantId: tn, pageId: s.page, actorId: s.boss, confirmStale: true }),
   },
   trash: {
     roots: (tn) => trash().roots(tn, null, 10, { deletedAt: Date.now() + 60_000, id: s.page }),
     rootOf: (tn) => trash().rootOf(tn, s.child),
     restore: (tn) => trash().restore(tn, s.child, s.collection, limits, place),
+    attachmentKeys: (tn) => trash().attachmentKeys(tn, s.batch ?? ''),
+    markFilesRemoved: (tn) => trash().markFilesRemoved(tn, ['tenants/T-guard/attachments/none']),
     purge: (tn) => trash().purge(tn, s.batch ?? '', s.boss, []),
     expiredBatches: (tn) => trash().expiredBatches(tn, Date.now(), 10),
+  },
+  users: {
+    updateRole: (tn) => users().updateRole(tn, s.member, 'member'),
+  },
+  idempotency: {
+    claim: (tn) => idempotency().claim(tn, s.boss, 'guard-key', 'ab'),
+    complete: (tn) => idempotency().complete(tn, s.boss, 'guard-key', { status: 200, body: null }),
+    release: (tn) => idempotency().release(tn, s.boss, 'guard-key'),
   },
   audit: {
     append: (tn) => audit().append({ actorId: s.boss, action: 'guard.checked', targetType: 'page', targetId: s.page, tenantId: tn }),
@@ -181,13 +197,12 @@ const operatorCalls: Record<string, Record<string, () => Promise<unknown>>> = {
 };
 // The methods not moved yet: step 3 scopes them by a tenant their callers know, or gives them to the operator connection.
 const crossTenant: Record<string, readonly string[]> = {
-  revisions: ['createFromPage', 'snapshotBeforeRestore'], trash: ['attachmentKeys', 'markFilesRemoved'], users: ['updateRole'],
-  idempotency: ['claim', 'complete', 'release'], pageStore: ['load', 'seed', 'store', 'repairMarkdown'],
+  revisions: ['createFromPage'], pageStore: ['load', 'seed', 'store', 'repairMarkdown'],
 };
 
 describe('the tenant-scoped repositories', () => {
   it('list every method here, as scoped, on the operator connection, or as crossing tenants', () => {
-    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings() };
+    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), pageState: pageState(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings() };
     for (const [name, repo] of Object.entries(repos)) {
       const listed = new Set([...Object.keys(calls[name] ?? {}), ...Object.keys(operatorCalls[name] ?? {}), ...(crossTenant[name] ?? [])]);
       expect(Object.keys(repo).sort(), name).toEqual([...listed].sort());

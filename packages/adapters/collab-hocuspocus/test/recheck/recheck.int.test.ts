@@ -89,7 +89,7 @@ describe('the re-check on the real server (1 s interval)', () => {
     a.provider.on('close', ({ event }: { event: { reason: string } }) => { reasons.push(event.reason); });
     a.text.insert(0, 'before;');
     await eventually(() => serverText(l).includes('before;'), 4000, 'a write lands while writable');
-    await l.t.users.updateRole(U1, 'viewer');
+    await l.t.users.updateRole('legacy', U1, 'viewer');
     // the raw client keeps sending: an edit per poll, until the server has closed it, and afterwards
     await eventually(() => { a.text.insert(a.text.length, 'x;'); return reasons.length > 0; }, 4000, 'closed by the re-check');
     expect(reasons).toEqual(['access-changed']);

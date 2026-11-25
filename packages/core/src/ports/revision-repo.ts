@@ -96,5 +96,5 @@ export interface RevisionRepo {
    * last edit and naming its last editor, in one transaction with the read. Identical to the latest revision: that one is returned and
    * nothing is written. Refused (`stale`) while the saved Markdown is stale, and when the page has editing state and no saved Markdown at all (its live content is saved nowhere else).
    */
-  snapshotBeforeRestore(pageId: string): Promise<BeforeRestoreResult>;
+  snapshotBeforeRestore(tenantId: string, pageId: string): Promise<BeforeRestoreResult>;
 }

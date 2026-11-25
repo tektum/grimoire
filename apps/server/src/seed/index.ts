@@ -3,10 +3,11 @@ import { ALICE, BOB, BOB_PRIVATE_ACCESS, DEV, PRIVATE, SEED_COLLECTIONS, SEED_PA
 
 /**
  * Inserts the development rows (`grimoire seed`, local mode only: the caller checks). Idempotent: every insert is `on conflict do nothing`,
- * so a second run, or a run on a database where someone edited a seeded row, changes nothing. Runs as the runtime role. `ydoc` stays null: the first
- * editor to open a seeded page builds its state from the Markdown.
+ * so a second run, or a run on a database where someone edited a seeded row, changes nothing. Runs as the runtime role, in one transaction scoped to
+ * the `legacy` tenant its rows take (the caller passes `scoped(db, 'legacy')`). `ydoc` stays null: the first editor to open a seeded page builds its
+ * state from the Markdown.
  */
-export async function seedLocal(db: Database): Promise<void> {
+export async function seedLocal(db: Pick<Database, 'transaction'>): Promise<void> {
   await db.transaction(async (tx) => {
     // A developer who signed in locally before seeding already has a row for the same subject and email (a generated id): the seed builds on that row
     // instead of failing on its unique constraints, so the ids used below are the ones the database has.

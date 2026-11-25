@@ -1,6 +1,8 @@
 import type { SeededContent } from '../pages/seeded-content.js';
 
 export interface ResetInput {
+  /** The caller's tenant (docs/tenancy.md section 3.2): a page of another tenant is not found. */
+  readonly tenantId: string;
   readonly pageId: string;
   readonly actorId: string;
   /** Replacement Markdown with the state it was seeded into (strict limits, done before the call). Without it the stored Markdown stays. */

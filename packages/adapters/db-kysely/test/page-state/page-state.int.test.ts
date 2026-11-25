@@ -49,9 +49,9 @@ describe('the PostgreSQL PageStateRepo', () => {
     await t.admin.query(`update pages set markdown = null, text_content = null, markdown_hash = null where id = $1`, [id]);
     const before = await row(id);
     const repo = createPageState(t.app);
-    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: false })).toEqual({ kind: 'stale-unconfirmed' });
+    expect(await repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: false })).toEqual({ kind: 'stale-unconfirmed' });
     expect(await row(id)).toEqual(before);
-    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: true })).toMatchObject({ kind: 'reset', markdownStale: true });
+    expect(await repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: true })).toMatchObject({ kind: 'reset', markdownStale: true });
   });
 
   it('refuses an actor who is no longer an active administrator when the transaction runs, and changes nothing', async () => {
@@ -63,7 +63,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     await t.admin.query(`update users set suspended_at = now() where id = $1`, [suspended]);
     const repo = createPageState(t.app);
     for (const actorId of [demoted, suspended, '00000000-0000-4000-8000-000000000000']) {
-      expect(await repo.reset({ pageId: id, actorId, confirmStale: true })).toEqual({ kind: 'not-admin' });
+      expect(await repo.reset({ tenantId: 'legacy', pageId: id, actorId, confirmStale: true })).toEqual({ kind: 'not-admin' });
     }
     expect(await row(id)).toEqual(before);
     expect(await audits(id)).toEqual([]);
@@ -82,7 +82,7 @@ describe('the PostgreSQL PageStateRepo', () => {
       await gate;
     });
     await locked;
-    const reset = createPageState(t.app).reset({ pageId: id, actorId: actor, confirmStale: true });
+    const reset = createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: actor, confirmStale: true });
     await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the reset waiting on the actor row');
     release();
     await demotion;
@@ -93,7 +93,7 @@ describe('the PostgreSQL PageStateRepo', () => {
   it('without Markdown drops the state, bumps the epoch once, keeps the Markdown, and writes one audit row', async () => {
     const id = await makePage('keep me');
     const before = await row(id);
-    const result = await createPageState(t.app).reset({ pageId: id, actorId: admin, confirmStale: false });
+    const result = await createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: false });
     expect(result).toEqual({ kind: 'reset', stateEpoch: before.state_epoch + 1, markdownStale: false });
     const after = await row(id);
     expect(after).toMatchObject({ ydoc: null, ydoc_size: null, state_epoch: before.state_epoch + 1, markdown: before.markdown, text_content: before.text_content });
@@ -104,7 +104,7 @@ describe('the PostgreSQL PageStateRepo', () => {
   it('with supplied Markdown stores the state with the Markdown, search text and hash together, never Markdown without state', async () => {
     const id = await makePage('old');
     const content = await seeded('replacement', new Uint8Array([7, 7, 7]));
-    const result = await createPageState(t.app).reset({ pageId: id, actorId: admin, content, confirmStale: false });
+    const result = await createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: admin, content, confirmStale: false });
     expect(result).toMatchObject({ kind: 'reset', markdownStale: false });
     const after = await row(id);
     expect([...(after.ydoc as Buffer)]).toEqual([7, 7, 7]);
@@ -118,7 +118,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     const id = await makePage('stay');
     const before = await row(id);
     const empty = await seeded('x', new Uint8Array(0));
-    expect(await createPageState(t.app).reset({ pageId: id, actorId: admin, content: empty, confirmStale: false })).toEqual({ kind: 'empty-state' });
+    expect(await createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: admin, content: empty, confirmStale: false })).toEqual({ kind: 'empty-state' });
     expect(await row(id)).toEqual(before);
     expect(await audits(id)).toEqual([]);
   });
@@ -128,10 +128,10 @@ describe('the PostgreSQL PageStateRepo', () => {
     await t.admin.query(`update pages set markdown_stale_since = now() where id = $1`, [id]);
     const before = await row(id);
     const repo = createPageState(t.app);
-    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: false })).toEqual({ kind: 'stale-unconfirmed' });
+    expect(await repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: false })).toEqual({ kind: 'stale-unconfirmed' });
     expect(await row(id)).toEqual(before);
     expect(await audits(id)).toEqual([]);
-    expect(await repo.reset({ pageId: id, actorId: admin, confirmStale: true })).toEqual({ kind: 'reset', stateEpoch: before.state_epoch + 1, markdownStale: true });
+    expect(await repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: true })).toEqual({ kind: 'reset', stateEpoch: before.state_epoch + 1, markdownStale: true });
     expect(await row(id)).toMatchObject({ ydoc: null, stale: false });
     expect((await audits(id)).map((a) => a.detail)).toEqual([expect.objectContaining({ markdownStale: true })]);
   });
@@ -139,7 +139,7 @@ describe('the PostgreSQL PageStateRepo', () => {
   it('needs no confirmation when the Markdown is replaced, even on a stale page', async () => {
     const id = await makePage('behind');
     await t.admin.query(`update pages set markdown_stale_since = now() where id = $1`, [id]);
-    const result = await createPageState(t.app).reset({ pageId: id, actorId: admin, content: await seeded('fresh'), confirmStale: false });
+    const result = await createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: admin, content: await seeded('fresh'), confirmStale: false });
     expect(result).toMatchObject({ kind: 'reset', markdownStale: false });
     expect(await row(id)).toMatchObject({ stale: false, markdown: 'canonical fresh' });
   });
@@ -153,7 +153,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     await t.admin.query(`update collections set deleted_at = now() where id = $1`, [other]);
     const repo = createPageState(t.app);
     for (const pageId of [gone, inOther.page.id, '00000000-0000-4000-8000-000000000000']) {
-      expect(await repo.reset({ pageId, actorId: admin, confirmStale: true })).toEqual({ kind: 'not-found' });
+      expect(await repo.reset({ tenantId: 'legacy', pageId, actorId: admin, confirmStale: true })).toEqual({ kind: 'not-found' });
     }
     expect(await audits(gone)).toEqual([]);
   });
@@ -164,7 +164,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     await t.admin.query(`create function refuse_audit() returns trigger language plpgsql as $$ begin raise exception 'refused'; end $$`);
     await t.admin.query(`create trigger refuse_audit_trg after insert on audit_events for each row execute function refuse_audit()`);
     try {
-      await expect(createPageState(t.app).reset({ pageId: id, actorId: admin, content: await seeded('lost'), confirmStale: false })).rejects.toThrow();
+      await expect(createPageState(t.app).reset({ tenantId: 'legacy', pageId: id, actorId: admin, content: await seeded('lost'), confirmStale: false })).rejects.toThrow();
     } finally {
       await t.admin.query(`drop trigger refuse_audit_trg on audit_events`);
       await t.admin.query(`drop function refuse_audit()`);
@@ -177,7 +177,7 @@ describe('the PostgreSQL PageStateRepo', () => {
     const id = await makePage('twice');
     const start = (await row(id)).state_epoch;
     const repo = createPageState(t.app);
-    const results = await Promise.all([repo.reset({ pageId: id, actorId: admin, confirmStale: false }), repo.reset({ pageId: id, actorId: admin, confirmStale: false })]);
+    const results = await Promise.all([repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: false }), repo.reset({ tenantId: 'legacy', pageId: id, actorId: admin, confirmStale: false })]);
     expect(results.map((r) => (r.kind === 'reset' ? r.stateEpoch : -1)).sort()).toEqual([start + 1, start + 2]);
     expect(await audits(id)).toHaveLength(2);
   });

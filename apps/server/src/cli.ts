@@ -2,10 +2,9 @@
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
-import { composeDbSetup, composeFilesSetup, composeSeed, composeTenantAdopt, runDbSetup, runFilesSetup, runTenantAdopt } from './composition.js';
+import { composeDbSetup, composeFilesSetup, composeSeed, composeTenantAdopt, runDbSetup, runFilesSetup, runSeed, runTenantAdopt } from './composition.js';
 import { composeMigrate } from './lifecycle/compose-migrate.js';
 import { parseTenantAdoptArgs, TENANT_ADOPT_USAGE } from './lifecycle/tenant-adopt.js';
-import { seedLocal } from './seed/index.js';
 
 // Exit codes: 0 ok, 1 runtime failure, 2 usage or configuration error. Adapters come from composition.ts (S1); this file only runs and closes them.
 const defaultDir = fileURLToPath(new URL('../../../db/migrations', import.meta.url)); // dist/ -> apps/server -> repo root
@@ -43,7 +42,7 @@ async function seed(): Promise<number> {
   if (!composed.ok) return composed.code;
   const { db, log } = composed.ctx;
   try {
-    await seedLocal(db);
+    await runSeed(db);
     log.info('seed.done', {});
     return 0;
   } catch (e) {

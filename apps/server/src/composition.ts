@@ -22,7 +22,8 @@ import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektu
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
-import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { seedLocal } from './seed/index.js';
+import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, scoped, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import { registerJobs } from './jobs/index.js';
@@ -232,6 +233,11 @@ export function composeTenantAdopt(options: { readonly env?: Env } = {}): Comman
 /** The move itself, bound to the database adapter here like the migrations are. */
 export function runTenantAdopt(db: KyselyDatabase, request: TenantAdoptRequest): Promise<TenantAdoptResult> {
   return adoptTenant(db, request);
+}
+
+/** The development rows, scoped to `legacy`, the tenant they belong to (docs/tenancy.md section 3.2). */
+export function runSeed(db: KyselyDatabase): Promise<void> {
+  return seedLocal(scoped(db, 'legacy'));
 }
 
 export interface DbSetupComposition { readonly db: KyselyDatabase; readonly passwords: DatabasePasswords; readonly log: EventLog }

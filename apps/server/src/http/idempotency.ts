@@ -3,6 +3,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { routePath } from 'hono/route';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import type { StoredResponse } from '@tektum/grimoire-core/ports/idempotency-store';
+import { callerTenant } from './collection-guard.js';
 import { fail } from './error.js';
 import { routeExtension } from './rate-limit.js';
 import type { AppEnv, HttpDeps } from './env.js';
@@ -54,7 +55,8 @@ export function idempotency(app: OpenAPIHono<AppEnv>, deps: Pick<HttpDeps, 'idem
       void deps.idempotency.deleteCreatedBefore(deps.clock.now() - DAY_MS).catch(() => undefined);
     }
     const hash = createHash('sha256').update(`${method}\n${c.req.path}\n${new URL(c.req.url).search}\n${await c.req.text()}`).digest('hex');
-    const claim = await deps.idempotency.claim(userId, key, hash);
+    const tenantId = callerTenant(c);
+    const claim = await deps.idempotency.claim(tenantId, userId, key, hash);
     if (claim.kind === 'conflict') return fail('conflict');
     if (claim.kind === 'replay') {
       const rebuild = opts.rebuild?.[`${method} ${pattern}`];
@@ -68,14 +70,14 @@ export function idempotency(app: OpenAPIHono<AppEnv>, deps: Pick<HttpDeps, 'idem
     try {
       await next();
     } catch (error) {
-      await deps.idempotency.release(userId, key);
+      await deps.idempotency.release(tenantId, userId, key);
       throw error;
     }
     const kept = await keptResponse(c.res, opts.stored?.[`${method} ${pattern}`]);
     // The answer has been produced; failing to record it must not turn it into an error. The key then stays claimed until the daily clean-up.
     try {
-      if (kept === undefined) await deps.idempotency.release(userId, key);
-      else await deps.idempotency.complete(userId, key, kept);
+      if (kept === undefined) await deps.idempotency.release(tenantId, userId, key);
+      else await deps.idempotency.complete(tenantId, userId, key, kept);
     } catch {
       return undefined;
     }

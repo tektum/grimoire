@@ -12,12 +12,15 @@ export type ClaimResult =
   | { readonly kind: 'conflict' };
 
 export interface IdempotencyStore {
-  /** Atomically claims `(userId, key)` for a request whose method, path and body hash to `requestHash` (lower-case hex). */
-  claim(userId: string, key: string, requestHash: string): Promise<ClaimResult>;
+  /**
+   * Atomically claims `(userId, key)` for a request whose method, path and body hash to `requestHash` (lower-case hex). `tenantId` is the caller's: every
+   * statement runs in that tenant (docs/tenancy.md section 3.2), and the key is stored there.
+   */
+  claim(tenantId: string, userId: string, key: string, requestHash: string): Promise<ClaimResult>;
   /** Stores the answer of the request that holds the claim; later identical requests replay it. */
-  complete(userId: string, key: string, response: StoredResponse): Promise<void>;
+  complete(tenantId: string, userId: string, key: string, response: StoredResponse): Promise<void>;
   /** Frees a claim whose request did not produce an answer worth replaying, so the key can be used again. */
-  release(userId: string, key: string): Promise<void>;
+  release(tenantId: string, userId: string, key: string): Promise<void>;
   /** Deletes the rows created before `cutoffMs` (epoch milliseconds); returns how many. */
   deleteCreatedBefore(cutoffMs: number): Promise<number>;
 }

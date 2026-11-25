@@ -98,12 +98,12 @@ export function createTrash(db: KyselyDatabase): TrashRepo {
     },
 
     async attachmentKeys(tenantId, batch) {
-      const rows = await db.query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) and a.tenant_id = $2 order by a.s3_key`, [batch, tenantId]);
+      const rows = await scoped(db, tenantId).query<{ s3_key: string }>(`${DOOMED} select a.s3_key from attachments a where a.page_id in (select id from doomed) and a.tenant_id = $2 order by a.s3_key`, [batch, tenantId]);
       return rows.map((r) => r.s3_key);
     },
 
     async markFilesRemoved(tenantId, keys) {
-      if (keys.length > 0) await db.query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and tenant_id = $2 and deleted_at is null`, [[...keys], tenantId]);
+      if (keys.length > 0) await scoped(db, tenantId).query(`update attachments set deleted_at = now() where s3_key = any($1::text[]) and tenant_id = $2 and deleted_at is null`, [[...keys], tenantId]);
     },
 
     async expiredBatches(tenantId, deletedBefore, limit) {

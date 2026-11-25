@@ -27,8 +27,8 @@ export class FakeUserStore implements UserStore {
     return Promise.resolve({ kind: 'created', user: this.copy(user) });
   }
 
-  updateRole(id: string, role: Role): Promise<UserRecord | undefined> {
-    const user = this.users.find((u) => u.id === id);
+  updateRole(tenantId: string, id: string, role: Role): Promise<UserRecord | undefined> {
+    const user = this.users.find((u) => u.id === id && (u.tenantId ?? 'legacy') === tenantId);
     if (!user) return Promise.resolve(undefined);
     const updated = { ...user, role };
     this.users[this.users.indexOf(user)] = updated;

@@ -217,7 +217,7 @@ describe('a retry of a reset with the same Idempotency-Key', () => {
   it('is refused when the caller is no longer an administrator or can no longer read the page, and the epoch does not move', async () => {
     const demoted = build();
     await demoted.call('admin', demoted.page.id, undefined, key);
-    await demoted.users.updateRole(demoted.adminId, 'member');
+    await demoted.users.updateRole('legacy', demoted.adminId, 'member');
     expect((await demoted.call('admin', demoted.page.id, undefined, key)).status).toBe(403);
     expect(demoted.pageState.stored(demoted.page.id)).toMatchObject({ epoch: 5 });
     const removed = build();

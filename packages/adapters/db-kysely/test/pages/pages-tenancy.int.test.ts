@@ -125,7 +125,9 @@ describe('the PostgreSQL RevisionRepo across tenants', () => {
     expect((await revisions.get('T-b', made.id, created.id))?.markdown).toBe('# One');
 
     const restored = await make('T-b', b.collection, b.boss, 'Safety', '# Two');
-    const copy = await revisions.snapshotBeforeRestore(restored.id);
+    // Scoped to the caller's tenant: another tenant's page id is no page, and nothing is written for it.
+    expect(await revisions.snapshotBeforeRestore('T-a', restored.id)).toEqual({ kind: 'no-page' });
+    const copy = await revisions.snapshotBeforeRestore('T-b', restored.id);
     if (copy.kind !== 'created') throw new Error(copy.kind);
     expect(await tenantOf('revisions', copy.id)).toBe('T-b');
 
@@ -139,9 +141,10 @@ describe('the PostgreSQL RevisionRepo across tenants', () => {
 });
 
 describe('the PostgreSQL PageStateRepo across tenants', () => {
-  it('writes the audit row of a reset under the page\'s tenant', async () => {
+  it('writes the audit row of a reset under the page\'s tenant, and another tenant cannot reset it', async () => {
     const page = await make('T-b', b.collection, b.boss, 'Reset');
-    expect(await createPageState(t.app).reset({ pageId: page.id, actorId: b.boss, confirmStale: true })).toMatchObject({ kind: 'reset' });
+    expect(await createPageState(t.app).reset({ tenantId: 'T-a', pageId: page.id, actorId: a.boss, confirmStale: true })).toEqual({ kind: 'not-found' });
+    expect(await createPageState(t.app).reset({ tenantId: 'T-b', pageId: page.id, actorId: b.boss, confirmStale: true })).toMatchObject({ kind: 'reset' });
     const audit = await t.app.query<{ tenant_id: string }>(`select tenant_id from audit_events where action = 'page.state_reset' and target_id = $1`, [page.id]);
     expect(audit).toEqual([{ tenant_id: 'T-b' }]);
   });

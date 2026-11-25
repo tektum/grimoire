@@ -46,7 +46,8 @@ router.openapi(resetPageState, async (c) => {
   const admin = caller(c);
   const body = c.req.valid('json');
   const { converter, pages, pageState } = c.get('deps');
-  const page = await pages.get(callerTenant(c), id);
+  const tenantId = callerTenant(c);
+  const page = await pages.get(tenantId, id);
   if (page === undefined) return fail('not_found');
   // The conversion runs before the transaction, never under the row lock, and with the admin's id as key.
   let content;
@@ -58,7 +59,7 @@ router.openapi(resetPageState, async (c) => {
     }
     content = seeded;
   }
-  const result = await pageState.reset({ pageId: id, actorId: admin.id, ...(content === undefined ? {} : { content }), confirmStale: body.confirmStale === true });
+  const result = await pageState.reset({ tenantId, pageId: id, actorId: admin.id, ...(content === undefined ? {} : { content }), confirmStale: body.confirmStale === true });
   switch (result.kind) {
     case 'reset': return c.json({ stateEpoch: result.stateEpoch, markdownStale: result.markdownStale }, 200);
     case 'not-found': return fail('not_found');

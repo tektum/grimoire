@@ -51,8 +51,8 @@ describe('FakeUserStore', () => {
     const users = new FakeUserStore([initial]);
     expect(users.suspend('subject')).toBe(true);
     expect(users.suspend('unknown')).toBe(false);
-    expect(await users.updateRole('suspended-id', 'viewer')).toMatchObject({ role: 'viewer', suspended: true });
-    expect(await users.updateRole('unknown', 'admin')).toBeUndefined();
+    expect(await users.updateRole('legacy', 'suspended-id', 'viewer')).toMatchObject({ role: 'viewer', suspended: true });
+    expect(await users.updateRole('legacy', 'unknown', 'admin')).toBeUndefined();
     expect(await users.createIfAbsent({ descopeUserId: 'new', email: 'new@example.test', name: 'New', role: 'member' })).toMatchObject({ kind: 'created', user: { suspended: false } });
   });
 
@@ -298,7 +298,7 @@ describe('sign-in provisioning', () => {
     const store: UserStore = {
       findByDescopeId: () => Promise.resolve(undefined),
       createIfAbsent: () => Promise.resolve({ kind: 'existing', user: winner }),
-      updateRole: (_, role) => { updates.push(role); return Promise.resolve({ ...winner, role }); },
+      updateRole: (_tenant, _id, role) => { updates.push(role); return Promise.resolve({ ...winner, role }); },
     };
     const request = { identity: { userId: 'same-sub', profile: profile('dev@example.test') }, devRole: 'admin' as Role };
     const local = createProvisioner({ users: store, verifier: new FakeAuthVerifier(new FakeClock()), policy: LOCAL });
