@@ -349,6 +349,66 @@
       }
     },
     {
+      "type": "aws.s3:Bucket",
+      "name": "LoadBalancerLogs",
+      "args": {
+        "forceDestroy": false
+      }
+    },
+    {
+      "type": "aws.s3:BucketPublicAccessBlock",
+      "name": "LoadBalancerLogsPublicAccess",
+      "args": {
+        "bucket": "<LoadBalancerLogs.id>",
+        "blockPublicAcls": true,
+        "blockPublicPolicy": true,
+        "ignorePublicAcls": true,
+        "restrictPublicBuckets": true
+      }
+    },
+    {
+      "type": "aws.s3:BucketServerSideEncryptionConfiguration",
+      "name": "LoadBalancerLogsEncryption",
+      "args": {
+        "bucket": "<LoadBalancerLogs.id>",
+        "rules": [
+          {
+            "applyServerSideEncryptionByDefault": {
+              "sseAlgorithm": "AES256"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "aws.s3:BucketLifecycleConfiguration",
+      "name": "LoadBalancerLogsLifecycle",
+      "args": {
+        "bucket": "<LoadBalancerLogs.id>",
+        "rules": [
+          {
+            "id": "expire",
+            "status": "Enabled",
+            "filter": {},
+            "expiration": {
+              "days": 90
+            },
+            "abortIncompleteMultipartUpload": {
+              "daysAfterInitiation": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "aws.s3:BucketPolicy",
+      "name": "LoadBalancerLogsPolicy",
+      "args": {
+        "bucket": "<LoadBalancerLogs.id>",
+        "policy": "<aws.iam.getPolicyDocumentOutput({\"statements\":[{\"sid\":\"LoadBalancerServiceWritesItsLogs\",\"effect\":\"Allow\",\"principals\":[{\"type\":\"AWS\",\"identifiers\":[\"<aws.elb.getServiceAccountOutput({}).arn>\"]}],\"actions\":[\"s3:PutObject\"],\"resources\":[\"<interpolate:{<LoadBalancerLogs.arn>}/alb/AWSLogs/{<aws.getCallerIdentityOutput({}).accountId>}/*>\"]},{\"sid\":\"OnlyOverTls\",\"effect\":\"Deny\",\"principals\":[{\"type\":\"*\",\"identifiers\":[\"*\"]}],\"actions\":[\"s3:*\"],\"resources\":[\"<LoadBalancerLogs.arn>\",\"<interpolate:{<LoadBalancerLogs.arn>}/*>\"],\"conditions\":[{\"test\":\"Bool\",\"variable\":\"aws:SecureTransport\",\"values\":[\"false\"]}]}]}).json>"
+      }
+    },
+    {
       "type": "sst.aws:Cluster",
       "name": "Cluster",
       "args": {
@@ -546,6 +606,8 @@
         },
         "transform": {
           "service": "<function>",
+          "loadBalancer": "<function>",
+          "listener": "<function>",
           "taskDefinition": "<function>"
         }
       }

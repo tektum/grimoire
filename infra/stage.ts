@@ -1,6 +1,7 @@
 import { descopeProject } from './descope/project.ts';
 import { POSTGRES_VERSION, type StageConfig, type StageSettings } from './stages.ts';
 import { databaseUrl, RDS_CA_BUNDLE } from './stack/database-url.ts';
+import { loadBalancerLogs, TLS_POLICY } from './stack/edge.ts';
 import { inStartOrder } from './stack/init-order.ts';
 import { openServiceToLoadBalancer, stageSecurityGroups, stripDefaultGroup, vpcFlowLogs } from './stack/network.ts';
 
@@ -49,6 +50,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
     cors: { allowOrigins: [url], allowMethods: ['GET', 'PUT', 'HEAD'], allowHeaders: ['content-type', 'content-disposition', 'if-none-match', 'x-amz-*'], exposeHeaders: ['ETag'], maxAge: '10 minutes' },
   });
 
+  const albLogs = loadBalancerLogs();
   const cluster = new sst.aws.Cluster('Cluster', { vpc });
   const service = new sst.aws.Service('Server', { // not 'App': SST reserves that name for a linkable component
     cluster,
@@ -116,6 +118,14 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
       // The component puts a service in the VPC's default group, which trusts the whole VPC: this stage's own group instead, with the subnets and the public address the component chose.
       service: (args) => {
         args.networkConfiguration = $output(args.networkConfiguration).apply((network) => ({ ...network, securityGroups: [serviceGroup.id] }) as aws.types.input.ecs.ServiceNetworkConfiguration);
+      },
+      // The edge: invalid header fields are dropped (request smuggling), every request is logged to a bucket of the stage, and the HTTPS listener takes TLS 1.2 and newer with forward secrecy only.
+      loadBalancer: (args) => {
+        args.dropInvalidHeaderFields = true;
+        args.accessLogs = { bucket: albLogs.bucket, prefix: 'alb', enabled: true };
+      },
+      listener: (args) => {
+        if (args.protocol === 'HTTPS') args.sslPolicy = TLS_POLICY;
       },
       taskDefinition: (args) => {
         args.containerDefinitions = $output(args.containerDefinitions).apply((json) => JSON.stringify(inStartOrder(JSON.parse(json as string))));
