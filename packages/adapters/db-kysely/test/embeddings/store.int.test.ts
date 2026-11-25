@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { ChunkRow, EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
-import { insertCollection, insertPage, insertUser, raw } from '@tektum/grimoire-test-support/database';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { adminUrl, insertCollection, insertPage, insertUser, raw } from '@tektum/grimoire-test-support/database';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createEmbeddingStore } from '../../src/embeddings.js';
 import { createTestDatabase } from '../collections/support.js';
 import type { TestDatabase } from '../collections/support.js';
@@ -51,6 +52,7 @@ async function page(o: PageOptions = {}): Promise<string> {
 }
 const rows = async (id: string): Promise<{ chunk_index: number; model: string; embedding: string }[]> =>
   (await t.admin.query(`select chunk_index, model, embedding::text as embedding from page_chunks where page_id = '${id}' order by chunk_index`)) as { chunk_index: number; model: string; embedding: string }[];
+const rows2 = async (sql: string): Promise<unknown[]> => (await t.admin.query(sql)) as unknown[];
 const state = async (id: string) => ((await t.admin.query(`select model, status, chunk_count, attempts, error, embedded_at is not null as embedded, encode(markdown_hash, 'hex') as h from page_embedding_state where page_id = '${id}'`)) as Record<string, unknown>[])[0];
 
 describe('replacePage', () => {
@@ -136,6 +138,27 @@ describe('markFailed', () => {
     await store.markFailed('another-tenant', id, hash(5), M2, 'x');
     await store.markFailed(TENANT, randomUUID(), hash(5), M2, 'x'); // no such page: nothing
     expect(await state(id)).toMatchObject({ attempts: 1 });
+  });
+});
+
+describe('markFailed against a save that commits first', () => {
+  it('waits for a save that holds the page, then sees the new hash and writes nothing: a failure of the old hash never lands on a page that changed', async () => {
+    const id = await page({ hashByte: 5 });
+    const saver = new pg.Client({ connectionString: adminUrl(t.name) });
+    await saver.connect();
+    try {
+      await saver.query('begin');
+      await saver.query(`update pages set markdown_hash = decode('${hex(6)}', 'hex') where id = '${id}'`); // a save in progress
+      const failing = store.markFailed(TENANT, id, hash(5), M, 'internal');
+      await vi.waitFor(async () => {
+        expect(await rows2(`select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%page_embedding_state%' and pid <> pg_backend_pid()`)).toHaveLength(1);
+      }, { timeout: 20_000, interval: 100 });
+      await saver.query('commit');
+      await failing;
+      expect(await state(id)).toBeUndefined();
+    } finally {
+      await saver.end();
+    }
   });
 });
 

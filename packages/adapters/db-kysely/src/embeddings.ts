@@ -54,10 +54,12 @@ export function createEmbeddingStore(db: Database): EmbeddingStore {
     },
 
     async markFailed(tenantId, pageId, markdownHash, model, error) {
-      // The page row is read in the same statement: a page that changed since (its hash is not the one given) is left alone, and the attempts count the failures of one hash and model.
+      // The page row is read in the same statement and held `for share` (as `replacePage` does): a save of the page waits until this statement ends, and one that has already committed is
+      // seen (the row is checked again after the wait), so a page that changed since (its hash is not the one given) is left alone and a newer ready state is never overwritten.
+      // The attempts count the failures of one hash and model.
       await db.query(
         `insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status, chunk_count, attempts, error)
-         select p.id, p.tenant_id, $3, $4, 'failed', 0, 1, $5 from pages p where p.id = $1 and p.tenant_id = $2 and p.markdown_hash = $3
+         select p.id, p.tenant_id, $3, $4, 'failed', 0, 1, $5 from pages p where p.id = $1 and p.tenant_id = $2 and p.markdown_hash = $3 for share of p
          on conflict (page_id) do update set
            attempts = case when page_embedding_state.markdown_hash = excluded.markdown_hash and page_embedding_state.model = excluded.model then page_embedding_state.attempts + 1 else 1 end,
            markdown_hash = excluded.markdown_hash, model = excluded.model, status = 'failed', error = excluded.error`,
