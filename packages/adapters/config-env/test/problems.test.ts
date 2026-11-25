@@ -48,5 +48,7 @@ describe('configuration errors carry the setting name and the rule, never the va
       }
     }
     expect(leaks).toEqual([]);
-  });
+    // 30 s, not the default 5 s: the loop is CPU-bound (every setting, three values, a full load of the schema for each: about 2.4 s alone) and is the slowest test of the package; with the whole suite
+    // running at once on a loaded runner it was seen at 9.4 s and timed out. The work is what the test is for, so the limit is sized for the load, not the work cut.
+  }, 30_000);
 });
