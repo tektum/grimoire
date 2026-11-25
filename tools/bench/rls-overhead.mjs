@@ -51,7 +51,8 @@ async function seedData(admin) {
     update pages p set parent_id = r.prev from r where r.id = p.id and r.rn % 4 <> 1`);
   // 14 chunks of 768 dimensions per page (140k rows), with the storage the chunk table gets in migration 0013 so the vectors stay in the heap.
   await q('alter table page_chunks alter column embedding set storage main');
-  await q(`create table bench_vectors as select g as id, x.a::vector as v from generate_series(1, 500) g cross join lateral (select array_agg((random() - 0.5 + 0 * g)::real) as a from generate_series(1, 768)) x`);
+  // The aggregate names the inner series d.n, so it belongs to the lateral subquery; `0 * g` keeps that subquery correlated, so it runs again for each g.
+  await q(`create table bench_vectors as select g as id, x.a::vector as v from generate_series(1, 500) g cross join lateral (select array_agg((random() - 0.5 + 0 * g + 0 * d.n)::real) as a from generate_series(1, 768) as d(n)) x`);
   await q(`
     insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding)
     select p.id, p.tenant_id, n, 'multilingual-e5-base', decode(repeat('ab', 32), 'hex'), n * 100, n * 100 + 100, 100, v.v
