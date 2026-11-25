@@ -45,10 +45,11 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
   const converter = new EchoConverter();
   const enqueued: { name: string; payload: unknown; options: EnqueueOptions | undefined }[] = [];
   const logger = new FakeLogger();
+  const handle: { queueOverride?: (() => Promise<string | null>) | undefined } = {};
   const handler = createImportHandler({
     config: makeFakeConfig(), log: createEventLog(logger), clock: { now: () => 1_700_000_000_000 }, imports: repo, files, converter, ordering: { between: (b: string | null) => `${b ?? ''}a` },
     fetcher: undefined, sniff: () => Promise.resolve(undefined), queue: {
-      enqueueImport: (payload, options) => { enqueued.push({ name: 'import', payload, options }); return Promise.resolve('id'); },
+      enqueueImport: (payload, options) => { enqueued.push({ name: 'import', payload, options }); return handle.queueOverride?.() ?? Promise.resolve('id'); },
       enqueueImportCleanup: (payload) => { enqueued.push({ name: 'import-cleanup', payload, options: undefined }); return Promise.resolve('id'); },
     },
     ...(over.chunkMs === undefined ? {} : { chunkMs: over.chunkMs }), ...(over.batchPages === undefined ? {} : { batchPages: over.batchPages }), ...(over.maxPages === undefined ? {} : { maxPages: over.maxPages }),
@@ -56,7 +57,7 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
   const run = (context: JobContext = ctx(), payload: unknown = { tenantId: TENANT, importId: IMPORT }) => handler(payload, context);
   const record = () => repo.get(TENANT, IMPORT);
   const items = () => repo.scanItems(TENANT, IMPORT, { limit: 1000 });
-  return { repo, files, converter, enqueued, logger, run, record, items };
+  return { repo, files, converter, enqueued, logger, run, record, items, set queueOverride(f: (() => Promise<string | null>) | undefined) { handle.queueOverride = f; } };
 }
 
 const cleanup = (t: { enqueued: { name: string; payload: unknown }[] }) => t.enqueued.filter((e) => e.name === 'import-cleanup');
@@ -124,13 +125,24 @@ describe('an import that runs to its end', () => {
     expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 1, failed: 1 } });
   });
 
-  it('a running import (a duplicate delivery, or a resume) goes on from its pending items and writes no page twice', async () => {
-    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n')], { status: 'running' });
+  it('a resume goes on from the pending items of a partly done import: the pages written before are not written again, and the rest are', async () => {
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n'), md('c.md\u0000# C\n')], { batchPages: 1 });
+    const controller = new AbortController();
+    t.converter.seedHook = () => { controller.abort(); return undefined; };
+    await t.run(ctx({ signal: controller.signal })); // the first run ends after one page: a is written, b and c are pending
+    expect((await t.record())?.status).toBe('running');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['A']);
+    t.converter.seedHook = undefined;
     await t.run();
-    const written = t.repo.written.length;
-    t.repo.setStatus(IMPORT, 'running'); // as if the end had not been recorded
-    await t.run();
-    expect(t.repo.written).toHaveLength(written);
+    expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 3, pagesTotal: 3 } });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['A', 'B', 'C']); // A once
+  });
+
+  it('two deliveries of one import at the same time (items in flight in both) write each page once and both end without an error', async () => {
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n'), md('c.md\u0000# C\n')], { batchPages: 1 });
+    await Promise.all([t.run(), t.run()]);
+    expect([...t.repo.written.map((w) => w.page.title)].sort()).toEqual(['A', 'B', 'C']);
+    expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 3 } });
   });
 });
 
@@ -189,6 +201,18 @@ describe('endings that are not the end of the run', () => {
     await t.run();
     expect((await t.record())?.status).toBe('running');
     expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: IMPORT, tenantId: TENANT }, options: { singletonKey: `import:${IMPORT}`, delaySeconds: 30 } }]);
+  });
+
+  it('a continuation the queue did not add (null) is an error, so the job is retried and never leaves a running import without a successor', async () => {
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n')], { batchPages: 1 });
+    t.queueOverride = () => Promise.resolve(null);
+    const controller = new AbortController();
+    t.converter.seedHook = () => { controller.abort(); return undefined; };
+    await expect(t.run(ctx({ signal: controller.signal }))).rejects.toThrow('continuation');
+    const busy = await setup([md('a.md\u0000# A\n')]);
+    busy.queueOverride = () => Promise.resolve(null);
+    busy.repo.start = () => Promise.reject(new ImportBusyError());
+    await expect(busy.run()).rejects.toThrow('continuation');
   });
 
   it('a collection that is gone ends the import as failed', async () => {

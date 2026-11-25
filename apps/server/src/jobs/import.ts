@@ -59,7 +59,10 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
     if (!isImportPayload(payload)) { log.warn('import.failed', { importId: 'unknown', reason: 'bad_payload' }); return; }
     const { tenantId, importId } = payload;
     const key = `import:${importId}`;
-    const continueLater = (delaySeconds?: number): Promise<string | null> => deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) });
+    const continueLater = async (delaySeconds?: number): Promise<void> => {
+      // `null` is a queue that added no job: returning then would leave the import running (or waiting) with no job to go on, so the job fails and is retried instead.
+      if ((await deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) })) === null) throw new Error('the continuation of the import was not enqueued');
+    };
     let record;
     try { record = await imports.start(tenantId, importId, now()); } catch (e) {
       // Another import of the tenant is running (its chunks can last longer than the queue's retries): wait under the import's own key, without spending a retry. The import stays `uploaded`; the sweep ends one that waits past its age limit.
