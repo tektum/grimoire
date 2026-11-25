@@ -1,6 +1,6 @@
 name: SST infrastructure
 # Pull requests only typecheck the SST config (no credentials, no environment: a secret or a cloud role must not reach pull-request code).
-# `diff`, `deploy` and `freeze` run only by manual dispatch of `main`, in the environment of the chosen stage (`dev` or `staging`, the same stack with its own settings), each of which deploys from `main` only. There is no stored
+# Every action runs only by manual dispatch of `main`, in the environment of the chosen stage (`dev` or `staging`, the same stack with its own settings), each of which deploys from `main` only, and every change to AWS is made by the stage's role, never by a person's session. There is no stored
 # secret: the job asks GitHub for an OIDC token twice. AWS trusts the first (the role in the variable AWS_ROLE_ARN, for SST's state). Descope trusts the
 # second, asked for the audience of a federated management key (the variable DESCOPE_MANAGEMENT_KEY_ID) and used as the provider's management key.
 # The provider plugins (infra/pulumi-plugins.txt: Descope, AWS and the others a deploy loads) are installed with Pulumi's `plugin install --checksum` before either credential is
@@ -17,13 +17,16 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "diff shows the difference, deploy changes the stage and starts its service if a freeze stopped it, freeze stops the service so nothing writes to the database (the move to Aurora, docs/operations/database-setup.md)"
+        description: "diff shows the difference; deploy changes the stage and starts its service if a freeze stopped it; freeze stops the service so nothing writes to the database, thaw starts it again; snapshot takes one of the database and prints its ARN; check reads the database (versions, counts, row-level security). The last four are the move to Aurora (docs/operations/database-setup.md)"
         required: true
         type: choice
         options:
           - diff
           - deploy
           - freeze
+          - thaw
+          - snapshot
+          - check
       stage:
         description: "dev and staging are the same stack with their own address, sizes and Descope project: the same commit is deployed to each in turn"
         required: true
@@ -130,7 +133,7 @@ jobs:
             core.setSecret(token)
             core.setOutput('token', token)
       - name: SST ${{ inputs.action }}
-        if: steps.gate.outputs.blocked != 'true' && inputs.action != 'freeze'
+        if: steps.gate.outputs.blocked != 'true' && (inputs.action == 'diff' || inputs.action == 'deploy')
         env:
           DESCOPE_MANAGEMENT_KEY: ${{ steps.wif.outputs.token }}
           ACTION: ${{ inputs.action }}
@@ -147,15 +150,45 @@ jobs:
         env:
           STAGE: ${{ inputs.stage }}
         run: tools/deploy/freeze.sh freeze "$STAGE"
+      - name: Find the database and the cluster of the stage, by what SST makes, and check they are in one network
+        if: steps.gate.outputs.blocked != 'true' && (inputs.action == 'snapshot' || inputs.action == 'check')
+        id: targets
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          bash tools/adopt/targets.sh "${STAGE}" | tee -a "${GITHUB_OUTPUT}"
+      # Named for the stage and this run: the name the move's setting GRIMOIRE_AURORA_SNAPSHOT accepts (infra/stages.ts), and a new one every time.
+      - name: Take a snapshot of the database, wait until it can be restored from, and print its ARN
+        if: steps.gate.outputs.blocked != 'true' && inputs.action == 'snapshot'
+        env:
+          STAGE: ${{ inputs.stage }}
+          DATABASE: ${{ steps.targets.outputs.database }}
+          KIND: ${{ steps.targets.outputs.database_kind }}
+        run: |
+          set -euo pipefail
+          name="grimoire-${STAGE}-run-${GITHUB_RUN_ID}"
+          bash tools/adopt/snapshot.sh "${KIND}" "${DATABASE}" "${name}"
+          if [ "${KIND}" = "instance" ]; then
+            arn=$(aws rds describe-db-snapshots --db-snapshot-identifier "${name}" --query 'DBSnapshots[0].DBSnapshotArn' --output text)
+          else
+            arn=$(aws rds describe-db-cluster-snapshots --db-cluster-snapshot-identifier "${name}" --query 'DBClusterSnapshots[0].DBClusterSnapshotArn' --output text)
+          fi
+          echo "snapshot ARN: ${arn}" | tee -a "${GITHUB_STEP_SUMMARY}"
+      - name: Check the database, read-only, as a task of the stage's service
+        if: steps.gate.outputs.blocked != 'true' && inputs.action == 'check'
+        env:
+          CLUSTER: ${{ steps.targets.outputs.cluster }}
+        run: bash tools/deploy/db-check.sh "${CLUSTER}"
       # A deploy starts a service that a freeze stopped (and otherwise changes nothing), so the gate below sees the stage serving again.
       - name: Start the service again if a freeze stopped it
-        if: steps.gate.outputs.blocked != 'true' && inputs.action == 'deploy'
+        if: steps.gate.outputs.blocked != 'true' && (inputs.action == 'deploy' || inputs.action == 'thaw')
         env:
           STAGE: ${{ inputs.stage }}
         run: tools/deploy/freeze.sh thaw "$STAGE"
       # A deploy that leaves the site without a healthy task must not end green: wait for the one complete deployment and readyz 200 (three polls in a row), or fail the run.
       - name: Wait until the stage serves
-        if: steps.gate.outputs.blocked != 'true' && inputs.action == 'deploy'
+        if: steps.gate.outputs.blocked != 'true' && (inputs.action == 'deploy' || inputs.action == 'thaw')
         env:
           STAGE: ${{ inputs.stage }}
           GRIMOIRE_DOMAIN: ${{ vars.GRIMOIRE_DOMAIN }}
