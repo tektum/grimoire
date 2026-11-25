@@ -6,6 +6,7 @@ import { chunkText } from '../../src/semantic/chunk.js';
 const words = (text: string): number => text.split(/\s+/).filter((w) => w !== '').length;
 const MODEL = 'multilingual-e5-base';
 const run = (text: string, model = MODEL) => chunkText(text, words, { model });
+const gen = (n: number, tag: string): string => Array.from({ length: n }, (_, i) => `${tag}${String(i)}`).join(' ');
 const sentence = (i: number, n = 10) => `${Array.from({ length: n - 1 }, (_, k) => `w${String(i)}x${String(k)}`).join(' ')} end${String(i)}.`;
 const sentences = (count: number, perSentence = 10) => Array.from({ length: count }, (_, i) => sentence(i, perSentence)).join(' ');
 
@@ -105,5 +106,42 @@ describe('chunkText', () => {
     const count = (t: string): number => (t.includes('a b') ? 7 : words(t));
     const chunks = chunkText('a b c d e', count, { model: MODEL });
     expect(chunks.map((c) => c.tokenCount)).toEqual([7]);
+  });
+
+  it('never packs a chunk above maxTokens, whatever the target says: the target is held to the maximum', () => {
+    const text = `${gen(80, 'a')}\n${gen(80, 'b')}`;
+    const chunks = chunkText(text, words, { model: MODEL, maxTokens: 100 }); // the target is 200 by default
+    expect(chunks.map((c) => c.tokenCount)).toEqual([80, 80]);
+  });
+
+  it('splits a packed chunk again when the counter says its real size is over the maximum, as a tokenizer that is not additive may', () => {
+    // Every piece alone is 60 tokens, but two together are counted as 130: the sum would let them through.
+    const count = (t: string): number => { const n = words(t); return n > 60 ? n + 10 : n; };
+    const text = `${gen(60, 'a')}\n${gen(60, 'b')}`;
+    const chunks = chunkText(text, count, { model: MODEL, targetTokens: 200, maxTokens: 125 });
+    expect(chunks.map((c) => c.tokenCount)).toEqual([60, 60]);
+    expect(uncovered(text, chunks)).toBe('');
+  });
+
+  it('cuts after the full-width sentence ends of Chinese and Japanese text, which has no white space after them', () => {
+    const sentenceJa = (i: number): string => `これは${String(i)}番目の文章です${'あ'.repeat(8)}。`;
+    const text = Array.from({ length: 60 }, (_, i) => sentenceJa(i)).join(''); // one long line, no spaces
+    const count = (t: string): number => Math.ceil(t.length / 2);
+    const chunks = chunkText(text, count, { model: MODEL, targetTokens: 40, maxTokens: 60 });
+    expect(chunks.length).toBeGreaterThan(3);
+    for (const c of chunks) expect(c.text.endsWith('。')).toBe(true); // every cut is after a sentence end
+    expect(uncovered(text, chunks)).toBe('');
+    const closing = chunkText('「はい。」と言った。それから、「いいえ！」とも。'.repeat(8), count, { model: MODEL, targetTokens: 12, maxTokens: 16 });
+    for (const c of closing) expect(c.text.startsWith('」')).toBe(false); // a closing quote stays with its sentence
+  });
+
+  it('counts the text it cuts a long run from in work that grows with the run, not with the run times its pieces', () => {
+    const text = 'x'.repeat(200_000);
+    let counted = 0;
+    const count = (t: string): number => { counted += t.length; return Math.ceil(t.length / 3); };
+    const chunks = chunkText(text, count, { model: MODEL });
+    expect(chunks.length).toBeGreaterThan(100);
+    expect(counted).toBeLessThan(text.length * 30); // each piece costs a few probes of about its own size, not of the whole rest
+    expect(chunks.map((c) => c.text).join('')).toBe(text);
   });
 });

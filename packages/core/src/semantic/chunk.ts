@@ -18,7 +18,11 @@ export interface ChunkOptions {
   readonly model: string;
   /** Chunks are packed up to about this many tokens. Default 200. */
   readonly targetTokens?: number;
-  /** No chunk has more tokens than this unless a single piece cannot be cut (never, with a counter that counts a character as at most a token). Default 400, under the model's 512. */
+  /**
+   * No chunk has more tokens than this unless a single piece cannot be cut (never, with a counter that counts a character as at most a token), by the sum of its pieces and then by
+   * the counter's own answer for the chunk (a chunk over it is split again). Default 400, under the model's 512: a caller whose model refuses fewer must pass the lower limit.
+   * The target is held to it.
+   */
   readonly maxTokens?: number;
 }
 
@@ -27,8 +31,11 @@ const MIN_TOKENS = 3;
 
 interface Piece { readonly start: number; readonly end: number; readonly tokens: number }
 
-/** Ends of a sentence: a full stop, question or exclamation mark (also the full-width ones and the ellipsis) with the quotes and brackets that may close it, then white space. */
-const SENTENCE_END = /(?<=[.!?。！？…]["')\]»”’]*)\s+/g;
+/**
+ * Ends of a sentence: a full stop, question or exclamation mark with the quotes and brackets that may close it, then white space; and the full-width ones (。！？), which Chinese and
+ * Japanese text writes with no white space after them, with the closing quotes and brackets that stay with the sentence, at the point after them.
+ */
+const SENTENCE_END = /(?<=[.!?…]["')\]»”’]*)\s+|(?<=[。！？]["')\]」』）»”’]*)(?!["')\]」』）»”’])/g;
 const WHITE_SPACE = /\s+/g;
 
 /** The parts of `piece` between the matches of `separator` (white space is cut off both ends of every part), as pieces. */
@@ -56,8 +63,11 @@ function cutRun(text: string, piece: Piece, max: number, count: (t: string) => n
   const parts: Piece[] = [];
   let start = piece.start;
   while (start < piece.end) {
+    const remaining = piece.end - start;
+    let hi = Math.min(remaining, 64);
+    // Grow the window until the counter says it is too long, so the search costs what the piece costs and not what is left of the run.
+    while (hi < remaining && count(text.slice(start, start + hi)) <= max) hi = Math.min(remaining, hi * 2);
     let lo = 1;
-    let hi = piece.end - start;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
       if (count(text.slice(start, start + mid)) <= max) lo = mid;
@@ -88,28 +98,38 @@ function fit(text: string, piece: Piece, max: number, count: (t: string) => numb
  * of fewer than 3 tokens has no chunk. `countTokens` is the embedder's own counter; it is called once for each piece and once for each chunk, never for the whole text.
  */
 export function chunkText(text: string, countTokens: (text: string) => number, options: ChunkOptions): Chunk[] {
-  const target = options.targetTokens ?? 200;
   const max = options.maxTokens ?? 400;
+  const target = Math.min(options.targetTokens ?? 200, max);
   const lines = splitAt(text, { start: 0, end: text.length, tokens: 0 }, /[\r\n]+/g, countTokens);
   const pieces = lines.flatMap((line) => fit(text, line, max, countTokens));
   if (pieces.reduce((sum, p) => sum + p.tokens, 0) < MIN_TOKENS) return [];
-  const packed: { start: number; end: number; tokens: number }[] = [];
+  const groups: Piece[][] = [];
+  let tokens = 0;
   for (const piece of pieces) {
-    const last = packed[packed.length - 1];
-    if (last !== undefined && last.tokens + piece.tokens <= target) {
-      last.end = piece.end;
-      last.tokens += piece.tokens;
-    } else packed.push({ ...piece });
+    const last = groups[groups.length - 1];
+    if (last !== undefined && tokens + piece.tokens <= target) {
+      last.push(piece);
+      tokens += piece.tokens;
+    } else {
+      groups.push([piece]);
+      tokens = piece.tokens;
+    }
   }
-  return packed.map((p, chunkIndex) => {
-    const chunk = text.slice(p.start, p.end);
-    return {
-      chunkIndex,
-      text: chunk,
-      charStart: p.start,
-      charEnd: p.end,
-      tokenCount: countTokens(chunk),
-      contentHash: new Uint8Array(createHash('sha256').update(options.model).update('\0').update(chunk).digest()),
-    };
-  });
+  const chunks: Omit<Chunk, 'chunkIndex'>[] = [];
+  /** A group is one chunk unless the counter says the whole is over the limit although the sum of its parts was not: then it is halved, by pieces, until it is not. */
+  const emit = (group: readonly Piece[]): void => {
+    const start = (group[0] as Piece).start;
+    const end = (group[group.length - 1] as Piece).end;
+    const chunk = text.slice(start, end);
+    const tokenCount = countTokens(chunk);
+    if (tokenCount > max && group.length > 1) {
+      const half = Math.ceil(group.length / 2);
+      emit(group.slice(0, half));
+      emit(group.slice(half));
+      return;
+    }
+    chunks.push({ text: chunk, charStart: start, charEnd: end, tokenCount, contentHash: new Uint8Array(createHash('sha256').update(options.model).update('\0').update(chunk).digest()) });
+  };
+  for (const group of groups) emit(group);
+  return chunks.map((c, chunkIndex) => ({ chunkIndex, ...c }));
 }
