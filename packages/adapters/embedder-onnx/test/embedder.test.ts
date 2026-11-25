@@ -105,7 +105,7 @@ function setup(options: { files?: boolean; lock?: boolean } = {}) {
         backends.push(b);
         return b;
       },
-      loadTokenCounter: () => ({ count: (t) => t.split(' ').filter(Boolean).length }),
+      loadTokenCounter: () => ({ count: (t) => t.split(' ').filter(Boolean).length, encode: () => [0, 1, 2] }),
       ...over,
     });
   return { dir, put, backends, logs, make };
@@ -231,6 +231,34 @@ describe('loading', () => {
     release();
     await vi.waitFor(() => expect(slow.closed).toBe(true));
     expect(e.status()).toBe('unavailable');
+  });
+});
+
+describe('a tokenizer that cannot be read', () => {
+  it('is load-failed, starts no model, and reports nothing and retries nothing when the embedder was closed meanwhile', async () => {
+    const s = setup();
+    const e = s.make({
+      loadTokenCounter: () => {
+        throw new Error('not a tokenizer');
+      },
+    });
+    await vi.waitFor(() => expect(s.logs).toEqual([{ event: 'semantic.unavailable', fields: { reason: 'load-failed' } }]));
+    expect(e.status()).toBe('unavailable');
+    expect(s.backends).toHaveLength(0);
+    await e.close();
+    // Closed while the tokenizer is being read: the throw finds the embedder closed.
+    const t = setup();
+    let closeNow: () => void = () => undefined;
+    const closing = t.make({
+      loadTokenCounter: () => {
+        closeNow();
+        throw new Error('not a tokenizer');
+      },
+    });
+    closeNow = () => void closing.close();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(t.logs).toEqual([]);
+    expect(t.backends).toHaveLength(0);
   });
 });
 
@@ -409,7 +437,7 @@ describe('the defaults', () => {
 
   it('starts the thread of the worker it is given when nothing else is, and embeds through it', async () => {
     const s = setup();
-    const e = createOnnxEmbedder(config(s.dir), { workerUrl: stub, loadTokenCounter: () => ({ count: () => 1 }) });
+    const e = createOnnxEmbedder(config(s.dir), { workerUrl: stub, loadTokenCounter: () => ({ count: () => 1, encode: () => [0, 1, 2] }) });
     await ready(e);
     const r = await e.embedPassages(['a', 'b']);
     expect(r.ok && r.vectors.map((v) => v.length)).toEqual([768, 768]);
@@ -419,7 +447,7 @@ describe('the defaults', () => {
   it('looks for worker.js next to its own file when it is not told where, which is not there when it runs from the sources: load-failed, never a throw', async () => {
     const s = setup();
     const e = createOnnxEmbedder(config(s.dir), {
-      loadTokenCounter: () => ({ count: () => 1 }),
+      loadTokenCounter: () => ({ count: () => 1, encode: () => [0, 1, 2] }),
       retryMs: 1_000_000,
       log: {
         error: (event: string, fields: unknown) => s.logs.push({ event, fields }),
@@ -459,7 +487,7 @@ describe('the real files', () => {
   it('reads the lock next to the models by default, and an unreadable directory is just unavailable', async () => {
     const s = setup();
     if (process.getuid?.() !== 0) chmodSync(s.dir, 0o000);
-    const e = createOnnxEmbedder(config(s.dir), { retryMs: 1_000_000, makeBackend: () => new FakeBackend(), loadTokenCounter: () => ({ count: () => 1 }) });
+    const e = createOnnxEmbedder(config(s.dir), { retryMs: 1_000_000, makeBackend: () => new FakeBackend(), loadTokenCounter: () => ({ count: () => 1, encode: () => [0, 1, 2] }) });
     await vi.waitFor(() => expect(e.status()).toBe(process.getuid?.() === 0 ? 'ready' : 'unavailable'));
     chmodSync(s.dir, 0o755);
     await e.close();
