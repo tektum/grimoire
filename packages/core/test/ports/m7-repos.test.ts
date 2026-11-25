@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { importRepoConformance } from '../../src/testing/import-repo-conformance.js';
 import { FakeImportRepo } from '../../src/testing/fake-import-repo.js';
 import { FakeSearchRepo } from '../../src/testing/fake-search-repo.js';
 
@@ -6,11 +7,19 @@ import { FakeSearchRepo } from '../../src/testing/fake-search-repo.js';
 describe('FakeImportRepo', () => {
   it('finds an import in its own tenant only', async () => {
     const repo = new FakeImportRepo();
-    repo.seed({ id: 'i1', tenantId: 'a', status: 'queued' });
-    expect(await repo.get('a', 'i1')).toMatchObject({ id: 'i1', status: 'queued' });
+    repo.seed({ id: 'i1', tenantId: 'a', status: 'created' });
+    expect(await repo.get('a', 'i1')).toMatchObject({ id: 'i1', status: 'created' });
     expect(await repo.get('b', 'i1')).toBeUndefined();
     expect(await repo.get('a', 'missing')).toBeUndefined();
   });
+
+  for (const c of importRepoConformance) {
+    it(`meets the conformance case ${c.name}`, async () => {
+      const repo = new FakeImportRepo();
+      let n = 0;
+      await c.run({ repo, tenantId: 'a', otherTenantId: 'b', now: 1_700_000_000_000, seed: (status) => Promise.resolve(repo.seed({ id: `imp${String(++n)}`, tenantId: 'a', status })) });
+    });
+  }
 });
 
 describe('FakeSearchRepo', () => {
