@@ -253,6 +253,22 @@ describe('endings that are not the end of the run', () => {
     await expect(busy.run()).rejects.toThrow('continuation');
   });
 
+  it('a chunk cut short while the process stops (the queue takes no job: jobs-unavailable) ends without failing, even on its last attempt: the import stays running for the sweep', async () => {
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n')], { batchPages: 1 });
+    t.queueOverride = () => Promise.reject(new Error('jobs-unavailable'));
+    const controller = new AbortController();
+    t.converter.seedHook = () => { controller.abort(); return undefined; };
+    await expect(t.run(ctx({ attempt: 4, retryLimit: 3, signal: controller.signal }))).resolves.toBeUndefined();
+    expect((await t.record())?.status).toBe('running');
+  });
+
+  it('an upload that waits for its turn while the process stops keeps its job: the job fails, so the queue retries it (the sweep gives a running import a job, not a waiting one)', async () => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    t.queueOverride = () => Promise.reject(new Error('jobs-unavailable'));
+    t.repo.start = () => Promise.reject(new ImportBusyError());
+    await expect(t.run()).rejects.toThrow('jobs-unavailable');
+  });
+
   it('a collection that is gone ends the import as failed', async () => {
     const t = await setup([md('a.md\u0000# A\n')]);
     t.repo.writePage = () => Promise.resolve({ kind: 'collection-deleted' });
