@@ -52,7 +52,6 @@ async function page(o: PageOptions = {}): Promise<string> {
 }
 const rows = async (id: string): Promise<{ chunk_index: number; model: string; embedding: string }[]> =>
   (await t.admin.query(`select chunk_index, model, embedding::text as embedding from page_chunks where page_id = '${id}' order by chunk_index`)) as { chunk_index: number; model: string; embedding: string }[];
-const rows2 = async (sql: string): Promise<unknown[]> => (await t.admin.query(sql)) as unknown[];
 const state = async (id: string) => ((await t.admin.query(`select model, status, chunk_count, attempts, error, embedded_at is not null as embedded, encode(markdown_hash, 'hex') as h from page_embedding_state where page_id = '${id}'`)) as Record<string, unknown>[])[0];
 
 describe('replacePage', () => {
@@ -144,22 +143,28 @@ describe('markFailed', () => {
 describe('markFailed against a save that commits first', () => {
   it('waits for a save that holds the page, then sees the new hash and writes nothing: a failure of the old hash never lands on a page that changed', async () => {
     const id = await page({ hashByte: 5 });
-    const saver = new pg.Client({ connectionString: adminUrl(t.name) });
-    await saver.connect();
+    // Two connections of the superuser: the save, and the observer (the activity view hides the waits and queries of another role's sessions from everyone but a superuser).
+    const save = new pg.Client({ connectionString: adminUrl(t.name) });
+    const observer = new pg.Client({ connectionString: adminUrl('postgres') });
+    await Promise.all([save.connect(), observer.connect()]);
+    let failing: Promise<void> | undefined;
     try {
-      await saver.query('begin');
-      await saver.query(`update pages set markdown_hash = decode('${hex(6)}', 'hex') where id = '${id}'`); // a save in progress
-      const failing = store.markFailed(TENANT, id, hash(5), M, 'internal');
+      await save.query('begin');
+      await save.query(`update pages set markdown_hash = decode('${hex(6)}', 'hex') where id = '${id}'`); // a save in progress, not yet committed
+      failing = store.markFailed(TENANT, id, hash(5), M, 'internal');
       await vi.waitFor(async () => {
-        expect(await rows2(`select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%page_embedding_state%' and pid <> pg_backend_pid()`)).toHaveLength(1);
-      }, { timeout: 20_000, interval: 100 });
-      await saver.query('commit');
+        const r = await observer.query(`select count(*)::int as n from pg_stat_activity where datname = $1 and wait_event_type = 'Lock' and query like '%page_embedding_state%'`, [t.name]);
+        expect((r.rows[0] as { n: number }).n, 'markFailed waits for the page row').toBe(1);
+      }, { timeout: 20_000, interval: 50 });
+      await save.query('commit');
       await failing;
       expect(await state(id)).toBeUndefined();
     } finally {
-      await saver.end();
+      await save.query('rollback').catch(() => undefined); // releases the lock whatever happened above, so nothing hangs the rest of the file
+      await failing?.catch(() => undefined);
+      await Promise.all([save.end(), observer.end()]);
     }
-  });
+  }, 60_000);
 });
 
 describe('pagesNeedingEmbedding', () => {
