@@ -35,7 +35,7 @@ test.describe('what is saved for an image', () => {
         .evaluateAll((nodes) =>
           nodes.map(
             (n) =>
-              `${n.getAttribute('data-state') ?? '-'}: ${(n.textContent ?? '').slice(0, 60)} img=${n.querySelector('img')?.getAttribute('src')?.split('?')[0] ?? 'none'} complete=${String((n.querySelector('img') as HTMLImageElement | null)?.complete)}`,
+              `${n.getAttribute('data-state') ?? '-'}${n.getAttribute('data-failed-reason') === null ? '' : ` (${n.getAttribute('data-failed-reason')})`}: ${(n.textContent ?? '').slice(0, 60)} img=${n.querySelector('img')?.getAttribute('src')?.split('?')[0] ?? 'none'} complete=${String((n.querySelector('img') as HTMLImageElement | null)?.complete)}`,
           ),
         )
         .catch((e: unknown) => [`could not read the page: ${String(e)}`]);

@@ -118,6 +118,7 @@ describe('the image node view', () => {
     await turn();
     expect(fetchUrls).toHaveBeenCalledTimes(2);
     expect(dom.dataset['state']).toBe('failed');
+    expect(dom.dataset['failedReason']).toBe('image-error-after-refresh');
     expect(dom.textContent).toContain("Image couldn't be loaded");
   });
 
@@ -152,6 +153,30 @@ describe('the image node view', () => {
     fetchUrls.mockResolvedValueOnce(new Map());
     const view = viewOf(SRC);
     await untilState(view, 'failed');
+    expect((view.dom as HTMLElement).dataset['failedReason']).toMatch(/^link-rejected: no link for attachment /);
+  });
+
+  it('says why when the request for the link itself fails, and when the replacement link cannot be had', async () => {
+    fetchUrls.mockRejectedValueOnce(new Error('network down'));
+    const first = viewOf(SRC);
+    await untilState(first, 'failed');
+    expect((first.dom as HTMLElement).dataset['failedReason']).toBe('link-rejected: network down');
+
+    const second = viewOf(SRC);
+    await untilSrc(second);
+    fetchUrls.mockRejectedValueOnce(new Error('token expired'));
+    (second.dom as HTMLElement).querySelector('img')!.dispatchEvent(new Event('error'));
+    await untilState(second, 'failed');
+    expect((second.dom as HTMLElement).dataset['failedReason']).toBe('refresh-rejected: token expired');
+  });
+
+  it('leaves no reason on an image that is not failed, also after a failed one is given another source', async () => {
+    fetchUrls.mockResolvedValueOnce(new Map());
+    const view = viewOf(SRC);
+    await untilState(view, 'failed');
+    expect(update(view, imageNode(`attachments/${ID.replace('3f2a', '4f2a')}/other.png`))).toBe(true);
+    await untilState(view, 'loading');
+    expect((view.dom as HTMLElement).dataset['failedReason']).toBeUndefined();
   });
 
   it('refreshes the link by itself before it expires', async () => {
@@ -291,6 +316,7 @@ describe('the image node view', () => {
     dispose();
     const view = viewOf(SRC);
     expect((view.dom as HTMLElement).dataset['state']).toBe('failed'); // no host: failed at once
+    expect((view.dom as HTMLElement).dataset['failedReason']).toBe('no-attachments-host');
   });
 });
 
