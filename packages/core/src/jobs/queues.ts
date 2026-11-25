@@ -4,6 +4,12 @@ const common = { retryLimit: 3, retryDelaySeconds: 30, retryBackoff: true, reten
 const withDeadLetter = { ...common, deadLetter: 'dead-letter' } as const;
 
 /**
+ * The singleton key of a scheduled queue's next run (decision 16): the adapter's cron chain and the embed sweep's chain (amendment 16a) send their runs under it, so the runs every
+ * replica sends collapse into one waiting run, and `grimoire migrate` finds a waiting run by it.
+ */
+export const scheduleKey = (name: string): string => `sched:${name}`;
+
+/**
  * Every queue the application uses, the dead-letter queue first (a queue can only name one that exists). `grimoire migrate`
  * creates them; times are seconds. The scheduled queues are `stately`: one waiting run per `singletonKey` (the scheduler's `sched:<name>`) and one running, so replicas that send the next run at start collapse into one. `importExpireSeconds` is the expiry of one import chunk (`GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS`).
  */

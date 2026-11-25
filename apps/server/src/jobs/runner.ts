@@ -1,22 +1,28 @@
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { EnqueueOptions, JobQueue } from '@tektum/grimoire-core/ports/job-queue';
+import { scheduleKey } from '@tektum/grimoire-core/jobs/queues';
 import type { EventLog } from '../events.js';
 import { SHUTDOWN_BUDGET_MS } from '../lifecycle/budget.js';
 import type { ShutdownHook } from '../lifecycle/shutdown.js';
 import { importJobs, type RegisteredJob } from './index.js';
 import { instrument, reasonOf } from './instrument.js';
+import type { EmbedPagePayload } from './types.js';
 
 /** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
 export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
 
-/** What the code that is not a job handler's own reaches the queue by: the import's job and its cleanup, and whether an import's job is live. All reject with `jobs-unavailable` while the queue is not up (not started, given up, or stopping). */
+/** What the code that is not a job handler's own reaches the queue by: the import's job and its cleanup, whether an import's job is live, and the embedding jobs. All reject with `jobs-unavailable` while the queue is not up (not started, given up, or stopping). */
 export interface JobsApi {
   isLive(name: string, singletonKey: string): Promise<boolean>;
   /** Hands the job of an import to the queue (the import start, the sweep): its payload is the ids and nothing else (decision 4). */
   enqueueImport(payload: { readonly importId: string; readonly tenantId: string }, options?: EnqueueOptions): Promise<string | null>;
   /** Hands the cleanup of an import that is over to the queue (a cancel, the sweep): ids only. */
   enqueueImportCleanup(payload: { readonly importId: string; readonly tenantId: string }): Promise<string | null>;
+  /** Hands a page whose Markdown or model changed to `embed-page` (the embed sweep): the ids only, under the key `embed:<pageId>`, so a page waits at most once. */
+  enqueueEmbedPage(payload: EmbedPagePayload): Promise<string | null>;
+  /** Sends the embed sweep's next run `delaySeconds` from now (each run does, before its work): under the sweep's schedule key, so repeated sends are one waiting run. */
+  enqueueEmbedSweep(delaySeconds: number): Promise<string | null>;
 }
 
 export interface JobRunner extends JobsApi {
@@ -77,6 +83,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
     isLive: (name, key) => Promise.resolve().then(() => up().isLive(name, key)),
     enqueueImport: (payload, enqueueOptions) => Promise.resolve().then(() => up().enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, enqueueOptions)),
     enqueueImportCleanup: (payload) => Promise.resolve().then(() => up().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId }, { singletonKey: `import-cleanup:${payload.importId}` })),
+    enqueueEmbedPage: (payload) => Promise.resolve().then(() => up().enqueue('embed-page', { tenantId: payload.tenantId, pageId: payload.pageId }, { singletonKey: `embed:${payload.pageId}` })),
+    enqueueEmbedSweep: (delaySeconds) => Promise.resolve().then(() => up().enqueue('embed-sweep', undefined, { singletonKey: scheduleKey('embed-sweep'), delaySeconds })),
   };
   const jobs = typeof options.jobs === 'function' ? options.jobs(api) : (options.jobs ?? importJobs());
   let timer: NodeJS.Timeout | undefined;
@@ -98,6 +106,8 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
           if (stopped) break; // a stop that comes in the middle: no handler is registered after it, so no job starts during the drain
           await made.work(job.name, instrument(job.name, job.handler, log, clock));
           if (job.schedule !== undefined) await made.schedule(job.name, job.schedule); // after the handler, so the run it sends is worked; every replica does it at every start
+          // A chain's first run (its runs send the ones after it): every replica sends it at every start, and the schedule key makes those sends one waiting run.
+          if (job.chainSeconds !== undefined) await made.enqueue(job.name, undefined, { singletonKey: scheduleKey(job.name), delaySeconds: job.chainSeconds });
         }
       }
       if (stopped) {

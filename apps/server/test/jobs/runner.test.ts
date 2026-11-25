@@ -74,6 +74,30 @@ describe('the job runner', () => {
     expect(queue.order.indexOf('schedule purge')).toBeGreaterThan(queue.order.indexOf('work purge'));
   });
 
+  it('sends the first run of a chain at start, after its handler is registered, under its schedule key and its seconds later (every replica does, and the key makes that one run)', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); queue.order.push(`enqueue ${name}`); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    await make(queue, [], [{ name: 'embed-sweep', chainSeconds: 15, handler: () => Promise.resolve() }, { name: 'import', handler: () => Promise.resolve() }]).runner.start();
+    expect(sent).toEqual([['embed-sweep', undefined, { singletonKey: 'sched:embed-sweep', delaySeconds: 15 }]]);
+    expect(queue.order.indexOf('enqueue embed-sweep')).toBeGreaterThan(queue.order.indexOf('work embed-sweep'));
+  });
+
+  it('sends a page to embed-page with the ids only, under a key of its own, and the sweep\'s next run under the sweep\'s schedule key', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    const { runner } = make(queue);
+    await expect(runner.enqueueEmbedPage({ tenantId: 't1', pageId: 'p1' })).rejects.toThrow('jobs-unavailable');
+    await runner.start();
+    await runner.enqueueEmbedPage({ tenantId: 't1', pageId: 'p1' });
+    await runner.enqueueEmbedSweep(15);
+    expect(sent).toEqual([
+      ['embed-page', { tenantId: 't1', pageId: 'p1' }, { singletonKey: 'embed:p1' }],
+      ['embed-sweep', undefined, { singletonKey: 'sched:embed-sweep', delaySeconds: 15 }],
+    ]);
+  });
+
   it('counts a schedule that cannot be sent as a failed start: the queue is stopped and the start is tried again', async () => {
     vi.useFakeTimers();
     const queue = new RecordingQueue();

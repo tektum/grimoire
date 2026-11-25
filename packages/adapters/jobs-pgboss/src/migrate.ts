@@ -1,7 +1,8 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
-import { PGBOSS_SCHEMA, queueOptions, scheduleKey } from './index.js';
+import { scheduleKey } from '@tektum/grimoire-core/jobs/queues';
+import { PGBOSS_SCHEMA, queueOptions } from './index.js';
 
 /**
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp

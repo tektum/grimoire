@@ -13,7 +13,7 @@ import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import type { TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import type { EventLog } from '../events.js';
 import { createEmbedPage, embedBatchSize } from './embed-page.js';
-import { handleEmbedSweep } from './embed-sweep.js';
+import { createEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
 import { runImportCleanup } from './import-cleanup.js';
@@ -31,6 +31,8 @@ export interface RegisteredJob {
   readonly handler: JobHandler;
   /** UTC cron, five fields; absent for a job that is only enqueued. */
   readonly schedule?: string;
+  /** A chain finer than a cron (the embed sweep, amendment 16a): each run sends the next one itself, and the runner sends the first run this many seconds after every start. */
+  readonly chainSeconds?: number;
 }
 
 export interface JobDeps {
@@ -115,9 +117,12 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     }]),
     { name: 'revision-catchup', schedule: config.jobs.revisionCron, handler: async (_payload, ctx) => { await runRevisionCatchUp({ revisions: deps.revisions, now: () => clock.now() }, ctx.signal); } },
     { name: 'markdown-sweep', schedule: MARKDOWN_SWEEP_CRON, handler: async (_payload, ctx) => { await sweep(ctx.signal); } },
-    // M7-T13 fills the handlers and decides the cadence of the sweep (`GRIMOIRE_SEMANTIC_SWEEP_SECONDS` is finer than a cron).
     ...(deps.embedder === undefined || deps.embeddings === undefined ? [] : [
-      { name: 'embed-sweep', handler: handleEmbedSweep },
+      {
+        name: 'embed-sweep',
+        chainSeconds: config.semantic.sweepSeconds,
+        handler: createEmbedSweep({ tenants: deps.tenants, store: deps.embeddings, embedder: deps.embedder, queue: deps.queue, sweepSeconds: config.semantic.sweepSeconds, debounceSeconds: config.semantic.debounceSeconds }),
+      },
       { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: Date.now, sleep: sleepUnlessAborted }), batchSize: embedBatchSize(config.semantic.maxChunksPerMinute) }) }, // real time: the cap and its wait must use the same clock, whatever clock the run log was given
     ]),
   ];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jobQueues } from '../../src/jobs/queues.js';
+import { jobQueues, scheduleKey } from '../../src/jobs/queues.js';
 
 const byName = (queues = jobQueues()) => new Map(queues.map((q) => [q.name, q]));
 
@@ -34,5 +34,9 @@ describe('jobQueues', () => {
   it('takes the import expiry from the setting', () => {
     expect(byName(jobQueues(20)).get('import')?.expireInSeconds).toBe(20);
     expect(byName(jobQueues(20)).get('import-cleanup')?.expireInSeconds).toBe(600);
+  });
+
+  it('names the next run of a schedule `sched:<queue>`: the key is stored in the queue\'s rows, so a new form would leave the runs that wait under the old one behind at a deploy', () => {
+    expect(['purge', 'embed-sweep'].map(scheduleKey)).toEqual(['sched:purge', 'sched:embed-sweep']);
   });
 });

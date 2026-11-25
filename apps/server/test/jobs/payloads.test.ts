@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // Job payloads sit in tables the runtime role can read: ids only (decision 4 of the M7 plan: the tenant id and a UUID, nothing else).
-const ALLOWED = new Set(['tenantId', 'importId']);
+const ALLOWED = new Set(['tenantId', 'importId', 'pageId']);
 const src = path.resolve(import.meta.dirname, '../../src');
 
 /** The `enqueue` calls of a source text whose payload is not absent and not an object literal with only allowed fields: "line: text" for each. */
@@ -31,7 +31,7 @@ function sources(dir: string): string[] {
 }
 
 describe('job payloads', () => {
-  it('every enqueue in apps/server/src passes no payload or one with only a tenant id and an import id', () => {
+  it('every enqueue in apps/server/src passes no payload or one with only a tenant id and an import or page id', () => {
     const found = sources(src).flatMap((file) => badEnqueues(readFileSync(file, 'utf8')).map((b) => `${path.relative(src, file)}:${b}`));
     expect(found).toEqual([]);
   });

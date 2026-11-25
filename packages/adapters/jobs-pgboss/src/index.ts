@@ -2,6 +2,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { PgBoss, type ConstructorOptions, type JobWithMetadata } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import { expirySignalDelayMs, type EnqueueOptions, type JobHandler, type JobQueue, type QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
+import { scheduleKey } from '@tektum/grimoire-core/jobs/queues';
 
 /** The schema pg-boss keeps its tables in; the Kysely migrations never touch it. */
 export const PGBOSS_SCHEMA = 'pgboss';
@@ -20,7 +21,6 @@ function asDatabase(tx: Queryable): PgBossDatabase {
   return { executeSql: async (text: string, values?: unknown[]) => ({ rows: [...(await tx.query(text, values))] }) };
 }
 
-export const scheduleKey = (name: string): string => `sched:${name}`;
 /** The first time of a five-field UTC cron after `after`. */
 const nextRun = (cron: string, after: Date): Date => CronExpressionParser.parse(cron, { currentDate: after, tz: 'UTC' }).next().toDate();
 /** Whether `at` is a time of the cron (cron times fall on whole minutes). */
