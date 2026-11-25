@@ -144,6 +144,26 @@ Administrators: people, their roles, and who is suspended.
 
 Administrators: a group and its members.
 
+![The header of an administrator on a desktop, with the Admin link](docs/screenshots/admin-entry/header-desktop-light.png)
+
+Administrators: the Admin link in the header, on a desktop.
+
+![The header of an administrator on a phone, with the Admin link](docs/screenshots/admin-entry/header-phone-light.png)
+
+The same on a phone, where there is no keyboard for the command palette.
+
+![An empty workspace for an administrator, with a New collection button](docs/screenshots/new-collection/empty-desktop-light.png)
+
+Administrators: an empty workspace offers New collection. Anyone else is told to ask an admin.
+
+![The new collection form on a phone](docs/screenshots/new-collection/form-phone-light.png)
+
+The new collection form: a name, and who can open it.
+
+![The new collection form in the dark theme](docs/screenshots/new-collection/form-desktop-dark.png)
+
+The same form in the dark theme.
+
 ![Who has access to a collection](docs/screenshots/m6-t12/access-light.png)
 
 Administrators: who may read and write a collection.
