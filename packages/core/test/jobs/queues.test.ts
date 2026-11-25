@@ -8,12 +8,12 @@ describe('jobQueues', () => {
     expect(jobQueues().map((q) => [q.name, q.policy, q.expireInSeconds])).toEqual([
       ['dead-letter', 'standard', 600],
       ['import', 'stately', 900],
-      ['import-sweep', 'singleton', 300],
+      ['import-sweep', 'stately', 300],
       ['import-cleanup', 'stately', 600],
-      ['purge', 'singleton', 3600],
-      ['upload-cleanup', 'singleton', 600],
-      ['revision-catchup', 'singleton', 1800],
-      ['markdown-sweep', 'singleton', 300],
+      ['purge', 'stately', 3600],
+      ['upload-cleanup', 'stately', 600],
+      ['revision-catchup', 'stately', 1800],
+      ['markdown-sweep', 'stately', 300],
     ]);
   });
 

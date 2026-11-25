@@ -1,7 +1,7 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
-import { PGBOSS_SCHEMA, ensureQueueOn } from './index.js';
+import { PGBOSS_SCHEMA, queueOptions } from './index.js';
 
 /**
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
@@ -37,7 +37,26 @@ export interface MigrateOptions {
   /** Queues to create (in this order) after the migration and before the grants, so the runtime role gets their partitions. */
   readonly queues?: readonly QueueDefinition[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
-  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
+  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue' | 'deleteQueue'>;
+  /** Called for each queue that was recreated because it had another policy: pg-boss cannot change a policy, and the scheduled queues keep no state worth keeping (they are sent again at start). */
+  readonly onQueueRecreated?: (e: { readonly queue: string; readonly from: string; readonly to: string; readonly pending: number; readonly finished: number }) => void;
+}
+
+/**
+ * A queue found with another policy than the definition's is deleted and created again, unless a job of it is running: then it is left and the migration stops
+ * with the queue's name. Created and retry jobs go with it (the scheduler sends the next run at start), as do finished ones; the counts are reported.
+ */
+async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue' | 'deleteQueue'>, db: Queryable, definition: QueueDefinition, options: MigrateOptions): Promise<void> {
+  const existing = await boss.getQueue(definition.name);
+  if (existing === null) return boss.createQueue(definition.name, queueOptions(definition));
+  const from = existing.policy ?? 'standard';
+  if (from === definition.policy) return;
+  const rows = await db.query<{ state: string; count: number }>(`select state::text as state, count(*)::int as count from ${PGBOSS_SCHEMA}.job where name = $1 group by state`, [definition.name]);
+  const count = (...states: string[]): number => rows.filter((r) => states.includes(r.state)).reduce((sum, r) => sum + r.count, 0);
+  if (count('active') > 0) throw new Error(`queue ${definition.name} has policy ${from}, the definition says ${definition.policy}, and a job of it is active: stop the running servers, then run the migration again`);
+  await boss.deleteQueue(definition.name);
+  await boss.createQueue(definition.name, queueOptions(definition));
+  options.onQueueRecreated?.({ queue: definition.name, from, to: definition.policy, pending: count('created', 'retry'), finished: count('completed', 'cancelled', 'failed') });
 }
 
 /**
@@ -54,7 +73,7 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
   boss.on('error', (e: Error) => { failure = e; });
   await boss.start();
   try {
-    for (const queue of options.queues ?? []) await ensureQueueOn(boss, queue);
+    for (const queue of options.queues ?? []) await reconcileQueue(boss, options.database, queue, options);
   } finally {
     await boss.stop({ graceful: true, close: true, timeout: 2000 });
   }
