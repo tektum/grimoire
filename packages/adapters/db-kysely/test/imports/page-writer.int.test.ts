@@ -26,6 +26,8 @@ const collection = async (): Promise<string> => (await createCollections(t.app).
 /** An import into a new collection with `paths` as pending page items. */
 async function started(paths: readonly string[]): Promise<{ importId: string; collectionId: string; items: Map<string, string> }> {
   const collectionId = await collection();
+  // A tenant has one running import (migration 0012): the one an earlier test, or an earlier step of this one, started has ended by now, so it is ended before the next one runs.
+  await t.app.query(`update imports set status = 'done', finished_at = now() where tenant_id = 'legacy' and status = 'running'`);
   const rows = await t.app.query<{ id: string }>(
     `insert into imports (tenant_id, target_collection_id, source, status, created_by) values ('legacy', $1, 'markdown_zip', 'running', $2) returning id`, [collectionId, userId],
   );
