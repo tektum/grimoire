@@ -79,6 +79,13 @@ describe('databases', () => {
     const index = buildIndex([{ itemId: 'all', path: `Work/Tasks ${DB}_all.csv`, kind: 'attachment' }]);
     expect(resolveNotionLink(`../Archive/Old%20Tasks%20${DB}.csv`, 'Elsewhere/Home.md', index)).toMatchObject({ itemId: 'all' });
   });
+
+  it('by the id too, the plain one when it is there, whatever the order of the items: the id falls back as the path does', () => {
+    const items = [{ itemId: 'all', path: `Work/Tasks ${DB}_all.csv`, kind: 'attachment' }, { itemId: 'plain', path: `Work/Tasks ${DB}.csv`, kind: 'attachment' }] as const;
+    for (const order of [items, [...items].reverse()]) {
+      expect(resolveNotionLink(`../Archive/Old%20Tasks%20${DB}.csv`, 'Elsewhere/Home.md', buildIndex(order))).toMatchObject({ itemId: 'plain' });
+    }
+  });
 });
 
 describe('what does not resolve', () => {
