@@ -6,6 +6,9 @@
 **/node_modules
 **/dist
 reference
+# The model files are fetched by the image's own stage; only the lock goes into the build context.
+models/*
+!models/models.lock.json
 docs
 test-results
 **/*.tsbuildinfo
