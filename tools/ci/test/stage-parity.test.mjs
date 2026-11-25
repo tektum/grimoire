@@ -100,3 +100,10 @@ test('every stage runs one pinned Postgres minor, never below 17.3, so no stage 
     assert.deepEqual(versions, [POSTGRES_VERSION], `${name} declares the pinned version`);
   }
 });
+
+test('semantic search is off in the app of every stage, with the same value everywhere: the model needs about 3 GiB, which the task size of the stages does not give yet', () => {
+  for (const name of NAMES) {
+    const app = record(name, 'any.example.test').find((c) => c.type === 'sst.aws:Service').args.containers.find((c) => c.name === 'app');
+    assert.equal(app.environment.GRIMOIRE_SEMANTIC_SEARCH, 'off', `${name} sets the switch itself, so a new default cannot turn it on`);
+  }
+});

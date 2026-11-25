@@ -333,7 +333,8 @@
               "GRIMOIRE_S3_REGION": "<aws.getRegionOutput.region>",
               "GRIMOIRE_S3_BUCKET": "<Files.name>",
               "GRIMOIRE_S3_ADDRESSING_STYLE": "virtual",
-              "GRIMOIRE_S3_CORS_MODE": "external"
+              "GRIMOIRE_S3_CORS_MODE": "external",
+              "GRIMOIRE_SEMANTIC_SEARCH": "off"
             },
             "ssm": {
               "GRIMOIRE_DATABASE_URL": "<AppUrl.arn>",
