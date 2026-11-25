@@ -32,7 +32,8 @@ One Fargate task (the image of the `Dockerfile`, which serves the web client and
 
 | Part | Resource | Notes |
 |---|---|---|
-| network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway) |
+| network | `Vpc` | private subnets, one NAT instance (cheaper than the managed gateway), shared by every stage: the stage without `vpcFrom` in `stages.json` makes it (and is protected), the others read it by the owner's tags. A stage of its own would need two more Elastic IPs |
+| network | two security groups per stage | the database takes 5432 from its own stage's service group alone, and the service takes its port from its own load balancer alone, so stages in one VPC cannot reach each other's database |
 | database | `Postgres` 17 | in the VPC; the roles and schemas come from `grimoire db-setup`, the tables from `grimoire migrate` (under a database lock, so a second one waits); the connections use `sslmode=verify-full` against Amazon's database CA bundle, which the image fetches with a pinned checksum into `/app/certs`; the two role passwords are random and live in the state |
 | files | `Bucket` with the CORS rule `files-setup` writes (`GET`, `PUT`, `HEAD` from the site; the rule belongs to the infrastructure: the task runs in `external` CORS mode, which means nothing in it writes the rule, and nothing checks it at start either, because only `grimoire files-setup` runs the check and the task does not run it; a drifted rule shows as failed browser uploads) | virtual addressing; the file origin in the policy names the bucket host |
 | identity | the Descope project of the stage | the project id is the task's `GRIMOIRE_DESCOPE_PROJECT_ID`; the session token carries the person's profile (see "Tenants and the token"), so the server needs no Descope key |

@@ -22,6 +22,7 @@ export function placeholder(path) {
 
 export function recordProgram(run) {
   const calls = [];
+  const raw = []; // the arguments as given (functions kept), for a test that has to run a transform
   const plain = (value, key) => {
     if (DOCUMENT_KEYS.has(key)) return '<document>';
     if (typeof value === 'function') return PATHS.has(value) ? `<${PATHS.get(value)}>` : '<function>';
@@ -34,6 +35,12 @@ export function recordProgram(run) {
   const klass = (type) => class {
     constructor(name, args, opts) {
       calls.push({ type, name, args: plain(args ?? {}), ...(opts === undefined ? {} : { opts: plain(opts) }) });
+      raw.push({ type, name, args });
+      return placeholder(name);
+    }
+    /** `X.get(name, id)`: an existing resource read by id, recorded as its own kind of call. */
+    static get(name, id) {
+      calls.push({ type: `${type}.get`, name, args: { id: plain(id) } });
       return placeholder(name);
     }
   };
@@ -42,14 +49,16 @@ export function recordProgram(run) {
       if (typeof prop !== 'string') return undefined;
       const path = `${prefix}.${prop}`;
       if (/^[A-Z]/.test(prop)) return klass(`${prefix}:${prop}`);
-      if (/^get.*Output$/.test(prop)) return () => ({ region: placeholder(`${path}.region`) });
+      // A data lookup (`getXOutput(args)`): whatever is read from the result is a placeholder named after the lookup and its arguments (`region` keeps its older, shorter name).
+      if (/^get.*Output$/.test(prop)) return (args) => new Proxy({}, { get: (_, field) => (typeof field !== 'string' ? undefined : field === 'region' ? placeholder(`${path}.region`) : placeholder(`${path}(${JSON.stringify(plain(args ?? {}))}).${field}`)) });
       if (/^[a-z]/.test(prop) && prefix.split('.').length > 1) return (args) => ({ call: path, args: plain(args ?? {}) });
       return namespace(path);
     },
   });
   const tag = (strings, ...values) => placeholder(strings.reduce((out, s, i) => out + s + (i < values.length ? `{${String(values[i])}}` : ''), 'interpolate:'));
   const g = globalThis;
-  const saved = Object.fromEntries(['sst', 'aws', 'random', 'descope', '$interpolate', '$output', '$resolve', '$util'].map((k) => [k, g[k]]));
+  const saved = Object.fromEntries(['sst', 'aws', 'random', 'descope', '$app', '$interpolate', '$output', '$resolve', '$util'].map((k) => [k, g[k]]));
+  g.$app = { name: 'grimoire', stage: 'recorded' };
   g.sst = namespace('sst'); g.aws = namespace('aws'); g.random = namespace('random'); g.descope = namespace('descope');
   g.$interpolate = tag;
   g.$output = (v) => placeholder(`output(${typeof v === 'string' ? v : 'value'})`);
@@ -57,5 +66,5 @@ export function recordProgram(run) {
   g.$util = {};
   let returned;
   try { returned = run(); } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete g[k]; else g[k] = v; } }
-  return { calls, returned: plain(returned ?? {}) };
+  return { calls, raw, returned: plain(returned ?? {}) };
 }
