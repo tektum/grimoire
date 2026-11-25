@@ -51,7 +51,7 @@ export function importJobs(config: Config): readonly RegisteredJob[] {
   ];
 }
 
-/** The jobs of roles `api` and `all`, by queue name. Cron jobs carry no payload: they walk the tenants themselves. Schedules are carried here and registered by the runner once the soak allows it (decision 13). */
+/** The jobs of roles `api` and `all`, by queue name. Cron jobs carry no payload: they walk the tenants themselves. Schedules are carried here and registered by the runner at start (decision 16). */
 export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
   const { config, log, clock } = deps;
   const sweep = createMarkdownSweep({ pages: deps.pages, converter: deps.converter, now: () => clock.now(), onConvertFailure: (pageId, reason) => log.warn('markdown_sweep.convert_failed', { pageId, reason }) });

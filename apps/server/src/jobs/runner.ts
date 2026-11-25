@@ -50,7 +50,7 @@ export const MAX_START_ATTEMPTS = 20;
  * The job queue of the roles `api` and `all` (never `collab`). Constructing it starts nothing: `start` connects, after the listener is up, and the hook stops it.
  * A queue that cannot start (the database is not migrated yet: the server runs in that state and says so on `/readyz`) is logged and tried again, so it does not stop the server.
  * A queue that started but could not register its handlers is stopped before the next try, so no attempt leaves one running. A stop waits for a start that is under way.
- * Schedules are not registered here: whether the runtime role may run pg-boss's cron loop is settled by the soak of M7-T02 (decision 13).
+ * Schedules are registered here, at every start of every replica, and are a chain of sends (decision 16): pg-boss's cron loop cannot start on the runtime role. A schedule that cannot be sent fails the start like a handler does.
  */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const { config, log } = options;
@@ -81,6 +81,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         for (const job of jobs) {
           if (stopped) break; // a stop that comes in the middle: no handler is registered after it, so no job starts during the drain
           await made.work(job.name, instrument(job.name, job.handler, log, clock));
+          if (job.schedule !== undefined) await made.schedule(job.name, job.schedule); // after the handler, so the run it sends is worked; every replica does it at every start
         }
       }
       if (stopped) {
