@@ -31,15 +31,3 @@ export function titleOf(path: string, markdown: string): string {
   const heading = line === undefined ? '' : withoutClosingHashes(line.trim());
   return heading !== '' ? heading : file.slice(0, file.length - ext.length);
 }
-
-/**
- * constructed: [F§6] the page a page is a child of: a page `X <id>.md` with a sibling folder `X <id>/` has that folder's pages as children, so the parent of a file is the page file named
- * like its folder (`X <id>.md` next to `X <id>/`). A folder with no id has no page file of its own: the parent is the folder itself (`X/`). A file at the top has no parent.
- */
-export function parentPathOf(path: string): string | null {
-  const segments = path.split('/');
-  if (segments.length < 2) return null;
-  const folder = segments.at(-2) as string;
-  const above = segments.slice(0, -2);
-  return splitName(folder).id === undefined ? `${segments.slice(0, -1).join('/')}/` : [...above, `${folder}.md`].join('/');
-}

@@ -33,6 +33,7 @@ const CreateBody = z
     collectionId: z.string().uuid(),
     fileName: z.string().min(1).max(1024).describe('The name of the zip as the person has it; shown nowhere, kept nowhere'),
     size: z.number().int().positive().describe('Bytes of the zip; not above the largest zip an import takes'),
+    profile: z.enum(['markdown_zip', 'notion_md_csv']).optional().describe('How the archive is read: `notion_md_csv` for an export of Notion (Markdown and CSV files), `markdown_zip` (the default) for any other zip of Markdown files'),
   })
   .strict()
   .openapi('CreateImport');
@@ -193,7 +194,7 @@ router.openapi(createImport, async (c) => {
   const id = v7();
   const key = importZipKey(tenant, id);
   const upload = await viaStore(c, 'import-create', () => files.signUpload(key, { size: body.size, contentType: 'application/zip', ttlSeconds: UPLOAD_TTL_SECONDS, ifNoneMatch: true }));
-  await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: 'markdown_zip', bytes: body.size, s3Key: key });
+  await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: body.profile ?? 'markdown_zip', bytes: body.size, s3Key: key });
   log.info('import.created', { importId: id });
   noStore(c);
   return c.json({ id, upload: { ...upload, expiresAt: new Date(upload.expiresAt).toISOString() } }, 201);

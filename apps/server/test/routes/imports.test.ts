@@ -152,6 +152,17 @@ describe('POST /v1/imports', () => {
     expect(await code(await t.call('ada', 'POST', '/v1/imports', { collectionId: t.rw.id, fileName: 'a.zip' }))).toBe('invalid');
   });
 
+  it('reads the archive with the profile the person names: notion_md_csv for an export of Notion, markdown_zip when none is named; any other is 422', async () => {
+    const t = build();
+    const notion = await t.made({ profile: 'notion_md_csv' });
+    expect(notion.res.status).toBe(201);
+    expect(await t.imports.get('T-a', notion.id)).toMatchObject({ source: 'notion_md_csv' });
+    const plain = await t.made({ profile: 'markdown_zip' });
+    expect(await t.imports.get('T-a', plain.id)).toMatchObject({ source: 'markdown_zip' });
+    const other = await t.made({ profile: 'word_document' });
+    expect([other.res.status, await code(other.res)]).toEqual([422, 'invalid']);
+  });
+
   it('needs a collection the caller can write: one they can only read is 403, one of another workspace or unknown is 404, and nobody signed in is 401', async () => {
     const t = build();
     expect([(await t.made({}, 'ada', t.ro.id)).res.status]).toEqual([403]);
