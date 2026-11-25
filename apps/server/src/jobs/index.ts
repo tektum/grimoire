@@ -118,7 +118,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     // M7-T13 fills the handlers and decides the cadence of the sweep (`GRIMOIRE_SEMANTIC_SWEEP_SECONDS` is finer than a cron).
     ...(deps.embedder === undefined || deps.embeddings === undefined ? [] : [
       { name: 'embed-sweep', handler: handleEmbedSweep },
-      { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: () => clock.now(), sleep: sleepUnlessAborted }) }) },
+      { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: Date.now, sleep: sleepUnlessAborted }) }) }, // real time: the cap and its wait must use the same clock, whatever clock the run log was given
     ]),
   ];
 }

@@ -72,3 +72,20 @@ describe('the server and the adapter package', () => {
     expect(server.dependencies['@tektum/grimoire-adapter-embedder-onnx']).toBe('*');
   });
 });
+
+describe('the rate cap of the registered embed-page job', () => {
+  it('is measured in real time whatever clock the registry was given: a frozen clock does not hold a page back for ever', async () => {
+    const embeddings = new FakeEmbeddingStore();
+    const page = '11111111-1111-4111-8111-111111111111';
+    embeddings.seedPage({ id: page, collectionId: 'c', markdownHash: new Uint8Array(32).fill(1), text: Array.from({ length: 5 }, (_, p) => Array.from({ length: 120 }, (_, k) => `p${String(p)}w${String(k)}`).join(' ')).join('\n\n') });
+    const embedder = new FakeEmbedder({ maxTokens: 512 });
+    const { deps } = fakeJobDeps({ embedder, embeddings }); // the fake clock of fakeJobDeps never advances
+    const job = registerJobs(deps).find((j) => j.name === 'embed-page');
+    const ctx = { jobId: 'j', attempt: 1, retryLimit: 3, signal: new AbortController().signal };
+    const began = Date.now();
+    await job?.handler({ tenantId: 'legacy', pageId: page }, ctx);
+    expect(Date.now() - began).toBeLessThan(3000);
+    expect(embeddings.stored(page, 'fake-e5-v1').chunks.length).toBeGreaterThanOrEqual(3);
+  }, 10_000);
+});
+
