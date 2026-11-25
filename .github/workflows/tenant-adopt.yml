@@ -29,6 +29,10 @@ on:
         description: "type the stage name again to confirm: this changes the data of the stage"
         required: true
         type: string
+      database_kind:
+        description: "only while a stage has both an RDS instance and an Aurora cluster (a move between them): which one to snapshot and adopt on (instance or cluster); empty otherwise"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -55,12 +59,14 @@ jobs:
           TO: ${{ inputs.to }}
           NAME: ${{ inputs.name }}
           DOMAIN: ${{ inputs.domain }}
+          DATABASE_KIND: ${{ inputs.database_kind }}
         run: |
           [ "${CONFIRM}" = "${STAGE}" ] || { echo "::error::confirm must be the stage name (${STAGE})"; exit 1; }
           # `[[ =~ ]]` matches the whole value; `grep` would pass a value of which one line matches (an input sent through the API can hold newlines).
           id='^[A-Za-z0-9_-]{1,128}$'
           label='^[A-Za-z0-9][A-Za-z0-9 ._-]{0,119}$'
           host='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+          [ -z "${DATABASE_KIND}" ] || [ "${DATABASE_KIND}" = "instance" ] || [ "${DATABASE_KIND}" = "cluster" ] || { echo "::error::database_kind must be empty, instance or cluster"; exit 1; }
           [[ "${TO}" =~ ${id} ]] || { echo "::error::to is not a tenant id"; exit 1; }
           [ -z "${NAME}" ] || [[ "${NAME}" =~ ${label} ]] || { echo "::error::name has characters this job does not pass on"; exit 1; }
           [ -z "${DOMAIN}" ] || [[ "${DOMAIN}" =~ ${host} ]] || { echo "::error::domain is not a host name"; exit 1; }
@@ -84,23 +90,22 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: Find the database and the cluster of the stage, by their exact names, and check they are in one network
+      - name: Find the database and the cluster of the stage, by what SST makes, and check they are in one network
         id: targets
         env:
           STAGE: ${{ inputs.stage }}
+          DATABASE_KIND: ${{ inputs.database_kind }}
         run: |
           set -euo pipefail
-          bash tools/adopt/targets.sh "${STAGE}" | tee -a "${GITHUB_OUTPUT}"
+          bash tools/adopt/targets.sh "${STAGE}" "${DATABASE_KIND}" | tee -a "${GITHUB_OUTPUT}"
       - name: Take a snapshot of the database first, and wait until it can be restored from
         env:
           STAGE: ${{ inputs.stage }}
-          INSTANCE: ${{ steps.targets.outputs.instance }}
+          DATABASE: ${{ steps.targets.outputs.database }}
+          KIND: ${{ steps.targets.outputs.database_kind }}
         run: |
           set -euo pipefail
-          snapshot="grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
-          aws rds create-db-snapshot --db-instance-identifier "${INSTANCE}" --db-snapshot-identifier "${snapshot}" --query 'DBSnapshot.Status' --output text
-          aws rds wait db-snapshot-available --db-snapshot-identifier "${snapshot}"
-          echo "snapshot ${snapshot} of ${INSTANCE} is available: it is what a restore of this stage's data starts from"
+          bash tools/adopt/snapshot.sh "${KIND}" "${DATABASE}" "grimoire-${STAGE}-before-adopt-$(date -u +%Y%m%d-%H%M%S)"
       - name: Run the command as a task of the stage's service
         env:
           CLUSTER: ${{ steps.targets.outputs.cluster }}

@@ -46,19 +46,100 @@ const db = (id, vpc = 'vpc-1') => ({ DBInstanceIdentifier: id, DBSubnetGroup: { 
 const arn = (name) => `arn:aws:ecs:us-east-1:111111111111:cluster/${name}`;
 const GOOD = (over = {}) => ({
   'rds-describe-db-instances.json': { DBInstances: [db('grimoire-staging-dbinstance-abc123'), db('grimoire-dev-dbinstance-zzz999')] },
+  'rds-describe-db-clusters.json': { DBClusters: [] },
   'ecs-list-clusters.json': { clusterArns: [arn('grimoire-staging-ClusterCluster-kkr'), arn('grimoire-dev-ClusterCluster-bcz'), arn('other-ClusterCluster-x')] },
   'ecs-describe-services.json': { services: [{ networkConfiguration: { awsvpcConfiguration: { subnets: ['subnet-1'] } } }] },
   'ec2-describe-subnets.json': { Subnets: [{ VpcId: 'vpc-1' }] },
   ...over,
 });
+const aurora = (id, stage = 'staging', over = {}) => ({
+  DBClusterIdentifier: id,
+  Engine: 'aurora-postgresql',
+  DBSubnetGroup: `${id}-subnets`,
+  TagList: [{ Key: 'sst:app', Value: 'grimoire' }, { Key: 'sst:stage', Value: stage }],
+  ...over,
+});
+// The same stage as GOOD, but its database is an Aurora cluster (found by the tags SST puts on what it makes, not by a name) and no instance is left.
+const AURORA = (over = {}) => GOOD({
+  'rds-describe-db-instances.json': { DBInstances: [db('grimoire-dev-dbinstance-zzz999')] },
+  'rds-describe-db-clusters.json': { DBClusters: [aurora('grimoire-staging-dbcluster-q1'), aurora('grimoire-dev-dbcluster-q2', 'dev'), aurora('other-dbcluster-q3', 'staging', { TagList: [{ Key: 'sst:app', Value: 'other' }, { Key: 'sst:stage', Value: 'staging' }] }), aurora('grimoire-staging-mysql-q4', 'staging', { Engine: 'aurora-mysql' })] },
+  'rds-describe-db-subnet-groups.json': { DBSubnetGroups: [{ VpcId: 'vpc-1' }] },
+  ...over,
+});
+
+test('targets: an Aurora cluster of the stage is found by the tags SST gives it, and a cluster of another stage, another app or another engine is not the stage\'s', () => {
+  const s = scenario(AURORA());
+  try {
+    const r = s.run(targets, ['staging']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out, `database=grimoire-staging-dbcluster-q1\ndatabase_kind=cluster\ncluster=${arn('grimoire-staging-ClusterCluster-kkr')}\n`);
+    assert.ok(r.calls.includes('rds describe-db-subnet-groups'), 'the network of a cluster is that of its subnet group');
+  } finally { s.done(); }
+});
+
+test('targets: an instance and a cluster of the stage together (the overlap of a move) refuse until the kind is named, and then take that one', () => {
+  const both = AURORA({ 'rds-describe-db-instances.json': { DBInstances: [db('grimoire-staging-dbinstance-abc123')] } });
+  const s = scenario(both);
+  try {
+    const r = s.run(targets, ['staging']);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /expected one database of the stage staging, found: \["instance:grimoire-staging-dbinstance-abc123","cluster:grimoire-staging-dbcluster-q1"\]/);
+    assert.equal(r.out, '');
+    assert.match(s.run(targets, ['staging', 'instance']).out, /^database=grimoire-staging-dbinstance-abc123\ndatabase_kind=instance\n/);
+    assert.match(s.run(targets, ['staging', 'cluster']).out, /^database=grimoire-staging-dbcluster-q1\ndatabase_kind=cluster\n/);
+    assert.equal(s.run(targets, ['staging', 'database']).code, 2, 'only instance or cluster may be named');
+    const none = scenario(GOOD());
+    try { assert.match(none.run(targets, ['staging', 'cluster']).err, /expected one cluster of the stage staging, found: \[\]/); } finally { none.done(); }
+  } finally { s.done(); }
+});
+
+test('targets: a cluster in another network than the service\'s refuses', () => {
+  const s = scenario(AURORA({ 'rds-describe-db-subnet-groups.json': { DBSubnetGroups: [{ VpcId: 'vpc-9' }] } }));
+  try {
+    const r = s.run(targets, ['staging']);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /grimoire-staging-dbcluster-q1 is not in the network of the service \(vpc-9 against vpc-1\)/);
+  } finally { s.done(); }
+});
+
+const snapshot = path.join(root, 'tools/adopt/snapshot.sh');
+
+test('snapshot: an instance is snapshotted and a cluster is snapshotted as a cluster, and each waits for its own snapshot', () => {
+  const s = scenario({ 'rds-create-db-snapshot.json': '"creating"', 'rds-create-db-cluster-snapshot.json': '"creating"', 'rds-wait.json': '' });
+  try {
+    const i = s.run(snapshot, ['instance', 'grimoire-staging-dbinstance-abc123', 'grimoire-staging-before-x']);
+    assert.equal(i.code, 0, i.err);
+    assert.deepEqual(i.calls, ['rds create-db-snapshot', 'rds wait']);
+    assert.match(i.out, /snapshot grimoire-staging-before-x of instance grimoire-staging-dbinstance-abc123 is available/);
+  } finally { s.done(); }
+  const c = scenario({ 'rds-create-db-cluster-snapshot.json': '"creating"', 'rds-wait.json': '' });
+  try {
+    const r = c.run(snapshot, ['cluster', 'grimoire-staging-dbcluster-q1', 'grimoire-staging-before-x']);
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual(r.calls, ['rds create-db-cluster-snapshot', 'rds wait']);
+    assert.match(r.out, /snapshot grimoire-staging-before-x of cluster grimoire-staging-dbcluster-q1 is available/);
+  } finally { c.done(); }
+});
+
+test('snapshot: a bad kind, an empty id and a bad snapshot name are usage errors that call nothing', () => {
+  const s = scenario({});
+  try {
+    for (const args of [['database', 'id', 'snap'], ['instance', '', 'snap'], ['cluster', 'id', ''], ['cluster', 'id', '1bad'], ['cluster', 'id', 'a b']]) {
+      const r = s.run(snapshot, args);
+      assert.equal(r.code, 2, args.join(' '));
+      assert.deepEqual(r.calls, []);
+    }
+  } finally { s.done(); }
+});
+
 
 test('targets: the database and the cluster of the stage, by exact name, and the other stage\'s are left alone', () => {
   const s = scenario(GOOD());
   try {
     const r = s.run(targets, ['staging']);
     assert.equal(r.code, 0, r.err);
-    assert.equal(r.out, `instance=grimoire-staging-dbinstance-abc123\ncluster=${arn('grimoire-staging-ClusterCluster-kkr')}\n`);
-    assert.equal(s.run(targets, ['dev']).out.split('\n')[0], 'instance=grimoire-dev-dbinstance-zzz999');
+    assert.equal(r.out, `database=grimoire-staging-dbinstance-abc123\ndatabase_kind=instance\ncluster=${arn('grimoire-staging-ClusterCluster-kkr')}\n`);
+    assert.equal(s.run(targets, ['dev']).out.split('\n')[0], 'database=grimoire-dev-dbinstance-zzz999');
   } finally { s.done(); }
 });
 
@@ -67,9 +148,9 @@ test('targets: two databases of the stage (a retained one of a replaced stage) r
   try {
     const r = s.run(targets, ['staging']);
     assert.equal(r.code, 1);
-    assert.match(r.err, /expected one database of the stage staging, found: \["grimoire-staging-dbinstance-abc123","grimoire-staging-dbinstance-old456"\]/);
+    assert.match(r.err, /expected one database of the stage staging, found: \["instance:grimoire-staging-dbinstance-abc123","instance:grimoire-staging-dbinstance-old456"\]/);
     assert.equal(r.out, '');
-    assert.deepEqual(r.calls, ['rds describe-db-instances']);
+    assert.deepEqual(r.calls, ['rds describe-db-instances', 'rds describe-db-clusters']);
   } finally { s.done(); }
 });
 
@@ -84,7 +165,7 @@ test('targets: two clusters, or none, refuse; names that only contain or extend 
     assert.match(two.run(targets, ['staging']).err, /expected one cluster of the stage staging, found: \[/);
     const exact = lookalike.run(targets, ['staging']);
     assert.equal(exact.code, 0, exact.err);
-    assert.equal(exact.out, `instance=grimoire-staging-dbinstance-abc123\ncluster=${arn('grimoire-staging-ClusterCluster-a')}\n`, 'staging2, a-extra and xgrimoire are not the stage\'s, so they neither count nor get chosen');
+    assert.equal(exact.out, `database=grimoire-staging-dbinstance-abc123\ndatabase_kind=instance\ncluster=${arn('grimoire-staging-ClusterCluster-a')}\n`, 'staging2, a-extra and xgrimoire are not the stage\'s, so they neither count nor get chosen');
     const r = none.run(targets, ['staging']);
     assert.equal(r.code, 1);
     assert.match(r.err, /expected one cluster of the stage staging, found: \[\]/);

@@ -31,12 +31,13 @@ test('the whole value of an input is checked, not one line of it, and the variab
 });
 
 test('the database and the cluster come from one step that runs the tested script, and the snapshot and the task both take its outputs', () => {
-  assert.match(runs, /bash tools\/adopt\/targets\.sh "\$\{STAGE\}" \| tee -a "\$\{GITHUB_OUTPUT\}"/);
-  assert.match(workflow, /INSTANCE: \$\{\{ steps\.targets\.outputs\.instance \}\}/);
+  assert.match(runs, /bash tools\/adopt\/targets\.sh "\$\{STAGE\}" "\$\{DATABASE_KIND\}" \| tee -a "\$\{GITHUB_OUTPUT\}"/);
+  assert.match(workflow, /DATABASE: \$\{\{ steps\.targets\.outputs\.database \}\}/);
+  assert.match(workflow, /KIND: \$\{\{ steps\.targets\.outputs\.database_kind \}\}/);
   assert.match(workflow, /CLUSTER: \$\{\{ steps\.targets\.outputs\.cluster \}\}/);
   assert.doesNotMatch(runs, /describe-db-instances|list-clusters|starts_with|contains\(@/, 'no lookup of its own by a prefix');
-  assert.ok(workflow.indexOf('id: targets') < workflow.indexOf('create-db-snapshot'));
-  assert.ok(workflow.indexOf('create-db-snapshot') < workflow.indexOf('ecs run-task'));
+  assert.ok(workflow.indexOf('id: targets') < workflow.indexOf('tools/adopt/snapshot.sh'));
+  assert.ok(workflow.indexOf('tools/adopt/snapshot.sh') < workflow.indexOf('ecs run-task'));
   assert.match(runs, /bash tools\/adopt\/wait-task\.sh/);
   assert.doesNotMatch(runs, /ecs wait/);
   assert.ok(workflow.indexOf('actions/checkout@') < workflow.indexOf('configure-aws-credentials'), 'the scripts are in the job');
@@ -44,7 +45,7 @@ test('the database and the cluster come from one step that runs the tested scrip
 
 test('no input is written into a script: every one goes through an environment variable', () => {
   assert.doesNotMatch(runs, /\$\{\{/, 'a run block holds an expression');
-  for (const name of ['TO', 'NAME', 'DOMAIN', 'STAGE', 'CONFIRM']) assert.match(workflow, new RegExp(`${name}: \\$\\{\\{ inputs\\.`), name);
+  for (const name of ['TO', 'NAME', 'DOMAIN', 'STAGE', 'CONFIRM', 'DATABASE_KIND']) assert.match(workflow, new RegExp(`${name}: \\$\\{\\{ inputs\\.`), name);
 });
 
 test('the command is the one of the migration step\'s container, from legacy, and the app container of the task exits at once', () => {
@@ -55,9 +56,9 @@ test('the command is the one of the migration step\'s container, from legacy, an
 });
 
 test('a snapshot of the database is taken and waited for before the command runs', () => {
-  assert.match(runs, /create-db-snapshot/);
-  assert.match(runs, /wait db-snapshot-available/);
-  assert.ok(workflow.indexOf('create-db-snapshot') < workflow.indexOf('ecs run-task'), 'the snapshot comes first');
+  assert.match(runs, /bash tools\/adopt\/snapshot\.sh "\$\{KIND\}" "\$\{DATABASE\}"/);
+  assert.doesNotMatch(runs, /create-db-snapshot|create-db-cluster-snapshot|wait db-/, 'the calls are in the tested script, one for each kind of database');
+  assert.ok(workflow.indexOf('tools/adopt/snapshot.sh') < workflow.indexOf('ecs run-task'), 'the snapshot comes first');
 });
 
 test('it shares the concurrency group of the deploys, so one stage is never deployed and adopted together', () => {
