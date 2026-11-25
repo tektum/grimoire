@@ -63,6 +63,15 @@ describe('classification', () => {
     }
     expect((await run(entries('a.md', 'inner.zip'))).result.ok).toBe(true); // pages beside a nested zip: an ordinary import
   });
+
+  it('a zip that pass one sets apart (macOS litter, a bad name) is no export in parts: the archive is imported, with those rows as they were', async () => {
+    const litter = await run(entries('__MACOSX/._Export-p-Part-1.zip', 'notes.txt'));
+    expect(litter.result.ok).toBe(true);
+    expect(litter.byPath('__MACOSX/._Export-p-Part-1.zip')).toMatchObject({ status: 'skipped', message: 'ignored' });
+    const badName = await run([entry('Export\u0007p.zip', { index: 0 }), entry('notes.txt', { index: 1 })]);
+    expect(badName.result.ok).toBe(true);
+    expect(badName.items.some((i) => i.message === 'bad_name')).toBe(true);
+  });
 });
 
 describe('pages get their ids now, and a folder with no page of its own gets an empty container page', () => {

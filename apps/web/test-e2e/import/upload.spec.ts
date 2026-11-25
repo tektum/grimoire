@@ -61,7 +61,7 @@ test('a zip over the limit is refused with a message, and the screen is ready fo
   await open(page, context, [], { createStatus: 413 });
   await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
   await page.getByRole('button', { name: 'Import' }).click();
-  await expect(page.getByRole('alert')).toHaveText('That file is larger than an import may be.');
+  await expect(page.getByRole('alert')).toHaveText('That file is larger than an import can take. Zip the export again without its big files, such as videos, and import that.');
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
 });
 

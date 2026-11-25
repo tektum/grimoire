@@ -86,7 +86,9 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     if (kind === 'page') pagePaths.push(e.path);
   });
 
-  if (pagePaths.length === 0 && entries.some((e) => !e.isDirectory && /\.zip$/i.test(e.path))) return { ok: false, reason: 'nested_or_split_export', pagesTotal: 0 };
+  // What pass one kept, not the raw entries: a zip it set apart (macOS litter, a bad name, a duplicate) says nothing about the archive.
+  const nestedZips = rows.some((r) => r.message === 'nested_archive' || (r.status === undefined && r.kind === 'attachment' && /\.zip$/i.test(r.path)));
+  if (pagePaths.length === 0 && nestedZips) return { ok: false, reason: 'nested_or_split_export', pagesTotal: 0 };
 
   // The folders that have a page of their own, and the folders above pages that have none: those get a container. Folders are the same folder by the key duplicate detection uses (NFC,
   // lower case, `.` and empty segments dropped), so `Dir` and `dir` are one; a container keeps the spelling it was first seen under.
