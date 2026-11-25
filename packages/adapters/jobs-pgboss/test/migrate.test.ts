@@ -191,6 +191,34 @@ describe('migratePgBoss, a queue made with another policy', () => {
   });
 });
 
+describe('migratePgBoss, runs of a schedule that no longer exists', () => {
+  it('deletes the waiting scheduled run (created or retry, its own key) of each queue named, after the queues are made and before the grants, and leaves running ones to finish', async () => {
+    const calls: { text: string; params: readonly unknown[] }[] = [];
+    const db: Database = {
+      query: async <Row>(text: string, params: readonly unknown[] = []) => {
+        calls.push({ text: text.replace(/\s+/g, ' ').trim(), params });
+        if (text.includes('current_user')) return [{ me: 'm', can_create: false, owns: true }] as Row[];
+        return [] as Row[];
+      },
+      transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn(db), ping: async () => {}, close: async () => {},
+    };
+    const b = { start: vi.fn(async () => b), stop: vi.fn(async () => {}), on: vi.fn(() => b), getQueue: vi.fn(async () => null), createQueue: vi.fn(async () => {}) };
+    await migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, dropScheduledRuns: ['import-sweep', 'other'] });
+    const dropped = calls.filter((c) => c.text.startsWith('delete from pgboss.job'));
+    expect(dropped.map((c) => c.params)).toEqual([['import-sweep', 'sched:import-sweep'], ['other', 'sched:other']]);
+    expect(dropped[0]?.text).toContain("state in ('created', 'retry')");
+    expect(calls.findIndex((c) => c.text.startsWith('delete from pgboss.job'))).toBeLessThan(calls.findIndex((c) => c.text.startsWith('grant')));
+  });
+
+  it('deletes nothing when none is named', async () => {
+    const seen: string[] = [];
+    const db: Database = { query: async <Row>(text: string) => { seen.push(text); return (text.includes('current_user') ? [{ me: 'm', can_create: false, owns: true }] : []) as Row[]; }, transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn(db), ping: async () => {}, close: async () => {} };
+    const b = { start: vi.fn(async () => b), stop: vi.fn(async () => {}), on: vi.fn(() => b), getQueue: vi.fn(async () => null), createQueue: vi.fn(async () => {}) };
+    await migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never });
+    expect(seen.some((t) => t.includes('delete from pgboss.job'))).toBe(false);
+  });
+});
+
 describe('requireSchemaAccess', () => {
   it('passes when the migration role owns the schema', async () => {
     await requireSchemaAccess(recorder([], { owns: true }).db);

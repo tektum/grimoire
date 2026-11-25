@@ -87,3 +87,20 @@ describe('a queue found with another policy', () => {
     }
   }, 90_000);
 });
+
+describe('runs of a schedule that no longer exists', () => {
+  it('a waiting scheduled run is deleted by the migration, a running one and a run of another key are not', async () => {
+    await migrate([def('r-old', 'stately')]);
+    const queue = await startQueue(databaseUrl(DB));
+    try {
+      await queue.enqueue('r-old', {}, { singletonKey: 'sched:r-old', delaySeconds: 3600 }); // the chain's waiting run
+      await queue.enqueue('r-old', { other: true }, { delaySeconds: 3600 }); // someone else's job on the queue
+      await migratePgBoss({ connectionString: databaseUrl(DB), database, runtimeRole: 'grimoire_app', queues: [def('r-old', 'stately')], dropScheduledRuns: ['r-old'] });
+      const left = await rows<{ singleton_key: string | null }>(`select singleton_key from pgboss.job where name = 'r-old'`);
+      expect(left).toEqual([{ singleton_key: null }]);
+    } finally {
+      await queue.stop({ graceMs: 0 });
+    }
+  }, 90_000);
+});
+
