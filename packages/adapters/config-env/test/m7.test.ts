@@ -48,6 +48,15 @@ describe('the refusals name the variable', () => {
     expect(issuesOf({ GRIMOIRE_FILES_MAX_BYTES: '1000', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1000' })).toEqual([]);
   });
 
+  it('a malformed operand is reported by its own variable alone, and does not make the other one wrong', () => {
+    const bad = issuesOf({ GRIMOIRE_FILES_MAX_BYTES: 'abc', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1000' });
+    expect(bad.some((i) => i.includes('GRIMOIRE_FILES_MAX_BYTES'))).toBe(true);
+    expect(bad.some((i) => i.includes('GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'))).toBe(false);
+    const other = issuesOf({ GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: 'abc' }).filter((i) => i.includes('GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'));
+    expect(other).toHaveLength(1);
+    expect(other[0]).not.toMatch(/larger than/);
+  });
+
   it('with no remote limit set, a small upload limit lowers it instead of refusing the start', () => {
     expect(load({ GRIMOIRE_FILES_MAX_BYTES: '1000' }).import.remote.maxBytes).toBe(1000);
     expect(load().import.remote.maxBytes).toBe(20_971_520);

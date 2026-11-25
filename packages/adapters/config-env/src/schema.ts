@@ -350,10 +350,11 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       error: () => `is required when ${P}WEB_ROOT is set (the content security policy names the file store)`,
     })
     // A remote image is no larger than an upload (contracts section 6).
-    .refine(() => raw['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'] === undefined || Number(raw['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES']) <= Number(raw['GRIMOIRE_FILES_MAX_BYTES'] ?? 26_214_400), {
-      path: ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'], when: always,
-      error: () => `must not be larger than ${P}FILES_MAX_BYTES`,
-    })
+    .refine((v) => {
+      const r: unknown = v.GRIMOIRE_IMPORT_REMOTE_MAX_BYTES;
+      const f: unknown = v.GRIMOIRE_FILES_MAX_BYTES;
+      return !valid(r, 1, MAX_INT) || !valid(f, 1, MAX_INT) || r <= f;
+    }, { path: ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'], when: always, error: () => `must not be larger than ${P}FILES_MAX_BYTES` })
     // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
     .refine(() => !(server && (set('GRIMOIRE_DATABASE_ADMIN_URL') || set('GRIMOIRE_DB_APP_PASSWORD') || set('GRIMOIRE_DB_MIGRATOR_PASSWORD'))), {
       path: [set('GRIMOIRE_DATABASE_ADMIN_URL') ? 'GRIMOIRE_DATABASE_ADMIN_URL' : set('GRIMOIRE_DB_APP_PASSWORD') ? 'GRIMOIRE_DB_APP_PASSWORD' : 'GRIMOIRE_DB_MIGRATOR_PASSWORD'], when: always,
