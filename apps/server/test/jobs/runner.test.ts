@@ -3,7 +3,7 @@ import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
-import { createJobRunner } from '../../src/jobs/runner.js';
+import { createJobRunner, MAX_START_ATTEMPTS, START_RETRY_MS } from '../../src/jobs/runner.js';
 
 class RecordingQueue implements JobQueue {
   readonly worked: string[] = [];
@@ -13,7 +13,8 @@ class RecordingQueue implements JobQueue {
   ensureQueue(): Promise<void> { return Promise.resolve(); }
   enqueue(): Promise<string | null> { return Promise.resolve('id'); }
   isLive(): Promise<boolean> { return Promise.resolve(false); }
-  work(name: string): Promise<void> { this.worked.push(name); return Promise.resolve(); }
+  failWork = false;
+  work(name: string): Promise<void> { if (this.failWork) return Promise.reject(new Error('no queue')); this.worked.push(name); return Promise.resolve(); }
   schedule(name: string): Promise<void> { this.scheduled.push(name); return Promise.resolve(); }
   stop(o: { graceMs: number }): Promise<{ inFlight: number }> { this.stopped.push(o); return Promise.resolve({ inFlight: this.inFlight }); }
 }
@@ -84,5 +85,47 @@ describe('the job runner', () => {
     await runner.hook.run();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(attempts).toBe(1);
+  });
+
+  it('stops a queue that started but could not register its handlers (with no grace), before it tries again, so no attempt leaves a queue behind', async () => {
+    vi.useFakeTimers();
+    const made: RecordingQueue[] = [];
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => { const q = new RecordingQueue(); q.failWork = made.length === 0; made.push(q); return Promise.resolve(q); } });
+    await runner.start();
+    expect(made).toHaveLength(1);
+    expect(made[0]?.stopped).toEqual([{ graceMs: 0 }]);
+    await vi.advanceTimersByTimeAsync(START_RETRY_MS);
+    expect(made).toHaveLength(2);
+    expect(made[1]?.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
+    expect(made[1]?.stopped).toEqual([]);
+    await runner.hook.run();
+    expect(made[1]?.stopped).toEqual([{ graceMs: 15_000 }]);
+  });
+
+  it('a stop that comes while the queue is still starting waits for it, registers no handler, and stops that queue', async () => {
+    const queue = new RecordingQueue();
+    let release: (q: RecordingQueue) => void = () => undefined;
+    const pending = new Promise<RecordingQueue>((resolve) => { release = resolve; });
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(new FakeLogger()), make: () => pending });
+    const starting = runner.start();
+    let hookDone = false;
+    const stopping = runner.hook.run().then(() => { hookDone = true; });
+    await Promise.resolve();
+    expect(hookDone).toBe(false); // the hook is still waiting for the start to settle
+    release(queue);
+    await Promise.all([starting, stopping]);
+    expect(queue.worked).toEqual([]);
+    expect(queue.stopped).toHaveLength(1);
+  });
+
+  it('gives up after a limited number of failed starts, and says so', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const logger = new FakeLogger();
+    const runner = createJobRunner({ config: makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' } }), log: createEventLog(logger), make: () => { attempts++; return Promise.reject(new Error('no schema')); } });
+    await runner.start();
+    await vi.advanceTimersByTimeAsync(START_RETRY_MS * (MAX_START_ATTEMPTS + 5));
+    expect(attempts).toBe(MAX_START_ATTEMPTS);
+    expect(logger.entries.filter((e) => e.event === 'jobs.failed').map((e) => e.fields['name']).at(-1)).toBe('queue-start-gave-up');
   });
 });
