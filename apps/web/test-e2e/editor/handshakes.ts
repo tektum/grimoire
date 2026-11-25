@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export interface Handshake {
   t: string;
@@ -17,4 +17,71 @@ export function recordHandshakes(page: Page): Handshake[] {
     });
   });
   return seen;
+}
+
+/** What a recorder saw, and a wait that says why it ended without what was asked. */
+export interface HandshakeTrace {
+  readonly handshakes: Handshake[];
+  /** The address of each websocket the page opened, without its query (a token may be in it). */
+  readonly sockets: string[];
+  /** How many frames the page sent over all of them. */
+  frames: number;
+  /** The errors the page wrote to its console, and the ones it did not catch. */
+  readonly errors: string[];
+  /** Resolves when `count` handshakes have been seen; rejects at `timeoutMs` with what the page did: no socket at all, or sockets that sent no token. */
+  waitFor(count: number, timeoutMs: number): Promise<void>;
+}
+
+const withoutQuery = (url: string): string => url.split('?')[0] ?? url;
+/** A line of the page's console or an uncaught error, cut short, with every query string and every handshake token taken out: these lines go to the log of a CI run. */
+const redacted = (text: string): string =>
+  text
+    .replace(/\?[^\s"'<>)]*/g, '?<query removed>')
+    .replace(/g1\.[A-Za-z0-9_-]+/g, 'g1.<token removed>')
+    .slice(0, 200);
+
+/** `recordHandshakes` with the context of a failure: sockets opened and closed, frames sent, console errors. */
+export function traceHandshakes(page: Page): HandshakeTrace {
+  const handshakes: Handshake[] = [];
+  const sockets: string[] = [];
+  const closed = new Set<number>();
+  const errors: string[] = [];
+  const trace: HandshakeTrace = {
+    handshakes,
+    sockets,
+    frames: 0,
+    errors,
+    async waitFor(count, timeoutMs) {
+      // Playwright's own poll (the wait of the browser specifications; the server harness's `eventually` is not a dependency of this package); its timeout is replaced by the account of what the page did.
+      try {
+        await expect.poll(() => handshakes.length, { timeout: timeoutMs }).toBeGreaterThanOrEqual(count);
+      } catch {
+        throw new Error(describe(count));
+      }
+    },
+  };
+  const describe = (wanted: number): string => {
+    const opened =
+      sockets.length === 0
+        ? 'no websocket was opened by the page'
+        : `${String(sockets.length)} websocket${sockets.length === 1 ? ' was' : 's were'} opened (${sockets.map((s, n) => `${s}${closed.has(n) ? ' [closed]' : ''}`).join(', ')}) and ${String(trace.frames)} frame${trace.frames === 1 ? '' : 's'} sent`;
+    // "none with a token" only when none was seen: after a first handshake the wait for a second says how many of those wanted there were.
+    const tokens = sockets.length === 0 ? '' : handshakes.length === 0 ? ', none with a handshake token' : `; ${String(handshakes.length)} of ${String(wanted)} handshakes were seen`;
+    return `expected ${String(wanted)} handshake${wanted === 1 ? '' : 's'}: ${opened}${tokens}${errors.length === 0 ? '; the page wrote no console error' : `; console: ${errors.slice(0, 5).join(' | ')}`}`;
+  };
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(redacted(message.text()));
+  });
+  page.on('pageerror', (error) => errors.push(redacted(error.message)));
+  page.on('websocket', (socket) => {
+    const index = sockets.push(withoutQuery(socket.url())) - 1;
+    socket.on('close', () => closed.add(index));
+    socket.on('framesent', (frame) => {
+      trace.frames += 1;
+      const text = typeof frame.payload === 'string' ? frame.payload : Buffer.from(frame.payload).toString('latin1');
+      const match = /g1\.([A-Za-z0-9_-]+)/.exec(text);
+      if (match?.[1] !== undefined) handshakes.push(JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8')) as Handshake);
+    });
+  });
+  return trace;
 }

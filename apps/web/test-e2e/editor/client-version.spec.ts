@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { CLIENT_VERSION } from '../../src/version';
 import { scriptedCollabServer } from '../support/collab-server';
 import { signInAs } from '../support/sign-in';
-import { recordHandshakes } from './handshakes';
+import { traceHandshakes } from './handshakes';
 import { SCRIPTED_PAGE_ID, scriptedApi, useScriptedApi } from './scripted';
 
 test.describe('the client version in the handshake', () => {
@@ -13,12 +13,13 @@ test.describe('the client version in the handshake', () => {
     try {
       await signInAs(context, 'e2e-version', 'member', { check: false });
       const page = await context.newPage();
-      const handshakes = recordHandshakes(page);
+      const trace = traceHandshakes(page);
+      const handshakes = trace.handshakes;
       await useScriptedApi(page, api);
       await page.goto('/p/scripted-abc123');
-      await expect.poll(() => handshakes.length, { timeout: 15_000 }).toBe(1);
+      await trace.waitFor(1, 15_000); // as long as before; a failure says whether the page opened no socket or a socket without a token, and what its console said
       collab.closeAll(1001, 'going away');
-      await expect.poll(() => handshakes.length, { timeout: 30_000, message: 'the automatic reconnect' }).toBeGreaterThanOrEqual(2);
+      await trace.waitFor(2, 30_000); // the automatic reconnect, as long as before
       for (const handshake of handshakes) expect(handshake.v).toBe(CLIENT_VERSION);
       expect(collab.documents.every((name) => name === SCRIPTED_PAGE_ID)).toBe(true);
     } finally {
