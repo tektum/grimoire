@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { DevRole } from '../../test/support/dev-token';
+import { closeContexts } from './close-contexts';
 import { type SignedInUser, signInAs } from './sign-in';
 
 export interface Participant extends SignedInUser {
@@ -35,5 +36,5 @@ export async function twoUsers(browser: Browser, baseURL: string | undefined, us
     await first.context.close();
     throw error;
   }
-  return { a: first, b: second, close: async () => void (await Promise.all([first.context.close(), second.context.close()])) };
+  return { a: first, b: second, close: () => closeContexts([first.context, second.context]) };
 }
