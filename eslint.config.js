@@ -68,7 +68,7 @@ const dynamicImportRules = dynamicRulesFor(forbiddenSourceRegex, importMessage);
 const serverOnlyRegex = `^(?:${serverOnlyModules.map(escapeRegex).join("|")})(?:$|[^\\w-])`;
 const appsRegex = "^@tektum\\/grimoire-(?:server|web)(?:$|\\/)";
 const allAdaptersRegex = "^@tektum\\/grimoire-adapter-";
-const adapterNames = ["auth-descope", "auth-dev", "auth-fake", "collab-hocuspocus", "config-env", "db-kysely", "logger-json", "markdown-milkdown", "jobs-pgboss", "files-s3"];
+const adapterNames = ["auth-descope", "auth-dev", "auth-fake", "collab-hocuspocus", "config-env", "db-kysely", "logger-json", "markdown-milkdown", "jobs-pgboss", "files-s3", "embedder-onnx"];
 
 // Packages whose imports are restricted the same way: no adapters, no apps, no server-only libraries.
 const noAdaptersNoServerOnly = (message) => ({

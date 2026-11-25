@@ -182,6 +182,13 @@
         "@types/pg": "8.23.1",
       },
     },
+    "packages/adapters/embedder-onnx": {
+      "name": "@tektum/grimoire-adapter-embedder-onnx",
+      "version": "0.0.0",
+      "dependencies": {
+        "@tektum/grimoire-core": "*",
+      },
+    },
     "packages/adapters/files-s3": {
       "name": "@tektum/grimoire-adapter-files-s3",
       "version": "0.0.0",
@@ -693,6 +700,8 @@
     "@tektum/grimoire-adapter-config-env": ["@tektum/grimoire-adapter-config-env@workspace:packages/adapters/config-env"],
 
     "@tektum/grimoire-adapter-db-kysely": ["@tektum/grimoire-adapter-db-kysely@workspace:packages/adapters/db-kysely"],
+
+    "@tektum/grimoire-adapter-embedder-onnx": ["@tektum/grimoire-adapter-embedder-onnx@workspace:packages/adapters/embedder-onnx"],
 
     "@tektum/grimoire-adapter-files-s3": ["@tektum/grimoire-adapter-files-s3@workspace:packages/adapters/files-s3"],
 
