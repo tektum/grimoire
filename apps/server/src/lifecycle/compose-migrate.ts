@@ -6,6 +6,6 @@ export function composeMigrate(options: MigrateOptions = {}): CommandComposition
   const result = composeDatabase(options);
   return { ...result, migrate: (dir) => {
     if (!result.ok) return Promise.reject(new Error('migration configuration refused'));
-    return migrateAdapter(result.ctx.db, dir, result.ctx.config.database.migrationUrl ?? '');
+    return migrateAdapter(result.ctx.db, dir, result.ctx.config.database.migrationUrl ?? '', undefined, (e) => { result.ctx.log.warn('jobs.queue_recreated', e); });
   } };
 }

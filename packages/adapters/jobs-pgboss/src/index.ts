@@ -22,7 +22,11 @@ function asDatabase(tx: Queryable): PgBossDatabase {
 /** Creates the queue unless it exists; an existing one is left as it is. */
 export async function ensureQueueOn(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, definition: QueueDefinition): Promise<void> {
   if (await boss.getQueue(definition.name)) return;
-  await boss.createQueue(definition.name, {
+  await boss.createQueue(definition.name, queueOptions(definition));
+}
+
+export function queueOptions(definition: QueueDefinition) {
+  return {
     policy: definition.policy,
     retryLimit: definition.retryLimit,
     retryDelay: definition.retryDelaySeconds,
@@ -30,7 +34,7 @@ export async function ensureQueueOn(boss: Pick<PgBoss, 'getQueue' | 'createQueue
     expireInSeconds: definition.expireInSeconds,
     retentionSeconds: definition.retentionSeconds,
     ...(definition.deadLetter === undefined ? {} : { deadLetter: definition.deadLetter }),
-  });
+  };
 }
 
 export class PgBossJobQueue implements JobQueue {

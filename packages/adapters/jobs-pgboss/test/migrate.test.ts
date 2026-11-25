@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import { grantRuntimeRole, migratePgBoss, requireSchemaAccess } from '../src/migrate.js';
 
 const functions = ['create_queue', 'delete_queue', 'job_table_run', 'job_now'];
@@ -14,7 +14,7 @@ function recorder(tables: string[], access: { owns: boolean | null; can_create?:
       return (text.includes('pg_class') ? tables.map((name) => ({ name })) : []) as Row[];
     },
   };
-  return { db, sql };
+  return { db: { ...db, transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn(db), ping: async () => {}, close: async () => {} } satisfies Database, sql };
 }
 
 describe('grantRuntimeRole', () => {
@@ -92,7 +92,7 @@ describe('migratePgBoss', () => {
     const order: string[] = [];
     b.start.mockImplementation((async () => { order.push('start'); return b; }) as never);
     b.createQueue.mockImplementation((async (name: string) => { order.push(`create ${name}`); }) as never);
-    b.getQueue.mockImplementation((async (name: string) => (name === 'old' ? {} : null)) as never);
+    b.getQueue.mockImplementation((async (name: string) => (name === 'old' ? { policy: 'standard' } : null)) as never);
     const { db, sql } = recorder(['job']);
     const q = (name: string) => ({ name, policy: 'standard', retryLimit: 1, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 60 }) as const;
     await migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues: [q('first'), q('old'), q('second')] });
@@ -122,6 +122,72 @@ describe('migratePgBoss', () => {
   it('builds a real PgBoss by default', async () => {
     const { db } = recorder([]);
     await expect(migratePgBoss({ connectionString: 'postgresql://127.0.0.1:1/none', database: db, runtimeRole: 'grimoire_app' })).rejects.toThrow();
+  });
+});
+
+describe('migratePgBoss, a queue made with another policy', () => {
+  const def = (name: string, policy: 'stately' | 'singleton') => ({ name, policy, retryLimit: 1, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds: 60, retentionSeconds: 60 }) as const;
+  function run(existing: Record<string, string>, jobs: Record<string, number>) {
+    const calls: string[] = [];
+    const b = {
+      start: vi.fn(async () => b), stop: vi.fn(async () => {}), on: vi.fn(() => b),
+      getQueue: vi.fn(async (name: string) => (name in existing ? { policy: existing[name] } : null)),
+      createQueue: vi.fn(async (name: string) => { calls.push(`create ${name}`); }),
+    };
+    const base = recorder(['job']).db;
+    const db: Database = {
+      ...base,
+      query: async <Row>(text: string, params: readonly unknown[] = []) => {
+        if (text.startsWith('select pgboss.delete_queue(')) { calls.push(`delete ${String(params[0])}`); return [] as Row[]; }
+        if (text.includes('pgboss.job') && text.includes('for update')) return Object.entries(jobs).flatMap(([state, count]) => Array.from({ length: count }, () => ({ state }))) as Row[];
+        return base.query<Row>(text, params);
+      },
+      transaction: <T,>(fn: (tx: Queryable) => Promise<T>) => fn({ query: (t, p) => db.query(t, p) }),
+    };
+    const dropped: unknown[] = [];
+    const go = (queues: ReturnType<typeof def>[]) => migratePgBoss({ connectionString: 'postgresql://example/db', database: db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues, onQueueRecreated: (e) => dropped.push(e) });
+    return { b, calls, dropped, go };
+  }
+
+  it('recreates it when it holds only created and retry jobs (and finished ones), and says what it dropped', async () => {
+    const { calls, dropped, go } = run({ purge: 'singleton' }, { created: 1, retry: 2, completed: 5 });
+    await go([def('purge', 'stately')]);
+    expect(calls).toEqual(['delete purge', 'create purge']);
+    expect(dropped).toEqual([{ queue: 'purge', from: 'singleton', to: 'stately', pending: 3, finished: 5 }]);
+  });
+
+  it('refuses, naming the queue, when a job is active, and changes nothing', async () => {
+    const { calls, dropped, go, b } = run({ purge: 'singleton' }, { created: 1, active: 1 });
+    await expect(go([def('purge', 'stately')])).rejects.toThrow(/purge.*active/);
+    expect(calls).toEqual([]);
+    expect(dropped).toEqual([]);
+    expect(b.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads a queue that reports no policy as standard, the library default', async () => {
+    const { b, calls, dropped, go } = run({}, {});
+    b.getQueue.mockResolvedValue({} as never);
+    await go([def('purge', 'stately')]);
+    expect(calls).toEqual(['delete purge', 'create purge']);
+    expect(dropped).toMatchObject([{ from: 'standard' }]);
+  });
+
+  it('when the new queue cannot be created, reports what the deletion dropped and fails saying to run the migration again', async () => {
+    const { b, dropped, go } = run({ purge: 'singleton' }, { created: 2, completed: 1 });
+    b.createQueue.mockRejectedValueOnce(new Error('no rights'));
+    await expect(go([def('purge', 'stately')])).rejects.toThrow(/purge was deleted \(2 waiting and 1 finished jobs\).*run the migration again/);
+    expect(dropped).toEqual([{ queue: 'purge', from: 'singleton', to: 'stately', pending: 2, finished: 1 }]);
+    expect(b.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a queue of the wanted policy alone, and recreates an empty one without reporting a loss', async () => {
+    const same = run({ purge: 'stately' }, { created: 4 });
+    await same.go([def('purge', 'stately')]);
+    expect(same.calls).toEqual([]);
+    const empty = run({ purge: 'singleton' }, {});
+    await empty.go([def('purge', 'stately')]);
+    expect(empty.calls).toEqual(['delete purge', 'create purge']);
+    expect(empty.dropped).toEqual([{ queue: 'purge', from: 'singleton', to: 'stately', pending: 0, finished: 0 }]);
   });
 });
 

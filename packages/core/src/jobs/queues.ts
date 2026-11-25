@@ -5,17 +5,17 @@ const withDeadLetter = { ...common, deadLetter: 'dead-letter' } as const;
 
 /**
  * Every queue the application uses, the dead-letter queue first (a queue can only name one that exists). `grimoire migrate`
- * creates them; times are seconds. `importExpireSeconds` is the expiry of one import chunk (`GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS`).
+ * creates them; times are seconds. The scheduled queues are `stately`: one waiting run per `singletonKey` (the scheduler's `sched:<name>`) and one running, so replicas that send the next run at start collapse into one. `importExpireSeconds` is the expiry of one import chunk (`GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS`).
  */
 export function jobQueues(importExpireSeconds = 900): readonly QueueDefinition[] {
   return [
     { ...common, name: 'dead-letter', policy: 'standard', expireInSeconds: 600 },
     { ...withDeadLetter, name: 'import', policy: 'stately', expireInSeconds: importExpireSeconds },
-    { ...withDeadLetter, name: 'import-sweep', policy: 'singleton', expireInSeconds: 300 },
+    { ...withDeadLetter, name: 'import-sweep', policy: 'stately', expireInSeconds: 300 },
     { ...withDeadLetter, name: 'import-cleanup', policy: 'stately', expireInSeconds: 600 },
-    { ...withDeadLetter, name: 'purge', policy: 'singleton', expireInSeconds: 3600 },
-    { ...withDeadLetter, name: 'upload-cleanup', policy: 'singleton', expireInSeconds: 600 },
-    { ...withDeadLetter, name: 'revision-catchup', policy: 'singleton', expireInSeconds: 1800 },
-    { ...withDeadLetter, name: 'markdown-sweep', policy: 'singleton', expireInSeconds: 300 },
+    { ...withDeadLetter, name: 'purge', policy: 'stately', expireInSeconds: 3600 },
+    { ...withDeadLetter, name: 'upload-cleanup', policy: 'stately', expireInSeconds: 600 },
+    { ...withDeadLetter, name: 'revision-catchup', policy: 'stately', expireInSeconds: 1800 },
+    { ...withDeadLetter, name: 'markdown-sweep', policy: 'stately', expireInSeconds: 300 },
   ];
 }

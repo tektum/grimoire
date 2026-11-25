@@ -1,7 +1,7 @@
 import { PgBoss, type ConstructorOptions } from 'pg-boss';
-import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
-import { PGBOSS_SCHEMA, ensureQueueOn } from './index.js';
+import { PGBOSS_SCHEMA, queueOptions } from './index.js';
 
 /**
  * What the runtime role may do on a pg-boss table: read and write, except `version`, a single-row table whose timestamp
@@ -31,13 +31,43 @@ export interface MigrateOptions {
   /** Connection string of the migration role (it creates and changes the pgboss schema). */
   readonly connectionString: string;
   /** The migration role's database, used for the grants. */
-  readonly database: Queryable;
+  readonly database: Pick<Database, 'query' | 'transaction'>;
   /** The role the server runs as. */
   readonly runtimeRole: string;
   /** Queues to create (in this order) after the migration and before the grants, so the runtime role gets their partitions. */
   readonly queues?: readonly QueueDefinition[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
   readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
+  /** Called for each queue that was recreated because it had another policy: pg-boss cannot change a policy, and the scheduled queues keep no state worth keeping (they are sent again at start). */
+  readonly onQueueRecreated?: (e: { readonly queue: string; readonly from: string; readonly to: string; readonly pending: number; readonly finished: number }) => void;
+}
+
+/**
+ * A queue found with another policy than the definition's is deleted and created again, unless a job of it is running: then it is left and the migration stops
+ * with the queue's name. Created and retry jobs go with it (the scheduler sends the next run at start), as do finished ones; the counts are reported.
+ * The check and the deletion are one transaction that holds the queue's job rows, which servers still running skip (they fetch with `skip locked`), so none can claim a job in between.
+ */
+async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, db: MigrateOptions['database'], definition: QueueDefinition, options: MigrateOptions): Promise<void> {
+  const existing = await boss.getQueue(definition.name);
+  if (existing === null) return boss.createQueue(definition.name, queueOptions(definition));
+  const from = existing.policy ?? 'standard';
+  if (from === definition.policy) return;
+  const states = await db.transaction(async (tx) => {
+    const rows = await tx.query<{ state: string }>(`select state::text as state from ${PGBOSS_SCHEMA}.job where name = $1 for update`, [definition.name]);
+    if (rows.some((r) => r.state === 'active')) throw new Error(`queue ${definition.name} has policy ${from}, the definition says ${definition.policy}, and a job of it is active: stop the running servers, then run the migration again`);
+    await tx.query(`select ${PGBOSS_SCHEMA}.delete_queue($1)`, [definition.name]);
+    return rows.map((r) => r.state);
+  });
+  const count = (...wanted: string[]): number => states.filter((s) => wanted.includes(s)).length;
+  const dropped = { queue: definition.name, from, to: definition.policy, pending: count('created', 'retry'), finished: count('completed', 'cancelled', 'failed') };
+  try {
+    await boss.createQueue(definition.name, queueOptions(definition));
+  } catch (error) {
+    // The deletion is committed: say what was lost and that the next run of the migration makes the queue again (a missing queue is created like a new one).
+    options.onQueueRecreated?.(dropped);
+    throw new Error(`queue ${definition.name} was deleted (${String(dropped.pending)} waiting and ${String(dropped.finished)} finished jobs) and could not be created again: run the migration again`, { cause: error });
+  }
+  options.onQueueRecreated?.(dropped);
 }
 
 /**
@@ -54,7 +84,7 @@ export async function migratePgBoss(options: MigrateOptions): Promise<readonly s
   boss.on('error', (e: Error) => { failure = e; });
   await boss.start();
   try {
-    for (const queue of options.queues ?? []) await ensureQueueOn(boss, queue);
+    for (const queue of options.queues ?? []) await reconcileQueue(boss, options.database, queue, options);
   } finally {
     await boss.stop({ graceful: true, close: true, timeout: 2000 });
   }
