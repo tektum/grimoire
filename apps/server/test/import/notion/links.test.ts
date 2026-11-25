@@ -37,7 +37,7 @@ describe('images and files', () => {
     const media = [...files.keys()].find((p) => p.endsWith('/picture.png')) as string;
     const from = [...files.keys()].find((p) => p.includes('/Media ') && p.endsWith('.md')) as string;
     expect(resolveNotionLink(encodeURI(media.slice(from.lastIndexOf('/') + 1)), from, index)).toMatchObject({ kind: 'attachment', itemId: idOf(media) });
-    expect(resolveNotionLink('../Assets/other.png', media, index)).toMatchObject({ kind: 'attachment', itemId: idOf('Assets/other.png') });
+    expect(resolveNotionLink('../Assets/other.png', from, index)).toMatchObject({ kind: 'attachment', itemId: idOf('Assets/other.png') });
   });
 });
 
