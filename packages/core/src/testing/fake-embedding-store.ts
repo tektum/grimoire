@@ -57,6 +57,16 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     return Promise.resolve(new Map(rows.map((c) => [c.chunkIndex, c.contentHash])));
   }
 
+  saveChunks(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly (ChunkRow & { readonly embedding: Float32Array })[]): Promise<'ok' | 'stale'> {
+    const page = this.page(tenantId, pageId);
+    if (page === undefined || page.markdownHash === null || !same(page.markdownHash, markdownHash)) return Promise.resolve('stale');
+    const before = this.chunks.get(pageId);
+    const rows = new Map((before?.model === model ? before.rows : []).map((c) => [c.chunkIndex, c]));
+    for (const c of chunks) rows.set(c.chunkIndex, c);
+    this.chunks.set(pageId, { model, rows: [...rows.values()].sort((a, b) => a.chunkIndex - b.chunkIndex) });
+    return Promise.resolve('ok');
+  }
+
   // async so that a throw is a rejection, as the real store's is
   async replacePage(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly ChunkRow[]): Promise<'ok' | 'stale'> {
     const page = this.page(tenantId, pageId);

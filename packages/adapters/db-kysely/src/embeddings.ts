@@ -6,6 +6,14 @@ import type { KyselyDatabase, OperatorDatabase } from './index.js';
 const vectorText = (v: Float32Array): string => `[${Array.from(v).join(',')}]`;
 const bytes = (b: Uint8Array): Buffer => Buffer.from(b);
 
+/** One chunk with its vector, written whether or not the index is taken (the row of that index is replaced, whatever its model). */
+const UPSERT_CHUNK = `insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector)
+  on conflict (page_id, chunk_index) do update set model = excluded.model, content_hash = excluded.content_hash, char_start = excluded.char_start,
+    char_end = excluded.char_end, token_count = excluded.token_count, embedding = excluded.embedding`;
+const chunkParams = (pageId: string, tenantId: string, model: string, c: ChunkRow & { readonly embedding: Float32Array }): unknown[] =>
+  [pageId, tenantId, c.chunkIndex, model, bytes(c.contentHash), c.charStart, c.charEnd, c.tokenCount, vectorText(c.embedding)];
+
 /**
  * The chunk rows of page_chunks and the state row of page_embedding_state (migration 0011): see the port for what each method means. Every method but `counts` runs
  * scoped to the tenant it is given; `counts` spans every tenant, on `ops`, the operator connection (docs/tenancy.md section 3.2).
@@ -24,6 +32,16 @@ export function createEmbeddingStore(db: KyselyDatabase, ops: OperatorDatabase):
       return new Map(rows.map((r) => [r.chunk_index, new Uint8Array(r.content_hash)]));
     },
 
+    saveChunks(tenantId, pageId, markdownHash, model, chunks) {
+      return scoped(db, tenantId).transaction(async (tx) => {
+        const page = await tx.query<{ markdown_hash: Buffer | null }>(`select markdown_hash from pages where id = $1 and tenant_id = $2 for share`, [pageId, tenantId]);
+        const current = page[0]?.markdown_hash;
+        if (current === undefined || current === null || !current.equals(bytes(markdownHash))) return 'stale' as const;
+        for (const c of chunks) await tx.query(UPSERT_CHUNK, chunkParams(pageId, tenantId, model, c));
+        return 'ok' as const;
+      });
+    },
+
     replacePage(tenantId, pageId, markdownHash, model, chunks: readonly ChunkRow[]) {
       return scoped(db, tenantId).transaction(async (tx) => {
         // `for share`: a save of the page waits for this transaction, so the hash cannot change under it.
@@ -32,12 +50,7 @@ export function createEmbeddingStore(db: KyselyDatabase, ops: OperatorDatabase):
         if (current === undefined || current === null || !current.equals(bytes(markdownHash))) return 'stale' as const;
         for (const c of chunks) {
           if (c.embedding !== undefined) {
-            await tx.query(
-              `insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding)
-               values ($1, $2, $3, $4, $5, $6, $7, $8, $9::vector)
-               on conflict (page_id, chunk_index) do update set model = excluded.model, content_hash = excluded.content_hash, char_start = excluded.char_start,
-                 char_end = excluded.char_end, token_count = excluded.token_count, embedding = excluded.embedding`,
-              [pageId, tenantId, c.chunkIndex, model, bytes(c.contentHash), c.charStart, c.charEnd, c.tokenCount, vectorText(c.embedding)]);
+            await tx.query(UPSERT_CHUNK, chunkParams(pageId, tenantId, model, { ...c, embedding: c.embedding }));
           } else {
             const kept = await tx.query<{ chunk_index: number }>(
               `update page_chunks set char_start = $5, char_end = $6, token_count = $7

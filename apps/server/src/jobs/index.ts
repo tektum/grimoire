@@ -12,7 +12,7 @@ import type { RevisionRepo } from '@tektum/grimoire-core/ports/revision-repo';
 import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import type { TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import type { EventLog } from '../events.js';
-import { createEmbedPage } from './embed-page.js';
+import { createEmbedPage, embedBatchSize } from './embed-page.js';
 import { handleEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
@@ -118,7 +118,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     // M7-T13 fills the handlers and decides the cadence of the sweep (`GRIMOIRE_SEMANTIC_SWEEP_SECONDS` is finer than a cron).
     ...(deps.embedder === undefined || deps.embeddings === undefined ? [] : [
       { name: 'embed-sweep', handler: handleEmbedSweep },
-      { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: Date.now, sleep: sleepUnlessAborted }) }) }, // real time: the cap and its wait must use the same clock, whatever clock the run log was given
+      { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: Date.now, sleep: sleepUnlessAborted }), batchSize: embedBatchSize(config.semantic.maxChunksPerMinute) }) }, // real time: the cap and its wait must use the same clock, whatever clock the run log was given
     ]),
   ];
 }

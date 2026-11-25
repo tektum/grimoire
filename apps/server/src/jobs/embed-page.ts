@@ -10,8 +10,18 @@ import { isEmbedPagePayload, type EmbedPagePayload } from './types.js';
 
 export type { EmbedPagePayload } from './types.js';
 
-/** Chunks embedded in one call of the embedder. */
+/** Chunks embedded in one call of the embedder, at the most. */
 export const EMBED_BATCH = 16;
+
+/** Minutes of the rate cap that one batch may have to wait for: well under the 10 minutes a run lives, so a batch always gets its share before the run is cut off. */
+const BATCH_WAIT_MINUTES = 4;
+
+/**
+ * The size of a batch at a rate of `perMinute` chunks a minute: at most `EMBED_BATCH`, and at a low rate fewer, so that the wait for a batch's share of the cap is about 4 minutes and
+ * not more than the job lives (a batch of 16 at 1 chunk a minute would wait 16 minutes, and be cut off before it started). Every batch is saved as it is made (`saveChunks`), so a page
+ * that needs more than one run keeps what each run did.
+ */
+export const embedBatchSize = (perMinute: number): number => Math.max(1, Math.min(EMBED_BATCH, Math.floor(perMinute * BATCH_WAIT_MINUTES)));
 
 const sameBytes = (a: Uint8Array | undefined, b: Uint8Array): boolean => a !== undefined && a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -21,6 +31,8 @@ export interface EmbedPageDeps {
   readonly log: EventLog;
   readonly clock: Clock;
   readonly limiter: RateLimiter;
+  /** Chunks to a batch (`embedBatchSize` of the rate cap). Default `EMBED_BATCH`. */
+  readonly batchSize?: number;
 }
 
 /**
@@ -31,6 +43,7 @@ export interface EmbedPageDeps {
  */
 export function createEmbedPage(deps: EmbedPageDeps): JobHandler<unknown> {
   const { embedder, store, log, clock, limiter } = deps;
+  const size = deps.batchSize ?? EMBED_BATCH;
   return async (payload, ctx) => {
     if (!isEmbedPagePayload(payload)) { log.warn('jobs.payload_invalid', { name: 'embed-page', jobId: ctx.jobId }); return; }
     const { tenantId, pageId }: EmbedPagePayload = payload;
@@ -44,18 +57,25 @@ export function createEmbedPage(deps: EmbedPageDeps): JobHandler<unknown> {
     const existing = await store.existingHashes(tenantId, pageId, model);
     const changed = chunks.filter((c) => !sameBytes(existing.get(c.chunkIndex), c.contentHash));
     const vectors = new Map<number, Float32Array>();
-    for (let i = 0; i < changed.length; i += EMBED_BATCH) {
+    for (let i = 0; i < changed.length; i += size) {
       if (ctx.signal.aborted) throw new Error('aborted');
-      const batch = changed.slice(i, i + EMBED_BATCH);
+      const batch = changed.slice(i, i + size);
       await limiter.acquire(batch.length, ctx.signal);
       const result = await embedder.embedPassages(batch.map((c) => c.text), { signal: ctx.signal });
       if (!result.ok) {
         if (result.reason === 'aborted' || result.reason === 'unavailable') throw new Error(result.reason);
+        if (ctx.signal.aborted || embedder.status() !== 'ready') throw new Error('interrupted'); // a shutdown ended the batch: not the page's doing, so no failure is recorded
         await store.markFailed(tenantId, pageId, page.markdownHash, model, result.reason);
         log.warn('semantic.failed', { pageId, reason: result.reason, attempt: ctx.attempt });
         throw new Error(`embed-failed:${result.reason}`);
       }
       batch.forEach((c, k) => { vectors.set(c.chunkIndex, result.vectors[k] as Float32Array); });
+      if (i + size < changed.length) {
+        // Not the last batch: save it now, so that a run that is cut off (the rate cap makes a long page slow) keeps its work and the next run starts where it stopped.
+        const saved = batch.map((c) => ({ chunkIndex: c.chunkIndex, contentHash: c.contentHash, charStart: c.charStart, charEnd: c.charEnd, tokenCount: c.tokenCount, embedding: vectors.get(c.chunkIndex) as Float32Array }));
+        if (await store.saveChunks(tenantId, pageId, page.markdownHash, model, saved) === 'stale') return;
+        for (const c of batch) vectors.delete(c.chunkIndex); // stored: the final write keeps the stored vector
+      }
     }
     const rows: ChunkRow[] = chunks.map((c) => {
       const embedding = vectors.get(c.chunkIndex);

@@ -6,7 +6,7 @@ import { FakeEmbeddingStore } from '@tektum/grimoire-core/testing/fake-embedding
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
-import { createEmbedPage, EMBED_BATCH } from '../../src/jobs/embed-page.js';
+import { createEmbedPage, EMBED_BATCH, embedBatchSize } from '../../src/jobs/embed-page.js';
 import { createRateLimiter } from '../../src/jobs/rate-limit.js';
 
 // M7-T13: the embed-page job, on the fakes. The marker is a word placed in the page text: it must never reach a log line, an event or an error message.
@@ -99,14 +99,15 @@ describe('the embed-page job', () => {
     expect(s.store.stored(PAGE, s.model).state).toBeUndefined();
   });
 
-  it('stops at the next batch when its signal aborts, storing nothing', async () => {
+  it('stops at the next batch when its signal aborts, keeping the batch it had finished and not marking the page ready', async () => {
     const s = setup(paragraphs(40));
     const stop = new AbortController();
     const original = s.embedder.embedPassages.bind(s.embedder);
     s.embedder.embedPassages = (texts, o) => { const r = original(texts, o); stop.abort(); return r; };
     await expect(s.handler(s.payload, ctxOf({ signal: stop.signal }))).rejects.toThrow('aborted');
     expect(s.embedder.calls).toHaveLength(1); // the second batch was not asked for
-    expect(s.store.stored(PAGE, s.model).chunks).toEqual([]);
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(EMBED_BATCH); // the first batch was saved as it was made
+    expect(s.store.stored(PAGE, s.model).state).toBeUndefined();
   });
 
   it('holds the rate cap: with 60 chunks a minute and 200 chunks to embed, no more than 61 are embedded in the first minute', async () => {
@@ -154,6 +155,64 @@ describe('the embed-page job', () => {
     expect(chunks).toHaveLength(2);
     for (const c of chunks) expect(points.slice(c.charStart, c.charEnd).join('')).toMatch(/^(🙂🙂 a0w0|🙂 b0w0) /);
     expect(chunks[1]?.charStart).not.toBe(text.indexOf('🙂 b')); // the UTF-16 index of the second chunk is two units further than its code point
+  });
+
+  it('keeps the chunks a cut-off run embedded: the next run embeds only the rest, and the page is ready when it ends', async () => {
+    const s = setup(paragraphs(40)); // three batches: 16, 16, 8
+    const stop = new AbortController();
+    const original = s.embedder.embedPassages.bind(s.embedder);
+    let calls = 0;
+    s.embedder.embedPassages = async (texts, o) => { const r = await original(texts, o); calls += 1; if (calls === 2) stop.abort(); return r; };
+    await expect(s.handler(s.payload, ctxOf({ signal: stop.signal }))).rejects.toThrow('aborted');
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(32); // the two batches that finished are stored
+    expect(s.store.stored(PAGE, s.model).state).toBeUndefined(); // but the page is not ready
+    s.embedder.calls.length = 0;
+    s.embedder.embedPassages = original;
+    await s.handler(s.payload, ctxOf());
+    expect(s.embedder.calls.flatMap((c) => c.texts)).toHaveLength(8); // only what was left
+    expect(s.store.stored(PAGE, s.model)).toMatchObject({ state: { status: 'ready' } });
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(40);
+  });
+
+  it('writes nothing more when the page changes between two batches of one run', async () => {
+    const s = setup(paragraphs(40));
+    const original = s.embedder.embedPassages.bind(s.embedder);
+    let calls = 0;
+    s.embedder.embedPassages = async (texts, o) => { calls += 1; if (calls === 2) s.store.editPage(PAGE, hash(2), 0); return original(texts, o); };
+    await s.handler(s.payload, ctxOf());
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(16); // the first batch was saved before the page changed; the second found it stale
+    expect(s.store.stored(PAGE, s.model).state).toBeUndefined();
+  });
+
+  it('sizes a batch so that the wait for its share of the rate cap is a few minutes, never more than the job lives: 4 minutes of the rate, between 1 and 16 chunks', () => {
+    expect([1, 2, 3, 4, 5, 600, 100_000].map(embedBatchSize)).toEqual([4, 8, 12, 16, 16, 16, 16]);
+    expect(embedBatchSize(0.1)).toBe(1);
+    expect(EMBED_BATCH).toBe(16);
+  });
+
+  it('records no failure when the embedder was shut down while the batch ran: a healthy page is not marked failed', async () => {
+    const s = setup(paragraphs(3));
+    const original = s.embedder.embedPassages.bind(s.embedder);
+    s.embedder.embedPassages = async (texts, o) => { await original(texts, o); await s.embedder.close(); return { ok: false, reason: 'internal' }; };
+    await expect(s.handler(s.payload, ctxOf())).rejects.toThrow('interrupted');
+    expect(s.store.stored(PAGE, s.model).state).toBeUndefined();
+    expect(s.logger.entries.some((e) => e.event === 'semantic.failed')).toBe(false);
+    const stop = new AbortController();
+    const s2 = setup(paragraphs(3));
+    const original2 = s2.embedder.embedPassages.bind(s2.embedder);
+    s2.embedder.embedPassages = async (texts, o) => { await original2(texts, o); stop.abort(); return { ok: false, reason: 'internal' }; };
+    await expect(s2.handler(s2.payload, ctxOf({ signal: stop.signal }))).rejects.toThrow('interrupted');
+    expect(s2.store.stored(PAGE, s2.model).state).toBeUndefined();
+  });
+
+  it('goes from failed back to ready when the embedder recovers: the retry writes the chunks and starts the attempts again', async () => {
+    const s = setup(paragraphs(3));
+    s.embedder.failNext('internal');
+    await expect(s.handler(s.payload, ctxOf())).rejects.toThrow('embed-failed:internal');
+    expect(s.store.stored(PAGE, s.model)).toMatchObject({ chunks: [], state: { status: 'failed', attempts: 1 } });
+    await s.handler(s.payload, ctxOf({ attempt: 2 }));
+    expect(s.store.stored(PAGE, s.model)).toMatchObject({ state: { status: 'ready', attempts: 0, error: null } });
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(3);
   });
 
   it('does nothing for a page that is gone, in the trash, or of another tenant, and drops a payload of the wrong shape with a warning', async () => {

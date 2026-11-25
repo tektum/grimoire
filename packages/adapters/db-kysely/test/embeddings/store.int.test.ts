@@ -114,6 +114,26 @@ describe('pageText', () => {
   });
 });
 
+describe('saveChunks', () => {
+  it('writes the chunks and nothing else, adds to an earlier save, and the final replacePage keeps them; a page that changed is stale and writes nothing', async () => {
+    const id = await page({ hashByte: 3 });
+    const withVector = (i: number, v: Float32Array, h = i + 1) => ({ ...chunk(i, v, h), embedding: v });
+    expect(await store.saveChunks(TENANT, id, hash(3), M, [withVector(0, unit(1, 0, 0, 0))])).toBe('ok');
+    expect(await store.saveChunks(TENANT, id, hash(3), M, [withVector(1, unit(0, 1, 0, 0))])).toBe('ok');
+    expect((await rows(id)).map((r) => [r.chunk_index, r.embedding])).toEqual([[0, '[1,0,0,0]'], [1, '[0,1,0,0]']]);
+    expect(await state(id)).toBeUndefined(); // the page is not ready: nothing marks it
+    expect([...(await store.existingHashes(TENANT, id, M)).keys()]).toEqual([0, 1]);
+    expect(await store.replacePage(TENANT, id, hash(3), M, [chunk(0, undefined), chunk(1, undefined), chunk(2, unit(0, 0, 1, 0))])).toBe('ok'); // two kept, one new
+    expect((await rows(id)).map((r) => [r.chunk_index, r.embedding])).toEqual([[0, '[1,0,0,0]'], [1, '[0,1,0,0]'], [2, '[0,0,1,0]']]);
+    expect(await state(id)).toMatchObject({ status: 'ready', chunk_count: 3 });
+    await run(`update pages set markdown_hash = decode('${hex(4)}', 'hex') where id = '${id}'`);
+    expect(await store.saveChunks(TENANT, id, hash(3), M, [withVector(0, unit(0, 0, 0, 1))])).toBe('stale');
+    expect((await rows(id))[0]?.embedding).toBe('[1,0,0,0]');
+    expect(await store.saveChunks('another-tenant', id, hash(4), M, [withVector(0, unit(0, 0, 0, 1))])).toBe('stale'); // a page of another tenant is not there
+    expect(await store.saveChunks(TENANT, randomUUID(), hash(4), M, [withVector(0, unit(0, 0, 0, 1))])).toBe('stale');
+  });
+});
+
 describe('existingHashes', () => {
   it('returns the stored hashes by chunk index, for the model and the tenant asked', async () => {
     const id = await page();
