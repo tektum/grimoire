@@ -44,9 +44,8 @@ describe('docs/proof/m6-signin-manual.md', () => {
       'approved origin',
       'sign-up-or-in',
       'test user',
-      'DESCOPE_DEV_MANAGEMENT_KEY',
       'approval',
-      'never runs on a pull request',
+      'will never run on a pull request',
       'blocked: Descope dev project not provisioned',
     ])
       expect(doc).toContain(needle);
@@ -62,11 +61,10 @@ describe('docs/proof/m6-signin-manual.md', () => {
     for (const file of ['apps/web/scripts/render-headers.mjs', 'apps/web/scripts/serve.mjs']) expect(existsSync(path.join(root, file)), file).toBe(true);
   });
 
-  it('does not claim a job that does not exist: the web job is planned, and the workflow that is there is named for what it is', () => {
+  it('does not claim a job that does not exist: the web job is planned and no live-provider workflow is left', () => {
     expect(doc).toContain('It does not exist yet');
-    expect(doc).toContain('descope-live-m3.yml');
     const workflows = readdirSync(path.join(root, '.github/workflows'));
-    expect(workflows).toContain('descope-live-m3.yml');
+    expect(workflows).not.toContain('descope-live-m3.yml');
     // If the web job is ever added, this sentence has to go with it.
     expect(workflows.includes('descope-live-web.yml')).toBe(false);
   });
