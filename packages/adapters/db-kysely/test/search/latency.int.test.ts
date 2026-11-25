@@ -47,6 +47,11 @@ beforeAll(async () => {
     const owner = (await t.admin.query<{ id: string }>(`insert into users (descope_user_id, email, name, role, tenant_id) values ($1, $2, 'u', 'member', $3) returning id`, [`s${String(i)}`, `s${String(i)}@example.com`, tenant]))[0]?.id as string;
     await seed(tenant, SMALL_PAGES, 2, owner);
   }
+  // One page that surely matches in every collection of a small tenant and in the one collection of the 1% case, so no search below can be answered, and timed, with nothing found.
+  await t.admin.query(
+    `update pages set text_content = text_content || ' w17 w42' where id in (select distinct on (collection_id) id from pages where tenant_id like 'T-small-%' or collection_id = $1 order by collection_id, id)`,
+    [all[7]],
+  );
   await t.admin.query('analyze pages');
 }, 600_000);
 afterAll(async () => { await t?.drop(); });
@@ -79,12 +84,14 @@ describe('search latency over 10,000 pages (R9.10)', () => {
 
   it('a person who sees one collection in a hundred gets it within 100 ms', async () => {
     const r = await measure('sees-1-percent', [all[7] as string]);
+    expect(r.hits).toBeGreaterThan(0);
     expect(r.median, `median of ${String(RUNS)}: ${String(r.median)} ms, worst ${String(r.max)} ms`).toBeLessThan(100);
   }, 300_000);
 
   it('stays inside the tenant: a small tenant is answered from its own twenty-five pages only, and is not slowed by the big one', async () => {
     const small = (await t.admin.query<{ id: string }>(`select id from collections where tenant_id = 'T-small-3'`)).map((r) => r.id);
     const r = await measure('small-tenant', small, 'T-small-3');
+    expect(r.hits).toBeGreaterThan(0);
     expect(r.hits).toBeLessThanOrEqual(SMALL_PAGES);
     expect(r.median).toBeLessThan(100);
     const repo = createSearchRepo(t.app, { statementTimeoutMs: 10_000 });
