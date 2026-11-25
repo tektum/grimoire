@@ -35,7 +35,7 @@ export class FakeImportRepo implements ImportRepo {
     if (this.find(tenantId, importId) === -1) return Promise.resolve(0);
     let added = 0;
     for (const item of items) {
-      const path = clean(item.path);
+      const path = item.path;
       if (this.stored.some((s) => s.importId === importId && s.item.path === path)) continue;
       this.stored.push({ tenantId, importId, item: { id: String(this.next++), path, kind: item.kind, status: 'pending', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0 } });
       added += 1;

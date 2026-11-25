@@ -73,16 +73,18 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
-    name: 'text-from-the-archive-is-cut-and-cleaned',
+    name: 'a-path-is-kept-exactly-and-a-message-is-cut-and-cleaned',
     async run(h) {
       const made = await h.seed('running');
       const long = `${'x'.repeat(MAX_ITEM_TEXT + 50)}.md`;
-      await h.repo.addItems(h.tenantId, made.id, pages(`a\u0000b\u001b[31m\n.md`, long));
+      const odd = ['a\u0001b.md', 'ab.md', `${'y'.repeat(MAX_ITEM_TEXT)}1.md`, `${'y'.repeat(MAX_ITEM_TEXT)}2.md`];
+      // The path is the key of the entry in the archive (links resolve to it): never cut or cleaned, so entries that differ late or only by a control character stay two rows.
+      assert.equal(await h.repo.addItems(h.tenantId, made.id, pages(long, ...odd)), 5);
       const items = await h.repo.pending(h.tenantId, made.id, 'page', 10);
-      assert.ok(items.every((i) => i.path.length <= MAX_ITEM_TEXT && !/[\u0000-\u001f\u007f]/.test(i.path)), JSON.stringify(items.map((i) => i.path.length)));
-      assert.ok(items.some((i) => i.path === 'ab[31m.md'), 'control characters are removed, the rest stays');
+      assert.deepEqual(items.map((i) => i.path).sort(), [long, ...odd].sort());
       const first = items[0];
       assert.ok(first);
+      // What is shown is cut and cleaned: a message is stored at most MAX_ITEM_TEXT characters long, without control characters.
       await h.repo.settle(h.tenantId, made.id, first.id, { status: 'failed', message: `bad\u0007${'m'.repeat(400)}` });
       const settled = await h.repo.getItem(h.tenantId, made.id, first.id);
       assert.equal(settled?.status, 'failed');

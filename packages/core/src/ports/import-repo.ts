@@ -55,16 +55,17 @@ export interface ItemOutcome {
   readonly stateBytes?: number;
 }
 
-/** The longest message or path an item row keeps (archive-controlled text, contracts section 4, step 8). */
+/** The longest message an item row keeps (archive-controlled text, contracts section 4, step 8). */
 export const MAX_ITEM_TEXT = 300;
 
-/** Archive-controlled text as an item row keeps it: control characters removed, at most `MAX_ITEM_TEXT` characters. */
+/** A message as an item row keeps it: control characters removed, at most `MAX_ITEM_TEXT` characters. */
 // eslint-disable-next-line no-control-regex -- the point is to remove them
 export const cleanItemText = (text: string): string => text.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').slice(0, MAX_ITEM_TEXT);
 
 /**
  * The imports of a workspace (M7 contracts section 4). Every call names the tenant: another tenant's import is not found (`undefined`, `false`, `0` or no rows, never an error).
- * Text that came from the archive (a path, a message) is stored at most `MAX_ITEM_TEXT` characters long and without control characters.
+ * A message is stored at most `MAX_ITEM_TEXT` characters long and without control characters. A path is the key of an entry in the archive (links resolve to it, a resumed run
+ * finds its items by it), so it is stored exactly as given and never cut or cleaned: it is cut for display where it is shown (the report routes), not here.
  */
 export interface ImportRepo {
   get(tenantId: string, id: string): Promise<ImportRecord | undefined>;

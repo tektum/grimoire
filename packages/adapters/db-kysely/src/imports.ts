@@ -41,7 +41,7 @@ export function createImportRepo(db: Queryable): ImportRepo {
          select i.tenant_id, i.id, p.path, p.kind from imports i, unnest($3::text[], $4::text[]) as p (path, kind)
          where i.tenant_id = $1 and i.id = $2
          on conflict (import_id, path) do nothing returning 1`,
-        [tenantId, importId, items.map((i) => cleanItemText(i.path)), items.map((i) => i.kind)],
+        [tenantId, importId, items.map((i) => i.path), items.map((i) => i.kind)],
       );
       return rows.length;
     },
