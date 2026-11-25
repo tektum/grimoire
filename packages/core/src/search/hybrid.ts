@@ -93,8 +93,10 @@ export function bestChunkPerPage<T extends ChunkMatch>(chunks: readonly T[], lim
     .slice(0, limit);
 }
 
-const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
-const SPACES = /[ \t\r\n\f\v\u00a0\u2028\u2029]+/g;
+/** Control characters that are not white space (those are collapsed below, and U+0085 is white space too): the snippet sentinels U+0001 and U+0002 are among them. */
+const CONTROLS = /[\u0000-\u0008\u000e-\u001f\u007f-\u0084\u0086-\u009f]/g;
+/** Every kind of white space JavaScript knows (the no-break and the Unicode spaces, the line and paragraph separators, the byte order mark) and U+0085. */
+const SPACES = /[\s\u0085]+/g;
 
 /** `text` cut to at most `max` UTF-16 units: at the last space inside the limit when there is one past the first quarter, never inside a surrogate pair. */
 function cutAtWord(text: string, max: number): string {
@@ -113,7 +115,7 @@ function cutAtWord(text: string, max: number): string {
 export function passageOf(text: string, charStart: number, charEnd: number): string {
   const start = Math.max(0, Math.min(charStart, text.length));
   const end = Math.max(start, Math.min(charEnd, text.length));
-  return cutAtWord(text.slice(start, end).replace(SPACES, ' ').replace(CONTROLS, '').trim(), SNIPPET_MAX_CHARS);
+  return cutAtWord(text.slice(start, end).replace(CONTROLS, '').replace(SPACES, ' ').trim(), SNIPPET_MAX_CHARS);
 }
 
 /** What a page found only by meaning shows where a snippet goes, for the clients that do not know passages: the first 160 characters of the passage, with no ranges. */

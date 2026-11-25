@@ -27,6 +27,15 @@ describe('the passage of a chunk', () => {
     expect(passage).toBe(emoji.slice(0, passage.length));
   });
 
+  it('makes one space of every run of white space, also when a control character or a sentinel sits in it', () => {
+    expect(passageOf('a \u0001 b', 0, 5)).toBe('a b');
+    expect(passageOf('a\u0002 \u0001b', 0, 5)).toBe('a b');
+    expect(passageOf('x \u0000\u0007  \u0002 y', 0, 9)).toBe('x y');
+    // The white space of other scripts and the separators: no-break, en and em spaces, ideographic, line and paragraph separators, the byte order mark, NEL, vertical tab, form feed, carriage return alone.
+    expect(passageOf('a\u00a0\u2003b\u3000c\u2028d\u2029e\ufeff f\u0085g\u000bh\u000ci\rj', 0, 40)).toBe('a b c d e f g h i j');
+    expect(passageOf('\u2002 lead and trail \u3000', 0, 20)).toBe('lead and trail');
+  });
+
   it('does not end on the first half of a surrogate pair that straddles the limit', () => {
     const text = `${'x'.repeat(299)}\u{1F642}${'y'.repeat(50)}`; // the pair sits at units 299 and 300
     expect(passageOf(text, 0, text.length)).toBe('x'.repeat(299));
