@@ -114,7 +114,7 @@ describe('PgBossJobQueue', () => {
 
   describe('schedule: a chain of sends, no pg-boss cron', () => {
     const at = (iso: string) => () => new Date(iso);
-    const held = (iso: string) => ({ id: 'held', startAfter: new Date(iso) });
+    const held = (iso: string, state = 'created', id = 'held') => ({ id, state, startAfter: new Date(iso) });
     const sent = (boss: ReturnType<typeof stub>) => boss.send.mock.calls.map((c) => c as unknown as [string, unknown, { singletonKey: string; startAfter: Date }]);
 
     it('sends the first run with a key of its own and the next UTC time as its start, a null payload by default, and never uses the library schedule', async () => {
@@ -127,7 +127,7 @@ describe('PgBossJobQueue', () => {
         ['m', { x: 1 }, { singletonKey: 'sched:m', startAfter: new Date('2026-03-11T03:00:00Z') }],
       ]);
       expect(boss.schedule).not.toHaveBeenCalled();
-      expect(boss.findJobs).toHaveBeenCalledWith('n', { key: 'sched:n', queued: true, limit: 1 });
+      expect(boss.findJobs).toHaveBeenCalledWith('n', { key: 'sched:n', queued: true, limit: 10 });
     });
 
     it('leaves a waiting run alone when its time is one of the cron, even a late one, so a restart after downtime runs it once', async () => {
@@ -170,15 +170,73 @@ describe('PgBossJobQueue', () => {
       expect(sent(boss)).toEqual([['n', { p: 1 }, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T10:15:00Z') }]]);
     });
 
-    it('does not run a handler when the next run cannot be sent, so pg-boss retries the whole run', async () => {
+    const runOne = (boss: ReturnType<typeof stub>, startAfter?: Date) =>
+      (boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>)([{ id: 'j', data: {}, retryCount: 0, retryLimit: 0, expireInSeconds: 60, ...(startAfter ? { startAfter } : {}) }]);
+
+    it('runs the handler even when the next run cannot be sent, then sends it again, so a failed send on the last attempt does not end the schedule', async () => {
       const boss = stub();
       const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
       await q.schedule('n', '*/5 * * * *');
+      boss.send.mockClear();
       boss.send.mockRejectedValueOnce(new Error('db down'));
       const handler = vi.fn(async () => {});
       await q.work('n', handler);
-      await expect((boss.work.mock.calls[0]?.[2] as unknown as (jobs: unknown[]) => Promise<void>)([{ id: 'j', data: {}, retryCount: 0, retryLimit: 0, expireInSeconds: 60 }])).rejects.toThrow('db down');
-      expect(handler).not.toHaveBeenCalled();
+      await runOne(boss);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(boss.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('fails the run, after the handler, when the next run cannot be sent twice (pg-boss retries it, and a retry sends again)', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
+      await q.schedule('n', '*/5 * * * *');
+      boss.send.mockClear();
+      boss.send.mockRejectedValue(new Error('db down'));
+      const handler = vi.fn(async () => {});
+      await q.work('n', handler);
+      await expect(runOne(boss)).rejects.toThrow('db down');
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets the handler error win over a send that failed, and tries the send once more', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z'));
+      await q.schedule('n', '*/5 * * * *');
+      boss.send.mockClear();
+      boss.send.mockRejectedValue(new Error('db down'));
+      await q.work('n', async () => { throw new Error('handler failed'); });
+      await expect(runOne(boss)).rejects.toThrow('handler failed');
+      expect(boss.send).toHaveBeenCalledTimes(2);
+    });
+
+    it('computes the successor from no earlier than the start of the run it follows, so a clock that runs behind does not send the same time again', async () => {
+      const boss = stub();
+      const q = new PgBossJobQueue(boss, undefined, at('2026-03-10T10:12:30Z'));
+      await q.schedule('n', '*/5 * * * *');
+      boss.send.mockClear();
+      await q.work('n', async () => {});
+      await runOne(boss, new Date('2026-03-10T10:15:00Z'));
+      expect(sent(boss)).toEqual([['n', null, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T10:20:00Z') }]]);
+    });
+
+    it('looks only at the waiting run (created), never at a retry of a failed one, which has a start time that is no time of the cron', async () => {
+      const boss = stub();
+      boss.findJobs.mockResolvedValue([held('2026-03-10T10:02:17Z', 'retry', 'retrying'), held('2026-03-10T10:05:00Z')]);
+      await new PgBossJobQueue(boss, undefined, at('2026-03-10T10:02:00Z')).schedule('n', '*/5 * * * *');
+      expect(boss.cancel).not.toHaveBeenCalled();
+      expect(boss.send).not.toHaveBeenCalled();
+      boss.findJobs.mockResolvedValue([held('2026-03-10T10:02:17Z', 'retry', 'retrying')]);
+      await new PgBossJobQueue(boss, undefined, at('2026-03-10T10:02:00Z')).schedule('n', '*/5 * * * *');
+      expect(boss.cancel).not.toHaveBeenCalled();
+      expect(sent(boss)).toHaveLength(1); // no waiting run: the first is sent
+    });
+
+    it('replaces a waiting run that is later than the next time of the cron (a daily run kept after the cron became every minute)', async () => {
+      const boss = stub();
+      boss.findJobs.mockResolvedValue([held('2026-03-11T03:00:00Z')]);
+      await new PgBossJobQueue(boss, undefined, at('2026-03-10T10:00:00Z')).schedule('n', '* * * * *');
+      expect(boss.cancel).toHaveBeenCalledWith('n', 'held');
+      expect(sent(boss)).toEqual([['n', null, { singletonKey: 'sched:n', startAfter: new Date('2026-03-10T10:01:00Z') }]]);
     });
 
     it('sends no next run for a queue that has no schedule', async () => {

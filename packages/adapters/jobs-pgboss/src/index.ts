@@ -86,7 +86,10 @@ export class PgBossJobQueue implements JobQueue {
   async work<Payload>(name: string, handler: JobHandler<Payload>): Promise<void> {
     await this.boss.work<Payload, void, { includeMetadata: true }>(name, { includeMetadata: true }, async (jobs: JobWithMetadata<Payload>[]) => {
       for (const job of jobs) {
-        if (this.schedules.has(name)) await this.sendNext(name); // before the handler: a run that fails, or is dead-lettered, does not end the schedule
+        // The successor is sent before the handler: a run that fails, or is dead-lettered, does not end the schedule. A send that fails does not stop the run either: the
+        // handler runs, the send is tried once more after it, and only then does the run fail (pg-boss retries it, and a retry sends again).
+        let sendFailure: unknown;
+        if (this.schedules.has(name)) await this.sendNext(name, job.startAfter).catch((e: unknown) => { sendFailure = e; });
         const own = new AbortController();
         this.running.add(own);
         const timer = setTimeout(() => { own.abort(); }, expirySignalDelayMs(job.expireInSeconds));
@@ -96,7 +99,9 @@ export class PgBossJobQueue implements JobQueue {
         } finally {
           clearTimeout(timer);
           this.running.delete(own);
+          if (sendFailure !== undefined) await this.sendNext(name, job.startAfter).then(() => { sendFailure = undefined; }, () => undefined);
         }
+        if (sendFailure !== undefined) throw sendFailure;
       }
     });
   }
@@ -104,22 +109,25 @@ export class PgBossJobQueue implements JobQueue {
   /**
    * Schedules without pg-boss's cron loop (which the runtime role cannot start, decision 16): the next run is a job with the key `sched:<name>` and its start time,
    * on a `stately` queue, so at most one waits. Every run sends its successor before it starts (`work`), and each process sends the first at boot, where a second one collapses into
-   * the first. A waiting run that is not at a time of this cron (the cron was changed) is cancelled and replaced; a late one stays and runs once.
+   * the first. A waiting run that is not the next time of this cron (the cron was changed) is cancelled and replaced; a late one stays and runs once. What the queue holds is the run, not the cron: a process that still has the old cron sends its successor with it, until the next run of a current one.
    */
   async schedule(name: string, cron: string, payload?: unknown): Promise<void> {
     const next = nextRun(cron, this.now());
     this.schedules.set(name, { cron, payload });
-    const [waiting] = await this.boss.findJobs<unknown>(name, { key: scheduleKey(name), queued: true, limit: 1 });
+    // `queued` also matches a failed run that waits to be retried, whose start time is no time of the cron: only the run that waits (created) counts.
+    const waiting = (await this.boss.findJobs<unknown>(name, { key: scheduleKey(name), queued: true, limit: 10 })).find((j) => j.state === 'created');
     if (waiting !== undefined) {
-      if (isRunTime(cron, waiting.startAfter)) return;
+      if (waiting.startAfter.getTime() <= next.getTime() && isRunTime(cron, waiting.startAfter)) return; // the next time, or a late one that runs once
       await this.boss.cancel(name, waiting.id);
     }
     await this.sendRun(name, payload, next);
   }
 
-  private async sendNext(name: string): Promise<void> {
+  /** The next run after the later of now and the start of the run that is going (the clocks of the servers and the database may differ). */
+  private async sendNext(name: string, runStart?: Date): Promise<void> {
     const s = this.schedules.get(name) as { readonly cron: string; readonly payload: unknown };
-    await this.sendRun(name, s.payload, nextRun(s.cron, this.now()));
+    const now = this.now();
+    await this.sendRun(name, s.payload, nextRun(s.cron, runStart !== undefined && runStart > now ? runStart : now));
   }
 
   private async sendRun(name: string, payload: unknown, startAfter: Date): Promise<void> {

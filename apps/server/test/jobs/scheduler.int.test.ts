@@ -43,7 +43,7 @@ describe('the schedule of a queue, on the runtime role', () => {
         }
         throw new Error('this run fails'); // retryLimit 0: it goes to dead-letter, and the schedule must not end with it
       });
-      await vi.waitFor(() => { expect(runs).toBe(1); }, { timeout: 90_000, interval: 500 });
+      await vi.waitFor(() => { expect(during).toBeGreaterThanOrEqual(0); }, { timeout: 90_000, interval: 500 }); // set after the count of runs, once the handler has looked
       expect(during).toBe(1);
       release();
       await vi.waitFor(() => { expect(runs).toBe(2); }, { timeout: 90_000, interval: 500 }); // the successor ran, a minute later
