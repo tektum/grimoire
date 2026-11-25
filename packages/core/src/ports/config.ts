@@ -132,6 +132,26 @@ export interface JobsConfig {
 
 export interface SearchConfig { readonly statementTimeoutMs: number }
 
+/** The semantic search (contracts section 15.6). */
+export interface SemanticConfig {
+  /** `GRIMOIRE_SEMANTIC_SEARCH`: off means no embedder is started and no page is embedded. */
+  readonly enabled: boolean;
+  readonly model: 'multilingual-e5-base' | 'multilingual-e5-small';
+  /** The folder the model files are read from, and the only place the adapter reads them (no network). */
+  readonly modelDir: string;
+  /** Threads of the one embedding worker. */
+  readonly threads: number;
+  /** A page is embedded when it has been left alone this long. */
+  readonly debounceSeconds: number;
+  readonly sweepSeconds: number;
+  readonly maxChunksPerMinute: number;
+  readonly queryTimeoutMs: number;
+  /** Chunks under this cosine similarity are not results: 0 keeps every one and leaves the order to the rank fusion. */
+  readonly minSimilarity: number;
+  /** How many pages the full-text list and the semantic list each hand to the fusion. */
+  readonly candidates: number;
+}
+
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
   /** `opsUrl`: the operator role's connection (docs/tenancy.md section 3.2), absent unless configured. */
@@ -158,6 +178,7 @@ export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'c
   readonly import: ImportConfig;
   readonly jobs: JobsConfig;
   readonly search: SearchConfig;
+  readonly semantic: SemanticConfig;
   readonly files?: FilesConfig;
   /** Only for the files-setup purpose. */
   readonly filesSetup?: FilesSetupConfig;

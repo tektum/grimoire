@@ -47,6 +47,10 @@ const cron = z.string(msg(CRON_RULE)).regex(/^[0-9*/,-]+( [0-9*/,-]+){4}$/, msg(
 /** A cron value has spaces inside it, which `field` does not allow in a single value; the characters are checked by the rule itself. */
 const cronField = z.string(msg(CRON_RULE)).pipe(cron).optional();
 
+/** A decimal from 0 to 1 written in digits and one point, nothing else (no sign, exponent or hex): a similarity floor. */
+const UNIT_RULE = 'must be a number from 0 to 1, written in digits (for example 0.25)';
+const unit = z.string(msg(UNIT_RULE)).regex(/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/, msg(UNIT_RULE)).transform(Number);
+
 const PORT_MAX = 65535;
 const HOST_RULE = 'must be an IPv4 or IPv6 address literal (no hostname, no port)';
 /** Whether an operand already satisfies its own field rule (integer within its range). */
@@ -203,6 +207,16 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_JOBS_REVISION_CRON: cronField.default('47 3 * * *'),
   GRIMOIRE_JOBS_SWEEP_CRON: cronField.default('*/5 * * * *'),
   GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS: field(int(100, 30_000)).default(3000),
+  GRIMOIRE_SEMANTIC_SEARCH: field(z.enum(['on', 'off'], msg('must be on or off'))).default('on'),
+  GRIMOIRE_SEMANTIC_MODEL: field(z.enum(['multilingual-e5-base', 'multilingual-e5-small'], msg('must be one of: multilingual-e5-base, multilingual-e5-small'))).default('multilingual-e5-base'),
+  GRIMOIRE_SEMANTIC_MODEL_DIR: field(z.string(msg('must be an absolute path')).refine((v) => v.startsWith('/') || /^[A-Za-z]:[\\/]/.test(v), msg('must be an absolute path'))).default('/app/models'),
+  GRIMOIRE_SEMANTIC_THREADS: field(int(1, 4)).default(2),
+  GRIMOIRE_SEMANTIC_DEBOUNCE_SECONDS: field(int(5, 3600)).default(30),
+  GRIMOIRE_SEMANTIC_SWEEP_SECONDS: field(int(5, 600)).default(15),
+  GRIMOIRE_SEMANTIC_MAX_CHUNKS_PER_MINUTE: field(int(1, 100_000)).default(600),
+  GRIMOIRE_SEMANTIC_QUERY_TIMEOUT_MS: field(int(100, 10_000)).default(1500),
+  GRIMOIRE_SEMANTIC_MIN_SIMILARITY: field(unit).default(0),
+  GRIMOIRE_SEMANTIC_CANDIDATES: field(int(10, 500)).default(100),
   GRIMOIRE_FILES_MAX_BYTES: field(int(1, MAX_INT)).default(26_214_400),
   GRIMOIRE_FILES_ALLOWED_TYPES: field(list(mime, MIME_RULE), undefined, true).default(DEFAULT_TYPES),
   GRIMOIRE_FILES_PENDING_MAX_PER_USER: field(int(1, MAX_INT)).default(10),
@@ -492,6 +506,11 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
     purgeCron: v.GRIMOIRE_JOBS_PURGE_CRON, uploadCleanupCron: v.GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON, revisionCron: v.GRIMOIRE_JOBS_REVISION_CRON, sweepCron: v.GRIMOIRE_JOBS_SWEEP_CRON,
   },
   search: { statementTimeoutMs: v.GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS },
+  semantic: {
+    enabled: v.GRIMOIRE_SEMANTIC_SEARCH === 'on', model: v.GRIMOIRE_SEMANTIC_MODEL, modelDir: v.GRIMOIRE_SEMANTIC_MODEL_DIR, threads: v.GRIMOIRE_SEMANTIC_THREADS,
+    debounceSeconds: v.GRIMOIRE_SEMANTIC_DEBOUNCE_SECONDS, sweepSeconds: v.GRIMOIRE_SEMANTIC_SWEEP_SECONDS, maxChunksPerMinute: v.GRIMOIRE_SEMANTIC_MAX_CHUNKS_PER_MINUTE,
+    queryTimeoutMs: v.GRIMOIRE_SEMANTIC_QUERY_TIMEOUT_MS, minSimilarity: v.GRIMOIRE_SEMANTIC_MIN_SIMILARITY, candidates: v.GRIMOIRE_SEMANTIC_CANDIDATES,
+  },
 });
 
 /** Validates the environment (empty string counts as unset) and maps it to Config, or returns every issue. */

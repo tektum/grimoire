@@ -22,6 +22,8 @@ export type JobEvent = { name: string; jobId: string; attempt: number; ms: numbe
 export interface DebugEvents {
   /** A search: how long it took and how many pages it found. Never the query text. */
   'search.query': { ms: number; results: number };
+  /** The search answered from full text alone, and why. Never the query. */
+  'search.semantic_fallback': { reason: string };
   'http.request': { method: RequestMethod; route: string; status: number; ms: number };
   'http.validation_failed': { route: string; issues: number };
   'console.info_output': { method: ConsoleMethod };
@@ -53,6 +55,10 @@ export interface InfoEvents {
   'import.cancelled': { importId: string };
   'import.swept': { importId: string; action: string };
   'purge.completed': { pages: number; objects: number };
+  /** Semantic search (M7). A page's chunks were stored: how many, how many kept their vector, how long it took. Never a text or a vector. */
+  'semantic.embedded': { pageId: string; chunks: number; reused: number; ms: number };
+  /** The model changed: how many pages are queued to be embedded again. `model` is the name and version, never a path. */
+  'semantic.reembed_started': { model: string; pages: number };
   'admin.user_changed': { userId: string };
   'admin.group_changed': { groupId: string };
   'server.starting': { role: string; local: boolean };
@@ -86,6 +92,8 @@ export interface WarnEvents {
   'jobs.aborted': { name: string; jobId: string };
   /** A search that ran into its statement timeout. */
   'search.timeout': Record<string, never>;
+  /** A page could not be embedded (`reason` is the embedder's code, never text) on this attempt. */
+  'semantic.failed': { pageId: string; reason: string; attempt: number };
   'import.failed': { importId: string; reason: string };
   /** The archive was refused before any entry was read. `reason` is a code, never a name from the archive. */
   'import.archive_refused': { importId: string; reason: string };
@@ -108,6 +116,8 @@ export interface WarnEvents {
 
 export interface ErrorEvents {
   'jobs.failed': JobEvent;
+  /** The embedder cannot embed, raised once for each streak. A ticket in the alarm table; `/readyz` does not depend on it. */
+  'semantic.unavailable': { reason: 'model-missing' | 'model-hash-mismatch' | 'load-failed' | 'runtime-failed' };
   /** The queue could not be started after every try: the server serves without background jobs (imports, sweeps) until it is restarted. `/readyz` says so in a header. */
   'jobs.unavailable': { attempts: number };
   /** The file store did not answer (or is not configured): the operation that needed it, nothing of the request, the key or the store's message. */

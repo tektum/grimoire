@@ -49,6 +49,16 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_JOBS_REVISION_CRON: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_SWEEP_CRON: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS: 'M7-T00 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_SEARCH: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_MODEL: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_MODEL_DIR: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_THREADS: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_DEBOUNCE_SECONDS: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_SWEEP_SECONDS: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_MAX_CHUNKS_PER_MINUTE: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_QUERY_TIMEOUT_MS: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_MIN_SIMILARITY: 'M7-T11 declares it; the task that uses it passes it',
+  GRIMOIRE_SEMANTIC_CANDIDATES: 'M7-T11 declares it; the task that uses it passes it',
 };
 
 it('every GRIMOIRE_* setting the loader reads appears in compose.yaml or is listed above with a reason', () => {
