@@ -19,8 +19,8 @@ export type RequestMethod = string; // an HTTP method token, as Hono reports it
 /** What a job event says: the queue's name for it, the job's id, the run (1 for the first) and the milliseconds it took (0 at the start). */
 export type JobEvent = { name: string; jobId: string; attempt: number; ms: number };
 
-/** A failed run: the class of the error and its message (cut to 200 characters, control characters taken out). Never the payload. */
-export type JobFailureEvent = JobEvent & { errorName: string; errorMessage: string };
+/** A failed run: the class of the error, its SQLSTATE or errno when it has one, and its message with quoted literals, URLs and email-like tokens replaced, cut to 200 characters. Never the payload. */
+export type JobFailureEvent = JobEvent & { errorName: string; errorCode?: string; errorMessage: string };
 
 export interface DebugEvents {
   /** A search: how long it took and how many pages it found. Never the query text. */

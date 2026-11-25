@@ -16,22 +16,42 @@ function textOf(value: unknown): string {
 
 const clean = (text: string, limit: number): string => text.replace(CONTROL, ' ').slice(0, limit);
 
+const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi;
+const EMAIL_LIKE = /[^\s<>"'`()[\]@]+@[^\s<>"'`()[\]@]+\.[^\s<>"'`()[\]@]+/g;
+/** A quoted literal: "..." or `...`, and '...' unless the quote is an apostrophe inside a word; a quote that is never closed takes the rest of the message. */
+const QUOTED = /"[^"]*"|`[^`]*`|(?<!\w)'[^']*'/g;
+const UNCLOSED = /(?:"|`|(?<!\w)')[^"`']*$/;
+const PLACEHOLDER = { url: '<url>', email: '<email>', value: '<value>' } as const;
+
 /**
- * The class of an error and its message cut short, with control characters replaced: enough to tell why a run failed, never the payload. A thrown value that is not an error is
- * `NonError`. An error with no message of its own (a connection refused on every address is an `AggregateError` with none) is described by its first inner error, or its `code`.
- * It never throws, so describing a failure can not replace the failure.
+ * A message with the values taken out: pg and the drivers echo what they refused (`invalid input syntax for type uuid: "<value>"`), a connection error names its URL with the credentials,
+ * and some of our own errors interpolate what a person typed. URLs, email-like tokens and quoted literals become a placeholder; what is left says which rule was broken.
  */
-export function reasonOf(error: unknown): { errorName: string; errorMessage: string } {
+function redact(message: string): string {
+  return message.replace(URL_LIKE, PLACEHOLDER.url).replace(EMAIL_LIKE, PLACEHOLDER.email).replace(QUOTED, PLACEHOLDER.value).replace(UNCLOSED, PLACEHOLDER.value);
+}
+
+/** An SQLSTATE (`22P02`) or an errno name (`ECONNREFUSED`): capitals, digits and underscores only, so a code that carries anything else is not logged. */
+const CODE = /^[A-Z0-9_]{2,40}$/;
+const codeOf = (value: unknown): string | undefined => (typeof value === 'string' && CODE.test(value) ? value : undefined);
+
+export interface JobReason { readonly errorName: string; readonly errorCode?: string; readonly errorMessage: string }
+
+/**
+ * Why a run failed, safe to log: the class of the error, its SQLSTATE or errno when it has one, and its message with the values taken out (`redact`), control characters replaced and
+ * cut to 200 characters. A thrown value that is not an error is `NonError`. An error with no message of its own (a connection refused on every address is an `AggregateError` with none)
+ * is described by its first inner error, or its code. It never throws, so describing a failure can not replace the failure.
+ */
+export function reasonOf(error: unknown): JobReason {
   try {
-    if (!(error instanceof Error)) return { errorName: 'NonError', errorMessage: clean(textOf(error), MESSAGE_LIMIT) };
+    if (!(error instanceof Error)) return { errorName: 'NonError', errorMessage: clean(redact(textOf(error)), MESSAGE_LIMIT) };
     const record = error as Error & { code?: unknown; errors?: unknown };
+    const inner = Array.isArray(record.errors) ? (record.errors[0] as { message?: unknown; code?: unknown } | null | undefined) : undefined;
+    const errorCode = codeOf(record.code) ?? (inner === undefined || inner === null ? undefined : codeOf(inner.code));
     let message = textOf(record.message);
-    if (message === '') {
-      const inner = Array.isArray(record.errors) ? (record.errors[0] as { message?: unknown } | null | undefined) : undefined;
-      message = inner === undefined || inner === null ? '' : textOf(inner.message);
-    }
-    if (message === '' && typeof record.code === 'string') message = record.code;
-    return { errorName: clean(textOf(record.name), 60), errorMessage: clean(message, MESSAGE_LIMIT) };
+    if (message === '') message = inner === undefined || inner === null ? '' : textOf(inner.message);
+    if (message === '' && errorCode !== undefined) message = errorCode;
+    return { errorName: clean(textOf(record.name), 60), ...(errorCode === undefined ? {} : { errorCode }), errorMessage: clean(redact(message), MESSAGE_LIMIT) };
   } catch {
     return { errorName: 'Error', errorMessage: '' }; // a getter or a proxy that throws: the class is all that is known
   }
