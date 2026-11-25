@@ -253,7 +253,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     if (at !== -1) pageItems[at] = now;
   };
   /** True when this run settled the item; false when another run had (it is read back, and this run's own warnings are not counted for an outcome it did not commit). */
-  const settle = async (item: ImportItem, s: 'skipped' | 'failed', message: string, sizes: { markdownBytes?: number; stateBytes?: number; warnings?: number } = {}): Promise<boolean> => {
+  const settle = async (item: ImportItem, s: 'skipped' | 'failed', message: string, sizes: { markdownBytes?: number; stateBytes?: number; warnings?: number; remoteImageFailures?: Readonly<Record<string, number>> } = {}): Promise<boolean> => {
     if (await repo.settle(tenantId, importId, item.id, { status: s, message, ...sizes })) { status.set(item.id, s); warned.set(item.id, sizes.warnings ?? 0); return true; }
     await adopt(item);
     return false;
@@ -288,6 +288,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const { title, cut } = cutTitle(name);
     let own = cut ? 1 : 0;
+    const failures: Record<string, number> = {};
     // The files this page uses (stage 4d), found first and stored before the page is written; the rewrite then points each link at its attachment.
     if (deps.attachments !== undefined) {
       const wanted: ImportItem[] = [];
@@ -310,9 +311,12 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       // Remote images (contracts section 5), each distinct address once: an https one is copied into the tool, an http one or one with no fetcher stays a link and is a warning.
       if (deps.remote !== undefined && budget !== undefined) {
         for (const url of new Set(seen.remoteImages)) {
-          if (!/^https:/i.test(url) || deps.remote.fetcher === undefined) { own++; continue; }
+          // A reason code, never the address: what the report may show of a failed copy.
+          const why = (reason: string): void => { own++; failures[reason] = (failures[reason] ?? 0) + 1; };
+          if (!/^https:/i.test(url)) { why('scheme'); continue; }
+          if (deps.remote.fetcher === undefined) { why('not_fetched'); continue; }
           const got = await stageRemoteImage(stage, deps.remote.fetcher, budget, url, item.path);
-          if (got.kind === 'ok') copied.set(url, got); else own++;
+          if (got.kind === 'ok') copied.set(url, got); else why(got.reason);
         }
       }
     }
@@ -329,26 +333,26 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     const bytes = original?.length ?? 0;
     const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);
     if (outcome.kind === 'retry') return { stop: 'busy', bytes };
-    if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes, warnings: own }); return { bytes }; }
+    if (outcome.kind === 'skipped') { await settle(item, 'skipped', outcome.reason, { markdownBytes: outcome.markdownBytes, warnings: own, remoteImageFailures: failures }); return { bytes }; }
     if (outcome.kind === 'failed') {
       // The original, not the rewritten text: what the person wrote, to take elsewhere.
       if (original !== undefined) await deps.files.put(importFailedKey(tenantId, importId, item.id), original, { size: original.length, contentType: 'text/markdown' });
-      await settle(item, 'failed', outcome.reason, { markdownBytes: outcome.markdownBytes, warnings: own, ...(outcome.stateBytes === undefined ? {} : { stateBytes: outcome.stateBytes }) });
+      await settle(item, 'failed', outcome.reason, { markdownBytes: outcome.markdownBytes, warnings: own, remoteImageFailures: failures, ...(outcome.stateBytes === undefined ? {} : { stateBytes: outcome.stateBytes }) });
       return { bytes };
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
-      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values(), ...copied.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures, attachments: [...staged.values(), ...copied.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
       case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); for (const id of staged.keys()) if (status.get(id) === 'pending') status.set(id, 'ok'); return { bytes, wrote: 'here' };
       case 'not-pending': await adopt(item); for (const id of staged.keys()) await adopt(itemById.get(id) as ImportItem); return { bytes, wrote: 'other' };
       case 'not-running': return { stop: 'not_running', bytes };
       case 'collection-deleted': return { stop: 'collection_deleted', bytes };
-      case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
-      case 'tenant-pages-full': await settle(item, 'failed', 'tenant_pages_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
-      case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
-      case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
+      case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures }); return { bytes };
+      case 'tenant-pages-full': await settle(item, 'failed', 'tenant_pages_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures }); return { bytes };
+      case 'too-deep': await settle(item, 'failed', 'too_deep', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures }); return { bytes };
+      case 'no-parent': await settle(item, 'failed', 'internal', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures }); return { bytes };
     }
   };
 

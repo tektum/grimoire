@@ -149,6 +149,37 @@ describe('a failure never fails the import', () => {
   });
 });
 
+describe('the reasons are kept on the item, where the report reads its warnings', () => {
+  it('each failed image adds its reason to the item\'s remoteImageFailures (a count per reason), and the reasons are codes, never the address', async () => {
+    const t = await setup([md('a.md\u0000![a](https://secret-host.example/a.png) ![b](https://secret-host.example/b.png) ![c](https://secret-host.example/c.png) ![d](http://secret-host.example/d.png)\n')], {
+      fetcher: new ScriptedFetcher((url) => (url.endsWith('c.png') ? ok(PNG) : fail(url.endsWith('a.png') ? 'blocked_address' : 'timeout'))),
+    });
+    const result = await t.run();
+    const item = await t.byPath('a.md');
+    expect(item?.remoteImageFailures).toEqual({ blocked_address: 1, timeout: 1, scheme: 1 });
+    expect(item?.warnings).toBe(3); // the count of warnings and the reasons agree
+    expect(JSON.stringify(item)).not.toContain('secret-host');
+    expect(result.kind === 'done' && result.counts.warnings).toBe(3);
+  });
+
+  it('the same reason twice is a count of 2, and fetching switched off is its own reason', async () => {
+    const t = await setup([md('a.md\u0000![a](https://i.example/a.png) ![b](https://i.example/b.png)\n')], { fetcher: new ScriptedFetcher(() => fail('network')) });
+    await t.run();
+    expect((await t.byPath('a.md'))?.remoteImageFailures).toEqual({ network: 2 });
+    const off = await setup([md('a.md\u0000![a](https://i.example/a.png)\n')], { fetcher: undefined });
+    await off.run();
+    expect((await off.byPath('a.md'))?.remoteImageFailures).toEqual({ not_fetched: 1 });
+  });
+
+  it('a page that is not written keeps the reasons on its failed item, and a page with no failed image has none', async () => {
+    const t = await setup([md('a.md\u0000# Bad\n![x](https://i.example/a.png)\n'), md('b.md\u0000# Fine\n')], { fetcher: new ScriptedFetcher(() => fail('status')) });
+    t.converter.fail = (m) => m.startsWith('# Bad');
+    await t.run();
+    expect(await t.byPath('a.md')).toMatchObject({ status: 'failed', remoteImageFailures: { status: 1 } });
+    expect((await t.byPath('b.md'))?.remoteImageFailures).toEqual({});
+  });
+});
+
 describe('the budget', () => {
   it('is one for the import: images beyond it stay links (budget), and the count of copies is kept in the import so a resumed run goes on from it', async () => {
     const fetcher = new ScriptedFetcher();

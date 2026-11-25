@@ -4,7 +4,7 @@ import type { ImportItem } from '../../../src/ports/import-repo.js';
 
 // M7-T04 (contracts section 4, step 5, Q21): the largest pages by Markdown and by state, and every page over the state cap, from the item rows.
 const item = (n: number, over: Partial<ImportItem> = {}): ImportItem => ({
-  id: String(n), path: `p${String(n)}.md`, kind: 'page', status: 'ok', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, ...over,
+  id: String(n), path: `p${String(n)}.md`, kind: 'page', status: 'ok', pageId: null, urlId: null, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {}, ...over,
 });
 
 describe('the Q21 report', () => {
