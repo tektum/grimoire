@@ -53,6 +53,19 @@ describe('instrument', () => {
     }
   });
 
+  it('treats a missing message as empty, so the code is used, and survives a getter that throws', () => {
+    expect(reasonOf(Object.assign(new Error('x'), { message: undefined, code: 'ECONNRESET' }))).toEqual({ errorName: 'Error', errorMessage: 'ECONNRESET' });
+    expect(reasonOf(new AggregateError([{ code: 'ECONNREFUSED' }], ''))).toEqual({ errorName: 'AggregateError', errorMessage: '' });
+    expect(reasonOf(new AggregateError([null], ''))).toEqual({ errorName: 'AggregateError', errorMessage: '' });
+    for (const key of ['message', 'name', 'errors', 'code']) {
+      const bad = new Error('boom');
+      Object.defineProperty(bad, key, { get() { throw new Error('getter'); } });
+      const r = reasonOf(bad);
+      expect([typeof r.errorName, typeof r.errorMessage]).toEqual(['string', 'string']);
+    }
+    expect(reasonOf(new Proxy(new Error('p'), { get() { throw new Error('trap'); } }))).toEqual({ errorName: 'Error', errorMessage: '' });
+  });
+
   it('says what a connection error with no message of its own was: the first error inside it, or its code', () => {
     const refused = new AggregateError([Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }), new Error('second')], '');
     expect(reasonOf(refused)).toEqual({ errorName: 'AggregateError', errorMessage: 'connect ECONNREFUSED 127.0.0.1:5432' });

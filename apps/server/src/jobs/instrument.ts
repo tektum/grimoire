@@ -7,9 +7,10 @@ const MESSAGE_LIMIT = 200;
 // eslint-disable-next-line no-control-regex -- the point is to take control characters out of a log line
 const CONTROL = /[\u0000-\u001f\u007f]+/g;
 
-/** Text of any value that cannot throw: a string as it is, anything else through `String`, and `''` when even that throws (a null-prototype object, a hostile `toString`). */
+/** Text of any value that cannot throw: a string as it is, nothing for `undefined` and `null`, anything else through `String`, and `''` when even that throws (a null-prototype object, a hostile `toString`). */
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value;
+  if (value === undefined || value === null) return '';
   try { return String(value); } catch { return ''; }
 }
 
@@ -21,15 +22,19 @@ const clean = (text: string, limit: number): string => text.replace(CONTROL, ' '
  * It never throws, so describing a failure can not replace the failure.
  */
 export function reasonOf(error: unknown): { errorName: string; errorMessage: string } {
-  if (!(error instanceof Error)) return { errorName: 'NonError', errorMessage: clean(textOf(error), MESSAGE_LIMIT) };
-  const record = error as Error & { code?: unknown; errors?: unknown };
-  let message = textOf(record.message);
-  if (message === '') {
-    const inner = Array.isArray(record.errors) ? (record.errors[0] as { message?: unknown } | undefined) : undefined;
-    message = inner === undefined || inner === null ? '' : textOf(inner.message);
+  try {
+    if (!(error instanceof Error)) return { errorName: 'NonError', errorMessage: clean(textOf(error), MESSAGE_LIMIT) };
+    const record = error as Error & { code?: unknown; errors?: unknown };
+    let message = textOf(record.message);
+    if (message === '') {
+      const inner = Array.isArray(record.errors) ? (record.errors[0] as { message?: unknown } | null | undefined) : undefined;
+      message = inner === undefined || inner === null ? '' : textOf(inner.message);
+    }
+    if (message === '' && typeof record.code === 'string') message = record.code;
+    return { errorName: clean(textOf(record.name), 60), errorMessage: clean(message, MESSAGE_LIMIT) };
+  } catch {
+    return { errorName: 'Error', errorMessage: '' }; // a getter or a proxy that throws: the class is all that is known
   }
-  if (message === '' && typeof record.code === 'string') message = record.code;
-  return { errorName: clean(textOf(record.name), 60), errorMessage: clean(message, MESSAGE_LIMIT) };
 }
 
 /**
