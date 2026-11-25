@@ -350,6 +350,14 @@ describe('batches, cancelling and resuming', () => {
   });
 });
 
+describe('batch limits', () => {
+  it.each([[{ batchPages: 0 }], [{ batchPages: -1 }], [{ batchPages: Number.NaN }], [{ batchPages: 1.5 }], [{ batchBytes: 0 }], [{ batchBytes: -5 }], [{ batchBytes: Number.NaN }]])('%j is refused with a RangeError before anything runs, not looped on forever', async (options) => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    await expect(t.run(options)).rejects.toBeInstanceOf(RangeError);
+    expect(t.repo.written).toEqual([]);
+  });
+});
+
 describe('the counts', () => {
   it('are written after each batch and returned: pages done, skipped, failed and warnings', async () => {
     const t = await setup([md('a.md\u0000[x](nope.md)\n'), md('b.md\u0000# B\n'), md('c.md\u0000# C\n')]);

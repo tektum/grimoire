@@ -188,6 +188,9 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const importId = record.id;
   const batchPages = options.batchPages ?? DEFAULT_BATCH_PAGES;
   const batchBytes = options.batchBytes ?? DEFAULT_BATCH_BYTES;
+  // A limit that never lets a batch take an item would loop for ever while the import stays running: a caller's mistake, refused up front.
+  if (!Number.isInteger(batchPages) || batchPages < 1) throw new RangeError('batchPages must be a positive integer');
+  if (!(batchBytes > 0)) throw new RangeError('batchBytes must be a positive number');
   if (record.createdBy === null) throw new Error('the importer of this import no longer exists');
   const importer = record.createdBy;
 
