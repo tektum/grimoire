@@ -3,7 +3,7 @@
 //   plain   the runtime pool, the same SQL, no tenant setting
 //   scoped  scoped(db, tenant): `begin; set local app.tenant` in one round trip, no policies
 //   policy  scoped() with the draft policies of migration 0013 enabled (tenant_isolation on every tenant table)
-// for two requests: page-open (pages.get: the page, then its breadcrumb) and tree-read (collections.tree). Data: 100 collections, about 10k pages of about 4 KB in 41 tenants (40 small, one big).
+// for three requests: page-open (pages.get: the page, then its breadcrumb), tree-read (collections.tree) and chunk-search (the semantic statement of embeddings.search over 140k chunks of 768 dimensions with STORAGE MAIN). Data: 100 collections, about 10k pages of about 4 KB in 41 tenants (40 small, one big).
 // Needs `bun run build` first (it uses the built adapter and the CLI to migrate). Env: BENCH_HOST (default 127.0.0.1:55432), BENCH_REQUESTS (5000), BENCH_CLIENTS (20).
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -19,9 +19,10 @@ const HOST = process.env.BENCH_HOST ?? '127.0.0.1:55432';
 const REQUESTS = Number(process.env.BENCH_REQUESTS ?? 5000);
 const CLIENTS = Number(process.env.BENCH_CLIENTS ?? 20);
 const WARMUP = 500;
+const CHUNK_REQUESTS = Number(process.env.BENCH_CHUNK_REQUESTS ?? 500);
+const CHUNK_WARMUP = 50;
 const DB = 'grimoire_bench';
 const url = (role) => `postgres://${role}:grimoire-dev@${HOST}/${DB}`;
-const TENANT_TABLES = ['users', 'groups', 'group_members', 'collections', 'collection_access', 'pages', 'revisions', 'attachments', 'audit_events', 'idempotency_keys', 'imports', 'import_items'];
 
 // Deterministic pseudo-random, so the three cases see the same request sequence.
 let seed = 12345;
@@ -48,6 +49,14 @@ async function seedData(admin) {
   await q(`
     with r as (select id, lag(id) over (partition by collection_id order by position) as prev, row_number() over (partition by collection_id order by position) as rn from pages)
     update pages p set parent_id = r.prev from r where r.id = p.id and r.rn % 4 <> 1`);
+  // 14 chunks of 768 dimensions per page (140k rows), with the storage the chunk table gets in migration 0013 so the vectors stay in the heap.
+  await q('alter table page_chunks alter column embedding set storage main');
+  await q(`create table bench_vectors as select g as id, (select array_agg((random() - 0.5 + 0 * g)::real) from generate_series(1, 768))::vector as v from generate_series(1, 500) g`);
+  await q(`
+    insert into page_chunks (page_id, tenant_id, chunk_index, model, content_hash, char_start, char_end, token_count, embedding)
+    select p.id, p.tenant_id, n, 'multilingual-e5-base', decode(repeat('ab', 32), 'hex'), n * 100, n * 100 + 100, 100, v.v
+      from pages p cross join generate_series(0, 13) n join bench_vectors v on v.id = 1 + (abs(hashtext(p.id::text)) + n) % 500`);
+  await q('drop table bench_vectors');
   await q('vacuum analyze');
   const [{ c, p }] = await q(`select (select count(*) from collections)::int as c, (select count(*) from pages)::int as p`);
   console.log(`data: ${c} collections, ${p} pages, 41 tenants`);
@@ -62,10 +71,11 @@ async function loadTargets(admin) {
   }
   const small = [...byTenant.keys()].filter((t) => t !== 'big');
   // Half of the requests are the big tenant's, the rest are spread over the small ones.
+  for (const t of byTenant.values()) t.all = [...t.collections];
   return Array.from({ length: REQUESTS + WARMUP }, () => {
     const tenant = rnd() < 0.5 ? 'big' : pick(small);
     const t = byTenant.get(tenant);
-    return { tenant, page: pick(t.pages), collection: pick([...t.collections]) };
+    return { tenant, page: pick(t.pages), collection: pick([...t.collections]), all: t.all };
   });
 }
 
@@ -80,13 +90,34 @@ const treeRead = async (tx, r) => {
   const live = await tx.query('select 1 from collections where id = $1 and tenant_id = $2 and deleted_at is null', [r.collection, r.tenant]);
   if (live.length > 0) await tx.query('select id, url_id, parent_id, position, title, icon from pages where collection_id = $1 and deleted_at is null order by position, id', [r.collection]);
 };
-const OPS = { 'page-open': pageOpen, 'tree-read': treeRead };
+// The semantic search statement of embeddings.search (db-kysely), over the seeded chunks.
+const QUERY_VECTOR = `[${Array.from({ length: 768 }, () => (rnd() - 0.5).toFixed(4)).join(',')}]`;
+const CHUNK_SEARCH = `with nearest as (
+           select c.page_id, c.chunk_index, c.char_start, c.char_end, c.embedding <=> $1::vector as distance
+             from page_chunks c join pages p on p.id = c.page_id
+            where c.model = $2 and c.tenant_id = $6 and p.tenant_id = $6 and p.deleted_at is null
+              and p.collection_id = any($3::uuid[])
+              and ($4::uuid is null or p.collection_id = $4)
+              and 1 - (c.embedding <=> $1::vector) >= $5
+            order by distance, c.page_id, c.chunk_index
+            limit 300),
+         best as (select distinct on (page_id) * from nearest order by page_id, distance, chunk_index)
+         select b.page_id, b.chunk_index, b.char_start, b.char_end, 1 - b.distance as similarity,
+                substr(p.text_content, b.char_start + 1, least(b.char_end - b.char_start, 4000)) as text, p.title, p.url_id, p.collection_id
+           from best b join pages p on p.id = b.page_id
+          order by b.distance, b.page_id
+          limit $7`;
+const chunkSearch = (tx, r) => tx.query(CHUNK_SEARCH, [QUERY_VECTOR, 'multilingual-e5-base', r.all, null, -1, r.tenant, 20]);
+const OPS = { 'page-open': pageOpen, 'tree-read': treeRead, 'chunk-search': chunkSearch };
+// [warm-up, measured] requests: the chunk search scans every chunk of the tenant, so it gets fewer.
+const sizes = (op) => (op === 'chunk-search' ? [CHUNK_WARMUP, CHUNK_REQUESTS] : [WARMUP, REQUESTS]);
 
 async function measure(app, mode, op, targets) {
   const run = OPS[op];
   const exec1 = (r) => (mode === 'plain' ? app.transaction((tx) => run(tx, r)) : scoped(app, r.tenant).transaction((tx) => run(tx, r)));
-  for (const r of targets.slice(0, WARMUP)) await exec1(r);
-  const work = targets.slice(WARMUP);
+  const [warmup, count] = sizes(op);
+  for (const r of targets.slice(0, warmup)) await exec1(r);
+  const work = targets.slice(warmup, warmup + count);
   const lat = [];
   let next = 0;
   await Promise.all(Array.from({ length: CLIENTS }, async () => {
@@ -104,7 +135,11 @@ async function measure(app, mode, op, targets) {
 
 async function enablePolicies(admin) {
   const claim = `nullif(current_setting('app.tenant', true), '')`;
-  for (const t of TENANT_TABLES) {
+  // Every table with a tenant_id, found as migration 0014 will find them (page_chunks and page_embedding_state included).
+  const tables = (await admin.query(`select c.table_name from information_schema.columns c join information_schema.tables t using (table_schema, table_name)
+                                      where c.table_schema = 'public' and c.column_name = 'tenant_id' and t.table_type = 'BASE TABLE' order by 1`)).map((r) => r.table_name);
+  console.log(`policies on: ${tables.join(', ')}`);
+  for (const t of tables) {
     await admin.query(`alter table ${t} enable row level security`);
     await admin.query(`create policy tenant_isolation on ${t} to grimoire_app using (tenant_id = ${claim}) with check (tenant_id = ${claim})`);
   }
@@ -134,13 +169,13 @@ try {
 
 const f = (x) => x.toFixed(2).padStart(8);
 const pct = (a, b) => `${((a / b - 1) * 100).toFixed(1)}%`.padStart(8);
-console.log(`\n${REQUESTS} requests after ${WARMUP} warm-up, ${CLIENTS} concurrent clients (ms)`);
-console.log('case       mode        p50      p95      p99   p95 vs plain  p95 vs scoped');
+console.log(`\n${REQUESTS} requests after ${WARMUP} warm-up (chunk-search: ${CHUNK_REQUESTS} after ${CHUNK_WARMUP}), ${CLIENTS} concurrent clients (ms)`);
+console.log('case          mode        p50      p95      p99   p95 vs plain  p95 vs scoped');
 for (const op of Object.keys(OPS)) {
   const of = (mode) => results.find((r) => r.op === op && r.mode === mode);
   for (const mode of ['plain', 'scoped', 'policy']) {
     const r = of(mode);
-    console.log(`${op.padEnd(10)} ${mode.padEnd(7)} ${f(r.p50)} ${f(r.p95)} ${f(r.p99)} ${mode === 'plain' ? ''.padStart(8) : pct(r.p95, of('plain').p95)} ${mode === 'policy' ? pct(r.p95, of('scoped').p95) : ''.padStart(8)}`);
+    console.log(`${op.padEnd(13)} ${mode.padEnd(7)} ${f(r.p50)} ${f(r.p95)} ${f(r.p99)} ${mode === 'plain' ? ''.padStart(8) : pct(r.p95, of('plain').p95)} ${mode === 'policy' ? pct(r.p95, of('scoped').p95) : ''.padStart(8)}`);
   }
 }
 const worst = Math.max(...Object.keys(OPS).flatMap((op) => {
