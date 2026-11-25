@@ -2,8 +2,6 @@
 
 /** A scheme (`https:`, `mailto:`) or a drive letter (`C:`) at the start. */
 const SCHEME_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/;
-/** A drive letter: one letter and a colon. */
-const DRIVE = /^[A-Za-z]:/;
 
 /**
  * The archive path a link points to, or undefined when it points at nothing inside the archive. `url` is the link as written in the Markdown of `fromPath`: it is split at a
@@ -16,18 +14,18 @@ export function resolveLinkPath(url: string, fromPath: string): string | undefin
   let decoded: string;
   try { decoded = decodeURIComponent(bare); } catch { return undefined; }
   if (decoded.startsWith('/') || decoded.includes('\\') || decoded.includes('\0')) return undefined;
-  // The page's own path is canonicalised like the link's segments: `.` and empty segments name nothing (the header check accepts them and the duplicate check merges them).
+  // The page's own path is canonicalised like the link's segments (`.` and empty segments name nothing; the header check accepts them and the duplicate check merges them), and
+  // an archive path is never a URL: a page whose own path starts like a scheme or a drive has no links.
   const folder = fromPath.split('/').slice(0, -1).filter((segment) => segment !== '' && segment !== '.');
+  if (SCHEME_OR_DRIVE.test(folder[0] ?? fromPath.split('/').filter((segment) => segment !== '' && segment !== '.')[0] ?? '')) return undefined;
   const parts = [...folder];
   for (const segment of decoded.split('/')) {
     if (segment === '' || segment === '.') continue;
     if (segment === '..') { if (parts.pop() === undefined) return undefined; continue; }
     parts.push(segment);
   }
+  // Joining can build what the raw link did not look like (`sub/../C:/x`, `a/../javascript:x`): the result is judged too, so no path that starts like a scheme or a drive comes
+  // back, whatever way it was made (a root entry whose name has a colon cannot be linked to; below the root the colon is inside a name).
   const joined = parts.join('/').normalize('NFC');
-  // Joining can build what the raw link did not look like (`sub/../C:/x`, `a/../javascript:x`): the result is judged too. A link that starts with `./` or `../` names an entry,
-  // whatever its name holds, so only a drive is refused there (`./notes:2026.md` is a file called notes:2026.md).
-  const first = decoded.split('/')[0];
-  const explicitlyRelative = first === '.' || first === '..';
-  return parts.length === 0 || DRIVE.test(joined) || (!explicitlyRelative && SCHEME_OR_DRIVE.test(joined)) ? undefined : joined;
+  return parts.length === 0 || SCHEME_OR_DRIVE.test(joined) ? undefined : joined;
 }

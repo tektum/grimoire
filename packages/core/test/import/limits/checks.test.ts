@@ -92,9 +92,14 @@ describe('a link inside a Markdown file', () => {
     expect(resolveLinkPath('./a:b/c.md', 'dir/b.md'), 'a colon in a name below the root is a name').toBe('dir/a:b/c.md');
   });
 
-  it('keeps a link to a root-level entry whose name has a colon, when the link names it with a leading ./', () => {
-    expect(resolveLinkPath('./notes:2026.md', 'index.md')).toBe('notes:2026.md');
-    expect(resolveLinkPath('./notes:2026.md', 'dir/index.md')).toBe('dir/notes:2026.md');
+  it('never returns a path whose first segment reads as a scheme or a drive: archive paths are not URLs', () => {
+    expect(resolveLinkPath('./notes:2026.md', 'index.md'), 'a root entry called notes:2026.md cannot be linked to').toBeUndefined();
+    expect(resolveLinkPath('./notes:2026.md', 'dir/index.md'), 'below the root the colon is inside a name').toBe('dir/notes:2026.md');
+    for (const from of ['javascript:x/page.md', 'data:text/page.md', 'C:/dir/page.md', 'c:/page.md']) {
+      expect(resolveLinkPath('y.md', from), from).toBeUndefined();
+      expect(resolveLinkPath('./y/z.md', from), from).toBeUndefined();
+      expect(resolveLinkPath('../y.md', from), from).toBeUndefined();
+    }
   });
 
   it('judges a page path with . and empty segments as the path without them (what the header check accepts and the duplicate check merges)', () => {
