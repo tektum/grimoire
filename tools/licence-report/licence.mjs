@@ -316,6 +316,29 @@ export function validatePending(list) {
   return errors;
 }
 
+/**
+ * Validate the models list (models.json, M7-T12) against the lock of the model files: every model of the lock has an entry, every entry has a licence the shipped rule allows, a source and the SHA-256 of
+ * the lock's weights file, and no entry is for a model the lock does not have. Returns the errors, empty when the list is sound.
+ */
+export function validateModels(models, lock) {
+  const errors = [];
+  const locked = new Map();
+  for (const f of lock.files ?? []) if (f.name === "model_quantized.onnx") locked.set(f.model, f.sha256);
+  const seen = new Set();
+  for (const m of models) {
+    const who = `models.json: ${m?.name ?? "(an entry with no name)"}`;
+    for (const key of ["name", "licence", "source", "sha256"]) if (typeof m?.[key] !== "string" || m[key] === "") errors.push(`${who}: ${key} is missing`);
+    if (typeof m?.name !== "string") continue;
+    if (seen.has(m.name)) errors.push(`${who}: listed twice`);
+    seen.add(m.name);
+    if (typeof m.licence === "string" && m.licence !== "" && !SHIPPED_ALLOWED.includes(m.licence)) errors.push(`${who}: the licence ${m.licence} is not allowed for what ships`);
+    if (!locked.has(m.name)) errors.push(`${who}: the lock has no such model`);
+    else if (typeof m.sha256 === "string" && m.sha256 !== "" && m.sha256 !== locked.get(m.name)) errors.push(`${who}: sha256 is not the one of the lock`);
+  }
+  for (const name of locked.keys()) if (!seen.has(name)) errors.push(`models.json: ${name} is in the lock and has no entry`);
+  return errors;
+}
+
 /** Validate images.json source text: the same image (after normalising docker.io/library) must not be listed twice. */
 export function validateImagesText(text) {
   const keys = [];

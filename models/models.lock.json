@@ -1,0 +1,41 @@
+{
+  "note": "The model files the embedder loads (M7-T12). `scripts/fetch-models.mjs` downloads each file from its pinned revision, checks its SHA-256 and size, and writes it to models/<model>/<name>; nothing here is committed but this file. A redirect is followed only to a host of `redirectHosts` (the file store of the mirror serves from its own CDN); the hash and the size decide whether the bytes are the file.",
+  "redirectHosts": [
+    "huggingface.co",
+    "hf.co"
+  ],
+  "files": [
+    {
+      "model": "multilingual-e5-base",
+      "name": "model_quantized.onnx",
+      "revision": "1ec9243030a27d1a115d5c340572074c125b58b2",
+      "url": "https://huggingface.co/Xenova/multilingual-e5-base/resolve/1ec9243030a27d1a115d5c340572074c125b58b2/onnx/model_quantized.onnx",
+      "sha256": "df7a9a29309e3ad491e1783adf8baee710262cc06079c7cbab63c630277fac94",
+      "size": 278647662
+    },
+    {
+      "model": "multilingual-e5-base",
+      "name": "tokenizer.json",
+      "revision": "1ec9243030a27d1a115d5c340572074c125b58b2",
+      "url": "https://huggingface.co/Xenova/multilingual-e5-base/resolve/1ec9243030a27d1a115d5c340572074c125b58b2/tokenizer.json",
+      "sha256": "62c24cdc13d4c9952d63718d6c9fa4c287974249e16b7ade6d5a85e7bbb75626",
+      "size": 17082660
+    },
+    {
+      "model": "multilingual-e5-small",
+      "name": "model_quantized.onnx",
+      "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+      "url": "https://huggingface.co/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/onnx/model_quantized.onnx",
+      "sha256": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193",
+      "size": 118308185
+    },
+    {
+      "model": "multilingual-e5-small",
+      "name": "tokenizer.json",
+      "revision": "761b726dd34fb83930e26aab4e9ac3899aa1fa78",
+      "url": "https://huggingface.co/Xenova/multilingual-e5-small/resolve/761b726dd34fb83930e26aab4e9ac3899aa1fa78/tokenizer.json",
+      "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+      "size": 17082730
+    }
+  ]
+}

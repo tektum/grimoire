@@ -1,0 +1,4 @@
+# The model files are fetched by scripts/fetch-models.mjs, never committed: only the lock and this file are.
+*
+!.gitignore
+!models.lock.json
