@@ -15,9 +15,18 @@ export interface ArchiveEntry {
 export type HeaderRefusal = 'unsafe_path' | 'symlink' | 'non_regular' | 'too_many_entries' | 'too_large' | 'ratio';
 export type HeaderCheck = { readonly ok: true } | { readonly ok: false; readonly reason: HeaderRefusal; readonly index?: number };
 
-/** A name that could write outside the import: a `..` segment, an absolute path, a drive letter, a backslash or a NUL. */
+/** The longest entry path accepted, in characters. A Notion export puts a 32-character id in every segment and nests as deep as the page tree allows, which stays well under this. */
+export const MAX_ENTRY_PATH_LENGTH = 4096;
+// eslint-disable-next-line no-control-regex -- the point is to find them: C0, DEL, C1, and the line and paragraph separators
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+/**
+ * A name that could write outside the import (a `..` segment, an absolute path, a drive letter, a backslash) or that cannot be kept and shown as it is: a control character
+ * (a NUL included) or a line separator, or a path longer than `MAX_ENTRY_PATH_LENGTH`. The item path is the archive path exactly (links resolve to it, a resumed run finds
+ * its items by it), so what is refused here is what makes that exact path unbounded or unclean.
+ */
 function unsafe(path: string): boolean {
-  return path.includes('\0') || path.includes('\\') || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.split('/').includes('..');
+  return path.length > MAX_ENTRY_PATH_LENGTH || CONTROL.test(path) || path.includes('\\') || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.split('/').includes('..');
 }
 
 /**

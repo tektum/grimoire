@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkHeader, duplicateIndexes } from '../../../src/import/checks.js';
+import { checkHeader, duplicateIndexes, MAX_ENTRY_PATH_LENGTH } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
 import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
@@ -17,6 +17,26 @@ describe('an entry name that could write outside the import', () => {
 
   it('accepts names that only look like it: dots inside a name, a leading dot, a colon later in the name', () => {
     expect(check([file('a..b/c.md'), file('.hidden/x.md'), file('a/b:c.md'), file('...'), file('..a/b')])).toEqual({ ok: true });
+  });
+});
+
+describe('a name that cannot be stored and shown as it is (the item path is the archive path, exactly)', () => {
+  it.each([['a\nb.md'], ['a\tb.md'], ['a\u001bb.md'], ['a\u007fb.md'], ['a\u0085b.md'], ['a\u2028b.md'], ['a\u2029b.md'], ['dir/\u009fx.md']])('%j (a control or line separator character) is refused as unsafe_path', (name) => {
+    expect(check([file('ok.md'), file(name)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
+  });
+
+  it('refuses a name over MAX_ENTRY_PATH_LENGTH characters, and accepts one of exactly that length', () => {
+    expect(check([file(`${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 3)}.md`)])).toEqual({ ok: true });
+    expect(check([file('ok.md'), file(`${'a'.repeat(MAX_ENTRY_PATH_LENGTH - 2)}.md`)])).toEqual({ ok: false, reason: 'unsafe_path', index: 1 });
+  });
+
+  it('accepts what a Notion export looks like: 32-character ids in every segment, nested deeply', () => {
+    const segment = `Some page title ${'0123456789abcdef'.repeat(2)}`;
+    expect(check([file(`${Array.from({ length: 32 }, () => segment).join('/')}.md`)])).toEqual({ ok: true });
+  });
+
+  it('accepts ordinary non-ASCII names and a space', () => {
+    expect(check([file('caf\u00e9/\u65e5\u672c\u8a9e a.md')])).toEqual({ ok: true });
   });
 });
 
