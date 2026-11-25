@@ -7,7 +7,7 @@ import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from
 // are M7-T05's); written for the stack too, where the tree and the trash are asked as well. Needs a development build of the client (`bunx vite build --mode e2e`).
 async function open(page: Page, context: Parameters<typeof signInAs>[0], states: readonly ScriptedState[], items: readonly ScriptedItem[] = []) {
   await signInAs(context, 'e2e-alice', 'member', { check: false });
-  await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [] });
+  await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [], config: { maxMarkdownBytes: 131072 } });
   const sent = await scriptedImports(page, states, { items });
   await page.goto('/import');
   await expect(page.getByRole('heading', { level: 1, name: 'Import' })).toBeVisible();
@@ -17,8 +17,8 @@ async function open(page: Page, context: Parameters<typeof signInAs>[0], states:
 const FILES: readonly ScriptedItem[] = [
   { id: 'i1', path: 'docs/welcome.md', status: 'imported' },
   { id: 'i2', path: 'docs/guide/setup.md', status: 'imported' },
-  { id: 'i3', path: 'docs/big.md', status: 'skipped', message: 'too_large: The page is larger than the limit of 128 KB.' },
-  { id: 'i4', path: 'docs/<b>odd</b>.md', status: 'failed', message: 'The file could not be read as markdown.', hasSource: true },
+  { id: 'i3', path: 'docs/big.md', status: 'skipped', message: 'too_large' },
+  { id: 'i4', path: 'docs/<b>odd</b>.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];
 
 test('a small zip imports, and the report has one row for each file, with the reasons as text', async ({ page, context }) => {
@@ -36,7 +36,7 @@ test('a small zip imports, and the report has one row for each file, with the re
   await expect(page.getByRole('status').first()).toHaveText('Done: 2 pages imported, 1 skipped, 1 failed.');
   const rows = page.getByRole('list', { name: 'Files of the import' }).getByRole('listitem');
   await expect(rows).toHaveCount(FILES.length);
-  await expect(rows.nth(2)).toContainText('The page is larger than the limit of 128 KB.');
+  await expect(rows.nth(2)).toContainText('The page is larger than the limit of 128 KB.'); // the sentence is the screen's, the number is the server's (GET /v1/config)
   await expect(rows.nth(2)).not.toContainText('too_large'); // the words, never the code
   await expect(rows.nth(3)).toContainText('docs/<b>odd</b>.md'); // text, not markup
   await expect(page.locator('.import-report-list b')).toHaveCount(0);

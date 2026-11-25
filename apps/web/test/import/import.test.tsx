@@ -45,6 +45,7 @@ interface Options {
   /** The report, a page after another (the cursor is the index of the page). */
   items?: ImportItem[][];
   itemsFail?: () => boolean;
+  config?: Record<string, unknown> | undefined;
   source?: { status: number; url?: string };
   cancel?: { status: number; code?: string };
 }
@@ -64,6 +65,7 @@ function fake(options: Options = {}) {
         const states = options.states ?? [state()];
         return answer(200, states[Math.min(reads++, states.length - 1)]);
       }
+      if (path === '/v1/config') return answer(200, options.config ?? {});
       if (path === '/v1/imports/{id}/items') {
         if (options.itemsFail?.() === true) return answer(503);
         const pages = options.items ?? [[]];
@@ -359,12 +361,10 @@ const item = (over: Partial<ImportItem> & { id: string }): ImportItem => ({
 const ended = (over: Partial<ImportState> & { done?: number; total?: number } = {}) => state({ status: 'done', done: 3, total: 3, ...over });
 
 describe('the report of an ended import', () => {
-  it('lists one row for each file with what happened to it, and a reason as plain text, never as markup', async () => {
+  it('lists one row for each file with what happened to it, and the name of a file as text, never as markup', async () => {
     const t = fake({
       states: [ended()],
-      items: [
-        [item({ id: 'a' }), item({ id: 'b', status: 'skipped', message: 'too_large: over the limit of 1 MB' }), item({ id: 'c', path: '<b>bold</b>.md', status: 'failed', message: '<img src=x onerror=alert(1)>' })],
-      ],
+      items: [[item({ id: 'a' }), item({ id: 'b', status: 'skipped', message: 'too_large' }), item({ id: 'c', path: '<b>bold</b>.md', status: 'failed', message: '<img src=x onerror=alert(1)>' })]],
     });
     show(t.api, '/import?import=imp1');
     const list = await screen.findByRole('list', { name: 'Files of the import' });
@@ -374,10 +374,10 @@ describe('the report of an ended import', () => {
         .getAllByRole('listitem')
         .map((li) => li.getAttribute('data-status')),
     ).toEqual(['imported', 'skipped', 'failed']);
-    expect(list.textContent).toContain('over the limit of 1 MB');
+    expect(list.textContent).toContain('The page is larger than the limit for a page.');
     expect(list.textContent).not.toContain('too_large');
     expect(list.textContent).toContain('<b>bold</b>.md');
-    expect(list.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(list.textContent).not.toContain('onerror'); // a message that is not a code is never shown
     expect(list.querySelector('b, img')).toBeNull();
   });
 
@@ -507,27 +507,63 @@ describe('a report that is not shaped as the contract says', () => {
   });
 });
 
-describe('what a person is told about a file', () => {
-  const reasons = (messages: (string | null)[], status: ImportItem['status'] = 'skipped') => fake({ states: [ended()], items: [messages.map((message, n) => item({ id: `r${String(n)}`, status, message }))] });
+const SKIPPED = ['ignored', 'duplicate_path', 'too_large', 'entry_too_large', 'type_not_allowed', 'type_mismatch', 'unreferenced', 'nested_archive', 'empty'];
+const FAILED = ['bad_name', 'invalid_encoding', 'size_mismatch', 'invalid-markdown', 'timeout', 'out-of-memory', 'state_too_large', 'content-lost', 'convert_failed', 'collection_full', 'internal'];
 
-  it('shows the words the server gave, without the code in front of them, and the limit as the server named it', async () => {
-    show(reasons(['too_large: The page is larger than the limit of 128 KB.', 'tenant-pages-full: The workspace has reached its limit of 10000 pages.']).api, '/import?import=imp1');
-    const list = await screen.findByRole('list', { name: 'Files of the import' });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
-    expect(list.textContent).toContain('The page is larger than the limit of 128 KB.');
-    expect(list.textContent).toContain('The workspace has reached its limit of 10000 pages.');
-    expect(list.textContent).not.toMatch(/too_large|tenant-pages-full/);
+describe('what a person is told about a file: the reason is a code, and the screen has the words', () => {
+  const reasons = (codes: string[], status: ImportItem['status'], config?: Record<string, unknown>) =>
+    fake({ states: [ended()], config, items: [codes.map((message, n) => item({ id: `r${String(n)}`, status, message }))] });
+  const messagesOf = async (list: HTMLElement, n: number) => {
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(n));
+    return within(list)
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.import-report-message')?.textContent?.trim() ?? '');
+  };
+
+  it.each([
+    ['skipped', SKIPPED],
+    ['failed', FAILED],
+  ] as const)('puts every code of a %s file into a sentence of words that is not the code, and never shows a code', async (status, codes) => {
+    show(reasons([...codes], status).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), codes.length);
+    expect(new Set(texts).size, 'one sentence for each code (the generic one is not used for a known code)').toBe(codes.length);
+    for (const [n, text] of texts.entries()) {
+      expect(text, codes[n]).toMatch(/^[A-Z].*\.$/);
+      expect(text.toLowerCase(), codes[n]).not.toContain(codes[n]!.replace(/[_-]/g, ' ').includes(' ') ? codes[n]! : '\u0000');
+      expect(text).not.toMatch(/[a-z]+[_-][a-z]+/);
+    }
   });
 
-  it('puts a reason that is only a code into words, a code it does not know and a missing reason into the words of the status, and never shows a code', async () => {
-    show(reasons(['too_large', 'tenant-storage-full', 'collection_full', 'some_new_code', null]).api, '/import?import=imp1');
+  it('takes the limit a code names from the configuration of the server, and says no number when the server does not say one', async () => {
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: 131072, maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
+    const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
+    expect(texts[0]).toBe('The page is larger than the limit of 128 KB.');
+    expect(texts[1]).toBe('The file is larger than the limit of 25 MB.');
+    cleanup();
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: null, maxAttachmentBytes: null }).api, '/import?import=imp1');
+    const none = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
+    expect(none[0]).toBe('The page is larger than the limit for a page.');
+    expect(none[1]).toBe('The file is larger than the limit for a file.');
+    expect(none.join(' ')).not.toMatch(/\d/);
+  });
+
+  it('says the generic sentence of the status for a code it does not know, for no reason and for text that is not a code, and never the text', async () => {
+    show(
+      fake({
+        states: [ended()],
+        items: [
+          [
+            item({ id: 'u1', status: 'skipped', message: 'some_new_code' }),
+            item({ id: 'u2', status: 'failed', message: null }),
+            item({ id: 'u3', status: 'failed', message: '/home/alice/notes/secret.md could not be read' }),
+          ],
+        ],
+      }).api,
+      '/import?import=imp1',
+    );
     const list = await screen.findByRole('list', { name: 'Files of the import' });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
-    const texts = within(list)
-      .getAllByRole('listitem')
-      .map((li) => li.querySelector('.import-report-message')?.textContent?.trim());
-    expect(texts).toEqual(['The page is larger than the limit for a page.', 'The workspace has run out of storage.', 'The collection is full.', 'The file was left out.', 'The file was left out.']);
-    expect(list.textContent).not.toMatch(/too_large|tenant-storage-full|collection_full|some_new_code/);
+    expect(await messagesOf(list, 3)).toEqual(['The file was left out.', 'The file could not be imported.', 'The file could not be imported.']);
+    expect(list.textContent).not.toContain('secret.md could');
   });
 });
 
@@ -814,31 +850,5 @@ describe('the progress of an import', () => {
       path === '/v1/imports/{id}' ? { error: {}, response: new Response(null, { status: 404 }) } : { data: path === '/v1/me' ? { role: 'member' } : { items: COLLECTIONS }, response: new Response(null, { status: 200 }) };
     show(t.api, '/import?import=gone');
     expect((await screen.findByRole('alert')).textContent).toContain('That import can’t be read.');
-  });
-});
-
-describe('a reason that has a hyphenated word in it', () => {
-  it('is shown whole: only "code: words" or a known code alone is taken for a code', async () => {
-    show(fake({ states: [ended()], items: [[item({ id: 'h1', status: 'failed', message: 'front-matter is not valid YAML' }), item({ id: 'h2', status: 'skipped', message: 'read-only' })]] }).api, '/import?import=imp1');
-    const list = await screen.findByRole('list', { name: 'Files of the import' });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
-    expect(
-      within(list)
-        .getAllByRole('listitem')
-        .map((li) => li.querySelector('.import-report-message')?.textContent?.trim()),
-    ).toEqual(['front-matter is not valid YAML', 'read-only']);
-  });
-});
-
-describe('a failed file with no reason', () => {
-  it('says in words that it could not be imported', async () => {
-    show(fake({ states: [ended()], items: [[item({ id: 'z', status: 'failed', message: 'internal_error' }), item({ id: 'y', status: 'failed', message: null })]] }).api, '/import?import=imp1');
-    const list = await screen.findByRole('list', { name: 'Files of the import' });
-    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
-    expect(
-      within(list)
-        .getAllByRole('listitem')
-        .map((li) => li.querySelector('.import-report-message')?.textContent?.trim()),
-    ).toEqual(['The file could not be imported.', 'The file could not be imported.']);
   });
 });

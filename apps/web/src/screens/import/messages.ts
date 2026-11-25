@@ -1,4 +1,5 @@
 import { ImportError } from '../../import/api';
+import { formatBytes } from '../../editor/attachments/limits';
 import type { ImportItem, ImportState } from '../../import/types';
 
 /** What the person is told when a step of starting an import is refused. */
@@ -29,30 +30,58 @@ export function percent(counts: ImportState['counts']): number {
 export const barValue = (state: ImportState): number => (state.status === 'done' ? 100 : percent(state.counts));
 
 const FALLBACK: Record<'skipped' | 'failed', string> = { skipped: 'The file was left out.', failed: 'The file could not be imported.' };
-const CODE_SHAPE = '[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+';
-const WITH_WORDS = new RegExp(`^(${CODE_SHAPE}):\\s*([\\s\\S]*)$`);
-const ONLY_CODE = new RegExp(`^${CODE_SHAPE}$`);
-const CODE_WORDS: Record<string, string> = {
-  too_large: 'The page is larger than the limit for a page.',
-  'tenant-pages-full': 'The workspace has reached its limit of pages.',
-  'tenant-storage-full': 'The workspace has run out of storage.',
-  collection_full: 'The collection is full.',
+
+/** What the server announces (`GET /v1/config`) that a reason names; each is absent when it is not known. */
+export interface ImportLimits {
+  readonly markdownBytes?: number;
+  readonly entryBytes?: number;
+}
+
+const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+
+/** The limits of a client configuration: the largest page's Markdown (`maxMarkdownBytes`) and the largest file (`maxAttachmentBytes`). */
+export function importLimitsOf(config: unknown): ImportLimits {
+  const c = (typeof config === 'object' && config !== null ? config : {}) as Record<string, unknown>;
+  const markdownBytes = positive(c['maxMarkdownBytes']);
+  const entryBytes = positive(c['maxAttachmentBytes']);
+  return { ...(markdownBytes === undefined ? {} : { markdownBytes }), ...(entryBytes === undefined ? {} : { entryBytes }) };
+}
+
+const limit = (what: string, bytes: number | undefined, nameless: string): string =>
+  bytes === undefined ? `The ${what} is larger than the limit for a ${nameless}.` : `The ${what} is larger than the limit of ${formatBytes(bytes)}.`;
+
+/** The sentence for each reason code the import pipeline gives (a skipped or failed file's `message` is exactly one of these, and never a path). */
+const WORDS: Record<string, (l: ImportLimits) => string> = {
+  ignored: () => 'The import leaves this kind of file out on purpose.',
+  duplicate_path: () => 'Another file in the zip has the same path.',
+  too_large: (l) => limit('page', l.markdownBytes, 'page'),
+  entry_too_large: (l) => limit('file', l.entryBytes, 'file'),
+  type_not_allowed: () => 'This type of file is not allowed.',
+  type_mismatch: () => 'The content of the file does not match its type.',
+  unreferenced: () => 'No page uses this file.',
+  nested_archive: () => 'A zip inside the zip is not imported.',
+  empty: () => 'The file is empty.',
+  bad_name: () => 'The name of the file cannot be used.',
+  invalid_encoding: () => 'The file is not valid text.',
+  size_mismatch: () => 'The size of the file is not what the zip said.',
+  'invalid-markdown': () => 'The Markdown could not be read.',
+  timeout: () => 'Converting the file took too long.',
+  'out-of-memory': () => 'The file was too big to convert.',
+  state_too_large: (l) => limit('converted page', l.markdownBytes, 'page'),
+  'content-lost': () => 'Part of the content could not be kept.',
+  convert_failed: () => 'The file could not be converted.',
+  collection_full: () => 'The collection is full.',
+  internal: () => 'Something went wrong on our side with this file.',
 };
 
 /**
- * The reason a file was skipped or failed, in words. The server's message is text for people and may start with the code of the reason and a colon ("too_large: The page is larger than..."): the code is left out,
- * and the words after it (which name the limit, as the server has it) are kept. A message that is only a code has words of its own here; an unknown code and a missing message have the words of the status.
- * A word with a hyphen at the start of ordinary text is not taken for a code.
+ * The reason a file was skipped or failed, in words. The server's `message` is the code of the reason: the screen has the sentence for each code and takes the limit a code names from the
+ * server's configuration. A code it does not know, no message, and anything that is not a code (a text is never shown) have the generic sentence of the status.
  */
-export function reasonText(item: Pick<ImportItem, 'status' | 'message'>): string | null {
-  if (item.status === 'imported') return item.message;
-  const message = item.message?.trim() ?? '';
-  if (message === '') return FALLBACK[item.status];
-  const withWords = WITH_WORDS.exec(message);
-  if (withWords !== null) return withWords[2]!.trim() !== '' ? withWords[2]!.trim() : (CODE_WORDS[withWords[1]!] ?? FALLBACK[item.status]);
-  // A message that is a code alone: a known one has words, an unknown one with an underscore is a code and gets the words of the status; an ordinary hyphenated word ("read-only") is the reason itself.
-  if (ONLY_CODE.test(message)) return CODE_WORDS[message] ?? (message.includes('_') ? FALLBACK[item.status] : message);
-  return message;
+export function reasonText(item: Pick<ImportItem, 'status' | 'message'>, limits: ImportLimits): string | null {
+  if (item.status === 'imported') return null;
+  const words = item.message === null || !Object.hasOwn(WORDS, item.message) ? undefined : WORDS[item.message];
+  return words === undefined ? FALLBACK[item.status] : words(limits);
 }
 
 const pages = (n: number): string => `${String(n)} ${n === 1 ? 'page' : 'pages'}`;

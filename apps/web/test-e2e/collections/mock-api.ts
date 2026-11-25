@@ -29,6 +29,8 @@ export interface MockState {
   userName?: string;
   /** The collaboration address the client is told to use (default: one that nothing listens on). */
   collabUrl?: string;
+  /** Fields the server adds to `GET /v1/config` (a limit a screen names). */
+  config?: Record<string, unknown>;
   /** The id the first page made through the API gets (default `new1`): for a collaboration server that knows one page only. */
   firstNewPageId?: string;
   /** The address id of that page (default: the id padded to eight characters). */
@@ -48,8 +50,7 @@ export interface MockApi {
   writes(): string[];
 }
 
-const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) =>
-  route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
+const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) => route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
 
 /**
  * Stands in for the API for one page: the configuration, the signed-in user, the collections and their trees, with the headers a browser needs to accept the answers
@@ -69,7 +70,8 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     const { pathname } = new URL(request.url());
-    if (pathname === '/v1/config') return json(route, 200, { collabUrl: state.collabUrl ?? COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null }, cors);
+    if (pathname === '/v1/config')
+      return json(route, 200, { collabUrl: state.collabUrl ?? COLLAB, fileStoreOrigin: null, local: true, minClientVersion: '0.0.0', providerBaseUrl: null, providerProjectId: null, ...(state.config ?? {}) }, cors);
     if (pathname === '/v1/me') return json(route, 200, { id: 'u1', name: state.userName ?? 'e2e-alice', email: 'e2e-alice@dev.invalid', role: state.role ?? 'member' }, cors);
     if (pathname === '/v1/collections') return json(route, 200, { items: state.collections }, cors);
     const one_ = /^\/v1\/collections\/([^/]+)$/.exec(pathname);
@@ -95,7 +97,10 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     const meta = (p: FlatPage) => ({ ...p, collectionId: state.collections[0]?.id ?? '', createdBy: 'u1' });
     const siblings = (parentId: string | null) => state.pages.filter((p) => p.parentId === parentId).sort((x, y) => (x.position < y.position ? -1 : 1));
     /** Gives the siblings of one parent keys in the order given, as the server's own ordering would leave them. */
-    const renumber = (order: FlatPage[]) => order.forEach((p, i) => { state.pages = state.pages.map((q) => (q.id === p.id ? { ...q, position: `p${String(i).padStart(4, '0')}` } : q)); });
+    const renumber = (order: FlatPage[]) =>
+      order.forEach((p, i) => {
+        state.pages = state.pages.map((q) => (q.id === p.id ? { ...q, position: `p${String(i).padStart(4, '0')}` } : q));
+      });
     if (pathname === '/v1/trash' && request.method() === 'GET') return json(route, 200, { items: (state.trash ?? []).map((t) => t.item), nextCursor: null }, cors);
     const restoring = /^\/v1\/trash\/([^/]+)\/restore$/.exec(pathname);
     if (restoring?.[1] !== undefined && request.method() === 'POST') {
@@ -114,7 +119,14 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
       created += 1;
       const id = created === 1 && state.firstNewPageId !== undefined ? state.firstNewPageId : `new${String(created)}`;
       const parentId = (body['parentId'] as string | null | undefined) ?? null;
-      const page: FlatPage = { id, urlId: created === 1 && state.firstNewPageUrlId !== undefined ? state.firstNewPageUrlId : id.padEnd(8, '0'), parentId, position: 'p9999', title: (body['title'] as string | undefined) ?? '', icon: null };
+      const page: FlatPage = {
+        id,
+        urlId: created === 1 && state.firstNewPageUrlId !== undefined ? state.firstNewPageUrlId : id.padEnd(8, '0'),
+        parentId,
+        position: 'p9999',
+        title: (body['title'] as string | undefined) ?? '',
+        icon: null,
+      };
       state.pages = [...state.pages, page];
       renumber(siblings(parentId));
       return json(route, 201, meta(state.pages.find((p) => p.id === id) ?? page), cors);
@@ -130,7 +142,14 @@ export async function mockApi(page: Page, state: MockState): Promise<MockApi> {
     if (found !== undefined && one?.[2] === undefined && request.method() === 'DELETE') {
       written.push(`DELETE ${pathname}`);
       const gone = new Set([found.id]);
-      for (let grew = true; grew;) { grew = false; for (const p of state.pages) if (p.parentId !== null && gone.has(p.parentId) && !gone.has(p.id)) { gone.add(p.id); grew = true; } }
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const p of state.pages)
+          if (p.parentId !== null && gone.has(p.parentId) && !gone.has(p.id)) {
+            gone.add(p.id);
+            grew = true;
+          }
+      }
       const batch = state.pages.filter((p) => gone.has(p.id));
       state.pages = state.pages.filter((p) => !gone.has(p.id));
       state.trash = [{ item: { id: found.id, title: found.title, collectionId: state.collections[0]?.id ?? '', deletedAt: Date.now(), deletedBy: null, daysLeft: 30 }, pages: batch }, ...(state.trash ?? [])];

@@ -4,7 +4,8 @@ import type { ImportItem } from '../../import/types';
 import type { ApiLike } from '../../api/query';
 import { isSafeHref } from '../../safety';
 import { Button } from '../../ui/primitives';
-import { reasonText } from './messages';
+import { useApiQuery } from '../../api/query';
+import { importLimitsOf, reasonText } from './messages';
 
 const STATUS: Record<ImportItem['status'], string> = { imported: 'Imported', skipped: 'Skipped', failed: 'Failed' };
 
@@ -22,6 +23,8 @@ function download(url: string): boolean {
 /** What happened to each file of an ended import. Names and reasons are text, never markup. A failed page whose original is kept can be downloaded. */
 export function Report({ api, id }: { readonly api: ApiLike; readonly id: string }) {
   const report = useImportReport(api, id);
+  // The limits a reason names are the server's (`GET /v1/config`); until they are known, or when it does not say, the sentence has no number.
+  const limits = importLimitsOf(useApiQuery(api, '/v1/config').data);
   const [problem, setProblem] = useState<string | null>(null);
   const fetchSource = async (item: ImportItem): Promise<void> => {
     setProblem(null);
@@ -44,7 +47,7 @@ export function Report({ api, id }: { readonly api: ApiLike; readonly id: string
         {report.items.map((item) => (
           <li key={item.id} data-status={item.status}>
             <span className="import-report-path">{item.path}</span> <span className="import-report-status">{STATUS[item.status]}</span>
-            {reasonText(item) === null ? null : <span className="import-report-message"> {reasonText(item)}</span>}
+            {reasonText(item, limits) === null ? null : <span className="import-report-message"> {reasonText(item, limits)}</span>}
             {item.status === 'failed' && item.hasSource ? (
               <Button
                 aria-label={`Download source of ${item.path}`}

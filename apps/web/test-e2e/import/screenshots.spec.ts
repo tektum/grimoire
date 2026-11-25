@@ -32,13 +32,30 @@ test('the import screen at 40 percent', async ({ page, context, browserName }) =
 const REPORT: readonly ScriptedItem[] = [
   { id: 'i1', path: 'handbook/welcome.md', status: 'imported' },
   { id: 'i2', path: 'handbook/guides/setup.md', status: 'imported' },
-  { id: 'i3', path: 'handbook/archive/everything.md', status: 'skipped', message: 'too_large: The page is larger than the limit of 128 KB.' },
-  { id: 'i4', path: 'handbook/notes/broken.md', status: 'failed', message: 'The file could not be read as markdown.', hasSource: true },
+  { id: 'i3', path: 'handbook/archive/everything.md', status: 'skipped', message: 'too_large' },
+  { id: 'i4', path: 'handbook/notes/broken.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];
 
 test('the report of an import with one failed file', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
   await openShots(page, context, [p('a', null, 'p0000', 'Welcome')]);
+  // The limit a reason names is the server's: the configuration it announces gets the 128 KB cap of a page's Markdown.
+  await page.route('**/v1/config', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      json: {
+        collabUrl: process.env['E2E_SHOT_COLLAB'] ?? 'ws://127.0.0.1:18081',
+        fileStoreOrigin: null,
+        local: true,
+        minClientVersion: '0.0.0',
+        providerBaseUrl: null,
+        providerProjectId: null,
+        maxMarkdownBytes: 131072,
+      },
+    }),
+  );
   await scriptedImports(page, [{ status: 'done', total: 4, done: 2, skipped: 1, failed: 1 }], { items: REPORT });
   await page.goto('/import?import=imp1');
   await expect(page.getByRole('list', { name: 'Files of the import' }).getByRole('listitem')).toHaveCount(4);

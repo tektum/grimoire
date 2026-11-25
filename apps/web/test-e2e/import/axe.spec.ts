@@ -14,8 +14,8 @@ const STATES: readonly [string, ScriptedState][] = [
 
 const REPORT: readonly ScriptedItem[] = [
   { id: 'i1', path: 'docs/welcome.md', status: 'imported' },
-  { id: 'i2', path: 'docs/big.md', status: 'skipped', message: 'too_large: The page is larger than the limit of 128 KB.' },
-  { id: 'i3', path: 'docs/odd.md', status: 'failed', message: 'The file could not be read as markdown.', hasSource: true },
+  { id: 'i2', path: 'docs/big.md', status: 'skipped', message: 'too_large' },
+  { id: 'i3', path: 'docs/odd.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];
 
 for (const scheme of ['light', 'dark'] as const) {
