@@ -60,7 +60,10 @@ if (inputErrors.length) {
 // Images
 const imageMap = readJson(imagesFile, "images map");
 // Dockerfiles are always checked, with or without a compose file
-const refs = extractImages(existsSync(composeFile) ? readFileSync(composeFile, "utf8") : "", findDockerfiles(root));
+// The second database image of the semantic tests (compose.pgvector087.yaml, M7-T10) is audited like the one of compose.yaml (R12.36).
+const overlayFile = join(root, "compose.pgvector087.yaml");
+const composeText = [composeFile, ...(opt("--compose") === undefined && existsSync(overlayFile) ? [overlayFile] : [])].map((f) => (existsSync(f) ? readFileSync(f, "utf8") : "")).join("\n");
+const refs = extractImages(composeText, findDockerfiles(root));
 const imageResult = checkImages(refs, imageMap, exceptions);
 
 let packageResult = { packages: [], violations: [], pending: [], usedExceptions: new Set(), unusedPending: [] };

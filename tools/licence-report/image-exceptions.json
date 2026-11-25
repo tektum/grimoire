@@ -1,0 +1,42 @@
+[
+  {
+    "package": "binutils-common",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "dpkg-dev",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libcrypt-dev",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libpython3.11-minimal",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "libtirpc-common",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "media-types",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "python3",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  },
+  {
+    "package": "python3.11-minimal",
+    "owner": "manager, on behalf of the owner",
+    "reason": "Debian OS package in the third-party database image; aggregation, not a dependency of Grimoire code"
+  }
+]
