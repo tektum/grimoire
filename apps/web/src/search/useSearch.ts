@@ -42,6 +42,9 @@ export function useSearchPreview(api: ApiLike, q: string, limit: number) {
 /** The results screen's page size: the API's default. */
 export const SCREEN_LIMIT = 20;
 
+/** The key of the results screen's query for `wanted` (what `searchable` gave): the screen resets it to start over from the first page. */
+export const searchResultsKey = (wanted: string | null): readonly unknown[] => queryKey('GET', SEARCH_PATH, { params: { query: { q: wanted, limit: SCREEN_LIMIT, screen: true } } });
+
 /**
  * All the pages of results for `q` read so far, one more with each call of `fetchNextPage` (the request carries the `nextCursor` of the page before it). Not kept in the query cache, like the preview
  * (the text of pages: R11.5).
@@ -52,7 +55,7 @@ export function useSearchResults(api: ApiLike, q: string) {
     ...NO_CACHE,
     enabled: wanted !== null,
     retry: false,
-    queryKey: queryKey('GET', SEARCH_PATH, { params: { query: { q: wanted, limit: SCREEN_LIMIT, screen: true } } }),
+    queryKey: searchResultsKey(wanted),
     initialPageParam: null,
     queryFn: ({ pageParam, signal }) => fetchSearch(api, wanted!, pageParam, signal, SCREEN_LIMIT),
     getNextPageParam: (last) => last.nextCursor,

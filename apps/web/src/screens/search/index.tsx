@@ -1,9 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useApi } from '../../api/context';
 import { Snippet } from '../../search/Snippet';
 import { QUERY_MAX, type SearchItem } from '../../search/types';
-import { searchable, useSearchResults } from '../../search/useSearch';
+import { SearchError, searchable, searchResultsKey, useSearchResults } from '../../search/useSearch';
 import { pagePath } from '../../tree/model';
 import { Button } from '../../ui/primitives';
 import './search.css';
@@ -30,6 +31,7 @@ function Result({ item }: { item: SearchItem }) {
 /** `/search?q=`: the results of a search, read a page at a time (R6.34). */
 export default function SearchScreen() {
   const api = useApi();
+  const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
   const [text, setText] = useState(q);
@@ -87,7 +89,13 @@ export default function SearchScreen() {
               <Result key={item.pageId} item={item} />
             ))}
           </ul>
-          {search.isFetchNextPageError ? (
+          {search.isFetchNextPageError && search.error instanceof SearchError && search.error.status === 503 ? (
+            // A later page is refused as 503 when the search cannot go on from its cursor (the order the first pages came in needs the semantic search, which is gone for now) or ran out of time:
+            // the same cursor would be refused again, so Try again starts over from the first page.
+            <p className="search-note" role="alert">
+              Search is busy, try again. <Button onClick={() => void client.resetQueries({ queryKey: searchResultsKey(wanted) })}>Try again</Button>
+            </p>
+          ) : search.isFetchNextPageError ? (
             <p className="search-note" role="alert">
               More results could not be loaded. <Button onClick={() => void search.fetchNextPage()}>Try again</Button>
             </p>
