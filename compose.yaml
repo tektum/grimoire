@@ -134,9 +134,9 @@ services:
     # `unless-stopped`: a crash or an out-of-memory kill comes back by itself, while `make down` and `docker stop` stay down.
     restart: unless-stopped
     # Docker's 10 s default would kill the server mid-save. The order is: this grace period >= the server's overall shutdown backstop >= the sum of its phase
-    # deadlines (apps/server/src/lifecycle/budget.ts). For the default 45 s save deadline and the default 15 s stop grace of the job queue the backstop is 72.5 s, so 78 s (backstop + 5 s, rounded up). If you raise
-    # GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS or GRIMOIRE_JOBS_STOP_GRACE_MS, raise this by the same amount (make check-compose checks the committed pair).
-    stop_grace_period: 78s
+    # deadlines (apps/server/src/lifecycle/budget.ts). For the default 45 s save deadline the backstop is 59 s, so 64 s (backstop + 5 s). If you raise
+    # GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS, raise this by the same amount (make check-compose checks the committed pair).
+    stop_grace_period: 64s
     healthcheck:
       # The image has no shell or curl: Node's own fetch. /healthz means the process is up; /readyz also needs the schema, which `make migrate` creates after this reports healthy.
       test: ["CMD", "/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:8080/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]

@@ -99,7 +99,7 @@ describe('the job runner', () => {
     expect(made[1]?.worked).toEqual(['import', 'import-sweep', 'import-cleanup']);
     expect(made[1]?.stopped).toEqual([]);
     await runner.hook.run();
-    expect(made[1]?.stopped).toEqual([{ graceMs: 15_000 }]);
+    expect(made[1]?.stopped).toEqual([{ graceMs: 1500 }]);
   });
 
   it('a stop that comes while the queue is still starting waits for it, registers no handler, and stops that queue', async () => {

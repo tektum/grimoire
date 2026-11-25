@@ -20,7 +20,7 @@ describe('the defaults', () => {
       maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
       fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2,
     });
-    expect(c.jobs).toEqual({ importExpireSeconds: 900, stopGraceMs: 15_000, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' });
+    expect(c.jobs).toEqual({ importExpireSeconds: 900, stopGraceMs: 1500, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' });
     expect(c.search).toEqual({ statementTimeoutMs: 3000 });
   });
 
@@ -36,7 +36,7 @@ describe('the refusals name the variable', () => {
     ['GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS', 'yes'], ['GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES', '2'],
     ['GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES', '0'], ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '61'],
     ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '9'], ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '3601'], ['GRIMOIRE_IMPORT_CONCURRENCY', '0'],
-    ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '0'],
+    ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '1501'],
     ['GRIMOIRE_JOBS_PURGE_CRON', 'daily'], ['GRIMOIRE_JOBS_SWEEP_CRON', '* * * *'], ['GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON', '*/5 * * * * *'], ['GRIMOIRE_JOBS_REVISION_CRON', '; rm * * * *'],
     ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '5'], ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '30001'],
   ])('%s=%s', (name, value) => {

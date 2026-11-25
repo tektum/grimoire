@@ -4,6 +4,7 @@ import type { ServerProcess } from '../server/support/harness.js';
 import { waitUntil } from '@tektum/grimoire-test-support/harness';
 import { connect, eventually, newPage, pageRow, seedPage, StallProxy, synced, textOf, wsUrl } from './support.js';
 import type { Client } from './support.js';
+import { JOBS_STOP_GRACE_MAX_MS } from '../../src/lifecycle/budget.js';
 
 // A database that stops answering (queries neither return nor fail), simulated with a stalling proxy (see StallProxy).
 const DB = 'grimoire_t09_hang';
@@ -68,8 +69,7 @@ describe('a database that hangs', () => {
   }, 60_000);
 
   it('SIGTERM while stalled with two unsaved pages and one saved page: two store_abandoned, exit 1, within the deadline plus two seconds, no connection left', async () => {
-    // The job queue's stop waits on the stalled database for its whole grace (15 s by default); this test is about the page saves, so the grace is as short as makes sense and shutdown keeps its old timing.
-    const s = await start({ GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '3000', GRIMOIRE_SAVE_TIMEOUT_MS: '500', GRIMOIRE_JOBS_STOP_GRACE_MS: '100' });
+    const s = await start({ GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '3000', GRIMOIRE_SAVE_TIMEOUT_MS: '500' });
     const [saved, u1, u2] = [newPage(), newPage(), newPage()];
     await Promise.all([saved, u1, u2].map((p) => seedPage(DB, p)));
     const cs = [saved, u1, u2].map((p) => client(s, p));
@@ -97,7 +97,8 @@ describe('a database that hangs', () => {
       expect(exit.code).toBe(1);
       const abandoned = events(s, 'collab.store_abandoned').map((e) => e['pageId']);
       expect(abandoned.sort()).toEqual([u1, u2].sort());
-      expect(ms).toBeLessThan(3000 + 2000); // deadline + 2 s, the 1 s that keeps /readyz visible before connections close (R2.42) included
+      // The save deadline, the 2 s that keeps /readyz visible before connections close (R2.42), and what the job queue may take to stop with the database stalled (the cap of the `release-jobs` phase).
+      expect(ms).toBeLessThan(3000 + 2000 + JOBS_STOP_GRACE_MAX_MS);
     } catch (error) {
       explainShutdown(s.events.slice(seen), ms, exit);
       throw error;

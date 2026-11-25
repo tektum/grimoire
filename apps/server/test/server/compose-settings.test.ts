@@ -101,10 +101,8 @@ it('the app service gives the process at least its shutdown backstop plus the ma
   // The committed file passes no save deadline of its own (the setting is empty unless the operator sets it), so the default of the loader applies.
   const schema = readFileSync(path.join(schemaDir, 'schema.ts'), 'utf8');
   const defaultSave = Number(/GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field\(int\(1, MAX_INT\)\)\.default\((\d+)\)/.exec(schema)?.[1]);
-  const defaultJobsGrace = Number(/GRIMOIRE_JOBS_STOP_GRACE_MS: field\(int\(1, MAX_INT\)\)\.default\(([\d_]+)\)/.exec(schema)?.[1]?.replaceAll('_', ''));
   expect(defaultSave).toBeGreaterThan(0);
-  expect(defaultJobsGrace).toBeGreaterThan(0);
-  expect(graceMs).toBeGreaterThanOrEqual(requiredGracePeriodMs(defaultSave, defaultJobsGrace));
+  expect(graceMs).toBeGreaterThanOrEqual(requiredGracePeriodMs(defaultSave));
 });
 
 

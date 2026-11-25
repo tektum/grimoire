@@ -53,7 +53,7 @@ export function createRun(options: RunOptions = {}, collabStarter: CollabStarter
     const { ctx } = composed;
     const { log, config } = ctx;
     runningLogger = log;
-    installProcessHandlers({ shutdown: ctx.shutdown, log, source: options.source ?? processSignals, exit: options.exit ?? process.exit, overallDeadlineMs: overallShutdownDeadlineMs(config.shutdownSaveDeadlineMs, ctx.jobs === undefined ? 0 : config.jobs.stopGraceMs) });
+    installProcessHandlers({ shutdown: ctx.shutdown, log, source: options.source ?? processSignals, exit: options.exit ?? process.exit, overallDeadlineMs: overallShutdownDeadlineMs(config.shutdownSaveDeadlineMs) });
     log.info('server.starting', { role: config.role, local: config.local });
     if (ctx.testFacilities.length > 0) log.warn('server.test_facilities_active', { facilities: ctx.testFacilities });
     routeConsoleToEvents(log);

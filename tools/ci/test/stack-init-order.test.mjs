@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { APP_STOP_TIMEOUT_SECONDS, inStartOrder } from '../../../infra/stack/init-order.ts';
 import { requiredGracePeriodMs } from '../../../apps/server/src/lifecycle/budget.ts';
+import { APP_STOP_TIMEOUT_SECONDS, inStartOrder } from '../../../infra/stack/init-order.ts';
 
 const task = (...names) => names.map((name) => ({ name, image: `${name}:1`, essential: true, environment: [{ name: 'X', value: name }] }));
 const by = (definitions) => Object.fromEntries(definitions.map((d) => [d.name, d]));
@@ -40,9 +40,8 @@ test('the app alone gets a stop timeout, and it covers what the server needs to 
   assert.equal(d.migrate.stopTimeout, undefined);
   const schema = readFileSync(new URL('../../../packages/adapters/config-env/src/schema.ts', import.meta.url), 'utf8');
   const defaultSaveMs = Number(/GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: field\(int\(1, MAX_INT\)\)\.default\((\d+)\)/.exec(schema)?.[1]);
-  const defaultJobsGraceMs = Number(/GRIMOIRE_JOBS_STOP_GRACE_MS: field\(int\(1, MAX_INT\)\)\.default\(([\d_]+)\)/.exec(schema)?.[1]?.replaceAll('_', ''));
-  assert.ok(defaultSaveMs > 0 && defaultJobsGraceMs > 0);
-  assert.ok(APP_STOP_TIMEOUT_SECONDS * 1000 >= requiredGracePeriodMs(defaultSaveMs, defaultJobsGraceMs), 'SIGKILL would come before the server has finished saving and the jobs have stopped');
+  assert.ok(defaultSaveMs > 0);
+  assert.ok(APP_STOP_TIMEOUT_SECONDS * 1000 >= requiredGracePeriodMs(defaultSaveMs), 'SIGKILL would come before the server has finished saving');
   assert.ok(APP_STOP_TIMEOUT_SECONDS <= 120, 'Fargate allows at most 120 seconds');
 });
 

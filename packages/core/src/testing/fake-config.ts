@@ -36,7 +36,7 @@ export const defaultImportConfig: ImportConfig = {
   maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
   fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2,
 };
-export const defaultJobsConfig: JobsConfig = { importExpireSeconds: 900, stopGraceMs: 15_000, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' };
+export const defaultJobsConfig: JobsConfig = { importExpireSeconds: 900, stopGraceMs: 1500, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' };
 export const defaultSearchConfig: SearchConfig = { statementTimeoutMs: 3000 };
 export const defaultTenantLimits: TenantLimitsConfig = { maxUsers: 1000, maxStorageBytes: 10 * 1024 ** 3, maxPages: 50_000 };
 

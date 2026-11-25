@@ -193,7 +193,7 @@ describe('shutdown of the real entry point', () => {
     s.signal('SIGTERM');
     const exit = await s.exited;
     expect(exit.code).toBe(3);
-    const backstop = overallShutdownDeadlineMs(1000, 15_000); // the phase deadlines (5 s stop-accepting, 1 s + 2 s save, 15.5 s jobs (the default stop grace of 15 s), 1 s timers, 2 s databases) plus 2 s
+    const backstop = overallShutdownDeadlineMs(1000); // the phase deadlines (5 s stop-accepting, 1 s + 2 s save, 2 s jobs, 1 s timers, 2 s databases) plus 2 s
     expect(Date.now() - t).toBeGreaterThan(backstop - 1000);
     expect(s.events.find((e) => e['event'] === 'shutdown.forced')).toMatchObject({ reason: 'overall-deadline', deadlineMs: backstop });
   }, 40_000);

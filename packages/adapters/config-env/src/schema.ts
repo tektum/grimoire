@@ -191,7 +191,8 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS: field(int(10, 3600)).default(300),
   GRIMOIRE_IMPORT_CONCURRENCY: field(int(1, 16)).default(2),
   GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: field(int(1, MAX_INT)).default(900),
-  GRIMOIRE_JOBS_STOP_GRACE_MS: field(int(1, MAX_INT)).default(15_000),
+  // At most 1500: the share of the 2 s `release-jobs` shutdown phase that is left for the job queue's stop (apps/server `JOBS_STOP_GRACE_MAX_MS`, which a test keeps equal).
+  GRIMOIRE_JOBS_STOP_GRACE_MS: field(int(1, 1500)).default(1500),
   GRIMOIRE_JOBS_PURGE_CRON: cronField.default('17 3 * * *'),
   GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON: cronField.default('*/15 * * * *'),
   GRIMOIRE_JOBS_REVISION_CRON: cronField.default('47 3 * * *'),

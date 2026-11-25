@@ -11,7 +11,7 @@ export const SHUTDOWN_BUDGET_MS = {
   collabStopAccepting: 5000,
   poolWork: 1500,
   poolHookOverhead: 500,
-  /** What the `jobs` hook adds to the stop grace it gives the queue: the queue's own bookkeeping after the grace. */
+  /** What the `jobs` hook adds to the stop grace it gives the queue. */
   jobsHookOverhead: 500,
   stopTimers: 1000,
   closeDatabase: 2000,
@@ -23,35 +23,33 @@ export const SHUTDOWN_BUDGET_MS = {
 export const DERIVED_BUDGETS_MS = {
   /** The Markdown pool's own deadline for running work when it closes. */
   poolClose: SHUTDOWN_BUDGET_MS.poolWork,
-  /** The Markdown pool's shutdown hook (the `release-jobs` phase; the jobs hook adds its own, see `releaseJobsPhaseMs`). */
+  /** Its shutdown hook (the `release-jobs` phase). */
   releaseJobs: SHUTDOWN_BUDGET_MS.poolWork + SHUTDOWN_BUDGET_MS.poolHookOverhead,
   httpStopAccepting: SHUTDOWN_BUDGET_MS.drainPropagation + SHUTDOWN_BUDGET_MS.httpDrain + SHUTDOWN_BUDGET_MS.httpSweepMargin,
   stopTimers: SHUTDOWN_BUDGET_MS.stopTimers,
   closeDatabase: SHUTDOWN_BUDGET_MS.closeDatabase,
 } as const;
 
+/**
+ * The most the job queue may be given to stop in: what the `release-jobs` phase has left for it after the hook's own overhead (1.5 s). Jobs are resumable (the queue gives a
+ * job that was cut short back, and handlers are idempotent), so shutdown never waits on them longer than this, a hung database included. `GRIMOIRE_JOBS_STOP_GRACE_MS` is capped at it.
+ */
+export const JOBS_STOP_GRACE_MAX_MS = DERIVED_BUDGETS_MS.releaseJobs - SHUTDOWN_BUDGET_MS.jobsHookOverhead;
+
 /** The `stop-accepting` phase runs the HTTP and collaboration hooks in parallel: the longer one counts. */
 const stopAcceptingMs = (): number => Math.max(DERIVED_BUDGETS_MS.httpStopAccepting, SHUTDOWN_BUDGET_MS.collabStopAccepting);
 
-/**
- * The `release-jobs` phase runs its hooks in parallel, so it lasts as long as the longest: the Markdown pool's, or the job queue's stop grace plus its overhead.
- * `jobsStopGraceMs` is `GRIMOIRE_JOBS_STOP_GRACE_MS` for a role that runs jobs and 0 for one that does not.
- */
-export function releaseJobsPhaseMs(jobsStopGraceMs: number): number {
-  return jobsStopGraceMs === 0 ? DERIVED_BUDGETS_MS.releaseJobs : Math.max(DERIVED_BUDGETS_MS.releaseJobs, jobsStopGraceMs + SHUTDOWN_BUDGET_MS.jobsHookOverhead);
-}
-
 /** The sum of the phase deadlines in the worst case (every phase uses its whole deadline, one after the other). */
-export function shutdownPhaseSumMs(saveDeadlineMs: number, jobsStopGraceMs: number): number {
-  return stopAcceptingMs() + saveDeadlineMs + SHUTDOWN_BUDGET_MS.saveLead + releaseJobsPhaseMs(jobsStopGraceMs) + DERIVED_BUDGETS_MS.stopTimers + DERIVED_BUDGETS_MS.closeDatabase;
+export function shutdownPhaseSumMs(saveDeadlineMs: number): number {
+  return stopAcceptingMs() + saveDeadlineMs + SHUTDOWN_BUDGET_MS.saveLead + DERIVED_BUDGETS_MS.releaseJobs + DERIVED_BUDGETS_MS.stopTimers + DERIVED_BUDGETS_MS.closeDatabase;
 }
 
 /** The backstop for the whole run: the phase sum plus a small margin. Past it the process exits with the forced code. */
-export function overallShutdownDeadlineMs(saveDeadlineMs: number, jobsStopGraceMs: number): number {
-  return shutdownPhaseSumMs(saveDeadlineMs, jobsStopGraceMs) + SHUTDOWN_BUDGET_MS.backstopMargin;
+export function overallShutdownDeadlineMs(saveDeadlineMs: number): number {
+  return shutdownPhaseSumMs(saveDeadlineMs) + SHUTDOWN_BUDGET_MS.backstopMargin;
 }
 
 /** What the container's grace period must be at least, for a given save deadline. */
-export function requiredGracePeriodMs(saveDeadlineMs: number, jobsStopGraceMs: number): number {
-  return overallShutdownDeadlineMs(saveDeadlineMs, jobsStopGraceMs) + SHUTDOWN_BUDGET_MS.graceMargin;
+export function requiredGracePeriodMs(saveDeadlineMs: number): number {
+  return overallShutdownDeadlineMs(saveDeadlineMs) + SHUTDOWN_BUDGET_MS.graceMargin;
 }
