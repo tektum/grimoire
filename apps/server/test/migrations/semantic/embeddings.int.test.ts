@@ -85,8 +85,11 @@ describe('the runtime role on the embedding tables', () => {
     await app.query(`update page_chunks set token_count = 2 where page_id = $1 and chunk_index = 40`, [id]);
     expect(await app.query(`select token_count from page_chunks where page_id = $1 and chunk_index = 40`, [id])).toEqual([{ token_count: 2 }]);
     await app.query(`delete from page_chunks where page_id = $1 and chunk_index = 40`, [id]);
-    await app.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('01', 32), 'hex'), 'm', 'ready') on conflict (page_id) do update set status = 'failed'`, [id, tenant]);
-    expect(await app.query(`select status from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'failed' }]);
+    await app.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('01', 32), 'hex'), 'm', 'ready')`, [id, tenant]);
+    await app.query(`update page_embedding_state set status = 'failed', attempts = 1 where page_id = $1`, [id]);
+    expect(await app.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'failed', attempts: 1 }]);
+    await app.query(`insert into page_embedding_state (page_id, tenant_id, markdown_hash, model, status) values ($1, $2, decode(repeat('02', 32), 'hex'), 'm', 'ready') on conflict (page_id) do update set status = 'ready', attempts = 0`, [id, tenant]); // the upsert the jobs will use
+    expect(await app.query(`select status, attempts from page_embedding_state where page_id = $1`, [id])).toEqual([{ status: 'ready', attempts: 0 }]);
     await app.query(`delete from page_embedding_state where page_id = $1`, [id]);
   });
 

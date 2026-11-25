@@ -14,12 +14,12 @@ beforeAll(async () => {
 afterAll(async () => { await dropTestDatabase(BARE); });
 
 describe('grimoire migrate without pgvector', () => {
-  it('stops at the embedding migration, names the extension and how to install it, and leaves the earlier migrations applied', async () => {
+  it('stops at the embedding migration, names the extension and how to install it, and leaves nothing applied: Kysely runs the whole batch in one transaction', async () => {
     const run = await migrate();
     expect(run.code).toBe(1);
     expect(run.output).toMatch(/vector extension/i);
     expect(run.output).toMatch(/db-setup/);
-    expect((await sqlAdmin<{ name: string }>(BARE, 'select name from kysely_migration order by name desc limit 1'))[0]?.name).toBe('0010_pg_trgm_title_search');
+    expect(await sqlAdmin(BARE, `select 1 from information_schema.tables where table_schema = 'public'`)).toEqual([]); // not even `pages`
     expect(await sqlAdmin(BARE, `select 1 from information_schema.tables where table_name in ('page_chunks', 'page_embedding_state')`)).toEqual([]);
   }, 120_000);
 
