@@ -14,21 +14,24 @@ const CLUSTER = 'arn:aws:ecs:us-east-1:123456789012:cluster/grimoire-staging-Clu
 const STUB = (kind) => `#!/usr/bin/env bash
 set -eu
 dir="$STUB_DIR"
-${kind === 'aws' ? `if [ "$1 $2" = "ecs list-clusters" ]; then cat "$dir/clusters.json"; exit 0; fi` : ''}
+${kind === 'aws' ? `if [ "$1 $2" = "ecs list-clusters" ]; then cat "$dir/clusters.json"; exit 0; fi
+if [ "$1 $2" = "ecs list-task-definitions" ]; then cat "$dir/latest.json"; exit 0; fi` : ''}
 n=$(( $(cat "$dir/${kind}.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$dir/${kind}.n"
 f="$dir/${kind}.$n"; [ -e "$f" ] || f="$dir/${kind}.last"
 cat "$f"
 `;
-const service = (running, deployments) => JSON.stringify({ services: [{ runningCount: running, desiredCount: 1, deployments: deployments.map(([status, rolloutState]) => ({ status, rolloutState })) }] });
+const TD = (rev) => `arn:aws:ecs:us-east-1:123456789012:task-definition/grimoire-staging-ClusterCluster-abc123-Server:${rev}`;
+const service = (running, deployments) => JSON.stringify({ services: [{ runningCount: running, desiredCount: 1, deployments: deployments.map(([status, rolloutState, rev = 10]) => ({ status, rolloutState, taskDefinition: TD(rev) })) }] });
 const HEALTHY = service(1, [['PRIMARY', 'COMPLETED']]);
 
-function run(services, codes, env = {}, clusters = { clusterArns: [CLUSTER] }) {
+function run(services, codes, env = {}, clusters = { clusterArns: [CLUSTER] }, latest = 10) {
   const dir = mkdtempSync(path.join(process.env.TMPDIR ?? tmpdir(), 'grimoire-gate-'));
   mkdirSync(path.join(dir, 'bin'));
   for (const [name, kind] of [['aws', 'aws'], ['curl', 'curl']]) { writeFileSync(path.join(dir, 'bin', name), STUB(kind)); chmodSync(path.join(dir, 'bin', name), 0o755); }
   writeFileSync(path.join(dir, 'bin/sleep'), '#!/usr/bin/env bash\n');
   chmodSync(path.join(dir, 'bin/sleep'), 0o755);
   writeFileSync(path.join(dir, 'clusters.json'), JSON.stringify(clusters));
+  writeFileSync(path.join(dir, 'latest.json'), JSON.stringify({ taskDefinitionArns: [TD(latest)] }));
   services.forEach((s, i) => writeFileSync(path.join(dir, `aws.${i + 1}`), s));
   writeFileSync(path.join(dir, 'aws.last'), services.at(-1));
   codes.forEach((c, i) => writeFileSync(path.join(dir, `curl.${i + 1}`), c));
@@ -78,4 +81,13 @@ test('a stage with no cluster, or with two, or a malformed argument is refused b
   assert.equal(run([HEALTHY], ['200'], {}, { clusterArns: [CLUSTER, CLUSTER.replace('abc123', 'def456')] }).code, 1);
   const bad = spawnSync('bash', [script, 'Staging!', 'x.test'], { encoding: 'utf8' });
   assert.equal(bad.status, 2);
+});
+
+test('a rollback by the circuit breaker is a failed deploy: the failed deployment left active turns the run red, and so does a calm stage that runs an older definition than the latest one', () => {
+  const rollingBack = run([service(1, [['PRIMARY', 'IN_PROGRESS', 9], ['ACTIVE', 'FAILED', 10]])], ['200']);
+  assert.equal(rollingBack.code, 1);
+  assert.match(rollingBack.err, /the rollout of the stage staging failed/);
+  const rolledBack = run([service(1, [['PRIMARY', 'COMPLETED', 9]])], ['200'], { MAX_POLLS: '4' });
+  assert.equal(rolledBack.code, 1, 'the failed deployment is gone and the old code answers 200: the definition tells');
+  assert.match(rolledBack.err, /not the latest task definition/);
 });
