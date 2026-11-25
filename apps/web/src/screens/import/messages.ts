@@ -88,6 +88,35 @@ export function reasonText(item: Pick<ImportItem, 'status' | 'message'>, limits:
   return words === undefined ? FALLBACK[item.status] : words(limits);
 }
 
+const was = (n: number): string => (n === 1 ? 'was' : 'were');
+/** What a reason code of a picture from the web that was not copied says, for `n` pictures. The order is the order of this table; a code it does not know comes last. */
+const IMAGE_WORDS: Readonly<Record<string, (n: number) => string>> = {
+  blocked_address: (n) => `${String(n)} ${was(n)} at an address this tool may not fetch from`,
+  redirect: (n) => `${String(n)} ${was(n)} redirected too many times, or in a circle`,
+  too_large: (n) => `${String(n)} ${was(n)} too large`,
+  timeout: (n) => `${String(n)} took too long to answer`,
+  status: (n) => `${String(n)} could not be fetched: the address did not return the picture`,
+  type: (n) => `${String(n)} ${was(n)} not a picture of a type that is accepted, or not the type their address said`,
+  budget: (n) => `${String(n)} ${was(n)} left out because the import had reached its limit for pictures from the web`,
+  network: (n) => `${String(n)} could not be reached`,
+  scheme: (n) => `${String(n)} ${was(n)} at an address this tool does not accept (only https on the standard port, with no password in it)`,
+  not_fetched: (n) => `${String(n)} ${was(n)} not fetched because fetching pictures from the web is switched off`,
+  empty: (n) => `${String(n)} ${was(n)} empty`,
+  size_mismatch: (n) => `${String(n)} could not be stored: a copy kept from an earlier attempt did not match`,
+};
+/** A reason code is lower-case words with underscores; anything else (a key that could carry an address) is not a reason and is not shown. */
+const REASON_CODE = /^[a-z][a-z_]{0,31}$/;
+
+/** The sentence for the pictures from the web of one page that were not copied, or null when there are none. Never an address: the server sends codes and counts only, and a key that is not a code is dropped. */
+export function remoteImageText(failures: Readonly<Record<string, number>> | undefined): string | null {
+  const entries = Object.entries(failures ?? {}).filter(([code, n]) => REASON_CODE.test(code) && Number.isSafeInteger(n) && n > 0);
+  if (entries.length === 0) return null;
+  const known = Object.keys(IMAGE_WORDS).flatMap((code) => entries.filter(([c]) => c === code));
+  const unknown = entries.filter(([c]) => !Object.hasOwn(IMAGE_WORDS, c));
+  const parts = [...known.map(([c, n]) => (IMAGE_WORDS[c] as (n: number) => string)(n)), ...unknown.map(([, n]) => `${String(n)} for a reason this version of the screen does not know`)];
+  return `Pictures from the web that were not copied: ${parts.join(', ')}.`;
+}
+
 const pages = (n: number): string => `${String(n)} ${n === 1 ? 'page' : 'pages'}`;
 
 /** The one line that says where an import is. */

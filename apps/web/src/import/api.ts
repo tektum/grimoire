@@ -53,6 +53,7 @@ const isItems = (v: unknown): v is ImportItems =>
       typeof i.path === 'string' &&
       ['ok', 'skipped', 'failed'].includes(i.status as string) &&
       typeof i.hasSource === 'boolean' &&
+      (i.remoteImageFailures === undefined || (isObject(i.remoteImageFailures) && Object.values(i.remoteImageFailures).every((n) => typeof n === 'number'))) &&
       (i.message === null || typeof i.message === 'string'),
   ) &&
   (v.nextCursor === null || typeof v.nextCursor === 'string');

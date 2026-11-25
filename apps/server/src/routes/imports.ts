@@ -58,6 +58,11 @@ const Item = z
     markdownBytes: z.number().int().nullable(),
     stateBytes: z.number().int().nullable(),
     hasSource: z.boolean().describe('True for a failed page whose original Markdown is kept'),
+    remoteImageFailures: z
+      .record(z.string(), z.number().int())
+      .describe(
+        'Remote pictures of the page that were not copied: a count for each reason code (blocked_address, redirect, too_large, timeout, status, type, budget, network, scheme, not_fetched, empty, size_mismatch), never an address; {} when there are none. A code a client does not know is still a reason.',
+      ),
   })
   .openapi('ImportItem');
 const Items = z.object({ items: z.array(Item), nextCursor: z.string().nullable() }).openapi('ImportItems');
@@ -236,6 +241,11 @@ router.openapi(getImport, async (c) => {
   return c.json(present(record), 200);
 });
 
+/** A reason code is lower-case words with underscores and a count is a whole number from 1: anything else (a key that could carry an address) is not passed on. */
+const REASON_CODE = /^[a-z][a-z_]{0,31}$/;
+const failuresOf = (failures: Readonly<Record<string, number>>): Record<string, number> =>
+  Object.fromEntries(Object.entries(failures).filter(([code, n]) => REASON_CODE.test(code) && Number.isSafeInteger(n) && n > 0));
+
 const itemOf = (item: ImportItem, hasSource: boolean) => ({
   id: item.id,
   path: cleanItemText(item.path),
@@ -246,6 +256,7 @@ const itemOf = (item: ImportItem, hasSource: boolean) => ({
   markdownBytes: item.markdownBytes,
   stateBytes: item.stateBytes,
   hasSource,
+  remoteImageFailures: failuresOf(item.remoteImageFailures),
 });
 
 router.openapi(listImportItems, async (c) => {

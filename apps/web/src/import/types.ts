@@ -32,6 +32,8 @@ export interface ImportItem {
   readonly stateBytes: number | null;
   /** Whether the original file of a failed page can be downloaded. */
   readonly hasSource: boolean;
+  /** Pictures from the web of the page that were not copied: a count for each reason code, never an address. Absent from a server that does not say. */
+  readonly remoteImageFailures?: Readonly<Record<string, number>>;
 }
 
 /** One page of the report. */
