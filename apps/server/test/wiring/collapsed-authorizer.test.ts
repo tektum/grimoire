@@ -32,8 +32,13 @@ function files(dir: string): string[] {
   } catch { return []; }
 }
 
+// Both scans parse only the texts that can hold what they look for (a property named check or checkMany; a module path with authorize/): parsing all of the
+// production files twice took about 0.5 s idle and passed the 5 s default under a loaded test run. A name or path spelled with escape sequences is out of reach.
+const CHECK_PROPERTY = /\.\s*check(?:Many)?\b/;
+
 /** `<receiver>.check(...)` and `<receiver>.checkMany(...)` calls in `text`, with the receiver's source text. */
 export function checkCalls(file: string, text: string): { file: string; line: number; receiver: string }[] {
+  if (!CHECK_PROPERTY.test(text)) return [];
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const out: { file: string; line: number; receiver: string }[] = [];
   const visit = (n: ts.Node): void => {
@@ -59,6 +64,7 @@ const IMPORT_ALLOWED = [
 
 /** Imports of the uncollapsed decision in `text`: `file:line module`. */
 export function uncollapsedImports(file: string, text: string): string[] {
+  if (!text.includes('authorize/')) return [];
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
   const out: string[] = [];
   const at = (n: ts.Node, what: string): void => { out.push(`${file}:${String(sf.getLineAndCharacterOfPosition(n.getStart()).line + 1)} ${what}`); };
@@ -103,6 +109,11 @@ describe('only the collapsed authorisation answer is used outside the authoriser
     expect(checkCalls('apps/server/src/x.ts', probe).map((c) => c.receiver)).toEqual(['authorizer', 'deps.authz', 'list']);
     const kept = checkCalls('apps/server/src/x.ts', probe).filter((c) => !ALLOWED.some((a) => a.file === c.file && a.receiver === c.receiver));
     expect(kept).toHaveLength(3);
+    // The forms a text filter could miss, one text each (the filter looks at a whole text): the name on the line after the dot, optional chaining, type arguments.
+    for (const [probe, receiver] of [['await deps.authz.\n  check(r);', 'deps.authz'], ['await a?.check(r);', 'a'], ['await x.checkMany<Page>(rs);', 'x']] as const) {
+      expect(checkCalls('apps/server/src/x.ts', probe).map((c) => c.receiver), probe).toEqual([receiver]);
+    }
+    expect(checkCalls('apps/server/src/x.ts', 'const checked = isChecked(x); // see check(')).toEqual([]);
   });
 
   it('no production file outside the authoriser module and the composition imports decide, decideCollection or createAuthorizer', () => {
