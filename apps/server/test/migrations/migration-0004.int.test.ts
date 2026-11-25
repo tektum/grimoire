@@ -2,10 +2,13 @@
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   appUrl, createTestDatabase, dropTestDatabase, eventually, get, migratorUrl, repoRoot, requireBuild, runToEnd, serverDir, sqlAdmin, startServer,
 } from '../server/support/harness.js';
+
+// Each `migrate` below starts the migrator as a process, and runs migrations and pg-boss's own, two or three times in one case: that takes longer than vitest's 5 s default on a loaded runner (in CI, the 0007 and 0008 tests of this family timed out at 5.0 s on a busy one).
+vi.setConfig({ testTimeout: 120_000 });
 
 const EMPTY = 'grimoire_m3t03_mig_empty';
 const AT_0002 = 'grimoire_m3t03_mig_0002';
