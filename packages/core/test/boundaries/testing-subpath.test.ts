@@ -23,31 +23,12 @@ function moduleSpecifiers(text: string, fileName = "file.ts"): string[] {
 }
 
 /**
- * The text with its well-formed escape sequences decoded the way a string literal or an identifier is (an identity escape such as \e gives e, a line continuation
- * goes): a specifier spelled with escapes is then a plain substring, so the text filter below never skips what the parser sees. Only well-formed escapes are decoded,
- * because a lax pattern would let an unfinished \u{ in a comment swallow the code up to the next }. \n gives n rather than a newline, which only lets more texts through.
+ * Whether a source text imports the testing subpath. The parser runs only on a text that names `/testing` or has a backslash (93 of the 423 production files today): a
+ * text with no backslash has no escape sequence, so every specifier the parser reads is in it as written, and one with a backslash is left to the parser, which decodes.
+ * Parsing every file took about 0.4 s idle and passed the 5 s default under a loaded test run.
  */
-function decodeEscapes(text: string): string {
-  return text.replace(
-    /\\(?:u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-7]{1,3})|(\r\n|[\n\r\u2028\u2029])|([\s\S]))/g,
-    (_all, braced?: string, u4?: string, x2?: string, octal?: string, newline?: string, other?: string) =>
-      braced !== undefined
-        ? String.fromCodePoint(Math.min(parseInt(braced, 16), 0x10ffff))
-        : (u4 ?? x2) !== undefined
-          ? String.fromCharCode(parseInt((u4 ?? x2) as string, 16))
-          : octal !== undefined
-            ? String.fromCharCode(parseInt(octal, 8))
-            : newline !== undefined
-              ? ""
-              : (other as string),
-  );
-}
-
-/**
- * Whether a source text imports the testing subpath. The parser runs only on a text that names `/testing` once its escapes are decoded (2 of the 425 production files
- * today): parsing every file took about 0.4 s idle and passed the 5 s default under a loaded test run.
- */
-const importsTestingSubpath = (text: string, fileName?: string): boolean => decodeEscapes(text).includes("/testing") && moduleSpecifiers(text, fileName).some(isTestingSubpath);
+const importsTestingSubpath = (text: string, fileName?: string): boolean =>
+  (text.includes("/testing") || text.includes("\\")) && moduleSpecifiers(text, fileName).some(isTestingSubpath);
 
 function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -78,9 +59,10 @@ describe("the testing subpath of an adapter", () => {
     const spelled = [
       'import { s } from "@tektum/grimoire-adapter-x/test\\u0069ng";',
       'import { s } from "@tektum/grimoire-adapter-x/t\\x65sting";',
+      'import { s } from "@tektum/grimoire-adapter-x/tes\\u{0000074}ing";', // a braced escape with leading zeros: any number of digits is valid
       'import { s } from "@tektum/grimoire-adapter-x/t\\esting";', // an identity escape
       'import { s } from "@tektum/grimoire-adapter-x/test\\\ning";', // a line continuation
-      // An unfinished escape in a comment must not swallow the code after it (a namespace import: its own braces would end the escape early).
+      // An unfinished escape in a comment before a plain import (a filter that decoded escapes could let it swallow the code after it).
       '// an unfinished escape in a comment: \\u{ and \\x\nimport * as s from "@tektum/grimoire-adapter-x/testing"; // }',
     ];
     for (const text of spelled) expect(importsTestingSubpath(text), text).toBe(true);
