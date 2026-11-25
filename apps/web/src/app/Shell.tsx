@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router';
 import { UserBadge } from '../auth/UserBadge';
+import { AdminLink } from './AdminLink';
 import { Palette } from '../palette/Palette';
 import { useSession } from '../auth/session';
 import { ContentsPanel } from '../tree/ContentsPanel';
@@ -19,7 +20,7 @@ export function Shell() {
       <header className="shell-header">
         <Link to="/">Grimoire</Link>
         <nav aria-label="Main">
-          <Link to="/search">Search</Link> <Link to="/trash">Trash</Link>
+          <Link to="/search">Search</Link> <Link to="/trash">Trash</Link> <AdminLink />
         </nav>
         <UserBadge />
       </header>
