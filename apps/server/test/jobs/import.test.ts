@@ -9,7 +9,7 @@ import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage
 import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
-import { importZipKey } from '../../src/import/keys.js';
+import { importFailedKey, importZipKey } from '../../src/import/keys.js';
 import { createImportHandler } from '../../src/jobs/import.js';
 import { buildZip } from '../import/hostile/zip-builder.js';
 import type { BuilderEntry } from '../import/hostile/zip-builder.js';
@@ -260,6 +260,53 @@ describe('the profile an import is read with is the one of its source', () => {
       await t.run();
       expect((await t.items()).find((i) => i.path === `Wide ${ID2}_all.csv`)).toMatchObject({ status: 'failed', message: 'table_too_large' });
       expect(t.repo.written).toEqual([]);
+    });
+
+    describe('its row pages (decision 167)', () => {
+      const R1 = '0123456789abcdef0123456789abcde1';
+      const R2 = '0123456789abcdef0123456789abcde2';
+      const R3 = '0123456789abcdef0123456789abcde3';
+      const R4 = '0123456789abcdef0123456789abcde4';
+      const R5 = '0123456789abcdef0123456789abcde5';
+      const database = csv(`Tasks ${ID2}_all.csv`, 'Name,Status\nWrite plan,Done\nReview,Open\nOdd,Open\nParent,Open\n');
+
+      it('a row page with text of its own, or a page under it, goes under the database page; one that only repeats its row is skipped database_row', async () => {
+        const t = await setup([
+          database,
+          md(`Tasks/Write plan ${R1}.md\u0000# Write plan\n\nStatus: Done\n`),
+          md(`Tasks/Review ${R2}.md\u0000# Review\n\nStatus: Open\n\nNotes from the review.\n`),
+          md(`Tasks/Odd ${R3}.md\u0000# Odd\n\nNote: not a column of the table\n`),
+          md(`Tasks/Parent ${R4}.md\u0000# Parent\n\nStatus: Open\n`),
+          md(`Tasks/Parent/Child ${R5}.md\u0000# Child\n`),
+        ], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const items = await t.items();
+        const db = items.find((i) => i.path === `Tasks ${ID2}_all.csv`);
+        expect(items.find((i) => i.path === `Tasks/Write plan ${R1}.md`)).toMatchObject({ status: 'skipped', message: 'database_row' });
+        for (const title of ['Review', 'Odd', 'Parent']) expect(t.repo.written.find((w) => w.page.title === title)?.page.parentId).toBe(db?.pageId);
+        expect(t.repo.written.map((w) => w.page.title).sort()).toEqual(['Child', 'Odd', 'Parent', 'Review', 'Tasks']); // no empty page for the folder
+      });
+
+      it('a link to a row page that only repeats its row opens the database page, though the linking page is written before the row is dealt with', async () => {
+        const t = await setup([md(`Home ${ID1}.md\u0000# Home\n\n[plan](Tasks/Write%20plan%20${R1}.md)\n`), database, md(`Tasks/Write plan ${R1}.md\u0000# Write plan\n\nStatus: Done\n`)], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const items = await t.items();
+        const db = items.find((i) => i.path === `Tasks ${ID2}_all.csv`);
+        expect(t.repo.written.find((w) => w.page.title === 'Home')?.page.content.markdown).toContain(`/p/${db?.urlId ?? 'none'}`);
+        expect(items.find((i) => i.path === `Home ${ID1}.md`)).toMatchObject({ status: 'ok', warnings: 0 });
+      });
+    });
+
+    it('a failed database item keeps its CSV for the report to offer (decision 168), as a failed page keeps its Markdown', async () => {
+      const text = `Name,Value\n${Array.from({ length: 1001 }, (_v, i) => `r${String(i)},x`).join('\n')}\n`;
+      const t = await setup([csv(`Big ${ID2}_all.csv`, text)], { source: 'notion_md_csv', files: true });
+      await t.run();
+      const big = (await t.items()).find((i) => i.path === `Big ${ID2}_all.csv`);
+      expect(big).toMatchObject({ status: 'failed', message: 'table_too_large' });
+      const stored = await t.files.get(importFailedKey(TENANT, IMPORT, big?.id ?? 'none'));
+      const chunks: Uint8Array[] = [];
+      for await (const c of stored.body) chunks.push(c);
+      expect(Buffer.concat(chunks).toString()).toBe(text);
     });
 
     it('the plain CSV beside its _all.csv is not a second database: it is a file', async () => {

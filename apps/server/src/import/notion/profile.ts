@@ -21,16 +21,28 @@ function foldersOf(lowerPaths: ReadonlySet<string>): ReadonlySet<string> {
   return folders;
 }
 
-/** How many page files of a folder are named `X` once their id is taken off, by `<folder>/x` (lower-cased), once for each set of paths. */
+/** The path of a page or a database without its ending (`.md`, `.markdown`; a database's `_all.csv`, or `.csv` when it has no `_all` one), from a lower-cased path; else undefined. */
+function stemOf(lowerPath: string, lowerPaths: ReadonlySet<string>): string | undefined {
+  if (/\.(md|markdown)$/.test(lowerPath)) return lowerPath.replace(/\.(md|markdown)$/, '');
+  if (lowerPath.endsWith('_all.csv')) return lowerPath.slice(0, -'_all.csv'.length);
+  if (lowerPath.endsWith('.csv') && !lowerPaths.has(`${lowerPath.slice(0, -'.csv'.length)}_all.csv`)) return lowerPath.slice(0, -'.csv'.length);
+  return undefined;
+}
+
+/**
+ * How many pages and databases of a folder are named `X` once their id is taken off, by `<folder>/x` (lower-cased), once for each set of paths: a database stands for the folder
+ * of its row pages as a page does for its children's (decision 167).
+ */
 const nameCounts = new WeakMap<ReadonlySet<string>, ReadonlyMap<string, number>>();
 function pagesNamed(lowerPaths: ReadonlySet<string>): ReadonlyMap<string, number> {
   let counts = nameCounts.get(lowerPaths);
   if (counts === undefined) {
     const made = new Map<string, number>();
     for (const p of lowerPaths) {
-      if (!/\.(md|markdown)$/.test(p)) continue;
-      const s = p.split('/');
-      const { base, id } = splitName((s.pop() ?? '').replace(/\.(md|markdown)$/, ''));
+      const stem = stemOf(p, lowerPaths);
+      if (stem === undefined) continue;
+      const s = stem.split('/');
+      const { base, id } = splitName(s.pop() ?? '');
       if (id === undefined || base === '') continue;
       const key = [...s, base].join('/');
       made.set(key, (made.get(key) ?? 0) + 1);
@@ -65,13 +77,14 @@ export const notionProfile: ImportProfile = {
     return folder.length === 0 ? null : folder.join('/');
   },
   /**
-   * The folder a page stands for, so that the pages in it are its children: `X <id>/` beside `X <id>.md` (constructed: [F§6]), or `X/`, the name without the id, as a real export
-   * names it (M7-T08). `X.md` owns `X/` as in any zip, so a page `X <id>.md` beside it does not. A folder `X/` beside two pages `X <id>.md` belongs to neither (which page it is
-   * cannot be read from the names): it stays an empty page of its own. The name is split lower-cased, as `pagesNamed` counts it: folders are matched without case, the id too.
+   * The folder a page or a database stands for, so that the pages in it are its children: `X <id>/` beside `X <id>.md` (constructed: [F§6]), or `X/`, the name without the id, as a
+   * real export names it (M7-T08); a database's `X <id>_all.csv` stands for the folder of its row pages the same way (decision 167). `X.md` owns `X/` as in any zip, so a page
+   * `X <id>.md` beside it does not. A folder `X/` beside two pages or databases named `X` belongs to neither (which one it is cannot be read from the names): it stays an empty page
+   * of its own. The name is split lower-cased, as `pagesNamed` counts it: folders are matched without case, the id too.
    */
   folderPathOf(path, lowerPaths) {
     const segments = segmentsOf(path);
-    const stem = (segments.pop() ?? '').replace(/\.(md|markdown)$/i, '');
+    const stem = (segments.pop() ?? '').replace(/(\.(md|markdown)|(_all)?\.csv)$/i, '');
     const dir = segments.join('/');
     const at = (name: string): string => (dir === '' ? name : `${dir}/${name}`);
     const { base, id } = splitName(stem.normalize('NFC').toLowerCase());

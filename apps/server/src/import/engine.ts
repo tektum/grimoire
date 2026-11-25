@@ -182,6 +182,25 @@ function databaseTable(bytes: Buffer, profile: ImportProfile, maxTableBytes: num
   const markdown = profile.csvToMarkdown(csv.rows);
   return Buffer.byteLength(markdown) > maxTableBytes ? { ok: false, reason: 'table_too_large' } : { ok: true, markdown };
 }
+
+/** A page's text by its archive path, read up to the seed cap from the first entry of that path; undefined when it cannot be read or is not UTF-8. */
+export function pageText(reader: Pick<ZipReader, 'openEntry'>, limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number }, entries: readonly ZipEntry[]): (path: string) => Promise<string | undefined> {
+  const byPath = new Map<string, ZipEntry>();
+  for (const e of entries) if (!byPath.has(e.path)) byPath.set(e.path, e);
+  return async (path) => {
+    const entry = byPath.get(path);
+    if (entry === undefined) return undefined;
+    const read = await readEntry(reader, limits, entry, limits.seedMaxMarkdownBytes);
+    if (read.kind !== 'ok') return undefined;
+    try { return decoder.decode(read.bytes); } catch { return undefined; }
+  };
+}
+
+/** A row page that only repeats its row (decision 167): past a `# ` title line, nothing but blank lines and `Column: value` lines of its table's columns. */
+function onlyRepeatsRow(text: string, columns: ReadonlySet<string>): boolean {
+  const names = [...columns];
+  return text.split('\n').every((line, n) => (n === 0 && /^#[ \t]/.test(line)) || line.trim() === '' || names.some((c) => line.startsWith(`${c}:`)));
+}
 const segmentsOf = (path: string): string[] => path.split('/').filter((s) => s !== '' && s !== '.');
 const folderKey = (folder: string): string => segmentsOf(folder).join('/').normalize('NFC').toLowerCase();
 
@@ -255,6 +274,47 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     return depth;
   };
 
+  // Decision 167: a database's row page that only repeats its row (its title, then `Column: value` lines of the table's columns, and no page under it) is no page of its own: it is
+  // skipped `database_row`, and a link to it opens the database's page. The answer is read from the archive, the same whenever it is asked, so a page written before the row is
+  // dealt with links to the right page.
+  const hasChildren = new Set<string>();
+  for (const i of pageItems) { const p = parentOf(i); if (p !== undefined) hasChildren.add(p.id); }
+  const databaseOf = (i: ImportItem): ImportItem | undefined => {
+    if (i.kind !== 'page' || isContainer(i) || hasChildren.has(i.id)) return undefined;
+    const parent = parentOf(i);
+    return parent?.kind === 'database_csv' ? parent : undefined;
+  };
+  const columns = new Map<string, Promise<ReadonlySet<string> | undefined>>();
+  const columnsOf = (db: ImportItem): Promise<ReadonlySet<string> | undefined> => {
+    let known = columns.get(db.id);
+    if (known === undefined) {
+      const entry = entryByPath.get(db.path);
+      known = entry === undefined ? Promise.resolve(undefined) : readEntry(deps.reader, deps.limits, entry, deps.limits.maxEntryBytes).then((read) => {
+        const csv = read.kind === 'ok' ? readCsv(read.bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES }) : undefined;
+        return csv?.ok === true && csv.rows[0] !== undefined ? new Set(csv.rows[0].map((c) => c.trim()).filter((c) => c !== '')) : undefined;
+      });
+      columns.set(db.id, known);
+    }
+    return known;
+  };
+  const rowText = pageText(deps.reader, deps.limits, deps.entries);
+  const bareRows = new Map<string, boolean>();
+  for (const i of all) if (i.status === 'skipped' && i.message === 'database_row') bareRows.set(i.id, true);
+  const rowIsBare = async (i: ImportItem, text?: string): Promise<boolean> => {
+    const known = bareRows.get(i.id);
+    if (known !== undefined) return known;
+    const db = databaseOf(i);
+    let answer = false;
+    if (db !== undefined) {
+      const source = text ?? (await rowText(i.path));
+      const names = await columnsOf(db);
+      answer = source !== undefined && names !== undefined && onlyRepeatsRow(source, names);
+    }
+    bareRows.set(i.id, answer);
+    return answer;
+  };
+  const hasDatabases = pageItems.some((i) => i.kind === 'database_csv');
+
   // The import's budget of remote images: the copies made so far are kept in the counts, so a resumed run goes on from them (the time starts again with each run).
   const budget = deps.remote === undefined ? undefined : { ...createRemoteBudget({ remote: deps.remote.config }), taken: record.counts.remote ?? 0 };
   const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -319,10 +379,16 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       if (database) {
         // The table is seeded like any page, so the seed cap bounds it too (decision 10: the engine checks the cap, the converter never refuses it).
         const table = databaseTable(read.bytes, profile, Math.min(deps.limits.maxTableBytes ?? MAX_TABLE_BYTES, deps.limits.seedMaxMarkdownBytes));
-        if (!table.ok) { await settle(item, 'failed', table.reason); return { bytes: read.bytes.length }; }
+        if (!table.ok) {
+          // Decision 168: the CSV is kept, as a failed page's Markdown is, for the person to download from the report.
+          await deps.files.put(importFailedKey(tenantId, importId, item.id), read.bytes, { size: read.bytes.length, contentType: 'text/csv' });
+          await settle(item, 'failed', table.reason);
+          return { bytes: read.bytes.length };
+        }
         markdown = table.markdown;
       } else {
         try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
+        if (await rowIsBare(item, titleSource)) { await settle(item, 'skipped', 'database_row'); return { bytes: read.bytes.length }; }
         markdown = profile.preprocess(titleSource, { path: item.path });
       }
       name = profile.titleOf(item.path, titleSource);
@@ -361,12 +427,24 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
         }
       }
     }
+    // The rows this page links to are known before the rewrite, which cannot wait: a link to a row that only repeats its row opens its database's page (decision 167).
+    if (hasDatabases) {
+      const rows: ImportItem[] = [];
+      rewriteMarkdown(markdown, (target) => {
+        const found = profile.resolveLink(target, item.path, index);
+        const linked = found?.kind === 'page' ? itemById.get(found.itemId) : undefined;
+        if (linked !== undefined && databaseOf(linked) !== undefined) rows.push(linked);
+        return undefined;
+      });
+      for (const row of rows) await rowIsBare(row);
+    }
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
       const found = profile.resolveLink(target, item.path, index);
       if (found === undefined) return undefined;
       if (found.kind === 'attachment') { const file = staged.get(found.itemId); return file === undefined ? undefined : { kind: 'file', url: file.url }; }
       if (kind === 'image') return undefined; // an image that is a page is nothing to point at
-      const targetItem = itemById.get(found.itemId);
+      const linked = itemById.get(found.itemId);
+      const targetItem = linked !== undefined && bareRows.get(linked.id) === true ? databaseOf(linked) : linked;
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
     }, (url) => copied.get(url)?.url);
     own += rewritten.unresolved.length;
