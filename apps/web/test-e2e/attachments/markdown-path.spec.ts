@@ -37,7 +37,8 @@ test.describe('what is saved for an image', () => {
             (n) =>
               `${n.getAttribute('data-state') ?? '-'}: ${(n.textContent ?? '').slice(0, 60)} img=${n.querySelector('img')?.getAttribute('src')?.split('?')[0] ?? 'none'} complete=${String((n.querySelector('img') as HTMLImageElement | null)?.complete)}`,
           ),
-        );
+        )
+        .catch((e: unknown) => [`could not read the page: ${String(e)}`]);
       await test.info().attach('after-reload.txt', { body: JSON.stringify({ states, seen, markdown: saved.slice(0, 300) }, null, 2), contentType: 'text/plain' });
       throw error;
     }
