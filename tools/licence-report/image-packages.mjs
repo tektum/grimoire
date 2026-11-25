@@ -21,7 +21,7 @@ export const COLLECT = [
   ' for c in "/usr/share/doc/$p/copyright" "/usr/share/doc/$src/copyright" "$(dpkg -L "$p" 2>/dev/null | grep \'/copyright$\' | head -n 1)"; do',
   ' if [ -n "$c" ] && [ -r "$c" ]; then f=$c; break; fi; done;',
   ' if [ -n "$f" ]; then l=$(sed -n \'s/^License:[[:space:]]*//p\' "$f" | sed \'s/[[:space:]]*$//\' | sort -u | paste -sd\'|\' -);',
-  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License,? Version [0-9.]+|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
+  ' if [ -z "$l" ]; then l=$(grep -oE \'GNU (Lesser |Library |Affero )?General Public License|Apache License,? Version [0-9]+(\.[0-9]+)*|Python Software Foundation\' "$f" | sort -u | sed \'s/^/text:/\' | paste -sd\'|\' -); fi;',
   ' else l=-; fi;',
   " printf '%s\\t%s\\t%s\\n' \"$p\" \"$v\" \"$l\"; done",
 ].join('');

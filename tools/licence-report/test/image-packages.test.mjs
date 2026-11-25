@@ -156,6 +156,15 @@ test("an image that cannot be run is reported by its cause, not by a TypeError (
   assert.doesNotMatch(r.stderr, /TypeError|Cannot read/);
 });
 
+test("the free-text grep reads the version without the full stop that ends a sentence", () => {
+  const pattern = /grep -oE '([^']*Apache License[^']*)'/.exec(COLLECT)?.[1];
+  assert.ok(pattern, "the Apache pattern is in the script");
+  const out = (text) => spawnSync("grep", ["-oE", pattern], { input: text, encoding: "utf8" }).stdout.trim();
+  assert.equal(out("Licensed under the Apache License, Version 2.0."), "Apache License, Version 2.0");
+  assert.equal(out("Apache License Version 2.0 applies"), "Apache License Version 2.0");
+  assert.equal(out("Apache License, Version 1.1, and"), "Apache License, Version 1.1");
+});
+
 test("the command says why it failed, once, when it exits 1", () => {
   const r = cli(OLD, `${NEW}\nbad\t1\tGPL-3+`);
   assert.equal(r.status, 1);
