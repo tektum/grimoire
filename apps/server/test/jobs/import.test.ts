@@ -172,6 +172,26 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(t.repo.written.find((w) => w.page.title === 'Step')?.page.parentId).toBe(plan?.pageId);
   });
 
+  it('an export of Notion with Plan.md (no id) and Plan <id>.md beside the folder Plan/: Plan.md owns it, as in any zip, whatever the order of the entries', async () => {
+    for (const order of [[0, 1], [1, 0]]) {
+      const pages = [md(`Plan.md\u0000# Plan\n`), md(`Plan ${ID1}.md\u0000# Plan\n`)];
+      const t = await setup([...order.map((i) => pages[i]!), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });
+      await t.run();
+      const plain = (await t.items()).find((i) => i.path === 'Plan.md');
+      expect(t.repo.written.find((w) => w.page.title === 'Step')?.page.parentId).toBe(plain?.pageId);
+      expect(t.repo.written).toHaveLength(3); // no empty page for the folder
+    }
+  });
+
+  it('an export of Notion whose one page beside the folder has its id in capitals: the name is matched without case, id included, as its rivals are counted, so it owns the folder', async () => {
+    const UPPER = ID1.toUpperCase();
+    const t = await setup([md(`Plan ${UPPER}.md\u0000# Plan\n`), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });
+    await t.run();
+    const plan = (await t.items()).find((i) => i.path === `Plan ${UPPER}.md`);
+    expect(t.repo.written.find((w) => w.page.title === 'Step')?.page.parentId).toBe(plan?.pageId);
+    expect(t.repo.written).toHaveLength(2); // no empty page for the folder
+  });
+
   it('an export of Notion with two pages of one name beside one folder of that name: the folder stays an empty page of its own (which page owns it is not known)', async () => {
     const ID3 = '00112233445566778899aabbccddeeff';
     const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n`), md(`Plan ${ID3}.md\u0000# Plan\n`), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });

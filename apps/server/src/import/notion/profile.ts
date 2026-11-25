@@ -54,19 +54,21 @@ export const notionProfile: ImportProfile = {
   },
   /**
    * The folder a page stands for, so that the pages in it are its children: `X <id>/` beside `X <id>.md` (constructed: [F§6]), or `X/`, the name without the id, as a real export
-   * names it (M7-T08). A folder `X/` beside two pages named `X` belongs to neither (which page it is cannot be read from the names): it stays an empty page of its own.
+   * names it (M7-T08). `X.md` owns `X/` as in any zip, so a page `X <id>.md` beside it does not. A folder `X/` beside two pages `X <id>.md` belongs to neither (which page it is
+   * cannot be read from the names): it stays an empty page of its own. The name is split lower-cased, as `pagesNamed` counts it: folders are matched without case, the id too.
    */
   folderPathOf(path, lowerPaths) {
     const segments = segmentsOf(path);
     const stem = (segments.pop() ?? '').replace(/\.(md|markdown)$/i, '');
     const dir = segments.join('/');
     const at = (name: string): string => (dir === '' ? name : `${dir}/${name}`);
-    const { base, id } = splitName(stem);
+    const { base, id } = splitName(stem.normalize('NFC').toLowerCase());
     if (id === undefined || base === '' || lowerPaths === undefined) return at(stem);
     const folders = foldersOf(lowerPaths);
     if (folders.has(at(stem).normalize('NFC').toLowerCase())) return at(stem);
     const bare = at(base).normalize('NFC').toLowerCase();
-    if (!folders.has(bare) || (pagesNamed(lowerPaths).get(bare) ?? 0) > 1) return at(stem);
+    const plain = lowerPaths.has(`${bare}.md`) || lowerPaths.has(`${bare}.markdown`);
+    if (!folders.has(bare) || plain || (pagesNamed(lowerPaths).get(bare) ?? 0) > 1) return at(stem);
     return at(base);
   },
   preprocess: markdownProfile.preprocess,
