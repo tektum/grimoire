@@ -543,4 +543,26 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual([...(moved?.batches ?? [])].sort(), [a, z].sort(), 'a page under another imported page is in the subtree of its outermost imported ancestor');
     },
   },
+  {
+    name: 'ended-lists-imports-that-ended-since-a-time-by-id',
+    async run(h) {
+      const one = await h.seed('running');
+      assert.equal(await h.repo.finish(h.tenantId, one.id, 'done', null, h.now), true);
+      const two = await h.seed('running');
+      assert.equal(await h.repo.finish(h.tenantId, two.id, 'failed', 'x', h.now - 5000), true);
+      const three = await h.seed('running');
+      assert.ok(await h.repo.cancel(h.tenantId, three.id, h.now));
+      await h.seed('running');
+      await h.seed('uploaded');
+      const all = await h.repo.ended(h.tenantId, { since: 0, limit: 10 });
+      assert.deepEqual(all.map((r) => r.status).sort(), ['cancelled', 'done', 'failed']);
+      assert.deepEqual(all.map((r) => r.id), [...all.map((r) => r.id)].sort());
+      const first = await h.repo.ended(h.tenantId, { since: 0, limit: 1 });
+      assert.equal(first.length, 1);
+      const rest = await h.repo.ended(h.tenantId, { since: 0, afterId: first[0]!.id, limit: 10 });
+      assert.deepEqual([...first, ...rest].map((r) => r.id), all.map((r) => r.id));
+      assert.deepEqual((await h.repo.ended(h.tenantId, { since: h.now - 1000, limit: 10 })).map((r) => r.status).sort(), ['cancelled', 'done'], 'the one that ended earlier is left out');
+      assert.deepEqual(await h.repo.ended(h.otherTenantId, { since: 0, limit: 10 }), []);
+    },
+  },
 ];

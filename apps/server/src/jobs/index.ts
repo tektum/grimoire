@@ -16,6 +16,7 @@ import { handleEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
 import { runFailedSourceCleanup } from './failed-sources.js';
+import { reconcileEndedImports } from './import-reconcile.js';
 import { runImportCleanup } from './import-cleanup.js';
 import { runImportSweep } from './import-sweep.js';
 import { createMarkdownSweep } from './markdown-sweep.js';
@@ -95,6 +96,8 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
           if (deps.files === undefined) return;
           const count = await runFailedSourceCleanup({ tenants: deps.tenants, files: deps.files, now: () => clock.now() }, ctx.signal);
           log.info('import.sources_cleaned', { count });
+          // The safety net: a cleanup that was never enqueued or never ran is made up for here.
+          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, now: () => clock.now() }, ctx.signal));
           return;
         }
         if (!isImportPayload(payload)) return; // an id of the wrong shape names no import

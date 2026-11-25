@@ -77,6 +77,6 @@ describe('the scheduled import-cleanup', () => {
         () => false,
       ),
     ).toBe(false);
-    expect(w.logger.entries.map((e) => [e.event, e.fields])).toEqual([['import.sources_cleaned', { count: 1 }]]);
+    expect(w.logger.entries.map((e) => [e.event, e.fields])).toEqual([['import.sources_cleaned', { count: 1 }], ['import.reconciled', { zips: 0, pages: 0 }]]);
   });
 });

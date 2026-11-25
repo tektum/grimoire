@@ -176,6 +176,8 @@ export interface ImportRepo {
   stale(tenantId: string, createdBefore: number, limit: number): Promise<readonly string[]>;
   /** `created` or `uploaded` becomes `failed` with the error `abandoned` (`finishedAt` set); false, and nothing changed, for any other status, so it is safe to repeat. */
   abandon(tenantId: string, id: string, now: number): Promise<boolean>;
+  /** The imports that ended (`done`, `failed` or `cancelled`) at or after `since` (milliseconds), by id, after `afterId` when given, at most `limit`: what the daily cleanup looks over again. */
+  ended(tenantId: string, options: { readonly since: number; readonly afterId?: string; readonly limit: number }): Promise<readonly ImportRecord[]>;
   /**
    * Moves the pages the import created to the trash, as deleting a page does: every live page of an `ok` page item, with its live descendants (a page a person added under an imported one goes with
    * it, so one restore brings them back together), each subtree in a batch of its own named by its root's id (as a page delete does: one restore checks what it must), deleted by the importer.
