@@ -377,7 +377,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   };
 
   for (let at = 0; at < queue.length; ) {
-    if (options.signal?.aborted === true) return finish((c) => ({ kind: 'stopped', reason: 'aborted', counts: c }));
+    // A run does at least one batch before it looks at the signal, so a chunk whose time is already up still moves the import on (a continuation that never progressed would never end).
+    if (at > 0 && options.signal?.aborted === true) return finish((c) => ({ kind: 'stopped', reason: 'aborted', counts: c }));
     // Before each batch the import is read again: a cancel (or a failure) stops the run here.
     if ((await repo.get(tenantId, importId))?.status !== 'running') return finish((c) => ({ kind: 'stopped', reason: 'not_running', counts: c }));
     let pages = 0;
