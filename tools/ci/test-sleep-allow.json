@@ -183,5 +183,10 @@
     "file": "apps/server/test/collab/review-claims.int.test.ts",
     "line": "await new Promise((resolve) => setTimeout(resolve, 700)); // past the 250 ms refusal close, before the slow load ends",
     "reason": "A negative check: the socket must NOT be closed after the product's real 250 ms refusal-close timer has had time to fire; nothing marks the timer's non-firing, so the test waits past it (a wrong close shows as a 4503 close in the recorded list)."
+  },
+  {
+    "file": "apps/server/test/jobs/maintenance-soak.int.test.ts",
+    "line": "await new Promise((resolve) => setTimeout(resolve, SOAK_MS));",
+    "reason": "The soak is a duration by definition (decision 13): pg-boss's own loops must run for five minutes under the runtime role. Nothing marks the end of a soak; the checks after it read what the loops did."
   }
 ]
