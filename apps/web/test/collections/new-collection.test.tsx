@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
@@ -30,10 +31,10 @@ function fake(role: 'admin' | 'member' | 'viewer' | 'fails', reply: Reply = {}) 
 function Where() {
   return <p data-testid="where">{useLocation().pathname}</p>;
 }
-function show(api: ApiLike) {
+function show(api: ApiLike, strict = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  render(
+  const view = (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/collections/new']}>
         <Routes>
@@ -41,8 +42,9 @@ function show(api: ApiLike) {
           <Route path="*" element={<Where />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  render(strict ? <StrictMode>{view}</StrictMode> : view);
   return { invalidate };
 }
 
@@ -91,7 +93,7 @@ describe('the new collection screen', () => {
 
   it.each([
     [{ status: 422, error: { error: { code: 'invalid' } } }, 'That name can’t be used. Use 1 to 100 characters.'],
-    [{ status: 409, error: { error: { code: 'name_taken' } } }, 'A collection with that name already exists.'],
+    [{ status: 409, error: { error: { code: 'name_taken' } } }, 'The collection could not be created. Try again.'], // the API has no such refusal: whatever it says that is not worded above is the general sentence
     [{ status: 403, error: { error: { code: 'forbidden' } } }, 'Only administrators can create collections.'],
     [{ status: 429 }, 'Too many requests. Try again in a moment.'],
     [{ status: 503 }, 'The collection could not be created. Try again.'],
@@ -104,6 +106,33 @@ describe('the new collection screen', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(words);
     expect((screen.getByRole('button', { name: 'Create collection' }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Notes');
+  });
+
+  it('opens the new collection under StrictMode too, which mounts the form, unmounts it and mounts it again in development', async () => {
+    const f = fake('admin', { id: 'c-strict' });
+    show(f.api, true);
+    await userEvent.type(await screen.findByLabelText('Name'), 'Notes');
+    await userEvent.click(screen.getByRole('button', { name: 'Create collection' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/c/c-strict'));
+  });
+
+  it('does not open the new collection when the person has left the form before the answer comes', async () => {
+    const f = fake('admin');
+    let release: () => void = () => undefined;
+    (f.api as unknown as { POST: unknown }).POST = (_p: string, init: { body: unknown }) => {
+      f.posts.push(init.body);
+      return new Promise((resolve) => (release = () => resolve({ data: { id: 'c-late' }, response: new Response(null, { status: 201 }) })));
+    };
+    show(f.api);
+    await userEvent.type(await screen.findByLabelText('Name'), 'Notes');
+    await userEvent.click(screen.getByRole('button', { name: 'Create collection' }));
+    await waitFor(() => expect(f.posts).toHaveLength(1));
+    await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
+    expect(screen.getByTestId('where').textContent).toBe('/');
+    release();
+    await waitFor(() => expect(f.posts).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the continuation of the sent form runs on promises
+    expect(screen.getByTestId('where').textContent).toBe('/');
   });
 
   it('cannot be sent twice while it is being sent', async () => {

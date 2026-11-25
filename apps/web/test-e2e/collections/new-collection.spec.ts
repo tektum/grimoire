@@ -51,11 +51,11 @@ for (const role of ['member', 'viewer'] as const) {
 
 test('a refusal is said in plain words and the form stays', async ({ page, context }) => {
   await signInAs(context, 'e2e-ada', 'admin', { check: false });
-  await mockApi(page, { collections: [], pages: [], role: 'admin', refuseCollection: { status: 409, code: 'name_taken' } });
+  await mockApi(page, { collections: [], pages: [], role: 'admin', refuseCollection: { status: 422, code: 'invalid' } });
   await page.goto('/collections/new');
   await page.getByLabel('Name').fill('Handbook');
   await page.getByRole('button', { name: 'Create collection' }).click();
-  await expect(page.getByRole('alert')).toHaveText('A collection with that name already exists.');
+  await expect(page.getByRole('alert')).toHaveText('That name can’t be used. Use 1 to 100 characters.');
   await expect(page.getByLabel('Name')).toHaveValue('Handbook');
 });
 

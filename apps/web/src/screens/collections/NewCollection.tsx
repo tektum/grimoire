@@ -17,11 +17,8 @@ const ACCESS = [
 ] as const;
 type Access = (typeof ACCESS)[number]['value'];
 
-const codeOf = (error: unknown): string | undefined => (error as { error?: { code?: string } } | undefined)?.error?.code;
-
-/** Plain words for a refusal; the reason is the API's code where it gives one, the status otherwise. */
-function refusal(status: number, code: string | undefined): string {
-  if (code === 'name_taken') return 'A collection with that name already exists.';
+/** Plain words for a refusal, by the status the API answered (it does not refuse a name that exists: two collections may have the same name). */
+function refusal(status: number): string {
   if (status === 422) return 'That name can’t be used. Use 1 to 100 characters.';
   if (status === 403) return 'Only administrators can create collections.';
   if (status === 429) return 'Too many requests. Try again in a moment.';
@@ -49,6 +46,14 @@ export function NewCollection({ api }: { readonly api: ApiLike }) {
 function Form({ api }: { readonly api: ApiLike }) {
   const client = useQueryClient();
   const go = useNavigate();
+  // The new collection is opened only if the person is still on this form when the answer comes: Cancel, or another screen, unmounts it and leaves the person where they went.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true; // again after the second mount of StrictMode's check in development
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const nameField = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [access, setAccess] = useState<Access>('read_write');
@@ -64,12 +69,12 @@ function Form({ api }: { readonly api: ApiLike }) {
     setProblem(null);
     setSending(true);
     try {
-      const { data, error, response } = await api.POST(LIST_PATH as never, { body: { name: wanted, ...(access === 'none' ? {} : { defaultPermission: access }) } } as never);
-      if (!response.ok) return setProblem(refusal(response.status, codeOf(error)));
+      const { data, response } = await api.POST(LIST_PATH as never, { body: { name: wanted, ...(access === 'none' ? {} : { defaultPermission: access }) } } as never);
+      if (!response.ok) return setProblem(refusal(response.status));
       await client.invalidateQueries({ queryKey: queryKey('GET', LIST_PATH, undefined) });
-      go(`/c/${(data as { id: string }).id}`);
+      if (mounted.current) go(`/c/${(data as { id: string }).id}`);
     } catch {
-      setProblem(refusal(0, undefined)); // the network failed
+      setProblem(refusal(0)); // the network failed
     } finally {
       setSending(false);
     }
