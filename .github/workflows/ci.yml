@@ -97,7 +97,7 @@ jobs:
           semantic=true
           if [ -n "${BASE_SHA:-}" ]; then
             semantic=false
-            if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(packages/adapters/embedder-onnx/|models/|scripts/fetch-models\.mjs$|packages/core/src/ports/embedder\.ts$|packages/core/src/testing/embedder-conformance\.ts$|bun\.lock$|\.npmrc$|\.github/workflows/ci\.yml$)'; then semantic=true; fi
+            if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(packages/adapters/embedder-onnx/|apps/server/test/semantic/|models/|scripts/fetch-models\.mjs$|packages/core/src/ports/embedder\.ts$|packages/core/src/testing/embedder-conformance\.ts$|bun\.lock$|\.npmrc$|\.github/workflows/ci\.yml$)'; then semantic=true; fi
           fi
           echo "semantic=$semantic" >> "$GITHUB_OUTPUT"
 
@@ -747,7 +747,8 @@ jobs:
       - run: node scripts/fetch-models.mjs
       - run: node scripts/fetch-models.mjs --verify
       # The Embedder conformance suite on the real models (e5-base and e5-small): the proof of the embedder's worker thread and tokenizer, which the unit run's coverage leaves out. Not in `CI Required` yet.
-      - run: GRIMOIRE_MODEL_DIR=models bunx vitest run --project container packages/adapters/embedder-onnx
+      # The recall at 5 (at least 0.8 for the default model), the similarity of searches that match nothing, the memory and the chunks a second: printed, and recorded in docs/proof/m7-semantic-quality.md.
+      - run: GRIMOIRE_MODEL_DIR="$PWD/models" bunx vitest run --project container packages/adapters/embedder-onnx apps/server/test/semantic
       # The script the image job runs inside the image, here on the checkout with the same models: it fails here, on its own, if the script is wrong.
       - run: GRIMOIRE_MODEL_DIR="$PWD/models" EMBEDDER_MODULE="$PWD/packages/adapters/embedder-onnx/dist/index.js" node tools/ci/semantic-image-smoke.mjs
 

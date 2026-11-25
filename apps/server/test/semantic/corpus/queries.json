@@ -1,0 +1,260 @@
+[
+ {
+  "q": "how many holidays do I get",
+  "kind": "synonym",
+  "relevant": [
+   "P01",
+   "P39"
+  ]
+ },
+ {
+  "q": "can I work from my apartment",
+  "kind": "synonym",
+  "relevant": [
+   "P02"
+  ]
+ },
+ {
+  "q": "who approves a big purchase",
+  "kind": "paraphrase",
+  "relevant": [
+   "P03"
+  ]
+ },
+ {
+  "q": "what do I need to set up on my new computer",
+  "kind": "paraphrase",
+  "relevant": [
+   "P04"
+  ]
+ },
+ {
+  "q": "how long must a password be",
+  "kind": "question",
+  "relevant": [
+   "P05",
+   "P41"
+  ]
+ },
+ {
+  "q": "what to do when the site goes down",
+  "kind": "paraphrase",
+  "relevant": [
+   "P06",
+   "P40"
+  ]
+ },
+ {
+  "q": "who writes the report after a major outage",
+  "kind": "paraphrase",
+  "relevant": [
+   "P07"
+  ]
+ },
+ {
+  "q": "can we ship to production on a Friday",
+  "kind": "paraphrase",
+  "relevant": [
+   "P08"
+  ]
+ },
+ {
+  "q": "how do I undo a release",
+  "kind": "synonym",
+  "relevant": [
+   "P09"
+  ]
+ },
+ {
+  "q": "how often are databases backed up",
+  "kind": "question",
+  "relevant": [
+   "P10"
+  ]
+ },
+ {
+  "q": "do meetings need a plan beforehand",
+  "kind": "paraphrase",
+  "relevant": [
+   "P11"
+  ]
+ },
+ {
+  "q": "what are the stages of the interview process",
+  "kind": "paraphrase",
+  "relevant": [
+   "P12"
+  ]
+ },
+ {
+  "q": "when are performance evaluations",
+  "kind": "synonym",
+  "relevant": [
+   "P13"
+  ]
+ },
+ {
+  "q": "how much time off for new parents",
+  "kind": "paraphrase",
+  "relevant": [
+   "P14"
+  ]
+ },
+ {
+  "q": "what should I do if my laptop is stolen",
+  "kind": "paraphrase",
+  "relevant": [
+   "P15"
+  ]
+ },
+ {
+  "q": "how long do you keep customer information after cancellation",
+  "kind": "paraphrase",
+  "relevant": [
+   "P16"
+  ]
+ },
+ {
+  "q": "how big should a pull request be",
+  "kind": "question",
+  "relevant": [
+   "P17"
+  ]
+ },
+ {
+  "q": "what happens when I send too many requests to the API",
+  "kind": "paraphrase",
+  "relevant": [
+   "P20"
+  ]
+ },
+ {
+  "q": "how long is the old API version supported after a breaking change",
+  "kind": "paraphrase",
+  "relevant": [
+   "P19"
+  ]
+ },
+ {
+  "q": "What is the home office budget?",
+  "kind": "question",
+  "relevant": [
+   "P25"
+  ]
+ },
+ {
+  "q": "Who gets a discount on the team plan?",
+  "kind": "question",
+  "relevant": [
+   "P30"
+  ]
+ },
+ {
+  "q": "Where can I find deleted pages?",
+  "kind": "question",
+  "relevant": [
+   "P36"
+  ]
+ },
+ {
+  "q": "E-4471",
+  "kind": "identifier",
+  "relevant": [
+   "P21"
+  ]
+ },
+ {
+  "q": "INV-2025-0099",
+  "kind": "identifier",
+  "relevant": [
+   "P22"
+  ]
+ },
+ {
+  "q": "what does error E-4471 mean",
+  "kind": "identifier",
+  "relevant": [
+   "P21"
+  ]
+ },
+ {
+  "q": "how many vacation days can be carried over to next year",
+  "kind": "paraphrase",
+  "relevant": [
+   "P01",
+   "P39"
+  ]
+ },
+ {
+  "q": "who is on call and how fast must they respond",
+  "kind": "paraphrase",
+  "relevant": [
+   "P27"
+  ]
+ },
+ {
+  "q": "what is the policy for reporting an outage and who updates the status",
+  "kind": "english-to-hebrew",
+  "relevant": [
+   "P40"
+  ]
+ },
+ {
+  "q": "how often does the team meet on Sundays",
+  "kind": "english-to-hebrew",
+  "relevant": [
+   "P42"
+  ]
+ },
+ {
+  "q": "כמה ימי חופשה מגיעים לי",
+  "kind": "hebrew-query",
+  "relevant": [
+   "P01",
+   "P39"
+  ]
+ },
+ {
+  "q": "איך מדווחים על אירוע",
+  "kind": "hebrew-query",
+  "relevant": [
+   "P06",
+   "P40"
+  ]
+ },
+ {
+  "q": "can guests see my pages",
+  "kind": "paraphrase",
+  "relevant": [
+   "P37"
+  ]
+ },
+ {
+  "q": "does search support exact phrases",
+  "kind": "question",
+  "relevant": [
+   "P35"
+  ]
+ },
+ {
+  "q": "what does the importer do with files it cannot read",
+  "kind": "question",
+  "relevant": [
+   "P38"
+  ]
+ },
+ {
+  "q": "where can I leave my bike",
+  "kind": "paraphrase",
+  "relevant": [
+   "P44"
+  ]
+ },
+ {
+  "q": "is there a vegan lunch",
+  "kind": "paraphrase",
+  "relevant": [
+   "P43"
+  ]
+ }
+]
