@@ -1,5 +1,6 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import type { BeforeRestoreResult, CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
+import { scoped } from './index.js';
 import type { KyselyDatabase } from './index.js';
 
 interface Row {
@@ -43,11 +44,11 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       // Every branch reads `revisions_page_created_idx` (page, created_at desc, id) from the cursor on: a later page does not read the earlier ones.
       const listed = (rows: readonly Row[]): ListedRevision[] => rows.map((r) => ({ ...summary(r), sortKey: Number(r.sort_key) }));
       if (query.after === undefined) {
-        return listed(await db.query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $3 order by r.created_at desc, r.id limit $2`, [pageId, query.limit, tenantId]));
+        return listed(await scoped(db, tenantId).query<Row>(`select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $3 order by r.created_at desc, r.id limit $2`, [pageId, query.limit, tenantId]));
       }
       const at = `timestamptz 'epoch' + $3::bigint * interval '1 microsecond'`;
       // The union is ordered in a wrapping select: directly on a union only output names are allowed, and the sort key is text there.
-      return listed(await db.query<Row>(
+      return listed(await scoped(db, tenantId).query<Row>(
         `select * from (
            (select ${COLUMNS} ${FROM} where r.page_id = $1 and r.tenant_id = $5 and r.created_at = ${at} and r.id > $4::uuid order by r.id limit $2)
            union all
@@ -57,7 +58,7 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       ));
     },
     async get(tenantId, pageId, revisionId) {
-      const rows = await db.query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2 and r.tenant_id = $3`, [pageId, revisionId, tenantId]);
+      const rows = await scoped(db, tenantId).query<Row>(`select ${COLUMNS}, r.markdown ${FROM} where r.page_id = $1 and r.id = $2 and r.tenant_id = $3`, [pageId, revisionId, tenantId]);
       const row = rows[0];
       return row === undefined ? undefined : { ...summary(row), markdown: row.markdown as string } satisfies Revision;
     },

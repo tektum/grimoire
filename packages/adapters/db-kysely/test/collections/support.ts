@@ -3,7 +3,8 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createDatabase } from '../../src/index.js';
-import type { KyselyDatabase } from '../../src/index.js';
+import type { GrimoireTables, KyselyDatabase } from '../../src/index.js';
+import type { CompiledQuery, Kysely, QueryResult } from 'kysely';
 import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
 
 const exec = promisify(execFile);
@@ -63,4 +64,13 @@ export async function addGroup(db: KyselyDatabase, name: string, tenantId = 'leg
 /** A tenant row (the runtime role may add them, as a first sign-in does). */
 export async function addTenant(db: KyselyDatabase, id: string): Promise<void> {
   await db.query(`insert into tenants (id, name, domain) values ($1, $1, $1) on conflict do nothing`, [id]);
+}
+
+/** `d` with every statement of the connections `scoped(d, tenant)` takes passed to `around`, which runs it (or not) with `run`. Its own `query` and `transaction` are unchanged. */
+export function aroundScoped(d: KyselyDatabase, around: (sql: string, run: () => Promise<QueryResult<unknown>>) => Promise<QueryResult<unknown>>): KyselyDatabase {
+  const wrap = (one: Kysely<GrimoireTables>) => new Proxy(one, {
+    get: (k, p) => (p === 'executeQuery' ? (q: CompiledQuery) => around(q.sql, () => k.executeQuery(q)) : Reflect.get(k, p)) as unknown,
+  });
+  const connection = () => ({ execute: <T>(fn: (one: Kysely<GrimoireTables>) => Promise<T>) => d.kysely.connection().execute((one) => fn(wrap(one))) });
+  return { ...d, kysely: new Proxy(d.kysely, { get: (k, p) => (p === 'connection' ? connection : Reflect.get(k, p)) as unknown }) };
 }
