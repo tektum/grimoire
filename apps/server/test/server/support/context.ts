@@ -3,6 +3,8 @@ import { FakeClock } from '@tektum/grimoire-core/testing/fake-clock';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeDatabase } from '@tektum/grimoire-core/testing/fake-database';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
+import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
+import { FakeSearchRepo } from '@tektum/grimoire-core/testing/fake-search-repo';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
@@ -50,7 +52,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
     config, providerBaseUrl: null, log, clock, users, access: createPageAccess(createFakeAccessStore(emptyWorld())),
     authorizer: createAuthorizer(createFakeAccessStore(emptyWorld())),
     provisioner: createProvisioner({ users, verifier, policy: signInPolicy, logger }),
-    ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(),
+    ordering: new FakeOrdering(), converter: new FakeMarkdownConverter(), search: new FakeSearchRepo(), imports: new FakeImportRepo(),
     idempotency: new FakeIdempotencyStore(), collections: new FakeCollectionRepo(), audit: new FakeAuditLog(),
     pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), attachments: new FakeAttachmentRepo(), deleteFiles: () => Promise.resolve(),
   };

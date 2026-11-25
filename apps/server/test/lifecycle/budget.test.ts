@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STOP_GRACE_MS } from '@tektum/grimoire-adapter-jobs-pgboss';
-import { DERIVED_BUDGETS_MS, SHUTDOWN_BUDGET_MS, overallShutdownDeadlineMs, requiredGracePeriodMs, shutdownPhaseSumMs } from '../../src/lifecycle/budget.js';
+import { loadConfig } from '@tektum/grimoire-adapter-config-env';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
+import { DERIVED_BUDGETS_MS, JOBS_STOP_GRACE_MAX_MS, SHUTDOWN_BUDGET_MS, overallShutdownDeadlineMs, requiredGracePeriodMs, shutdownPhaseSumMs } from '../../src/lifecycle/budget.js';
 
 describe('one shutdown deadline budget', () => {
   it('has no literal 5000 or 4000 deadlines in wiring code', () => {
@@ -30,5 +32,14 @@ describe('one shutdown deadline budget', () => {
       expect(shutdownPhaseSumMs(save), `save ${String(save)}`).toBeLessThanOrEqual(overallShutdownDeadlineMs(save));
       expect(overallShutdownDeadlineMs(save), `save ${String(save)}`).toBeLessThan(requiredGracePeriodMs(save));
     }
+  });
+
+  it('the job queue\'s stop grace is capped at what the release-jobs phase has left, so shutdown never waits on jobs longer than its budget (a hung database included)', () => {
+    expect(JOBS_STOP_GRACE_MAX_MS).toBe(1500);
+    expect(JOBS_STOP_GRACE_MAX_MS + SHUTDOWN_BUDGET_MS.jobsHookOverhead).toBeLessThanOrEqual(DERIVED_BUDGETS_MS.releaseJobs);
+    const env = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'x'.repeat(40), GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
+    expect(loadConfig(env).jobs.stopGraceMs).toBe(JOBS_STOP_GRACE_MAX_MS);
+    expect(loadConfig({ ...env, GRIMOIRE_JOBS_STOP_GRACE_MS: String(JOBS_STOP_GRACE_MAX_MS) }).jobs.stopGraceMs).toBe(JOBS_STOP_GRACE_MAX_MS);
+    expect(() => loadConfig({ ...env, GRIMOIRE_JOBS_STOP_GRACE_MS: String(JOBS_STOP_GRACE_MAX_MS + 1) })).toThrow(/GRIMOIRE_JOBS_STOP_GRACE_MS/);
   });
 });

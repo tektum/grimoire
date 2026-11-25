@@ -8,7 +8,7 @@ import type { HttpDeps } from '../../src/http/env.js';
 import { makeContext } from '../server/support/context.js';
 
 const HTTP_KEYS = [
-  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter',
+  'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports',
   'idempotency', 'collections', 'audit', 'pages', 'trash', 'revisions', 'admin', 'pageState', 'attachments', 'deleteFiles',
 ] as const satisfies readonly (keyof HttpDeps)[];
 
@@ -58,8 +58,9 @@ describe('application context wiring', () => {
 
   it('role api: the markdown pool is released in release-jobs, before every close-database hook', () => {
     const hooks = ctxOf({ GRIMOIRE_ROLE: 'api' }).shutdownHooks;
-    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'database-pool']);
-    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'close-database']);
+    // The jobs of the import are released in the same phase (M7-T00).
+    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'jobs', 'database-pool']);
+    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'release-jobs', 'close-database']);
   });
 
   it('the ordering is the real one: it gives a valid first key and a key between two neighbours', () => {

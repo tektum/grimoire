@@ -11,6 +11,8 @@ export const SHUTDOWN_BUDGET_MS = {
   collabStopAccepting: 5000,
   poolWork: 1500,
   poolHookOverhead: 500,
+  /** What the `jobs` hook adds to the stop grace it gives the queue. */
+  jobsHookOverhead: 500,
   stopTimers: 1000,
   closeDatabase: 2000,
   saveLead: 2000,
@@ -27,6 +29,12 @@ export const DERIVED_BUDGETS_MS = {
   stopTimers: SHUTDOWN_BUDGET_MS.stopTimers,
   closeDatabase: SHUTDOWN_BUDGET_MS.closeDatabase,
 } as const;
+
+/**
+ * The most the job queue may be given to stop in: what the `release-jobs` phase has left for it after the hook's own overhead (1.5 s). Jobs are resumable (the queue gives a
+ * job that was cut short back, and handlers are idempotent), so shutdown never waits on them longer than this, a hung database included. `GRIMOIRE_JOBS_STOP_GRACE_MS` is capped at it. The hook's wait for a queue that is still starting is taken out of the same grace (the stop gets what remains), so the hook never needs more than the grace plus its overhead.
+ */
+export const JOBS_STOP_GRACE_MAX_MS = DERIVED_BUDGETS_MS.releaseJobs - SHUTDOWN_BUDGET_MS.jobsHookOverhead;
 
 /** The `stop-accepting` phase runs the HTTP and collaboration hooks in parallel: the longer one counts. */
 const stopAcceptingMs = (): number => Math.max(DERIVED_BUDGETS_MS.httpStopAccepting, SHUTDOWN_BUDGET_MS.collabStopAccepting);

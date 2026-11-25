@@ -4,6 +4,7 @@ import type { ServerProcess } from '../server/support/harness.js';
 import { waitUntil } from '@tektum/grimoire-test-support/harness';
 import { connect, eventually, newPage, pageRow, seedPage, StallProxy, synced, textOf, wsUrl } from './support.js';
 import type { Client } from './support.js';
+import { JOBS_STOP_GRACE_MAX_MS } from '../../src/lifecycle/budget.js';
 
 // A database that stops answering (queries neither return nor fail), simulated with a stalling proxy (see StallProxy).
 const DB = 'grimoire_t09_hang';
@@ -96,7 +97,8 @@ describe('a database that hangs', () => {
       expect(exit.code).toBe(1);
       const abandoned = events(s, 'collab.store_abandoned').map((e) => e['pageId']);
       expect(abandoned.sort()).toEqual([u1, u2].sort());
-      expect(ms).toBeLessThan(3000 + 2000); // deadline + 2 s, the 1 s that keeps /readyz visible before connections close (R2.42) included
+      // The save deadline, the 2 s that keeps /readyz visible before connections close (R2.42), and what the job queue may take to stop with the database stalled (the cap of the `release-jobs` phase).
+      expect(ms).toBeLessThan(3000 + 2000 + JOBS_STOP_GRACE_MAX_MS);
     } catch (error) {
       explainShutdown(s.events.slice(seen), ms, exit);
       throw error;

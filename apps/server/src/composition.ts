@@ -1,6 +1,6 @@
 // Composition root: the only module that constructs adapters and wires them into the core ports.
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
-import { migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
+import { createJobQueue, migratePgBoss } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { jobQueues } from '@tektum/grimoire-core/jobs/queues';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
@@ -20,9 +20,11 @@ import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektu
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
-import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
+import { createJobRunner } from './jobs/runner.js';
+import type { JobRunner } from './jobs/runner.js';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import { createJsonLogger } from '@tektum/grimoire-adapter-logger-json';
 import { createOrdering } from './tree/position.js';
@@ -50,6 +52,8 @@ export interface AppContext {
   readonly testFacilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[];
   /** Returned without registration: lifecycle/run.ts alone registers these and HTTP/collaboration hooks (S7). */
   readonly shutdownHooks: readonly ShutdownHook[];
+  /** The job queue of the roles `api` and `all`; absent for `collab`. `run` starts it after the listener is up. */
+  readonly jobs?: JobRunner;
 }
 /** A composition that must not start although its settings are valid: a test double was handed in outside local mode. */
 export interface CompositionRefusal { readonly reason: 'authorizer-stub' | 'verifier-stub'; readonly host: string; readonly port: number }
@@ -119,7 +123,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     access: overrides.access ?? createPageAccess(createAccessStore(db)),
     authorizer: createAuthorizer(createAccessStore(db)),
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
-    ordering: createOrdering(), converter,
+    ordering: createOrdering(), converter, search: createSearchRepo(db), imports: createImportRepo(db),
     idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
     pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
     attachments: createAttachments(db),
@@ -146,15 +150,18 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       deps: { config, logger, clock: systemClock, verifier, resolveUser, requireTenant: true, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
     };
   }
+  // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
+  const jobs = config.role === 'collab' ? undefined : createJobRunner({ config, log, make: createJobQueue, onError: () => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0 }); } });
   const shutdownHooks: ShutdownHook[] = [
     ...(descope ? [{ name: 'descope-keys', phase: 'stop-timers' as const, deadlineMs: DERIVED_BUDGETS_MS.stopTimers, run: () => { descope.close(); return Promise.resolve(); } }] : []),
     markdownPoolHook(converter),
+    ...(jobs === undefined ? [] : [jobs.hook]),
     ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
-  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(collab ? { collab } : {}) } };
+  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(collab ? { collab } : {}) } };
 }
 
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }

@@ -121,8 +121,6 @@ export interface ImportConfig {
   readonly remote: { readonly maxImages: number; readonly maxBytes: number; readonly timeoutSeconds: number; readonly totalSeconds: number };
   /** Workers of the `import` queue. */
   readonly concurrency: number;
-  /** Threads of the converter pool of the roles `api` and `all`. */
-  readonly converterThreads: number;
 }
 
 /** The job queue's expiries and schedules (cron is UTC, five fields). */
