@@ -1,5 +1,5 @@
 // Fails on a use of the operator connection (docs/tenancy.md section 3.2) outside the modules of tools/ci/operator-sites.mjs: the type `OperatorDatabase`, the
-// function `createOpsDatabase`, `operator` called, imported, exported or reached as a property (`db.operator` after `import * as db`), or a read of the setting
+// function `createOpsDatabase`, `operator` called, imported, exported or reached as a property (`db.operator` or `db['operator']` after `import * as db`), or a read of the setting
 // `opsUrl` (`config.database.opsUrl`, `['opsUrl']`, `{ opsUrl }`): a plain database over that URL would be the operator role with `query`, past the type. The module
 // that defines the handle, the settings that define the URL, composition (which hands it to `createOpsDatabase`) and test files are not call sites. Uses are found
 // with the TypeScript parser, so a comment, a string or an object key called `operator` or `opsUrl` does not count.
@@ -30,7 +30,7 @@ function usesIn(text, rel) {
   const found = [];
   const visit = (node) => {
     const p = node.parent;
-    const operator = ts.isIdentifier(node) && node.text === 'operator' && ((ts.isCallExpression(p) && p.expression === node) || ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || readsProperty(node, 'operator'));
+    const operator = (ts.isIdentifier(node) && node.text === 'operator' && ((ts.isCallExpression(p) && p.expression === node) || ts.isImportSpecifier(p) || ts.isExportSpecifier(p))) || readsProperty(node, 'operator');
     const named = (ts.isIdentifier(node) && NAMES.has(node.text)) || operator || (!OPS_URL_DEFINERS.has(rel) && readsProperty(node, 'opsUrl'));
     if (named) found.push(`${rel}:${String(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1)} ${node.text}`);
     ts.forEachChild(node, visit);

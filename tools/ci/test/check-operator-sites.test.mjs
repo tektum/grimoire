@@ -47,6 +47,11 @@ test('operator reached as a property (`import * as db`, then `db.operator(ops)`)
   assert.deepEqual(found, ['apps/server/src/jobs/sweep.ts:2 operator', 'apps/server/src/jobs/sweep.ts:3 operator']);
 });
 
+test('operator reached by element access or destructuring (`db[\'operator\']`, db[`operator`], `{ operator } = db`) is found, and so is opsUrl through a template key', () => {
+  const found = inTree({ 'apps/server/src/jobs/sweep.ts': "import * as db from '@tektum/grimoire-adapter-db-kysely';\nconst a = db['operator'](handle);\nconst b = db[`operator`];\nconst { operator: c } = db;\nconst d = config[`opsUrl`];\n" }, (dir) => findOperatorUses(dir, []));
+  assert.deepEqual(found, ['apps/server/src/jobs/sweep.ts:2 operator', 'apps/server/src/jobs/sweep.ts:3 operator', 'apps/server/src/jobs/sweep.ts:4 operator', 'apps/server/src/jobs/sweep.ts:5 opsUrl']);
+});
+
 test('a registered module, the module that defines the handle, test files, comments, strings and object keys named operator or opsUrl pass', () => {
   const found = inTree({
     'apps/server/src/jobs/sweep.ts': offender,
