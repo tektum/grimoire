@@ -76,7 +76,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const api: JobsApi = {
     isLive: (name, key) => Promise.resolve().then(() => up().isLive(name, key)),
     enqueueImport: (payload, enqueueOptions) => Promise.resolve().then(() => up().enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, enqueueOptions)),
-    enqueueImportCleanup: (payload) => Promise.resolve().then(() => up().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId })),
+    enqueueImportCleanup: (payload) => Promise.resolve().then(() => up().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId }, { singletonKey: `import-cleanup:${payload.importId}` })),
   };
   const jobs = typeof options.jobs === 'function' ? options.jobs(api) : (options.jobs ?? importJobs());
   let timer: NodeJS.Timeout | undefined;

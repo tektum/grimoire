@@ -42,6 +42,7 @@ function world(tenants: readonly string[] = ['T-a', 'T-b']) {
       deleted.push([...keys]);
       return Promise.resolve();
     },
+    zipPresent: (key: string) => Promise.resolve(!deleted.some((keys) => keys.includes(key))),
     now: () => NOW,
   };
 }
@@ -156,6 +157,28 @@ describe('runImportCleanup', () => {
     expect(await runImportCleanup(w, payload('i'))).toEqual({ pages: 1, zip: true });
     expect(w.deleted).toEqual([['tenants/T-a/imports/i/source.zip']]);
     expect(await runImportCleanup(w, payload('i'))).toEqual({ pages: 0, zip: true }); // idempotent: nothing left to move; deleting a key that is gone is not an error
+  });
+
+  it('moves the pages to the trash once: a second cleanup finds the zip gone, so pages a person restored since do not go back', async () => {
+    const w = world();
+    w.row('i', 'T-a', 'failed');
+    let trashed = 0;
+    const trash = w.imports.trashImported.bind(w.imports);
+    w.imports.trashImported = (...args: Parameters<typeof trash>) => { trashed += 1; return trash(...args); };
+    await runImportCleanup(w, payload('i'));
+    await runImportCleanup(w, payload('i'));
+    expect(trashed).toBe(1);
+    expect(w.deleted).toEqual([['tenants/T-a/imports/i/source.zip'], ['tenants/T-a/imports/i/source.zip']]);
+  });
+
+  it('does not trash when the store cannot say whether the zip is there: the job fails and runs again', async () => {
+    const w = world();
+    w.row('i', 'T-a', 'failed');
+    let trashed = 0;
+    const trash = w.imports.trashImported.bind(w.imports);
+    w.imports.trashImported = (...args: Parameters<typeof trash>) => { trashed += 1; return trash(...args); };
+    await expect(runImportCleanup({ ...w, zipPresent: () => Promise.reject(new Error('store down')) }, payload('i'))).rejects.toThrow('store down');
+    expect(trashed).toBe(0);
   });
 
   it('keeps the pages of a done import and deletes its zip', async () => {

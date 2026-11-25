@@ -3,7 +3,7 @@ import type { AttachmentRepo } from '@tektum/grimoire-core/ports/attachment-repo
 import type { PageStore } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
-import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
+import { FileStorageError, type FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -64,6 +64,17 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
   const { config, log, clock } = deps;
   const onSwept = (importId: string, action: string): void => { log.info('import.swept', { importId, action }); };
   const enqueueCleanup = (payload: ImportPayload): Promise<unknown> => deps.queue.enqueueImportCleanup(payload);
+  // Without a file store no import has a zip to find, and nothing was moved to hold back.
+  const zipPresent = async (key: string): Promise<boolean> => {
+    if (deps.files === undefined) return true;
+    try {
+      await deps.files.head(key);
+      return true;
+    } catch (e) {
+      if (e instanceof FileStorageError && e.kind === 'not-found') return false;
+      throw e;
+    }
+  };
   const sweep = createMarkdownSweep({ pages: deps.pages, converter: deps.converter, now: () => clock.now(), onConvertFailure: (pageId, reason) => log.warn('markdown_sweep.convert_failed', { pageId, reason }) });
   return [
     ...importJobs(),
@@ -78,7 +89,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
       name: 'import-cleanup',
       handler: async (payload) => {
         if (!isImportPayload(payload)) return; // an id of the wrong shape names no import
-        const done = await runImportCleanup({ imports: deps.imports, deleteFiles: deps.deleteFiles }, payload);
+        const done = await runImportCleanup({ imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent }, payload);
         if (done !== undefined) log.info('import.cleaned', { importId: payload.importId, pages: done.pages, zip: done.zip });
       },
     },
