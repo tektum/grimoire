@@ -24,7 +24,7 @@ export interface ImportProfile {
   classify(entry: { readonly path: string }): ImportItemKind;
   titleOf(path: string, markdown: string): string;
   /**
-   * The path of the folder (or page) this page goes under, or null at the top. `lowerPaths` is every path of the archive, lower-cased: a profile whose answer depends on the
+   * The path of the folder (or page) this page goes under, or null at the top. `lowerPaths` is every path of the archive, canonical (`.` and empty segments dropped) and lower-cased: a profile whose answer depends on the
    * other entries (a folder with two candidates for its page) reads it; without it the answer is the one for a folder that has no other candidate.
    */
   parentPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | null;

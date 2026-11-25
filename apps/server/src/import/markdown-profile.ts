@@ -8,6 +8,8 @@ const FOLDER_PAGE = /^(index|readme)\.(md|markdown)$/i;
 const INDEX_NAMES = ['index.md', 'index.markdown'];
 
 const lines = (text: string): string[] => text.split('\n');
+/** The segments of an archive path as `resolveLinkPath` and the duplicate check read it: `.` and empty segments name nothing. */
+const segmentsOf = (path: string): string[] => path.split('/').filter((segment) => segment !== '' && segment !== '.');
 
 /** What a line inside a YAML front matter block can be: blank, a comment, indented (a nested value or a folded text), a list item, or `key:` (with a value or none). */
 const YAML_LINE = /^(?:\s*|#.*|[ \t]+.*|-(?:[ \t].*)?|[A-Za-z0-9_"'.-][^:\n]*:(?:[ \t].*)?)$/;
@@ -92,7 +94,7 @@ export const markdownProfile: ImportProfile = {
     return (path.split('/').at(-1) ?? path).replace(PAGE, '');
   },
   folderPathOf(path, lowerPaths) {
-    const segments = path.split('/');
+    const segments = segmentsOf(path);
     const name = segments.pop() ?? '';
     const folderPage = FOLDER_PAGE.exec(name);
     if (folderPage === null || segments.length === 0) return undefined;
@@ -103,7 +105,7 @@ export const markdownProfile: ImportProfile = {
   parentPathOf(path, lowerPaths) {
     const folder = markdownProfile.folderPathOf(path, lowerPaths);
     // The page file of a folder stands for the folder, so it goes under the folder above.
-    const segments = (folder ?? path.split('/').slice(0, -1).join('/')).split('/').filter((x) => x !== '');
+    const segments = folder !== undefined ? segmentsOf(folder) : segmentsOf(path).slice(0, -1);
     if (folder !== undefined) segments.pop();
     return segments.length === 0 ? null : segments.join('/');
   },

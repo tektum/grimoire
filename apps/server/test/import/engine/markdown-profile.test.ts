@@ -40,6 +40,23 @@ describe('folderPathOf: the folder a page file stands for', () => {
   });
 });
 
+describe('paths with . and empty segments (the header check accepts them, and they name nothing)', () => {
+  it('give the same answers as the plain path, and the folder is returned canonical', () => {
+    expect(p.parentPathOf('a/dir/./index.md')).toBe('a');
+    expect(p.parentPathOf('./a//dir/child.md')).toBe('a/dir');
+    expect(p.folderPathOf('a/./dir//README.md')).toBe('a/dir');
+    expect(p.parentPathOf('./x.md')).toBeNull();
+    expect(p.folderPathOf('./index.md')).toBeUndefined();
+  });
+
+  it('find the winner of the tie-break whichever spelling the entries have', () => {
+    const all = new Set(['a/dir/index.md', 'a/dir/readme.md']);
+    expect(p.folderPathOf('a/./dir/README.md', all)).toBeUndefined();
+    expect(p.parentPathOf('a//dir/README.md', all)).toBe('a/dir');
+    expect(p.folderPathOf('a/dir/./index.md', all)).toBe('a/dir');
+  });
+});
+
 describe('titleOf', () => {
   it('finds a heading after a byte order mark, with or without front matter', () => {
     expect(p.titleOf('a.md', '\uFEFF# Real\n')).toBe('Real');
