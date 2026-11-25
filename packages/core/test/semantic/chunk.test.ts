@@ -103,6 +103,20 @@ describe('chunkText', () => {
     }
   });
 
+  it('also gives the offsets in Unicode code points, which is how the store reads a passage (PostgreSQL substr), differing from the UTF-16 ones after an astral character', () => {
+    const text = '🙂🙂 first line here\n\nsecond 🙂 line goes here\nthird 𝒳 line';
+    const chunks = chunkText(text, words, { model: MODEL, targetTokens: 3, maxTokens: 10 });
+    expect(chunks.length).toBeGreaterThanOrEqual(3);
+    const points = Array.from(text);
+    for (const c of chunks) {
+      expect(points.slice(c.pointStart, c.pointEnd).join('')).toBe(c.text);
+      expect(text.slice(c.charStart, c.charEnd)).toBe(c.text);
+    }
+    expect(chunks.some((c) => c.pointStart !== c.charStart)).toBe(true); // the astral characters make them differ
+    expect(chunkText('plain ascii text here', words, { model: MODEL }).map((c) => [c.pointStart, c.pointEnd, c.charStart, c.charEnd])).toEqual([[0, 21, 0, 21]]);
+    expect(chunkText('🙂 emoji first words', words, { model: MODEL })[0]).toMatchObject({ pointStart: 0, pointEnd: 19, charStart: 0, charEnd: 20 });
+  });
+
   it('counts tokens of the chunk as the counter says, not as the sum of its parts', () => {
     const count = (t: string): number => (t.includes('a b') ? 7 : words(t));
     const chunks = chunkText('a b c d e', count, { model: MODEL });
