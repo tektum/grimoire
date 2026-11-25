@@ -681,6 +681,33 @@ jobs:
         if: always()
         run: make down-volumes
 
+  semantic-models:
+    name: Semantic models
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ format('runs-on={0}-{1}-semantic-models/runner=4cpu-linux-x64/spot=false', github.run_id, github.run_attempt) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      # The only network use of the model path: the two models, each file checked against models/models.lock.json (SHA-256 and size) before it is kept.
+      - run: node scripts/fetch-models.mjs
+      # The Embedder conformance suite on the real models (e5-base and e5-small): the proof of the embedder's worker thread and tokenizer, which the unit run's coverage leaves out. Not in `CI Required` yet.
+      - run: GRIMOIRE_MODEL_DIR=models bunx vitest run --project container packages/adapters/embedder-onnx
+
   ci-required:
     name: CI Required
     runs-on: ubuntu-latest

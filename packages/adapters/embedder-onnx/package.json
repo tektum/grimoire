@@ -13,6 +13,8 @@
     }
   },
   "dependencies": {
-    "@tektum/grimoire-core": "*"
+    "@huggingface/tokenizers": "0.2.0",
+    "@tektum/grimoire-core": "*",
+    "onnxruntime-node": "1.31.1"
   }
 }
