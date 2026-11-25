@@ -7,6 +7,9 @@ const SCHEME_OR_DRIVE = /^[A-Za-z][A-Za-z0-9+.-]*:/;
  * The archive path a link points to, or undefined when it points at nothing inside the archive. `url` is the link as written in the Markdown of `fromPath`: it is split at a
  * query or fragment, percent-decoded once (so `%2e%2e/` is `../`, and `%252e` stays a name), joined to the folder of `fromPath` and normalised. A result that would leave the
  * archive root, a scheme (`https:`, `mailto:`), an absolute path, a drive letter, a backslash, a NUL, a malformed escape and an empty path all give undefined.
+ *
+ * The result is a key for looking up an entry of the archive, nothing else: it is never written into a page as a link. The import points an imported link at the page by its
+ * internal id (`/p/<url_id>`) or at the attachment it made, and a link that resolves to nothing stays as it was and is judged like any external link.
  */
 export function resolveLinkPath(url: string, fromPath: string): string | undefined {
   const bare = url.replace(/[?#].*$/s, '');
