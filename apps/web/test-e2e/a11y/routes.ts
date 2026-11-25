@@ -20,6 +20,7 @@ export interface Stop {
 export const STOPS: readonly Stop[] = [
   { route: '/login', who: 'nobody', path: () => '/login' },
   { route: '/', who: 'member', path: () => '/', ready: async (page) => void (await page.waitForURL(/\/c\//)) },
+  { route: '/collections/new', who: 'admin', path: () => '/collections/new', ready: async (page) => void (await page.getByRole('button', { name: 'Create collection' }).waitFor()) },
   { route: '/c/:collectionId', who: 'member', path: (w) => `/c/${w.collectionId}`, ready: async (page, w) => void (await page.getByRole('link', { name: w.alpha.title }).waitFor()) },
   { route: '/p/:slug', who: 'member', path: (w) => w.alpha.path, ready: async (page) => waitForSynced(page) },
   { route: '/p/:slug/history', who: 'member', path: (w) => `${w.alpha.path}/history` },
