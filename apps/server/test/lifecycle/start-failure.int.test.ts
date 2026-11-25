@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appUrl, createTestDatabase, dropTestDatabase, freePort, mainJs, requireBuild } from '../server/support/harness.js';
 import { listenerReport, spawnWatched, TRACK_LISTENERS, withoutListenerReport } from '@tektum/grimoire-test-support/harness';
 import type { ListenerReport } from '@tektum/grimoire-test-support/harness';
-import { migratorUrl } from '@tektum/grimoire-test-support/database';
+import { migratorUrl, opsUrl } from '@tektum/grimoire-test-support/database';
 
 const DB = `grimoire_m3t01b_start_${String(process.pid)}`;
 const children = new Set<ReturnType<typeof spawnWatched>>();
@@ -24,7 +24,7 @@ function runEntrypoint(args: readonly string[], env: Readonly<Record<string, str
   const { promise, resolve } = Promise.withResolvers<ChildResult>();
   const child = spawnWatched(['--import', TRACK_LISTENERS, ...args], {
     PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
-    GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_HOST: '127.0.0.1', ...env,
+    GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_DATABASE_OPS_URL: opsUrl(DB), ...env,
   });
   children.add(child);
   let output = '';
