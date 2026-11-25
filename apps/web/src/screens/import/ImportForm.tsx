@@ -52,15 +52,39 @@ export function ImportForm({ onStarted, send }: { readonly onStarted: (id: strin
         {DUPLICATE_WARNING}
       </p>
       <label htmlFor="import-collection">Into the collection</label>
-      <select id="import-collection" value={target ?? ''} disabled={busy || writable.length === 0} onChange={(event) => { setCollectionId(event.target.value); }}>
+      <select
+        id="import-collection"
+        value={target ?? ''}
+        disabled={busy || writable.length === 0}
+        onChange={(event) => {
+          setCollectionId(event.target.value);
+        }}
+      >
         {writable.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
           </option>
         ))}
       </select>
-      <label htmlFor="import-file">Zip file</label>
-      <input id="import-file" type="file" accept=".zip,application/zip" disabled={busy} onChange={(event) => { setFile(event.target.files?.[0] ?? null); }} />
+      {/* A real file input (the keyboard and a screen reader meet it as one), drawn as the app's button: the input is hidden by position and size, not by display, so it keeps the focus, and the label shows it. */}
+      <div className="import-file-row">
+        <label className="button import-file-button" data-disabled={busy ? 'true' : undefined}>
+          Choose a .zip file
+          <input
+            className="import-file-input"
+            type="file"
+            accept=".zip,application/zip"
+            disabled={busy}
+            aria-describedby="import-file-name"
+            onChange={(event) => {
+              setFile(event.target.files?.[0] ?? null);
+            }}
+          />
+        </label>
+        <span id="import-file-name" className="import-file-name">
+          {file === null ? 'No file chosen' : file.name}
+        </span>
+      </div>
       {problem === null ? null : <p role="alert">{problem}</p>}
       {busy ? <p role="status">{PHASE_TEXT[phase as Exclude<Phase, 'idle'>]}</p> : null}
       <Button type="submit" variant="primary" disabled={busy || file === null || target === undefined}>

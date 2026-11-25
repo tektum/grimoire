@@ -34,7 +34,7 @@ test('a small zip is created, PUT with the headers the API gave, started, and it
     { status: 'running', total: 10, done: 4 },
     { status: 'done', total: 10, done: 10, skipped: 1 },
   ]);
-  await page.getByLabel('Zip file').setInputFiles(smallZip());
+  await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page).toHaveURL(/\/import\?import=imp1$/);
   expect(sent.creates).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: smallZip().buffer.length }]);
@@ -59,7 +59,7 @@ test('a reload goes on watching the import (it is in the address)', async ({ pag
 
 test('a zip over the limit is refused with a message, and the screen is ready for another file', async ({ page, context }) => {
   await open(page, context, [], { createStatus: 413 });
-  await page.getByLabel('Zip file').setInputFiles(smallZip());
+  await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('alert')).toHaveText('That file is larger than an import may be.');
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
@@ -67,7 +67,23 @@ test('a zip over the limit is refused with a message, and the screen is ready fo
 
 test('a file that is not a zip is refused when the import starts', async ({ page, context }) => {
   await open(page, context, [], { startStatus: 422, startCode: 'not_a_zip' });
-  await page.getByLabel('Zip file').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a zip') });
+  await page.getByLabel('Choose a .zip file').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a zip') });
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('alert')).toHaveText('That is not a zip file.');
+});
+
+test('the file button is reached with the keyboard, shows the chosen name after it, and has a visible focus ring', async ({ page, context }) => {
+  await open(page, context, [{ status: 'running', total: 10, done: 0 }]);
+  const input = page.getByLabel('Choose a .zip file');
+  await expect(page.locator('.import-file-name')).toHaveText('No file chosen');
+  await page.getByLabel('Into the collection').focus();
+  await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+  const ring = await page.locator('.import-file-button').evaluate((el) => ({ style: getComputedStyle(el).outlineStyle, width: Number.parseFloat(getComputedStyle(el).outlineWidth) }));
+  expect(ring.style).toBe('solid');
+  expect(ring.width).toBeGreaterThanOrEqual(2);
+  const box = await page.locator('.import-file-button').boundingBox();
+  expect(box!.width).toBeGreaterThan(40); // it has a box of its own: the input inside it is hidden, the button is not
+  await input.setInputFiles(smallZip('a-longer-name-of-an-export.zip'));
+  await expect(page.locator('.import-file-name')).toHaveText('a-longer-name-of-an-export.zip');
 });

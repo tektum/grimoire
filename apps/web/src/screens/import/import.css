@@ -1,6 +1,14 @@
 .import-screen { max-inline-size: var(--measure, 44rem); margin-inline: auto; }
 .import-form { display: grid; gap: var(--space-2); justify-items: start; }
-.import-form select, .import-form input[type='file'] { max-inline-size: 100%; font: inherit; }
+/* The collection select has the height and the look of the other fields and buttons. */
+.import-form select { max-inline-size: 100%; font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); min-block-size: 2.625rem; }
+.import-form select:hover:not(:disabled) { border-color: var(--muted); }
+.import-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); max-inline-size: 100%; }
+.import-file-button { display: inline-flex; align-items: center; position: relative; min-block-size: 2.625rem; box-sizing: border-box; }
+.import-file-button:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.import-file-button[data-disabled='true'] { opacity: 0.5; cursor: default; }
+.import-file-input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.import-file-name { color: var(--muted); overflow-wrap: anywhere; min-inline-size: 0; }
 .import-warning { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-inline-start: 4px solid var(--accent); border-radius: var(--radius-2); background: var(--paper-raised); }
 .import-progress { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
 .import-bar { inline-size: 100%; block-size: 0.75rem; border: 1px solid var(--muted); border-radius: 999px; overflow: hidden; background: var(--paper-raised); }

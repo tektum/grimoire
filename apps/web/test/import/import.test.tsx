@@ -105,7 +105,7 @@ function show(api: ApiLike, at = '/import') {
 }
 const zip = () => new File([new Uint8Array(1234)], 'export.zip', { type: 'application/zip' });
 const choose = async () => {
-  await userEvent.upload(await screen.findByLabelText('Zip file'), zip());
+  await userEvent.upload(await screen.findByLabelText('Choose a .zip file'), zip());
 };
 
 describe('the import screen', () => {
@@ -127,6 +127,20 @@ describe('the import screen', () => {
       ).toEqual(['Dev', 'Notes']),
     );
     expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true); // no file yet
+  });
+
+  it('draws the file input as a labelled button, shows the name of the chosen file after it, and keeps it a real file input that the keyboard reaches', async () => {
+    show(fake().api);
+    const input = (await screen.findByLabelText('Choose a .zip file')) as HTMLInputElement;
+    expect(input.type).toBe('file');
+    expect(input.getAttribute('accept')).toContain('.zip');
+    expect(screen.getByText('No file chosen')).toBeTruthy();
+    expect(input.getAttribute('aria-describedby')).toBe('import-file-name');
+    await userEvent.tab(); // the collection select first, then the file input: both are in the Tab order
+    await userEvent.tab();
+    expect(document.activeElement).toBe(input);
+    await userEvent.upload(input, zip());
+    expect(document.getElementById('import-file-name')!.textContent).toBe('export.zip');
   });
 
   it('makes the import, PUTs the zip with the headers the API gave, starts it, and goes on to watch it', async () => {

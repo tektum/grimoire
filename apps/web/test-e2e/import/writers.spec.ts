@@ -20,7 +20,7 @@ test('a viewer gets the not-found screen, and nothing is asked of the import rou
   const sent = await scriptedImports(page, []);
   await page.goto('/import');
   await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
-  await expect(page.getByLabel('Zip file')).toHaveCount(0);
+  await expect(page.getByLabel('Choose a .zip file')).toHaveCount(0);
   expect(sent.creates).toEqual([]);
   expect(sent.reads).toBe(0);
 });
