@@ -174,11 +174,17 @@ export class FakeImportRepo implements ImportRepo {
     return Promise.resolve(true);
   }
 
-  /** The fake keeps no page tree: it moves the pages the items name, and a page added under one has nowhere to be here (the database case checks descendants). */
+  /** The fake keeps the parent of each page it wrote: a page under another page of the import is part of that page's subtree, so the batches are the outermost roots, as in the database. A page a person added has nowhere to be here (the database case checks those). */
   trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined> {
     if (this.find(tenantId, id) === -1) return Promise.resolve(undefined);
     const live = this.stored.filter((s) => s.tenantId === tenantId && s.importId === id && s.item.kind === 'page' && s.item.status === 'ok' && s.item.pageId !== null && !this.trashed.has(s.item.pageId));
-    for (const s of live) this.trashed.add(s.item.pageId as string);
-    return Promise.resolve({ batches: live.map((s) => s.item.pageId as string), pages: live.length });
+    const ids = new Set(live.map((s) => s.item.pageId as string));
+    const parentOf = new Map(this.written.filter((w) => w.tenantId === tenantId && w.importId === id).map((w) => [this.stored.find((s) => s.tenantId === tenantId && s.importId === id && s.item.id === w.page.itemId)?.item.pageId ?? '', w.page.parentId]));
+    const underAnother = (pageId: string): boolean => {
+      for (let parent = parentOf.get(pageId) ?? null; parent !== null; parent = parentOf.get(parent) ?? null) if (ids.has(parent)) return true;
+      return false;
+    };
+    for (const pageId of ids) this.trashed.add(pageId);
+    return Promise.resolve({ batches: [...ids].filter((pageId) => !underAnother(pageId)), pages: ids.size });
   }
 }

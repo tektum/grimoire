@@ -458,4 +458,26 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'an import with no pages is found, and has nothing to move');
     },
   },
+  {
+    name: 'trash-imported-names-one-batch-for-each-outermost-imported-page',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'a/b.md', 'a/b/c.md', 'z.md'));
+      const items = new Map((await h.repo.pending(h.tenantId, made.id, 'page', 10)).map((i) => [i.path, i]));
+      const write = async (path: string, parentId: string | null) => {
+        const item = items.get(path)!;
+        const out = await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId, parentId }), limits, h.now);
+        assert.equal(out.kind, 'ok', path);
+        return out.kind === 'ok' ? out.pageId : '';
+      };
+      const a = await write('a.md', null);
+      const b = await write('a/b.md', a);
+      await write('a/b/c.md', b);
+      const z = await write('z.md', null);
+      await h.seedStatus(made.id, 'failed');
+      const moved = await h.repo.trashImported(h.tenantId, made.id);
+      assert.equal(moved?.pages, 4);
+      assert.deepEqual([...(moved?.batches ?? [])].sort(), [a, z].sort(), 'a page under another imported page is in the subtree of its outermost imported ancestor');
+    },
+  },
 ];
