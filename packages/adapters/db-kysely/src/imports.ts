@@ -34,18 +34,18 @@ const item = (r: ItemRow): ImportItem => ({
 /** The partial unique index of migration 0012: a tenant has one `running` import. */
 const busy = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'imports_one_running_per_tenant';
 
-/** The PostgreSQL ImportRepo over `imports` and `import_items`: every statement names the tenant. */
+/** The PostgreSQL ImportRepo over `imports` and `import_items`: every statement names the tenant and runs scoped to it. */
 export function createImportRepo(db: KyselyDatabase): ImportRepo {
   const attachments = createAttachments(db);
   return {
     async get(tenantId, id) {
-      const rows = await db.query<ImportRow>(`select ${IMPORT_COLUMNS} from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
+      const rows = await scoped(db, tenantId).query<ImportRow>(`select ${IMPORT_COLUMNS} from imports where tenant_id = $1 and id = $2`, [tenantId, id]);
       return rows[0] === undefined ? undefined : record(rows[0]);
     },
     async addItems(tenantId, importId, items) {
       if (items.length === 0) return 0;
       // A pending page item gets its page id and URL id here (a link to a page written later points at them); every other item has neither.
-      const rows = await db.query(
+      const rows = await scoped(db, tenantId).query(
         `insert into import_items (tenant_id, import_id, path, kind, status, message, page_id, url_id)
          select i.tenant_id, i.id, p.path, p.kind, p.status, p.message,
                 case when p.kind = 'page' and p.status = 'pending' then gen_random_uuid() end,
@@ -58,7 +58,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows.length;
     },
     async pending(tenantId, importId, kind, limit) {
-      const rows = await db.query<ItemRow>(
+      const rows = await scoped(db, tenantId).query<ItemRow>(
         `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and kind = $3 and status = 'pending'
          order by cardinality(string_to_array(path, '/')), path collate "C" limit $4`,
         [tenantId, importId, kind, limit],
@@ -66,11 +66,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return rows.map(item);
     },
     async getItem(tenantId, importId, itemId) {
-      const rows = await db.query<ItemRow>(`select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint`, [tenantId, importId, itemId]);
+      const rows = await scoped(db, tenantId).query<ItemRow>(`select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and id = $3::bigint`, [tenantId, importId, itemId]);
       return rows[0] === undefined ? undefined : item(rows[0]);
     },
     async settle(tenantId, importId, itemId, outcome) {
-      const rows = await db.query(
+      const rows = await scoped(db, tenantId).query(
         `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7, page_id = null, url_id = null
          where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' returning 1`,
         [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null],
@@ -134,7 +134,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async start(tenantId, id, now) {
       try {
-        const rows = await db.query<ImportRow>(
+        const rows = await scoped(db, tenantId).query<ImportRow>(
           `update imports set status = 'running', started_at = coalesce(started_at, to_timestamp($3::double precision / 1000.0))
            where tenant_id = $1 and id = $2 and status in ('uploaded', 'running') returning ${IMPORT_COLUMNS}`,
           [tenantId, id, now],
@@ -147,11 +147,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       }
     },
     async setCounts(tenantId, id, counts) {
-      const rows = await db.query(`update imports set counts = $3::jsonb where tenant_id = $1 and id = $2 and status = 'running' returning 1`, [tenantId, id, JSON.stringify(counts)]);
+      const rows = await scoped(db, tenantId).query(`update imports set counts = $3::jsonb where tenant_id = $1 and id = $2 and status = 'running' returning 1`, [tenantId, id, JSON.stringify(counts)]);
       return rows.length === 1;
     },
     async finish(tenantId, id, status, error, now) {
-      const rows = await db.query(
+      const rows = await scoped(db, tenantId).query(
         `update imports set status = $3, error = $4, finished_at = to_timestamp($5::double precision / 1000.0) where tenant_id = $1 and id = $2 and status = 'running' returning 1`,
         [tenantId, id, status, error, now],
       );
@@ -160,7 +160,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
 
     // What the routes use.
     async create(tenantId, row) {
-      const rows = await db.query<ImportRow>(
+      const rows = await scoped(db, tenantId).query<ImportRow>(
         `insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
          returning ${IMPORT_COLUMNS}`,
         [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, row.s3Key, row.bytes],
@@ -168,25 +168,25 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       return record(rows[0] as ImportRow);
     },
     async markUploaded(tenantId, id) {
-      const rows = await db.query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);
+      const rows = await scoped(db, tenantId).query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);
       return rows.length === 1;
     },
     async scanItems(tenantId, importId, options) {
-      const rows = await db.query<ItemRow>(
+      const rows = await scoped(db, tenantId).query<ItemRow>(
         `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
         [tenantId, importId, options.afterId ?? null, options.limit],
       );
       return rows.map(item);
     },
     async listItems(tenantId, importId, options) {
-      const rows = await db.query<ItemRow>(
+      const rows = await scoped(db, tenantId).query<ItemRow>(
         `select ${ITEM_COLUMNS} from import_items where tenant_id = $1 and import_id = $2 and status <> 'pending' and ($3::bigint is null or id > $3::bigint) order by import_items.id limit $4`,
         [tenantId, importId, options.afterId ?? null, options.limit],
       );
       return rows.map(item);
     },
     async cancel(tenantId, id, now) {
-      const rows = await db.query<ImportRow>(
+      const rows = await scoped(db, tenantId).query<ImportRow>(
         `update imports set status = 'cancelled', finished_at = to_timestamp($3::double precision / 1000.0)
          where tenant_id = $1 and id = $2 and status in ('running', 'uploaded') returning ${IMPORT_COLUMNS}`,
         [tenantId, id, now],

@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
+import { NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
 import { isSeedRefusal, seedUserMarkdown } from '@tektum/grimoire-core/pages/seeded-content';
 import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
@@ -9,10 +11,12 @@ import { createAudit } from '../src/audit.js';
 import { createCollections } from '../src/collections.js';
 import { createEmbeddingStore } from '../src/embeddings.js';
 import { createIdempotency } from '../src/idempotency.js';
+import { createImportRepo } from '../src/imports.js';
 import { createPageStore } from '../src/page-store.js';
 import { createPageState } from '../src/page-state.js';
 import { createPages } from '../src/pages.js';
 import { createRevisions } from '../src/revisions.js';
+import { createSearchRepo } from '../src/search.js';
 import { createTenants } from '../src/tenants.js';
 import { createTrash } from '../src/trash.js';
 import { createUserStore } from '../src/users.js';
@@ -68,7 +72,7 @@ const place = (before: string | null, after: string | null) => ordering.between(
 const last = (l: string | null) => ordering.between(l, null);
 const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 let t: TestDatabase;
-let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined; hash?: Uint8Array | undefined };
+let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined; importId: string; item?: string | undefined; skipped?: string | undefined; hash?: Uint8Array | undefined };
 
 beforeAll(async () => {
   t = await createTestDatabase('scopedrepos');
@@ -91,7 +95,7 @@ beforeAll(async () => {
   await make(other, null, 'C');
   const revision = await createRevisions(t.app, t.ops).createFromPage({ pageId: page.id, reason: 'idle', authorIds: [boss], lastAuthorId: boss, at: Date.now() });
   if (revision.kind !== 'created') throw new Error(revision.kind);
-  s = { boss, member, group, collection, other, page: page.id, urlId: page.urlId, child, revision: revision.id };
+  s = { boss, member, group, collection, other, page: page.id, urlId: page.urlId, child, revision: revision.id, importId: randomUUID() };
 }, 120_000);
 afterAll(async () => {
   pg.Client.prototype.query = query;
@@ -112,6 +116,8 @@ const pageStore = () => createPageStore(t.app, t.ops, { now: () => Date.now() })
 const embeddings = () => createEmbeddingStore(t.app, t.ops);
 const vector = Float32Array.from([1, 0, 0]);
 const pageState = () => createPageState(t.app);
+const imports = () => createImportRepo(t.app);
+const search = () => createSearchRepo(t.app, { statementTimeoutMs: 5000 });
 const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>> = {
   admin: {
     listUsers: (tn) => admin().listUsers(tn, { q: 'guard', limit: 10, after: ['a@example.com', s.boss] }),
@@ -181,6 +187,25 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     pagesNeedingEmbedding: (tn) => embeddings().pagesNeedingEmbedding(tn, 'guard', { olderThanSeconds: 0, limit: 10 }),
     search: (tn) => embeddings().search(tn, vector, { model: 'guard', collectionIds: [s.collection], limit: 10, minSimilarity: 0 }),
   },
+  imports: {
+    create: (tn) => imports().create(tn, { id: s.importId, targetCollectionId: s.collection, createdBy: s.boss, source: 'markdown_zip', bytes: 1, s3Key: `tenants/${tn}/imports/${s.importId}` }),
+    markUploaded: (tn) => imports().markUploaded(tn, s.importId),
+    start: (tn) => imports().start(tn, s.importId, Date.now()),
+    addItems: (tn) => imports().addItems(tn, s.importId, [{ path: 'a.md', kind: 'page' }, { path: 'b.md', kind: 'page' }]),
+    pending: async (tn) => { const items = await imports().pending(tn, s.importId, 'page', 10); s.item = items[0]?.id; s.skipped = items[1]?.id; },
+    getItem: (tn) => imports().getItem(tn, s.importId, s.item ?? '0'),
+    scanItems: (tn) => imports().scanItems(tn, s.importId, { limit: 10 }),
+    settle: (tn) => imports().settle(tn, s.importId, s.skipped ?? '0', { status: 'skipped', message: 'guard' }),
+    listItems: (tn) => imports().listItems(tn, s.importId, { limit: 10 }),
+    writePage: (tn) => imports().writePage(tn, s.importId, { itemId: s.item ?? '0', collectionId: s.collection, parentId: null, position: place, title: 'Imported', createdBy: s.boss, content: { state: new Uint8Array([1]), markdown: '# i', text: 'i', hash: Buffer.alloc(32) }, markdownBytes: 3, stateBytes: 1, attachments: [] }, limits, Date.now()),
+    setCounts: (tn) => imports().setCounts(tn, s.importId, NO_IMPORT_COUNTS),
+    finish: (tn) => imports().finish(tn, s.importId, 'done', null, Date.now()),
+    cancel: (tn) => imports().cancel(tn, s.importId, Date.now()),
+    get: (tn) => imports().get(tn, s.importId),
+  },
+  search: {
+    search: (tn) => search().search({ tenantId: tn, collectionIds: [s.collection], query: 'imported', limit: 10 }),
+  },
 };
 // The methods that cross tenants, on the operator connection (docs/tenancy.md section 3.2): each runs every statement in an operator transaction.
 const operatorCalls: Record<string, Record<string, () => Promise<unknown>>> = {
@@ -202,7 +227,7 @@ const crossTenant: Record<string, readonly string[]> = {
 
 describe('the tenant-scoped repositories', () => {
   it('list every method here, as scoped, on the operator connection, or as crossing tenants', () => {
-    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), pageState: pageState(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings() };
+    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), pageState: pageState(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings(), imports: imports(), search: search() };
     for (const [name, repo] of Object.entries(repos)) {
       const listed = new Set([...Object.keys(calls[name] ?? {}), ...Object.keys(operatorCalls[name] ?? {}), ...(crossTenant[name] ?? [])]);
       expect(Object.keys(repo).sort(), name).toEqual([...listed].sort());

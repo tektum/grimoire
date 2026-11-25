@@ -1,23 +1,22 @@
-import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
+import type { CompiledQuery } from 'kysely';
 import { SearchTimeoutError } from '@tektum/grimoire-core/ports/search-repo';
 import { describe, expect, it } from 'vitest';
+import type { KyselyDatabase } from '../../src/index.js';
 import { createSearchRepo } from '../../src/search.js';
 
 const row = (id: string) => ({ id, url_id: `u-${id}`, title: id, collection_id: 'c1', search_partial: false, edited_us: '1700000000000000', rank: 0.5 });
 
-/** A database that answers the statements of one search in order: the two `set local`s, the search, the headlines. */
-function stub(answers: { search?: unknown[]; headlines?: unknown[]; failWith?: unknown }): { db: Database; calls: { sql: string; params: readonly unknown[] | undefined }[] } {
+/** A database that answers the statements of one search in order, on the one connection `scoped()` takes: its `begin`, the two `set local`s, the search, the headlines, its `commit`. */
+function stub(answers: { search?: unknown[]; headlines?: unknown[]; failWith?: unknown }): { db: KyselyDatabase; calls: { sql: string; params: readonly unknown[] | undefined }[] } {
   const calls: { sql: string; params: readonly unknown[] | undefined }[] = [];
-  const tx: Queryable = {
-    query: <R>(sql: string, params?: readonly unknown[]) => {
-      calls.push({ sql, params });
-      if (answers.failWith !== undefined && /from pages p, \(select websearch/.test(sql)) return Promise.reject(answers.failWith);
-      if (/ts_headline/.test(sql)) return Promise.resolve((answers.headlines ?? []) as R[]);
-      if (/from pages p, \(select websearch/.test(sql)) return Promise.resolve((answers.search ?? []) as R[]);
-      return Promise.resolve([] as R[]);
-    },
+  const answer = (sql: string): Promise<unknown[]> => {
+    if (answers.failWith !== undefined && /from pages p, \(select websearch/.test(sql)) return Promise.reject(answers.failWith);
+    if (/ts_headline/.test(sql)) return Promise.resolve(answers.headlines ?? []);
+    if (/from pages p, \(select websearch/.test(sql)) return Promise.resolve(answers.search ?? []);
+    return Promise.resolve([]);
   };
-  return { db: { ...tx, transaction: (fn) => fn(tx), ping: () => Promise.resolve(), close: () => Promise.resolve() }, calls };
+  const connection = { executeQuery: async (q: CompiledQuery) => { calls.push({ sql: q.sql, params: q.parameters }); return { rows: await answer(q.sql) }; } };
+  return { db: { kysely: { connection: () => ({ execute: (fn: (c: typeof connection) => Promise<unknown>) => fn(connection) }) } } as unknown as KyselyDatabase, calls };
 }
 const ask = { tenantId: 'T', collectionIds: ['c1'], query: 'plan', limit: 10 } as const;
 
@@ -32,10 +31,10 @@ describe('createSearchRepo (against a stand-in database)', () => {
     expect(headlines?.params).toEqual([['p1', 'p2'], 'plan', 'T', ['c1']]);
   });
 
-  it('sets its own statement timeout and trigram threshold, from numbers it owns', async () => {
+  it('runs scoped to the asker\'s tenant, and sets its own statement timeout and trigram threshold, from numbers it owns', async () => {
     const { db, calls } = stub({});
     await createSearchRepo(db, { statementTimeoutMs: 1234.9 }).search(ask);
-    expect(calls.slice(0, 2).map((c) => c.sql)).toEqual(['set local statement_timeout = 1234', 'set local pg_trgm.similarity_threshold = 0.3']);
+    expect(calls.slice(0, 3).map((c) => c.sql)).toEqual(["begin; set local app.tenant = 'T'", 'set local statement_timeout = 1234', 'set local pg_trgm.similarity_threshold = 0.3']);
   });
 
   it('lets a title match by substring from two characters only when the query holds a character outside ASCII', async () => {

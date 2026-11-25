@@ -1,7 +1,8 @@
 import { decodeSearchCursor, encodeSearchCursor } from '@tektum/grimoire-core/search/cursor';
 import { splitSnippet } from '@tektum/grimoire-core/search/snippet';
-import type { Database } from '@tektum/grimoire-core/ports/database';
 import { SearchTimeoutError, type SearchHit, type SearchRepo } from '@tektum/grimoire-core/ports/search-repo';
+import { scoped } from './index.js';
+import type { KyselyDatabase } from './index.js';
 
 /** Thrown by a repository whose task has not been built yet, so a route that reaches it fails loudly instead of answering with nothing. */
 export class RepoUnavailableError extends Error {
@@ -74,16 +75,16 @@ const shortSubstring = (query: string): boolean => query.length >= 2 && /[^\u000
 const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 /**
- * Full-text search of the pages a person may read (R9.7 to R9.11, docs/search.md): one transaction with its own statement timeout and trigram threshold. The
+ * Full-text search of the pages a person may read (R9.7 to R9.11, docs/search.md): one transaction scoped to the asker's tenant, with its own statement timeout and trigram threshold. The
  * query is a bound parameter throughout; nothing the caller sends is put into the statement text.
  */
-export function createSearchRepo(db: Database, options: SearchOptions): SearchRepo {
+export function createSearchRepo(db: KyselyDatabase, options: SearchOptions): SearchRepo {
   const timeout = String(Math.trunc(options.statementTimeoutMs)); // `set local` takes no parameter: an integer of ours is inlined
   return {
     async search(request) {
       const key = request.cursor === undefined ? undefined : decodeSearchCursor(request.cursor);
       try {
-        return await db.transaction(async (tx) => {
+        return await scoped(db, request.tenantId).transaction(async (tx) => {
           await tx.query(`set local statement_timeout = ${timeout}`);
           await tx.query(`set local pg_trgm.similarity_threshold = 0.3`);
           const rows = await tx.query<Row>(SEARCH, [
