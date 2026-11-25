@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { attachmentRepoCaseNames, attachmentRepoConformance } from '../../src/testing/attachment-repo-conformance.js';
 import { FakeAttachmentRepo } from '../../src/testing/fake-attachment-repo.js';
 import type { AttachmentRepo, NewReady } from '../../src/ports/attachment-repo.js';
@@ -12,11 +12,10 @@ describe('the in-memory AttachmentRepo meets the conformance cases of the Postgr
     expect(attachmentRepoConformance.map((c) => c.name)).toEqual([...attachmentRepoCaseNames]);
   });
 
-  it('a ready row is stored in the transaction of the caller (row-level security: the tenant is set there), so the port has no call without one', () => {
-    const port: AttachmentRepo = new FakeAttachmentRepo({ pages: () => true, users: () => true });
-    // @ts-expect-error `tx` is required: with no transaction the statement would run with no tenant and fail under row-level security
-    const withoutTransaction = (): Promise<unknown> => port.insertReady({} as NewReady);
-    expect(typeof withoutTransaction).toBe('function'); // never called: the point is that the line above does not compile without the transaction
+  // Checked by the compiler (`bun run typecheck`), as `defineRoute` is in apps/server/test/http/factory.test.ts: an optional `tx` would let a call run with no tenant set, which row-level
+  // security refuses. That the row is stored in the caller's transaction and goes with its rollback is the PostgreSQL suite's (attachments.int.test.ts) and the `insert-ready` case's.
+  it('takes no call without the caller\'s transaction', () => {
+    expectTypeOf<Parameters<AttachmentRepo['insertReady']>>().toEqualTypeOf<[NewReady, Queryable]>();
   });
 
   for (const c of attachmentRepoConformance) {
