@@ -96,7 +96,7 @@ export function createProvisioner(d: { users: UserStore; verifier: AuthVerifier;
         if (!storedDomainAllowed(user)) return refuse('domain-not-allowed');
         // Domain eligibility never changes a stored role. Explicit devRole is the sole local-mode role update, section 4.
         if (d.policy.allowDevRole && i.devRole !== undefined && i.devRole !== user.role) {
-          const updated = await d.users.updateRole(user.id, i.devRole);
+          const updated = await d.users.updateRole(storedTenantId(user), user.id, i.devRole);
           return updated ? { kind: 'ok', user: updated, created: false } : refuse('profile-unavailable');
         }
         return { kind: 'ok', user, created: false };

@@ -1,20 +1,21 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import type { PageStateRepo, ResetResult } from '@tektum/grimoire-core/ports/page-state-repo';
 import { insertAuditEvent } from './audit.js';
+import { scoped } from './index.js';
 import type { KyselyDatabase } from './index.js';
 
-interface Locked { title: string; state_epoch: number; stale: boolean; tenant_id: string }
+interface Locked { title: string; state_epoch: number; stale: boolean }
 
-/** The PostgreSQL PageStateRepo. */
+/** The PostgreSQL PageStateRepo. A reset runs scoped to the caller's tenant (docs/tenancy.md section 3.2). */
 export function createPageState(db: KyselyDatabase): PageStateRepo {
   return {
-    reset({ pageId, actorId, content, confirmStale }) {
-      return db.transaction(async (tx): Promise<ResetResult> => {
+    reset({ tenantId, pageId, actorId, content, confirmStale }) {
+      return scoped(db, tenantId).transaction(async (tx): Promise<ResetResult> => {
         const rows = await tx.query<Locked>(
           // A page with a state and no Markdown counts as stale: dropping its state would leave nothing to rebuild it from.
-          `select p.title, p.state_epoch, (p.markdown_stale_since is not null or (p.markdown is null and p.ydoc is not null)) as stale, p.tenant_id from pages p
-           where p.id = $1 and p.deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update of p`,
-          [pageId],
+          `select p.title, p.state_epoch, (p.markdown_stale_since is not null or (p.markdown is null and p.ydoc is not null)) as stale from pages p
+           where p.id = $1 and p.tenant_id = $2 and p.deleted_at is null and exists (select 1 from collections c where c.id = p.collection_id and c.deleted_at is null) for update of p`,
+          [pageId, tenantId],
         );
         const page = rows[0];
         if (page === undefined) return { kind: 'not-found' };
@@ -39,7 +40,7 @@ export function createPageState(db: KyselyDatabase): PageStateRepo {
         const done = await tx.query(`update pages set ${sets.join(', ')} where id = $1${guard} returning id`, params);
         if (done.length === 0) return { kind: 'empty-state' };
         await insertAuditEvent(tx, {
-          actorId, action: 'page.state_reset', targetType: 'page', targetId: pageId, tenantId: page.tenant_id,
+          actorId, action: 'page.state_reset', targetType: 'page', targetId: pageId, tenantId,
           detail: { stateEpoch: epoch, markdownReplaced: content !== undefined, markdownStale },
         });
         return { kind: 'reset', stateEpoch: epoch, markdownStale };

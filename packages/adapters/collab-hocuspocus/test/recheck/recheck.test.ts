@@ -57,7 +57,7 @@ describe('access changes close the document connection within one interval', () 
   it('write lowered to read: closed 4205 access-changed once, so the reconnect is authorised afresh as read-only', async () => {
     const r = started(rig());
     const c = await r.open();
-    await r.t.users.updateRole(U1, 'viewer');
+    await r.t.users.updateRole('legacy', U1, 'viewer');
     await r.elapse(INTERVAL_MS);
     expect(c.closes).toEqual([{ code: 4205, reason: 'access-changed' }]);
     expect(r.events('collab.access_closed')).toEqual([{ pageId: PAGE, reason: 'access-changed' }]);
@@ -68,7 +68,7 @@ describe('access changes close the document connection within one interval', () 
   it('read raised to write: closed with 4205 so that the reconnect is authorised again (the contract: a new right is a close)', async () => {
     const r = started(rig({ role: 'viewer' }));
     const c = await r.open({ level: 'read-only' });
-    await r.t.users.updateRole(U1, 'member');
+    await r.t.users.updateRole('legacy', U1, 'member');
     await r.elapse(INTERVAL_MS);
     expect(c.closes).toEqual([{ code: 4205, reason: 'access-changed' }]);
   });

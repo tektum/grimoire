@@ -52,5 +52,5 @@ it('imports all auth-verifier and user-store contract names with their defined m
   expect(await verifier.profile?.('u')).toEqual(profileResult);
   await expect(userStore.findByDescopeId('d')).resolves.toBeUndefined();
   await expect(userStore.createIfAbsent({ descopeUserId: 'd', email: profile.email, name: 'u', role: 'member' })).resolves.toEqual({ kind: 'email-taken' });
-  await expect(userStore.updateRole('u', 'member')).resolves.toBeUndefined();
+  await expect(userStore.updateRole('legacy', 'u', 'member')).resolves.toBeUndefined();
 });

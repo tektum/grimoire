@@ -142,7 +142,7 @@ export async function buildWorld() {
     });
   /** Takes away a person's right to write (a viewer cannot), in the store the sign-in step reads and in the one the access decisions read. */
   const demote = async (who: (typeof NAMES)[number], role: Role = 'viewer'): Promise<void> => {
-    await users.updateRole(USER_ID[who], role);
+    await users.updateRole('legacy', USER_ID[who], role);
     const fact = world.users.find((u) => u.id === USER_ID[who]);
     if (fact !== undefined) fact.role = role;
   };

@@ -65,7 +65,7 @@ describe('createUserStore', () => {
     const seen = await db.query<{ seen: boolean }>('select last_seen_at is not null as seen from users where descope_user_id = $1', [values.descopeUserId]);
     expect(seen[0]?.seen).toBe(true);
     expect(await users.findByDescopeId(values.descopeUserId)).toEqual(created.user);
-    const updated = await users.updateRole(created.user.id, 'viewer');
+    const updated = await users.updateRole('legacy', created.user.id, 'viewer');
     expect(updated).toMatchObject({ ...created.user, role: 'viewer', suspended: false });
     const optional = await users.createIfAbsent({ descopeUserId: 'optional', email: 'optional@example.test', name: 'No Avatar', role: 'viewer' });
     if (optional.kind !== 'created') throw new Error('requires a created user');
@@ -121,7 +121,7 @@ describe('createUserStore', () => {
       ping: () => Promise.resolve(),
       close: () => Promise.resolve(),
     };
-    const caught = await createUserStore(failing, { kind: 'operator', transaction: failing.transaction, close: failing.close }, 1000).createIfAbsent({ descopeUserId: collided.descopeUserId, email: collided.email, name: collided.name, role: 'member' }).catch((error: unknown) => error);
+    const caught = await createUserStore(db, { kind: 'operator', transaction: failing.transaction, close: failing.close }, 1000).createIfAbsent({ descopeUserId: collided.descopeUserId, email: collided.email, name: collided.name, role: 'member' }).catch((error: unknown) => error);
     expect(caught).toBe(cause);
     expect(caught).not.toEqual({ kind: 'email-taken' });
     expect(reads, 'no read after the failure').toBe(1);
@@ -142,7 +142,7 @@ describe('createUserStore', () => {
     });
     let failed = false;
     const operatorDb: OperatorDatabase = { kind: 'operator', transaction: (fn) => { const tx = inTransaction(failed); failed = true; return fn(tx); }, close: () => Promise.resolve() };
-    const result = await createUserStore(inTransaction(false), operatorDb, 1000).createIfAbsent({ descopeUserId: row.descope_user_id, email: row.email, name: row.name, role: 'member' });
+    const result = await createUserStore(db, operatorDb, 1000).createIfAbsent({ descopeUserId: row.descope_user_id, email: row.email, name: row.name, role: 'member' });
     expect(result.kind).toBe(kind);
     expect(sent.at(-1)).toBe('ops after: select');
   });
@@ -177,8 +177,11 @@ describe('createUserStore', () => {
     const found = await users.findByDescopeId('suspended-subject');
     expect(found).toMatchObject({ descopeUserId: 'suspended-subject', suspended: true, role: 'viewer', name: 'Suspended' });
     if (!found) throw new Error('seed must exist');
-    expect(await users.updateRole(found.id, 'admin')).toMatchObject({ role: 'admin', suspended: true });
-    expect(await users.updateRole('00000000-0000-4000-8000-00000000dead', 'admin')).toBeUndefined();
+    expect(await users.updateRole('legacy', found.id, 'admin')).toMatchObject({ role: 'admin', suspended: true });
+    expect(await users.updateRole('legacy', '00000000-0000-4000-8000-00000000dead', 'admin')).toBeUndefined();
+    // Scoped to the tenant it is given: the id of a person of another tenant changes nothing (docs/tenancy.md section 3.2).
+    expect(await users.updateRole('T-other', found.id, 'viewer')).toBeUndefined();
+    expect(await users.findByDescopeId(found.descopeUserId)).toMatchObject({ role: 'admin' });
   });
 });
 

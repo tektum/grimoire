@@ -25,6 +25,6 @@ export interface UserStore {
    * refused when the tenant already has the cap of people the store was made with, counted under a per-tenant lock so two sign-ins cannot both take the last place.
    */
   createIfAbsent(n: { descopeUserId: string; email: string; name: string; avatarUrl?: string; role: Role; tenant?: NewTenant }): Promise<CreateUserResult>;
-  /** Used only for development tokens in local mode. */
-  updateRole(id: string, role: Role): Promise<UserRecord | undefined>;
+  /** Used only for development tokens in local mode. Only a person of `tenantId` is changed (docs/tenancy.md section 3.2); another tenant's id answers undefined. */
+  updateRole(tenantId: string, id: string, role: Role): Promise<UserRecord | undefined>;
 }

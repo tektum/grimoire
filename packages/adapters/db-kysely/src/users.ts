@@ -1,6 +1,7 @@
 import type { CreateUserResult, Role, UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
-import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
-import type { OperatorDatabase } from './index.js';
+import type { Queryable } from '@tektum/grimoire-core/ports/database';
+import { scoped } from './index.js';
+import type { KyselyDatabase, OperatorDatabase } from './index.js';
 
 type NewUser = Parameters<UserStore['createIfAbsent']>[0];
 interface Row {
@@ -26,7 +27,7 @@ const uniqueViolation = (e: unknown): boolean => typeof e === 'object' && e !== 
  * operator connection (section 3.2): a person is looked up by subject before any row gives a tenant, the tenant-mismatch refusal must find the row in any
  * tenant, and a new person's subject and email are unique across every tenant.
  */
-export function createUserStore(db: Database, ops: OperatorDatabase, maxTenantUsers: number): UserStore {
+export function createUserStore(db: KyselyDatabase, ops: OperatorDatabase, maxTenantUsers: number): UserStore {
   const get = async (q: Queryable, id: string): Promise<UserRecord | undefined> => {
     const rows = await q.query<Row>(`select ${RECORD} from users where descope_user_id = $1`, [id]);
     return rows[0] ? toRecord(rows[0]) : undefined;
@@ -72,8 +73,8 @@ export function createUserStore(db: Database, ops: OperatorDatabase, maxTenantUs
         throw e;
       }
     },
-    async updateRole(id, role) {
-      const rows = await db.query<Row>(`update users set role = $2, updated_at = now() where id = $1 returning ${RECORD}`, [id, role]);
+    async updateRole(tenantId, id, role) {
+      const rows = await scoped(db, tenantId).query<Row>(`update users set role = $2, updated_at = now() where id = $1 and tenant_id = $3 returning ${RECORD}`, [id, role, tenantId]);
       return rows[0] ? toRecord(rows[0]) : undefined;
     },
   };

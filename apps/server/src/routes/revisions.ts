@@ -82,10 +82,11 @@ router.openapi(restoreRevision, async (c) => {
   const { id, rid } = c.req.valid('param');
   await guardPage(c, id, 'write');
   const { revisions } = c.get('deps');
-  const revision = await revisions.get(callerTenant(c), id, rid);
+  const tenantId = callerTenant(c);
+  const revision = await revisions.get(tenantId, id, rid);
   if (revision === undefined) return fail('not_found');
   // The safety copy first (R9.6); the live document is never touched here: the client applies the returned Markdown as ordinary edits.
-  const copy = await revisions.snapshotBeforeRestore(id).catch(() => fail('save_failed'));
+  const copy = await revisions.snapshotBeforeRestore(tenantId, id).catch(() => fail('save_failed'));
   if (copy.kind === 'stale') return fail('markdown_stale', STALE_MESSAGE);
   if (copy.kind === 'no-page') return fail('not_found');
   return c.json({ title: revision.title, markdown: revision.markdown, safetyRevisionId: copy.kind === 'nothing-saved' ? null : copy.id }, 200);

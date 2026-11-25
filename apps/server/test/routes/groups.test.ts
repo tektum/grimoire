@@ -26,7 +26,7 @@ function build() {
   for (const p of people) world.users.push({ id: p.id, role: p.role, suspended: false });
   const base = new FakeUserStore();
   const users: UserStore = {
-    createIfAbsent: (n) => base.createIfAbsent(n), updateRole: (i, r) => base.updateRole(i, r),
+    createIfAbsent: (n) => base.createIfAbsent(n), updateRole: (t, i, r) => base.updateRole(t, i, r),
     findByDescopeId: (d) => {
       const row = people.find((p) => `d-${p.name}` === d);
       const live = row === undefined ? undefined : admin.find(row.id);
