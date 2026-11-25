@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import type { ApiLike } from '../../src/api/query';
 import { createWebApi } from '../../src/api/client';
 import { guardedFetch, markClientOutdated } from '../../src/gate/outdated';
 import { SessionContext, type Session } from '../../src/auth/session';
-import { POLL_MS } from '../../src/import/api';
+import { POLL_MS, useImportReport } from '../../src/import/api';
 import type { ImportItem, ImportState } from '../../src/import/types';
 import ImportScreen from '../../src/screens/import';
 import '../support/dom';
@@ -441,7 +441,61 @@ describe('the report of an ended import', () => {
   });
 });
 
+describe('the report of one import, then of another', () => {
+  it('shows the files of the import it was asked for, whichever answer comes last', async () => {
+    const later: Record<string, () => void> = {};
+    const answers: Record<string, ImportItem[]> = { a: [item({ id: 'a1' })], b: [item({ id: 'b1' })] };
+    const api = {
+      GET: (_path: string, init: { params: { path: { id: string } } }) =>
+        new Promise((resolve) => {
+          const id = init.params.path.id;
+          later[id] = () => resolve({ data: { items: answers[id], nextCursor: null }, response: new Response(null, { status: 200 }) });
+        }),
+    } as unknown as ApiLike;
+    const { result, rerender } = renderHook(({ id }) => useImportReport(api, id), { initialProps: { id: 'a' } });
+    await waitFor(() => expect(later['a']).toBeDefined());
+    rerender({ id: 'b' });
+    await waitFor(() => expect(later['b']).toBeDefined());
+    await act(async () => {
+      later['b']!();
+    });
+    await waitFor(() => expect(result.current.items.map((i) => i.id)).toEqual(['b1']));
+    await act(async () => {
+      later['a']!(); // the answer for the first import comes last
+    });
+    expect(result.current.items.map((i) => i.id)).toEqual(['b1']);
+    expect(result.current.phase).toBe('ready');
+  });
+
+  it('shows nothing of the first import while the second one is read', async () => {
+    const api = {
+      GET: (_p: string, init: { params: { path: { id: string } } }) =>
+        init.params.path.id === 'a' ? Promise.resolve({ data: { items: [item({ id: 'a1' })], nextCursor: null }, response: new Response(null, { status: 200 }) }) : new Promise(() => undefined),
+    } as unknown as ApiLike;
+    const { result, rerender } = renderHook(({ id }) => useImportReport(api, id), { initialProps: { id: 'a' } });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    rerender({ id: 'b' });
+    await waitFor(() => expect(result.current.items).toEqual([]));
+    expect(result.current.phase).toBe('loading');
+  });
+});
+
 describe('a report that is not shaped as the contract says', () => {
+  it.each([
+    ['a source flag that is a string', 'false'],
+    ['no source flag', undefined],
+  ])('is a report that cannot be read for %s, so that no Download button is shown by mistake', async (_n, hasSource) => {
+    const t = fake({ states: [ended()] });
+    const inner = (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET;
+    (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET = async (path: string, init?: unknown) =>
+      path === '/v1/imports/{id}/items'
+        ? { data: { items: [{ id: 'a', path: 'docs/a.md', status: 'failed', message: null, hasSource }], nextCursor: null }, response: new Response(null, { status: 200 }) }
+        : inner(path, init);
+    show(t.api, '/import?import=imp1');
+    expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
+    expect(screen.queryByRole('button', { name: /^Download source of/ })).toBeNull();
+  });
+
   it('is a report that cannot be read, not rows with holes in them', async () => {
     const t = fake({ states: [ended()] });
     const inner = (t.api as unknown as { GET: (p: string, i?: unknown) => Promise<unknown> }).GET;

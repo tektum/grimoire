@@ -47,7 +47,13 @@ const isItems = (v: unknown): v is ImportItems =>
   isObject(v) &&
   Array.isArray(v.items) &&
   v.items.every(
-    (i: unknown) => isObject(i) && typeof i.id === 'string' && typeof i.path === 'string' && ['imported', 'skipped', 'failed'].includes(i.status as string) && (i.message === null || typeof i.message === 'string'),
+    (i: unknown) =>
+      isObject(i) &&
+      typeof i.id === 'string' &&
+      typeof i.path === 'string' &&
+      ['imported', 'skipped', 'failed'].includes(i.status as string) &&
+      typeof i.hasSource === 'boolean' &&
+      (i.message === null || typeof i.message === 'string'),
   ) &&
   (v.nextCursor === null || typeof v.nextCursor === 'string');
 /** The routes are not in the generated client yet, so the answers are not typed for us: what is not shaped as it is used is an error of that step, not a failure later and elsewhere. */
@@ -117,30 +123,31 @@ export function useImportReport(api: ApiLike, id: string) {
   const [items, setItems] = useState<readonly ImportItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
+  // Only the latest read commits: an answer for another import (or for one that was left) that comes last is dropped.
+  const latest = useRef(0);
   const load = useCallback(
     async (cursor: string | undefined): Promise<void> => {
+      const mine = ++latest.current;
       setPhase('loading');
       try {
         const page = await readItems(api, id, cursor);
-        if (!alive.current) return;
+        if (mine !== latest.current) return;
         setItems((before) => (cursor === undefined ? page.items : [...before, ...page.items]));
         setNext(page.nextCursor);
         setPhase('ready');
       } catch {
-        if (alive.current) setPhase('error');
+        if (mine === latest.current) setPhase('error');
       }
     },
     [api, id],
   );
   useEffect(() => {
+    setItems([]);
+    setNext(null);
     void load(undefined);
+    return () => {
+      latest.current += 1; // the import changed or the screen left: nothing that is on its way is used
+    };
   }, [load]);
   return { items, hasMore: next !== null, phase, more: () => void load(next ?? undefined) };
 }

@@ -77,7 +77,7 @@ function Importing() {
             </Button>
           ) : null}
           {cancelFailed && state.data.status === 'running' ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
-          {ENDED.includes(state.data.status) && id !== null ? <Report api={api} id={id} /> : null}
+          {ENDED.includes(state.data.status) && id !== null ? <Report key={id} api={api} id={id} /> : null}
           {state.data.status === 'running' || state.data.status === 'created' || state.data.status === 'uploaded' ? null : (
             <Button
               onClick={() => {
