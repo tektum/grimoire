@@ -68,7 +68,8 @@ describe('a database that hangs', () => {
   }, 60_000);
 
   it('SIGTERM while stalled with two unsaved pages and one saved page: two store_abandoned, exit 1, within the deadline plus two seconds, no connection left', async () => {
-    const s = await start({ GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '3000', GRIMOIRE_SAVE_TIMEOUT_MS: '500' });
+    // The job queue's stop waits on the stalled database for its whole grace (15 s by default); this test is about the page saves, so the grace is short and the release-jobs phase keeps its 2 s.
+    const s = await start({ GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: '3000', GRIMOIRE_SAVE_TIMEOUT_MS: '500', GRIMOIRE_JOBS_STOP_GRACE_MS: '1000' });
     const [saved, u1, u2] = [newPage(), newPage(), newPage()];
     await Promise.all([saved, u1, u2].map((p) => seedPage(DB, p)));
     const cs = [saved, u1, u2].map((p) => client(s, p));
