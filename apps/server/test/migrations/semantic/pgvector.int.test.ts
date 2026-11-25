@@ -11,7 +11,8 @@ const VERSION = process.env['GRIMOIRE_TEST_PGVECTOR_VERSION'] ?? '0.8.5';
 
 beforeAll(async () => {
   await createTestDatabase(SCRATCH, false);
-  await createTestDatabase(BARE, false);
+  await sqlAdmin('postgres', `drop database if exists ${BARE} with (force)`);
+  await sqlAdmin('postgres', `create database ${BARE} template template0 owner grimoire_migrator`); // template0: no extension, whatever template1 carries (db/init/03-vector.sql)
   await sqlAdmin(SCRATCH, 'create extension if not exists vector');
 }, 60_000);
 afterAll(async () => { await dropTestDatabase(SCRATCH); await dropTestDatabase(BARE); });
