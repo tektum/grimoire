@@ -5,16 +5,23 @@ import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createAdmin } from '../src/admin.js';
+import { createAudit } from '../src/audit.js';
 import { createCollections } from '../src/collections.js';
+import { createEmbeddingStore } from '../src/embeddings.js';
+import { createIdempotency } from '../src/idempotency.js';
+import { createPageStore } from '../src/page-store.js';
 import { createPages } from '../src/pages.js';
 import { createRevisions } from '../src/revisions.js';
+import { createTenants } from '../src/tenants.js';
 import { createTrash } from '../src/trash.js';
+import { createUserStore } from '../src/users.js';
 import { addGroup, addTenant, addUser, createTestDatabase } from './collections/support.js';
 import type { TestDatabase } from './collections/support.js';
 
 // docs/tenancy.md section 3.2, step 2: every method of a tenant-scoped repository that takes a tenant runs each of its statements through `scoped(db, tenant)`, so that
 // once the row-level security policies are on (step 4) none of them sees no rows. Every statement any connection sends is recorded; a statement counts as scoped when
-// the transaction it runs in began with `begin; set local app.tenant = '<the tenant passed>'`.
+// the transaction it runs in began with `begin; set local app.tenant = '<the tenant passed>'`. Step 3: a method that must cross tenants runs every statement in a
+// transaction of the operator role, `grimoire_ops`.
 const TENANT = 'T-guard';
 const BEGIN = /^begin; set local app\.tenant = '([^']*)'$/;
 
@@ -41,12 +48,26 @@ function unscoped(from: number, tenant: string): { ran: number; outside: string[
   return { ran, outside };
 }
 
+/** The statements of `sent` from `from` on that did not run in a transaction of the operator role; `ran` counts the others. */
+function offOperator(from: number): { ran: number; outside: string[] } {
+  const open = new Set<pg.Client>();
+  const outside: string[] = [];
+  let ran = 0;
+  for (const { client, sql } of sent.slice(from)) {
+    if (sql === 'begin') open.add(client);
+    else if (sql === 'commit' || sql === 'rollback') open.delete(client);
+    else if (open.has(client) && client.user === 'grimoire_ops') ran += 1;
+    else outside.push(sql.replace(/\s+/g, ' ').slice(0, 120));
+  }
+  return { ran, outside };
+}
+
 const ordering = new FakeOrdering();
 const place = (before: string | null, after: string | null) => ordering.between(before, after);
 const last = (l: string | null) => ordering.between(l, null);
 const limits: TenantPageLimits = { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 };
 let t: TestDatabase;
-let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined };
+let s: { boss: string; member: string; group: string; collection: string; other: string; page: string; urlId: string; child: string; revision: string; entry?: string; made?: string; batch?: string | undefined; hash?: Uint8Array | undefined };
 
 beforeAll(async () => {
   t = await createTestDatabase('scopedrepos');
@@ -67,7 +88,7 @@ beforeAll(async () => {
   const page = await make(collection, null, 'A');
   const child = (await make(collection, null, 'B')).id;
   await make(other, null, 'C');
-  const revision = await createRevisions(t.app).createFromPage({ pageId: page.id, reason: 'idle', authorIds: [boss], lastAuthorId: boss, at: Date.now() });
+  const revision = await createRevisions(t.app, t.ops).createFromPage({ pageId: page.id, reason: 'idle', authorIds: [boss], lastAuthorId: boss, at: Date.now() });
   if (revision.kind !== 'created') throw new Error(revision.kind);
   s = { boss, member, group, collection, other, page: page.id, urlId: page.urlId, child, revision: revision.id };
 }, 120_000);
@@ -81,7 +102,14 @@ const admin = () => createAdmin(t.app);
 const collections = () => createCollections(t.app);
 const pages = () => createPages(t.app);
 const trash = () => createTrash(t.app);
-const revisions = () => createRevisions(t.app);
+const revisions = () => createRevisions(t.app, t.ops);
+const users = () => createUserStore(t.app, t.ops, 100);
+const idempotency = () => createIdempotency(t.app, t.ops);
+const audit = () => createAudit(t.app, t.ops);
+const tenants = () => createTenants(t.ops);
+const pageStore = () => createPageStore(t.app, t.ops, { now: () => Date.now() });
+const embeddings = () => createEmbeddingStore(t.app, t.ops);
+const vector = Float32Array.from([1, 0, 0]);
 const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>> = {
   admin: {
     listUsers: (tn) => admin().listUsers(tn, { q: 'guard', limit: 10, after: ['a@example.com', s.boss] }),
@@ -126,14 +154,43 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     purge: (tn) => trash().purge(tn, s.batch ?? '', s.boss, []),
     expiredBatches: (tn) => trash().expiredBatches(tn, Date.now(), 10),
   },
+  audit: {
+    append: (tn) => audit().append({ actorId: s.boss, action: 'guard.checked', targetType: 'page', targetId: s.page, tenantId: tn }),
+  },
+  embeddings: {
+    pageText: async (tn) => { s.hash = (await embeddings().pageText(tn, s.page))?.markdownHash; },
+    existingHashes: (tn) => embeddings().existingHashes(tn, s.page, 'guard'),
+    replacePage: (tn) => embeddings().replacePage(tn, s.page, s.hash ?? new Uint8Array(), 'guard', [{ chunkIndex: 0, contentHash: new Uint8Array(32), charStart: 0, charEnd: 1, tokenCount: 1, embedding: vector }]),
+    markFailed: (tn) => embeddings().markFailed(tn, s.page, s.hash ?? new Uint8Array(), 'guard', 'x'),
+    pagesNeedingEmbedding: (tn) => embeddings().pagesNeedingEmbedding(tn, 'guard', { olderThanSeconds: 0, limit: 10 }),
+    search: (tn) => embeddings().search(tn, vector, { model: 'guard', collectionIds: [s.collection], limit: 10, minSimilarity: 0 }),
+  },
 };
-// The methods with no tenant to scope by: the operator connection of step 3 takes them (docs/tenancy.md section 3.2).
-const crossTenant: Record<string, readonly string[]> = { admin: [], collections: [], pages: [], revisions: ['createFromPage', 'catchUp', 'snapshotBeforeRestore'], trash: ['attachmentKeys', 'markFilesRemoved'] };
+// The methods that cross tenants, on the operator connection (docs/tenancy.md section 3.2): each runs every statement in an operator transaction.
+const operatorCalls: Record<string, Record<string, () => Promise<unknown>>> = {
+  users: {
+    findByDescopeId: () => users().findByDescopeId('guard-boss'),
+    createIfAbsent: () => users().createIfAbsent({ descopeUserId: 'guard-new', email: 'guard-new@example.com', name: 'New', role: 'member', tenant: { id: TENANT, name: 'example.com' } }),
+  },
+  idempotency: { deleteCreatedBefore: () => idempotency().deleteCreatedBefore(0) },
+  audit: { append: () => audit().append({ actorId: s.boss, action: 'guard.checked', targetType: 'page', targetId: s.page }) },
+  tenants: { ids: () => tenants().ids() },
+  revisions: { catchUp: () => revisions().catchUp(Date.now(), 10) },
+  pageStore: { listStale: () => pageStore().listStale(10) },
+  embeddings: { counts: () => embeddings().counts('guard') },
+};
+// The methods not moved yet: step 3 scopes them by a tenant their callers know, or gives them to the operator connection.
+const crossTenant: Record<string, readonly string[]> = {
+  revisions: ['createFromPage', 'snapshotBeforeRestore'], trash: ['attachmentKeys', 'markFilesRemoved'], users: ['updateRole'],
+  idempotency: ['claim', 'complete', 'release'], pageStore: ['load', 'seed', 'store', 'repairMarkdown'],
+};
 
 describe('the tenant-scoped repositories', () => {
-  it('list every method here, as scoped or as crossing tenants', () => {
-    for (const [name, repo] of Object.entries({ admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), trash: trash() })) {
-      expect(Object.keys(repo).sort(), name).toEqual([...Object.keys(calls[name] ?? {}), ...(crossTenant[name] ?? [])].sort());
+  it('list every method here, as scoped, on the operator connection, or as crossing tenants', () => {
+    const repos = { admin: admin(), collections: collections(), pages: pages(), revisions: revisions(), trash: trash(), users: users(), idempotency: idempotency(), audit: audit(), tenants: tenants(), pageStore: pageStore(), embeddings: embeddings() };
+    for (const [name, repo] of Object.entries(repos)) {
+      const listed = new Set([...Object.keys(calls[name] ?? {}), ...Object.keys(operatorCalls[name] ?? {}), ...(crossTenant[name] ?? [])]);
+      expect(Object.keys(repo).sort(), name).toEqual([...listed].sort());
     }
   });
 
@@ -143,6 +200,18 @@ describe('the tenant-scoped repositories', () => {
         const from = sent.length;
         await call(TENANT);
         const { ran, outside } = unscoped(from, TENANT);
+        expect(outside).toEqual([]);
+        expect(ran).toBeGreaterThan(0);
+      });
+    }
+  }
+
+  for (const [repo, methods] of Object.entries(operatorCalls)) {
+    for (const [method, call] of Object.entries(methods)) {
+      it(`${repo}.${method} runs every statement in a transaction of the operator role`, async () => {
+        const from = sent.length;
+        await call();
+        const { ran, outside } = offOperator(from);
         expect(outside).toEqual([]);
         expect(ran).toBeGreaterThan(0);
       });

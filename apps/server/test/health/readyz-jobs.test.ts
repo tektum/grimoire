@@ -16,7 +16,7 @@ const db: Database = {
   close: () => Promise.resolve(),
 };
 const probe = async (jobs?: () => JobsState) => {
-  const app = healthRoutes({ db, clock: new FakeClock(1000), log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, ...(jobs === undefined ? {} : { jobs }) });
+  const app = healthRoutes({ db, ops: { transaction: () => Promise.resolve(undefined as never) }, clock: new FakeClock(1000), log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, ...(jobs === undefined ? {} : { jobs }) });
   const res = await app.request('/readyz');
   return { status: res.status, body: await res.text(), header: res.headers.get('x-grimoire-jobs') };
 };

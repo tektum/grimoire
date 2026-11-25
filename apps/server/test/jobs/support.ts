@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { createDatabase, type KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
-import { insertCollection, insertPage, insertSql, insertUser, raw } from '@tektum/grimoire-test-support/database';
+import { createDatabase, createOpsDatabase, type KyselyDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { insertCollection, insertPage, insertSql, insertUser, opsUrl, raw } from '@tektum/grimoire-test-support/database';
 import { createJobQueue, type PgBossJobQueue } from '@tektum/grimoire-adapter-jobs-pgboss';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
 import { appUrl, createTestDatabase, dropTestDatabase, migratorUrl, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
-/** A migrated database of its own, the runtime role's connection to it, and a way to seed rows as the owner. */
-export async function jobsDatabase(name: string): Promise<{ readonly app: KyselyDatabase; readonly sql: (text: string) => Promise<unknown>; drop(): Promise<void> }> {
+/** A migrated database of its own, the runtime and operator roles' connections to it, and a way to seed rows as the owner. */
+export async function jobsDatabase(name: string): Promise<{ readonly app: KyselyDatabase; readonly ops: OperatorDatabase; readonly sql: (text: string) => Promise<unknown>; drop(): Promise<void> }> {
   requireBuild();
   await createTestDatabase(name, true);
   const app = createDatabase(appUrl(name), { maxConnections: 4 });
-  return { app, sql: (text) => sqlAdmin(name, text), async drop() { await app.close(); await dropTestDatabase(name); } };
+  const ops = createOpsDatabase(opsUrl(name));
+  return { app, ops, sql: (text) => sqlAdmin(name, text), async drop() { await app.close(); await ops.close(); await dropTestDatabase(name); } };
 }
 
 type Sql = (text: string) => Promise<unknown>;

@@ -25,7 +25,7 @@ describe('the upload clean-up job on a real database', () => {
         rows.push({ id, key, expired: status === 'pending' && expires.startsWith('now() -') });
       }
     }
-    const deps = { tenants: createTenants(db.app), attachments: createAttachments(db.app), files, now: () => Date.now() };
+    const deps = { tenants: createTenants(db.ops), attachments: createAttachments(db.app), files, now: () => Date.now() };
     expect(await runUploadCleanup(deps, new AbortController().signal)).toBe(2);
     for (const r of rows) {
       const left = (await db.sql(`select count(*)::int as n from attachments where id = '${r.id}'`)) as { n: number }[];

@@ -7,7 +7,7 @@ import { insertPage } from '@tektum/grimoire-test-support/database';
 import { sqlAdmin } from '../server/support/harness.js';
 import { eventually } from '@tektum/grimoire-test-support';
 import type { Client } from '@tektum/grimoire-test-support';
-import { appUrl } from '@tektum/grimoire-test-support/database';
+import { appUrl, opsUrl } from '@tektum/grimoire-test-support/database';
 
 export { eventually };
 
@@ -107,6 +107,7 @@ export class StallProxy {
     await new Promise<void>((resolve) => { this.server.close(() => { resolve(); }); });
   }
   url(db: string): string { return appUrl(db, `127.0.0.1:${String(this.port)}`); }
+  opsUrl(db: string): string { return opsUrl(db, `127.0.0.1:${String(this.port)}`); }
 }
 
 export { connect } from '@tektum/grimoire-test-support';

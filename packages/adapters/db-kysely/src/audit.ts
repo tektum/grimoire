@@ -1,6 +1,7 @@
 import type { AuditEvent, AuditLog } from '@tektum/grimoire-core/ports/audit-log';
 import type { Queryable } from '@tektum/grimoire-core/ports/database';
-import type { KyselyDatabase } from './index.js';
+import { scoped } from './index.js';
+import type { KyselyDatabase, OperatorDatabase } from './index.js';
 
 /**
  * One audit row on `q`: pass a transaction handle so the row commits or rolls back with the change it describes.
@@ -14,7 +15,11 @@ export async function insertAuditEvent(q: Queryable, event: AuditEvent): Promise
   );
 }
 
-/** The PostgreSQL AuditLog over `audit_events`. The application role may insert and select there, never update or delete. */
-export function createAudit(db: KyselyDatabase): AuditLog {
-  return { append: (event) => insertAuditEvent(db, event) };
+/**
+ * The PostgreSQL AuditLog over `audit_events`. The application role may insert and select there, never update or delete. An event that names its tenant is
+ * written scoped to it; one that does not (the system, or an actor whose tenant only its row knows) runs on `ops`, the operator connection (docs/tenancy.md
+ * section 3.2), which can read the actor's row in any tenant.
+ */
+export function createAudit(db: KyselyDatabase, ops: OperatorDatabase): AuditLog {
+  return { append: (event) => (event.tenantId === undefined ? ops : scoped(db, event.tenantId)).transaction((tx) => insertAuditEvent(tx, event)) };
 }

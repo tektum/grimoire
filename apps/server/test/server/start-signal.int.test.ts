@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { appUrl, requireBuild, mainJs } from './support/harness.js';
 import type { ServerProcess } from './support/harness.js';
 import { spawnWatched } from '@tektum/grimoire-test-support/harness';
+import { opsUrl } from '@tektum/grimoire-test-support/database';
 import { freePort } from './support/harness.js';
 
 // No database is reached before the signal, so a dummy URL is enough.
@@ -14,7 +15,7 @@ function signalledStart(delayMs: number): Promise<{ code: number | null; output:
   return freePort().then((port) => new Promise((resolve) => {
     const child = spawnWatched([mainJs], {
       PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
-      GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), GRIMOIRE_DATABASE_URL: DB_URL,
+      GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_PORT: String(port), GRIMOIRE_DATABASE_URL: DB_URL, GRIMOIRE_DATABASE_OPS_URL: opsUrl('grimoire'),
     });
     let output = ''; let sent = false;
     const onData = (d: Buffer): void => {

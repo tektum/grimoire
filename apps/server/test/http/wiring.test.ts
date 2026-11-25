@@ -6,6 +6,7 @@ import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
 import type { HttpDeps } from '../../src/http/env.js';
 import { makeContext } from '../server/support/context.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 const HTTP_KEYS = [
   'config', 'providerBaseUrl', 'log', 'clock', 'users', 'access', 'authorizer', 'provisioner', 'ordering', 'converter', 'search', 'imports', 'enqueueImport',
@@ -14,6 +15,7 @@ const HTTP_KEYS = [
 
 const base = {
   GRIMOIRE_DATABASE_URL: `postgresql://grimoire_app:${randomBytes(12).toString('hex')}@127.0.0.1:1/grimoire`,
+  GRIMOIRE_DATABASE_OPS_URL: placeholderDatabaseUrl('127.0.0.1:1'),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DEV_TOKEN_SECRET: randomBytes(24).toString('hex'),
   GRIMOIRE_LOCAL: '1',
@@ -38,7 +40,7 @@ function sources(dir: string): string[] {
 describe('application context wiring', () => {
   it('builds the collaboration host\'s revision repository on the page-store pool, not on the main pool', () => {
     const source = readFileSync(join(__dirname, '../../src/composition.ts'), 'utf8');
-    expect(source).toMatch(/revisions: createRevisions\(pageDb\)/);
+    expect(source).toMatch(/revisions: createRevisions\(pageDb, pageOps\)/);
     expect(source).not.toMatch(/revisions: http\.revisions/);
   });
 
@@ -63,8 +65,8 @@ describe('application context wiring', () => {
   it('role api: the markdown pool is released in release-jobs, before every close-database hook', () => {
     const hooks = ctxOf({ GRIMOIRE_ROLE: 'api' }).shutdownHooks;
     // The jobs of the import are released in the same phase (M7-T00).
-    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'embedder', 'jobs', 'database-pool']);
-    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'release-jobs', 'release-jobs', 'close-database']);
+    expect(hooks.map((h) => h.name)).toEqual(['markdown-pool', 'embedder', 'jobs', 'database-pool', 'operator-pool']);
+    expect(hooks.map((h) => h.phase)).toEqual(['release-jobs', 'release-jobs', 'release-jobs', 'close-database', 'close-database']);
   });
 
   it('the ordering is the real one: it gives a valid first key and a key between two neighbours', () => {

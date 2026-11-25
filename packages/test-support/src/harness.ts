@@ -66,7 +66,16 @@ export function createDatabaseSupport(create: DatabaseFactory) {
 
 export interface Exit { readonly code: number | null; readonly signal: NodeJS.Signals | null; readonly output: string }
 export type LogEvent = Record<string, unknown>;
-const baseEnv = (extra: Record<string, string>): Record<string, string> => ({
+/** The operator connection (docs/tenancy.md section 3.2) a server needs beside a runtime one: the same database and host as `grimoire_ops`, unless the test names it. */
+function withOpsUrl(env: Record<string, string>): Record<string, string> {
+  const url = env['GRIMOIRE_DATABASE_URL'];
+  if (url === undefined || 'GRIMOIRE_DATABASE_OPS_URL' in env || !URL.canParse(url)) return env;
+  const ops = new URL(url);
+  if (ops.username !== 'grimoire_app') return env;
+  ops.username = 'grimoire_ops';
+  return { ...env, GRIMOIRE_DATABASE_OPS_URL: ops.toString() };
+}
+const baseEnv = (extra: Record<string, string>): Record<string, string> => withOpsUrl({
   PATH: process.env['PATH'] ?? '', GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080', ...extra,
 });
 /** Preload that makes a child exit when its parent is gone: `node --import PARENT_WATCH ...` (every child the helpers start has it). */

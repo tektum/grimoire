@@ -85,7 +85,7 @@ export function createApp(ctx: AppContext, opts: AppOptions = {}): OpenAPIHono<A
   // Before the body limit, which answers an oversized request without calling `next()`: every request counts against the address limits.
   app.use(addressLimiter(ctx.config.http, ctx.config.trustedProxies, ctx.log, (c) => web !== undefined && (c.req.method === 'GET' || c.req.method === 'HEAD') && web.serves(c.req.path)));
   app.use(bodyLimit({ maxSize: opts.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES }));
-  app.route('/', healthRoutes({ db: ctx.db, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration(), ...(ctx.jobs === undefined ? {} : { jobs: () => ctx.jobs?.state() ?? 'stopped' }) }));
+  app.route('/', healthRoutes({ db: ctx.db, ops: ctx.ops, log: ctx.log, clock: ctx.clock, isDraining: () => ctx.shutdown.isDraining(), expectedMigration: opts.expectedMigration ?? shippedMigration(), ...(ctx.jobs === undefined ? {} : { jobs: () => ctx.jobs?.state() ?? 'stopped' }) }));
   app.use(clientVersionGate(ctx.config.minClientVersion));
   app.use('/v1/*', authenticate(ctx.auth.verifier, ctx.http, ctx.auth.roles));
   app.use('/v1/*', userLimiter(app, ctx.config.http, ctx.log));

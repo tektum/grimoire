@@ -2,10 +2,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { createDatabase } from '../../src/index.js';
-import type { GrimoireTables, KyselyDatabase } from '../../src/index.js';
+import { createDatabase, createOpsDatabase } from '../../src/index.js';
+import type { GrimoireTables, KyselyDatabase, OperatorDatabase } from '../../src/index.js';
 import type { CompiledQuery, Kysely, QueryResult } from 'kysely';
-import { adminUrl, appUrl, migratorUrl } from '@tektum/grimoire-test-support/database';
+import { adminUrl, appUrl, migratorUrl, opsUrl } from '@tektum/grimoire-test-support/database';
 
 const exec = promisify(execFile);
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
@@ -17,6 +17,8 @@ export interface TestDatabase {
   readonly name: string;
   /** The runtime role: what the product connects as. */
   readonly app: KyselyDatabase;
+  /** The operator role, for the statements that cross tenants (docs/tenancy.md section 3.2). */
+  readonly ops: OperatorDatabase;
   /** The owner of the schema, for facts the runtime role may not read or write. */
   readonly admin: KyselyDatabase;
   drop(): Promise<void>;
@@ -35,11 +37,13 @@ export async function createTestDatabase(label: string): Promise<TestDatabase> {
   await runSql(POSTGRES_URL, `create database ${name} owner grimoire_migrator`);
   await exec(process.execPath, [CLI, 'migrate'], { env: { ...process.env, GRIMOIRE_DATABASE_MIGRATION_URL: migrator } });
   const app = createDatabase(appUrl(name), { maxConnections: 10 });
+  const ops = createOpsDatabase(opsUrl(name));
   const admin = createDatabase(migrator, { maxConnections: 2 });
   return {
-    name, app, admin,
+    name, app, ops, admin,
     async drop() {
       await app.close();
+      await ops.close();
       await admin.close();
       await runSql(POSTGRES_URL, `drop database if exists ${name} with (force)`);
     },

@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createDatabase, createOpsDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPageStore } from '@tektum/grimoire-adapter-db-kysely';
-import { insertPage } from '@tektum/grimoire-test-support/database';
+import { insertPage, opsUrl } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 
 const DB = 'grimoire_m3t03_title';
@@ -21,6 +21,7 @@ const hashOf = async (id: string): Promise<Buffer | null> => (await sqlAdmin<{ m
 const updatedAt = async (id: string): Promise<string> => (await sqlAdmin<{ u: string }>(DB, `select updated_at::text as u from pages where id = '${id}'`))[0]?.u ?? '';
 
 let db: Database;
+let ops: OperatorDatabase;
 /** Counts every statement the store sends. */
 const counted = (inner: Database, sink: string[]): Database => ({
   query: (sql, params) => { sink.push(sql); return inner.query(sql, params); },
@@ -28,20 +29,20 @@ const counted = (inner: Database, sink: string[]): Database => ({
   ping: () => inner.ping(), close: () => inner.close(),
 });
 
-beforeAll(async () => { requireBuild(); await createTestDatabase(DB, true); db = createDatabase(appUrl(DB), { maxConnections: 4 }); }, 60_000);
-afterAll(async () => { await db.close(); await dropTestDatabase(DB); });
+beforeAll(async () => { requireBuild(); await createTestDatabase(DB, true); db = createDatabase(appUrl(DB), { maxConnections: 4 }); ops = createOpsDatabase(opsUrl(DB)); }, 60_000);
+afterAll(async () => { await db.close(); await ops.close(); await dropTestDatabase(DB); });
 
 describe('the save skip follows title and Markdown (R4.21)', () => {
   it('markdown_hash is SHA-256 of the title, a NUL byte and the Markdown', async () => {
     const id = await newRow('Hello');
-    await createPageStore(db, clock).store(id, converted({ markdown: 'Body' }));
+    await createPageStore(db, ops, clock).store(id, converted({ markdown: 'Body' }));
     expect(await hashOf(id)).toEqual(sha('Hello', 'Body'));
   });
 
   it('an unchanged title and Markdown write nothing: no UPDATE statement, updated_at identical', async () => {
     const id = await newRow('Same');
     const sent: string[] = [];
-    const store = createPageStore(counted(db, sent), clock);
+    const store = createPageStore(counted(db, sent), ops, clock);
     await store.store(id, converted());
     const first = await updatedAt(id);
     sent.length = 0;
@@ -53,19 +54,19 @@ describe('the save skip follows title and Markdown (R4.21)', () => {
 
   it('changing only pages.title and then saving with identical Markdown writes the row', async () => {
     const id = await newRow('Before');
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted());
     expect(await hashOf(id)).toEqual(sha('Before', 'M'));
     await sqlAdmin(DB, `update pages set title = 'After' where id = '${id}'`);
     const sent: string[] = [];
-    expect(await createPageStore(counted(db, sent), clock).store(id, converted())).toEqual({ written: true });
+    expect(await createPageStore(counted(db, sent), ops, clock).store(id, converted())).toEqual({ written: true });
     expect(sent.some((s) => /^\s*update/i.test(s))).toBe(true);
     expect(await hashOf(id)).toEqual(sha('After', 'M'));
   });
 
   it('with the title unchanged, identical Markdown and different state still writes the state (commit 4112063), keeping the hash', async () => {
     const id = await newRow('T');
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted());
     expect(await store.store(id, converted({ state: new Uint8Array([7]) }))).toEqual({ written: true });
     expect(await hashOf(id)).toEqual(sha('T', 'M'));
@@ -74,7 +75,7 @@ describe('the save skip follows title and Markdown (R4.21)', () => {
 
   it('a hash written before the migration is null after it and is written once by the next save', async () => {
     const id = await newRow('Old');
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     // A null hash is what the migration leaves behind (its own test asserts it): the first save writes, the second finds nothing to do.
     await sqlAdmin(DB, `update pages set markdown = 'M', markdown_hash = null where id = '${id}'`);
     expect(await store.store(id, converted())).toEqual({ written: true });

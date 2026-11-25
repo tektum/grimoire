@@ -126,7 +126,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_LOG_LEVEL: field(z.enum(['debug', 'info', 'warn', 'error'], msg('must be one of: debug, info, warn, error'))).default('info'),
   GRIMOIRE_DATABASE_URL: field(dbUrl, purpose === 'server' ? SERVER_ONLY : undefined),
   GRIMOIRE_DATABASE_MIGRATION_URL: field(dbUrl, purpose === 'migrate' ? 'is required to run migrations' : undefined),
-  // The operator role's connection (docs/tenancy.md section 3.2): optional until a call site needs it, and then never replaced by the runtime connection.
+  // The operator role's connection (docs/tenancy.md section 3.2): the server's composition requires it (the commands do not), and nothing replaces it with the runtime connection.
   GRIMOIRE_DATABASE_OPS_URL: field(dbUrl),
   GRIMOIRE_DATABASE_ADMIN_URL: field(dbUrl, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),
   GRIMOIRE_DB_APP_PASSWORD: field(dbPassword, purpose === 'db-setup' ? 'is required to run db-setup' : undefined),

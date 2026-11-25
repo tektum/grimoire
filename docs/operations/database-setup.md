@@ -28,7 +28,7 @@ End state, in one transaction (a failure leaves the database as it was):
 
 The server receives a SCRAM-SHA-256 verifier computed here, not the password, so the password is not in any statement the server may log or record (`log_statement`, pgaudit, `pg_stat_statements`). The command never logs it either.
 
-The server refuses to start when the administrator connection or a role password is set: only this step holds them. The server takes the operator role's connection as `GRIMOIRE_DATABASE_OPS_URL` (optional for now; nothing falls back to the runtime connection when it is missing).
+The server refuses to start when the administrator connection or a role password is set: only this step holds them. The server takes the operator role's connection as `GRIMOIRE_DATABASE_OPS_URL`, which every role (`api`, `collab`, `all`) requires: sign-in looks people up through it (docs/tenancy.md section 3.2). A server without it refuses to start; nothing falls back to the runtime connection.
 
 Tested against PostgreSQL 17 as a superuser and as a non-superuser with `CREATEROLE` (the shape of a managed master user). Not yet run on a real managed service: on one, the master user must be able to become the migration role to hand it the schemas, which the command arranges with `GRANT ... WITH SET TRUE`.
 

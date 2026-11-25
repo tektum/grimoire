@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
 import { createIssuer, PROJECT_ID } from './support/descope-double.js';
-import { appUrl } from '@tektum/grimoire-test-support/database';
+import { appUrl, opsUrl } from '@tektum/grimoire-test-support/database';
 
 const base = {
   GRIMOIRE_DATABASE_URL: appUrl('grimoire', '127.0.0.1:1'),
+  GRIMOIRE_DATABASE_OPS_URL: opsUrl('grimoire', '127.0.0.1:1'),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef',
 };
@@ -37,7 +38,7 @@ describe('composition root', () => {
     expect(ctx.collab?.deps.verifier).toBe(ctx.auth.verifier);
     expect(typeof ctx.collab?.deps.access.pageAccess).toBe('function');
     expect(ctx.collab?.deps.requireTenant, 'the WebSocket refuses a token that names no tenant or several, as the API does').toBe(true);
-    expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'embedder', 'jobs', 'page-store-pool', 'auth-pool', 'database-pool']);
+    expect(ctx.shutdownHooks.map((h) => h.name)).toEqual(['descope-keys', 'markdown-pool', 'embedder', 'jobs', 'page-store-pool', 'page-store-operator-pool', 'auth-pool', 'auth-operator-pool', 'database-pool', 'operator-pool']);
   });
 
   describe('the sign-in provider endpoint that GET /v1/config reports to browsers', () => {
@@ -104,6 +105,7 @@ describe('composition root', () => {
     ['local mode with a Descope project id', { ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DESCOPE_PROJECT_ID: 'P123' }, ['GRIMOIRE_LOCAL', 'GRIMOIRE_DESCOPE_PROJECT_ID']],
     ['non-local mode without a project id', { ...base }, ['GRIMOIRE_DESCOPE_PROJECT_ID']],
     ['a missing database url', { GRIMOIRE_ALLOWED_ORIGINS: base.GRIMOIRE_ALLOWED_ORIGINS, GRIMOIRE_DEV_TOKEN_SECRET: base.GRIMOIRE_DEV_TOKEN_SECRET, GRIMOIRE_LOCAL: '1' }, ['GRIMOIRE_DATABASE_URL']],
+    ['a missing operator url (docs/tenancy.md section 3.2)', { ...base, GRIMOIRE_LOCAL: '1', GRIMOIRE_DATABASE_OPS_URL: '' }, ['GRIMOIRE_DATABASE_OPS_URL']],
   ])('refuses %s, naming the variables and no values', (_name, env, variables) => {
     const c = compose(env);
     expect(c.ok).toBe(false);
