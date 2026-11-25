@@ -817,6 +817,19 @@ describe('the progress of an import', () => {
   });
 });
 
+describe('a reason that has a hyphenated word in it', () => {
+  it('is shown whole: only "code: words" or a known code alone is taken for a code', async () => {
+    show(fake({ states: [ended()], items: [[item({ id: 'h1', status: 'failed', message: 'front-matter is not valid YAML' }), item({ id: 'h2', status: 'skipped', message: 'read-only' })]] }).api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('.import-report-message')?.textContent?.trim()),
+    ).toEqual(['front-matter is not valid YAML', 'read-only']);
+  });
+});
+
 describe('a failed file with no reason', () => {
   it('says in words that it could not be imported', async () => {
     show(fake({ states: [ended()], items: [[item({ id: 'z', status: 'failed', message: 'internal_error' }), item({ id: 'y', status: 'failed', message: null })]] }).api, '/import?import=imp1');

@@ -29,7 +29,9 @@ export function percent(counts: ImportState['counts']): number {
 export const barValue = (state: ImportState): number => (state.status === 'done' ? 100 : percent(state.counts));
 
 const FALLBACK: Record<'skipped' | 'failed', string> = { skipped: 'The file was left out.', failed: 'The file could not be imported.' };
-const CODE = /^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+/;
+const CODE_SHAPE = '[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+';
+const WITH_WORDS = new RegExp(`^(${CODE_SHAPE}):\\s*([\\s\\S]*)$`);
+const ONLY_CODE = new RegExp(`^${CODE_SHAPE}$`);
 const CODE_WORDS: Record<string, string> = {
   too_large: 'The page is larger than the limit for a page.',
   'tenant-pages-full': 'The workspace has reached its limit of pages.',
@@ -38,21 +40,19 @@ const CODE_WORDS: Record<string, string> = {
 };
 
 /**
- * The reason a file was skipped or failed, in words. The server's message is text for people and may start with the code of the reason ("too_large: The page is larger than..."): the code is left out,
- * and the words after it (which name the limit, as the server has it) are kept. A message that is only a code has words of its own here; a code this screen does not know and a missing message have
- * the words of the status. A code is never shown.
+ * The reason a file was skipped or failed, in words. The server's message is text for people and may start with the code of the reason and a colon ("too_large: The page is larger than..."): the code is left out,
+ * and the words after it (which name the limit, as the server has it) are kept. A message that is only a code has words of its own here; an unknown code and a missing message have the words of the status.
+ * A word with a hyphen at the start of ordinary text is not taken for a code.
  */
 export function reasonText(item: Pick<ImportItem, 'status' | 'message'>): string | null {
   if (item.status === 'imported') return item.message;
   const message = item.message?.trim() ?? '';
-  const code = CODE.exec(message)?.[0];
-  if (code === undefined) return message === '' ? FALLBACK[item.status] : message;
-  const rest = message
-    .slice(code.length)
-    .replace(/^\s*:\s*/, '')
-    .trim();
-  if (rest !== '' && !CODE.test(rest)) return rest;
-  return CODE_WORDS[code] ?? FALLBACK[item.status];
+  if (message === '') return FALLBACK[item.status];
+  const withWords = WITH_WORDS.exec(message);
+  if (withWords !== null) return withWords[2]!.trim() !== '' ? withWords[2]!.trim() : (CODE_WORDS[withWords[1]!] ?? FALLBACK[item.status]);
+  // A message that is a code alone: a known one has words, an unknown one with an underscore is a code and gets the words of the status; an ordinary hyphenated word ("read-only") is the reason itself.
+  if (ONLY_CODE.test(message)) return CODE_WORDS[message] ?? (message.includes('_') ? FALLBACK[item.status] : message);
+  return message;
 }
 
 const pages = (n: number): string => `${String(n)} ${n === 1 ? 'page' : 'pages'}`;
