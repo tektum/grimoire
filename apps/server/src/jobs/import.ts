@@ -2,7 +2,7 @@ import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
-import { NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import { ImportBusyError, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { EnqueueOptions, JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -45,8 +45,7 @@ const BUSY_DELAY_SECONDS = 30;
 
 /**
  * The `import` job (M7 contracts section 4). `start` moves the import from `uploaded` to `running`; for an import that is not waiting or running (cancelled, done, failed, not found) it
- * answers nothing and the job returns without doing anything, and for a tenant that already has a running import it rejects with `ImportBusyError`, which goes up so the queue tries
- * again later. Then: stage 2 (the archive, read through ranged gets of the store), pass one, and pass two in chunks. A chunk that has used its time, a job near its expiry, and a busy
+ * answers nothing and the job returns without doing anything, and for a tenant that already has a running import it rejects with `ImportBusyError`, which the handler answers with its own delayed continuation (not a retry). Then: stage 2 (the archive, read through ranged gets of the store), pass one, and pass two in chunks. A chunk that has used its time, a job near its expiry, and a busy
  * converter all end the same way: the import stays `running` and the handler enqueues its own continuation under the import's key (the queue is `stately`: one queued and one
  * running job per key) and returns. The import ends as `done` when every page is dealt with (also when some items failed or were skipped), or `failed` with a code in `error`: an
  * archive that was refused, a collection that is gone, or the job's own failure on its last attempt. Every ending asks for the clean-up (`import-cleanup`), which is idempotent;
@@ -59,7 +58,14 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
   return async (payload, ctx) => {
     if (!isImportPayload(payload)) { log.warn('import.failed', { importId: 'unknown', reason: 'bad_payload' }); return; }
     const { tenantId, importId } = payload;
-    const record = await imports.start(tenantId, importId, now()); // an `ImportBusyError` goes up: the queue retries later
+    const key = `import:${importId}`;
+    const continueLater = (delaySeconds?: number): Promise<string | null> => deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) });
+    let record;
+    try { record = await imports.start(tenantId, importId, now()); } catch (e) {
+      // Another import of the tenant is running (its chunks can last longer than the queue's retries): wait under the import's own key, without spending a retry. The import stays `uploaded`; the sweep ends one that waits past its age limit.
+      if (e instanceof ImportBusyError) { await continueLater(BUSY_DELAY_SECONDS); return; }
+      throw e;
+    }
     if (record === undefined) {
       // An end that was recorded but whose clean-up ask was lost (the enqueue failed, the job was retried) is asked for again: the clean-up is idempotent.
       const ended = await imports.get(tenantId, importId);
@@ -68,14 +74,12 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
     }
     log.info('import.started', { importId });
 
-    const key = `import:${importId}`;
     const fail = async (code: string): Promise<void> => {
       if (await imports.finish(tenantId, importId, 'failed', code, now())) {
         log.warn('import.failed', { importId, reason: code });
         await deps.queue.enqueueImportCleanup({ importId, tenantId });
       }
     };
-    const continueLater = (delaySeconds?: number): Promise<string | null> => deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) });
 
     try {
       const zipKey = record.s3Key ?? importZipKey(tenantId, importId);

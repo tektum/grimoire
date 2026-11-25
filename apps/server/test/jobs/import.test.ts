@@ -95,13 +95,15 @@ describe('a job that has nothing to do', () => {
     expect((await t.record())?.status).toBe('uploaded');
   });
 
-  it('a tenant that already has a running import: the error goes up so the queue retries later, and the import is not touched', async () => {
+  it('a tenant that already has a running import: the job does not fail and spends no retry; it enqueues its own continuation 30 s later under the import\'s key, and the import is not touched', async () => {
     const repo = new FakeImportRepo();
     const t = await setup([md('a.md\u0000# A\n')], { repo });
     repo.start = () => Promise.reject(new ImportBusyError());
-    await expect(t.run()).rejects.toBeInstanceOf(ImportBusyError);
-    expect(t.enqueued).toEqual([]);
-    expect((await t.record())?.status).toBe('uploaded');
+    await expect(t.run(ctx({ attempt: 4, retryLimit: 3 }))).resolves.toBeUndefined(); // even on the last attempt: nothing is thrown, so nothing reaches the dead-letter queue
+    expect(t.enqueued).toEqual([{ name: 'import', payload: { importId: IMPORT, tenantId: TENANT }, options: { singletonKey: `import:${IMPORT}`, delaySeconds: 30 } }]);
+    const record = await t.record();
+    expect(record?.status).toBe('uploaded');
+    expect(record?.error).toBeNull();
   });
 });
 
