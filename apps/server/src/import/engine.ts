@@ -296,6 +296,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
         const entry = entryByPath.get(file.path);
         const result: Staged = entry === undefined ? { kind: 'rejected', status: 'failed', reason: 'missing_entry' } : await stageAttachment(stage, entry, item.path);
         if (result.kind === 'ok') { staged.set(file.id, result); continue; }
+        if (result.scope === 'page') continue; // this page's object, not the file: this page keeps its link, other pages may still use the file
         rejected.set(file.id, result);
         if (status.get(file.id) === 'pending') await settle(file, result.status, result.reason);
       }
@@ -322,11 +323,11 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
-      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values()].map((f) => f.row),
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, attachments: [...staged.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
-      case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); return { bytes, wrote: 'here' };
-      case 'not-pending': await adopt(item); return { bytes, wrote: 'other' };
+      case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); for (const id of staged.keys()) if (status.get(id) === 'pending') status.set(id, 'ok'); return { bytes, wrote: 'here' };
+      case 'not-pending': await adopt(item); for (const id of staged.keys()) await adopt(itemById.get(id) as ImportItem); return { bytes, wrote: 'other' };
       case 'not-running': return { stop: 'not_running', bytes };
       case 'collection-deleted': return { stop: 'collection_deleted', bytes };
       case 'collection-full': await settle(item, 'failed', 'collection_full', { markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own }); return { bytes };
@@ -340,9 +341,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const processItem = async (item: ImportItem): Promise<Step> => {
     const staged = new Map<string, StagedFile>();
     const step = await processInner(item, staged);
-    if (step.wrote === 'here') {
-      for (const id of staged.keys()) if (status.get(id) === 'pending' && (await repo.settle(tenantId, importId, id, { status: 'ok', message: '' }))) status.set(id, 'ok');
-    } else if (step.wrote === undefined) {
+    // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
+    if (step.wrote === undefined && staged.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
       for (const f of staged.values()) await deps.files.delete(f.row.key);
     }
     return step;

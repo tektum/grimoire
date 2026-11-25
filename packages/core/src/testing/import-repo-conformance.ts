@@ -82,6 +82,22 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'write-page-settles-the-file-items-it-names-in-the-same-call',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'p.md', kind: 'page' }, { path: 'q.md', kind: 'page' }, { path: 'f.png', kind: 'attachment' }, { path: 'g.png', kind: 'attachment' }]);
+      const [p, q] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      const [f, g] = await h.repo.pending(h.tenantId, made.id, 'attachment', 10);
+      assert.ok(p && q && f && g);
+      // A page item named as a file item is left alone (only a pending file item is settled), and a file not named stays pending.
+      const out = await h.repo.writePage(h.tenantId, made.id, pageOf(h, p.id, { collectionId: made.targetCollectionId, attachmentItemIds: [f.id, q.id] }), limits, h.now);
+      assert.equal(out.kind, 'ok');
+      assert.equal((await h.repo.getItem(h.tenantId, made.id, f.id))?.status, 'ok');
+      assert.equal((await h.repo.getItem(h.tenantId, made.id, g.id))?.status, 'pending');
+      assert.equal((await h.repo.getItem(h.tenantId, made.id, q.id))?.status, 'pending');
+    },
+  },
+  {
     name: 'a-file-item-can-be-settled-ok-and-a-page-item-cannot',
     async run(h) {
       const made = await h.seed('running');

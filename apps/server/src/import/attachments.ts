@@ -32,7 +32,7 @@ export interface StageContext {
 }
 
 /** Why a file cannot be an attachment: the item's end (`skipped` for a refusal of the file, `failed` when it could not be read as it is) and its reason. */
-export interface Rejection { readonly status: 'skipped' | 'failed'; readonly reason: 'entry_too_large' | 'type_not_allowed' | 'type_mismatch' | 'size_mismatch' | 'ratio' | 'missing_entry' }
+export interface Rejection { readonly status: 'skipped' | 'failed'; readonly reason: 'entry_too_large' | 'type_not_allowed' | 'type_mismatch' | 'size_mismatch' | 'ratio' | 'missing_entry' | 'empty_file'; /** `page`: a property of this page's use of the file (its object), not of the file: it is not remembered for other pages and the file item is not settled by it. */ readonly scope?: 'file' | 'page' }
 /** A file stored for a page: the row to write with the page and the address the page's link gets. */
 export interface StagedFile { readonly kind: 'ok'; readonly row: Omit<NewReady, 'pageId'>; readonly url: string }
 export type Staged = StagedFile | ({ readonly kind: 'rejected' } & Rejection);
@@ -49,6 +49,8 @@ export function judgeFile(ctx: Pick<StageContext, 'limits' | 'settings'>, entry:
   const meta = validateAttachmentMeta({ size: entry.size, contentType: contentType ?? '' }, { maxBytes: Math.min(ctx.limits.maxEntryBytes, ctx.settings.maxBytes), allowedTypes: ctx.settings.allowedTypes });
   if (contentType === undefined || (!meta.ok && meta.reason === 'type_not_allowed')) return { status: 'skipped', reason: 'type_not_allowed' };
   if (!meta.ok) return { status: 'skipped', reason: 'entry_too_large' };
+  // The attachments table needs a size above 0 (an upload treats it as invalid): an empty file is not one.
+  if (entry.size <= 0) return { status: 'skipped', reason: 'empty_file' };
   return { contentType };
 }
 
@@ -73,7 +75,7 @@ export async function stageAttachment(ctx: StageContext, entry: ZipEntry, pagePa
   } catch (e) {
     if (!(e instanceof FileStorageError) || e.kind !== 'already-exists') throw e;
     // An earlier attempt put it: it is the file when it has the same size.
-    if ((await ctx.files.head(key)).size !== read.bytes.length) return { kind: 'rejected', status: 'failed', reason: 'size_mismatch' };
+    if ((await ctx.files.head(key)).size !== read.bytes.length) return { kind: 'rejected', status: 'failed', reason: 'size_mismatch', scope: 'page' };
   }
   return { kind: 'ok', row: { id, uploaderId: ctx.uploaderId, fileName, contentType: judged.contentType, size: read.bytes.length, key, readyAt: ctx.now() }, url: markdownPathFor(id, fileName) };
 }

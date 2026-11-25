@@ -174,7 +174,7 @@ describe('resuming', () => {
     expect(page(again, 'a')?.attachments[0]?.key).toBe(key);
   });
 
-  it('an object there with another size is not the file: the file is failed, and the link stays', async () => {
+  it('an object there with another size is not this page\'s file: the link stays, and the file is not failed (another page may use it; with none it is unreferenced)', async () => {
     const files = new FakeFileStorage();
     const probe = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: png() }], { files });
     await probe.run();
@@ -182,7 +182,56 @@ describe('resuming', () => {
     await files.put(key, Buffer.from('other'), { size: 5, contentType: 'image/png' });
     const again = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: png() }], { files });
     await again.run();
-    expect(await again.byPath('c.png')).toMatchObject({ status: 'failed', message: 'size_mismatch' });
+    expect(await again.byPath('c.png')).toMatchObject({ status: 'skipped', message: 'unreferenced' });
     expect(page(again, 'a')?.content.markdown).toBe('![x](c.png)\n');
+  });
+});
+
+describe('review of the attachments (each written to fail before the fix)', () => {
+  it('a file with no bytes is refused before it is staged (the attachments table needs a size above 0): skipped empty_file, the link stays, the page is written', async () => {
+    const t = await setup([md('a.md\u0000[e](empty.txt)\n'), { name: 'empty.txt', data: Buffer.alloc(0) }]);
+    const result = await t.run();
+    expect(await t.byPath('empty.txt')).toMatchObject({ status: 'skipped', message: 'empty_file' });
+    expect(page(t, 'a')?.attachments).toEqual([]);
+    expect(page(t, 'a')?.content.markdown).toBe('[e](empty.txt)\n');
+    expect(result.kind === 'done' && result.counts.warnings).toBe(1);
+  });
+
+  it('objects stored for a page are kept when another run has written that page meanwhile (the keys are the same): only a page that is known not to be written loses them', async () => {
+    const entries = [md('a.md\u0000# A\n![x](c.png)\n'), { name: 'c.png', data: png() }];
+    const t = await setup(entries);
+    // This run is refused by the converter, but another run writes the page while it converts: its rows point at the objects this run staged.
+    const real = t.repo.writePage.bind(t.repo);
+    const item = await t.byPath('a.md');
+    t.converter.fail = (markdown) => {
+      void real(TENANT, 'imp', { itemId: item?.id as string, collectionId: 'col', parentId: null, position: () => 'a', title: 'A', createdBy: 'user-1', content: { state: new Uint8Array(1), markdown, text: 'A', hash: Buffer.alloc(32) }, markdownBytes: 4, stateBytes: 1, attachments: [] });
+      return true;
+    };
+    await t.run();
+    expect((await t.byPath('a.md'))?.status).toBe('ok'); // the other run's write won
+    expect((await t.files.list('tenants/')).items.filter((i) => i.key.includes('/attachments/'))).toHaveLength(1); // and the objects it points at are still there
+  });
+
+  it('the file items are settled ok in the same call as the page, so a crash right after the write cannot leave a used file to be swept as unreferenced', async () => {
+    const t = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: png() }]);
+    t.repo.settle = () => Promise.reject(new Error('crash after the write')); // nothing that comes after writePage runs
+    await t.run().catch(() => undefined); // whatever comes after the write may fail
+    expect(page(t, 'a')?.attachments).toHaveLength(1);
+    expect((await t.byPath('c.png'))?.status).toBe('ok');
+  });
+
+  it('an object that is there for one page with another size fails that page\'s use of the file only: another page still attaches the file, and the file item is not failed', async () => {
+    const files = new FakeFileStorage();
+    const entries = [md('a.md\u0000![x](c.png)\n'), md('b.md\u0000![x](c.png)\n'), { name: 'c.png', data: png() }];
+    const probe = await setup(entries, { files });
+    await probe.run();
+    const keyOfA = page(probe, 'a')?.attachments[0]?.key as string;
+    await files.delete(page(probe, 'b')?.attachments[0]?.key as string);
+    await files.put(keyOfA, Buffer.from('stale'), { size: 5, contentType: 'image/png' });
+    const again = await setup(entries, { files });
+    await again.run();
+    expect(page(again, 'a')?.content.markdown).toBe('![x](c.png)\n'); // a keeps its link
+    expect(page(again, 'b')?.attachments).toHaveLength(1); // b attaches the same file
+    expect((await again.byPath('c.png'))?.status).toBe('ok');
   });
 });

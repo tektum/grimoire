@@ -95,6 +95,11 @@ export class FakeImportRepo implements ImportRepo {
     const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
     const urlId = found.item.urlId ?? `u${pageId}`;
     this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    for (const fileId of page.attachmentItemIds ?? []) {
+      const f = this.stored.findIndex((x) => x.tenantId === tenantId && x.importId === importId && x.item.id === fileId && x.item.status === 'pending' && x.item.kind === 'attachment');
+      const file = this.stored[f];
+      if (file !== undefined) this.stored[f] = { ...file, item: { ...file.item, status: 'ok', message: null } };
+    }
     this.written.push({ tenantId, importId, page, position });
     return Promise.resolve({ kind: 'ok', pageId, urlId });
   }

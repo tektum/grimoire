@@ -125,6 +125,10 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
           [row.id, page.title, c.markdown, c.hash, page.createdBy, now, tenantId],
         );
         for (const a of page.attachments) await attachments.insertReady({ ...a, pageId: row.id }, tx);
+        // The files the attachments were made from are ok with the page, not in a call after it.
+        if ((page.attachmentItemIds ?? []).length > 0) {
+          await tx.query(`update import_items set status = 'ok', message = null where tenant_id = $1 and import_id = $2 and id = any($3::bigint[]) and kind = 'attachment' and status = 'pending'`, [tenantId, importId, page.attachmentItemIds]);
+        }
         await tx.query(
           `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 then jsonb_build_object('warnings', $8::int) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
           [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0],
