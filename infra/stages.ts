@@ -77,8 +77,10 @@ export function stageSettings(stage: string, env: Readonly<Record<string, string
   if (!HOST.test(domain)) throw new Error('GRIMOIRE_DOMAIN must be the host name of the site, for example app.example.test (a variable of the stage\'s environment).');
   required('GRIMOIRE_ALLOWED_EMAIL_DOMAINS');
   const snapshot = env['GRIMOIRE_AURORA_SNAPSHOT'] ?? '';
-  if (snapshot !== '' && !/^arn:aws:rds:[a-z0-9-]+:\d{12}:snapshot:[A-Za-z][A-Za-z0-9-]*$/.test(snapshot)) {
-    throw new Error(`GRIMOIRE_AURORA_SNAPSHOT must be the ARN of a snapshot of the stage's RDS instance, for example arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-${stage}-to-aurora (a variable of the environment "${stage}").`);
+  // Named for the stage, as the runbook names it: dev and staging share an account, and a cluster restored from the other stage's snapshot would keep that data (the snapshot is ignored once the cluster exists).
+  const name = /^arn:aws:rds:[a-z0-9-]+:\d{12}:snapshot:([A-Za-z][A-Za-z0-9-]*)$/.exec(snapshot)?.[1];
+  if (snapshot !== '' && name?.startsWith(`grimoire-${stage}-`) !== true) {
+    throw new Error(`GRIMOIRE_AURORA_SNAPSHOT must be the ARN of a snapshot of the stage's RDS instance, named for the stage (grimoire-${stage}-...), for example arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-${stage}-to-aurora (a variable of the environment "${stage}").`);
   }
   return {
     domain,

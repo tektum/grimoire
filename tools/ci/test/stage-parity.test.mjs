@@ -57,10 +57,12 @@ test('the settings of a stage come from variables named for no stage, and a miss
   assert.throws(() => stageSettings('dev', { ...env, GRIMOIRE_ALLOWED_EMAIL_DOMAINS: undefined }), /GRIMOIRE_ALLOWED_EMAIL_DOMAINS must be set/);
   for (const bad of ['localhost', 'https://x.test', 'x.test:8443', 'a b.test']) assert.throws(() => stageSettings('dev', { ...env, GRIMOIRE_DOMAIN: bad }), /GRIMOIRE_DOMAIN must be the host name/, bad);
   assert.equal(stageSettings('dev', { GRIMOIRE_DOMAIN: 'x.test', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'a.test' }).firstAdminEmails.length, 0);
-  const snapshot = 'arn:aws:rds:us-east-1:123456789012:snapshot:grimoire-dev-to-aurora';
-  assert.equal(stageSettings('dev', { ...env, GRIMOIRE_AURORA_SNAPSHOT: snapshot }).auroraSnapshot, snapshot);
+  const arn = (name) => `arn:aws:rds:us-east-1:123456789012:snapshot:${name}`;
+  assert.equal(stageSettings('dev', { ...env, GRIMOIRE_AURORA_SNAPSHOT: arn('grimoire-dev-to-aurora') }).auroraSnapshot, arn('grimoire-dev-to-aurora'));
+  assert.equal(stageSettings('staging', { ...env, GRIMOIRE_AURORA_SNAPSHOT: arn('grimoire-staging-to-aurora') }).auroraSnapshot, arn('grimoire-staging-to-aurora'));
   assert.equal('auroraSnapshot' in stageSettings('dev', { ...env, GRIMOIRE_AURORA_SNAPSHOT: '' }), false);
-  for (const bad of ['grimoire-dev-to-aurora', 'arn:aws:rds:us-east-1:123456789012:cluster-snapshot:grimoire-dev', 'arn:aws:rds:us-east-1:1234:snapshot:grimoire-dev']) {
+  // Each value is wrong in one way only. The last is the other stage's snapshot: dev and staging share an account, and a cluster restored from it would keep that data (the snapshot is ignored once the cluster exists).
+  for (const bad of ['grimoire-staging-to-aurora', 'arn:aws:rds:us-east-1:123456789012:cluster-snapshot:grimoire-staging-to-aurora', 'arn:aws:rds:us-east-1:1234:snapshot:grimoire-staging-to-aurora', arn('grimoire-dev-to-aurora')]) {
     assert.throws(() => stageSettings('staging', { ...env, GRIMOIRE_AURORA_SNAPSHOT: bad }), /GRIMOIRE_AURORA_SNAPSHOT must be the ARN of a snapshot of the stage's RDS instance.*\(a variable of the environment "staging"\)/, bad);
   }
 });
