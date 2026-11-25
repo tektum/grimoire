@@ -43,6 +43,8 @@ export interface AppContext {
   readonly log: EventLog;
   readonly clock: Clock;
   readonly db: Database;
+  /** The operator pool of the HTTP adapters; `/readyz` runs a statement on it. */
+  readonly ops: Pick<Database, 'transaction'>;
   readonly auth: { readonly verifier: AuthVerifier; readonly roles?: DevRoleSource };
   /** First sign-in rules; `allowDevRole` is `config.local`. The `GET /v1/me` route provisions with it. */
   readonly signInPolicy: SignInPolicy;
@@ -187,7 +189,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     { name: 'operator-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => ops.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
-  return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder } }), ...(collab ? { collab } : {}) } };
+  return { ok: true, ctx: { config, log, clock: systemClock, db, ops, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder } }), ...(collab ? { collab } : {}) } };
 }
 
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }

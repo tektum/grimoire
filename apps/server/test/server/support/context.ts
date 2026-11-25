@@ -64,7 +64,7 @@ export function makeContext(db: FakeDatabase = fakeDatabase()): TestContext {
     pages: new FakePageRepo(), trash: new FakeTrashRepo(), revisions: new FakeRevisionRepo(), admin: new FakeAdminRepo(), pageState: new FakePageStateRepo(), attachments: new FakeAttachmentRepo(), deleteFiles: () => Promise.resolve(),
   };
   const ctx: AppContext = {
-    config, log, clock, db, http,
+    config, log, clock, db, ops: new FakeDatabase(), http,
     auth: { verifier }, signInPolicy,
     shutdown, shutdownHooks: [], testFacilities: [],
   };

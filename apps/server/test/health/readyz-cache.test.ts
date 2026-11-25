@@ -5,6 +5,9 @@ import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
 import { healthRoutes } from '../../src/health/routes.js';
 
+/** An operator pool that answers. */
+const ops = { transaction: () => Promise.resolve(undefined as never) };
+
 describe('/readyz failure cache', () => {
   it('five failing probes in one second check the database once and a success caches two seconds', async () => {
     const clock = new FakeClock(1000);
@@ -16,7 +19,7 @@ describe('/readyz failure cache', () => {
       async transaction<T>(): Promise<T> { throw new Error('unused'); },
       async close(): Promise<void> { },
     };
-    const app = healthRoutes({ db, clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false });
+    const app = healthRoutes({ db, ops, clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false });
     vi.useFakeTimers({ now: 1000 });
     try {
       for (let i = 0; i < 5; i++) expect((await app.request('/readyz')).status).toBe(503);
@@ -46,7 +49,7 @@ describe('/readyz failure cache', () => {
   it('probes that arrive together share one database check, and a hung database that timed out is not asked again for a second', async () => {
     const clock = new FakeClock(1000);
     const counter = { n: 0 };
-    const app = healthRoutes({ db: hungDb(counter), clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, probeTimeoutMs: 100 });
+    const app = healthRoutes({ db: hungDb(counter), ops, clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, probeTimeoutMs: 100 });
     vi.useFakeTimers({ now: 1000 });
     try {
       const five = Array.from({ length: 5 }, () => app.request('/readyz'));
@@ -84,7 +87,7 @@ describe('/readyz after a hung check ends', () => {
       async transaction<T>(): Promise<T> { throw new Error('unused'); },
       async close(): Promise<void> { },
     };
-    const app = healthRoutes({ db, clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, probeTimeoutMs: 100 });
+    const app = healthRoutes({ db, ops, clock, log: createEventLog(new FakeLogger()), expectedMigration: '0001_test', isDraining: () => false, probeTimeoutMs: 100 });
     vi.useFakeTimers({ now: 1000 });
     try {
       const first = app.request('/readyz');

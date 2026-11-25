@@ -5,6 +5,8 @@ import type { EventLog } from '../events.js';
 
 export interface HealthDeps {
   readonly db: Database;
+  /** The operator pool: it connects on first use, so a wrong operator URL or a missing role shows here, not at the first sign-in. */
+  readonly ops: Pick<Database, 'transaction'>;
   readonly log: EventLog;
   /** Time for the probe caches; tests move it without timers. */
   readonly clock: Clock;
@@ -39,6 +41,7 @@ export function healthRoutes(deps: HealthDeps): Hono {
 
   const check = async (): Promise<void> => {
     await deps.db.ping();
+    await deps.ops.transaction((tx) => tx.query('select 1'));
     let version: string | null | undefined;
     try {
       version = (await deps.db.query<{ version: string | null }>(VERSION_SQL))[0]?.version;
