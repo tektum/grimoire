@@ -62,7 +62,8 @@ export function Report({ api, id }: { readonly api: ApiLike; readonly id: string
           </li>
         ))}
       </ul>
-      {report.phase === 'loading' ? <p role="status">Loading the report…</p> : null}
+      {/* Not a live region: the line that says how the import ended (Progress) is the one status of the screen, and a second one would be read out over it while the report loads. */}
+      {report.phase === 'loading' ? <p>Loading the report…</p> : null}
       {report.phase === 'ready' && report.hasMore ? <Button onClick={report.more}>Show more</Button> : null}
     </section>
   );
