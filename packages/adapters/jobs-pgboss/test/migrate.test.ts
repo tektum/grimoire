@@ -172,6 +172,14 @@ describe('migratePgBoss, a queue made with another policy', () => {
     expect(dropped).toMatchObject([{ from: 'standard' }]);
   });
 
+  it('when the new queue cannot be created, reports what the deletion dropped and fails saying to run the migration again', async () => {
+    const { b, dropped, go } = run({ purge: 'singleton' }, { created: 2, completed: 1 });
+    b.createQueue.mockRejectedValueOnce(new Error('no rights'));
+    await expect(go([def('purge', 'stately')])).rejects.toThrow(/purge was deleted \(2 waiting and 1 finished jobs\).*run the migration again/);
+    expect(dropped).toEqual([{ queue: 'purge', from: 'singleton', to: 'stately', pending: 2, finished: 1 }]);
+    expect(b.stop).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves a queue of the wanted policy alone, and recreates an empty one without reporting a loss', async () => {
     const same = run({ purge: 'stately' }, { created: 4 });
     await same.go([def('purge', 'stately')]);

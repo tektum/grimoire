@@ -58,9 +58,16 @@ async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, db
     await tx.query(`select ${PGBOSS_SCHEMA}.delete_queue($1)`, [definition.name]);
     return rows.map((r) => r.state);
   });
-  await boss.createQueue(definition.name, queueOptions(definition));
   const count = (...wanted: string[]): number => states.filter((s) => wanted.includes(s)).length;
-  options.onQueueRecreated?.({ queue: definition.name, from, to: definition.policy, pending: count('created', 'retry'), finished: count('completed', 'cancelled', 'failed') });
+  const dropped = { queue: definition.name, from, to: definition.policy, pending: count('created', 'retry'), finished: count('completed', 'cancelled', 'failed') };
+  try {
+    await boss.createQueue(definition.name, queueOptions(definition));
+  } catch (error) {
+    // The deletion is committed: say what was lost and that the next run of the migration makes the queue again (a missing queue is created like a new one).
+    options.onQueueRecreated?.(dropped);
+    throw new Error(`queue ${definition.name} was deleted (${String(dropped.pending)} waiting and ${String(dropped.finished)} finished jobs) and could not be created again: run the migration again`, { cause: error });
+  }
+  options.onQueueRecreated?.(dropped);
 }
 
 /**
