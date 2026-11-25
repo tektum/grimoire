@@ -19,8 +19,26 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   const url = `https://${domain}`;
   const region = aws.getRegionOutput().region;
   const identity = descopeProject(config, domain);
-  const vpc = new sst.aws.Vpc('Vpc', { nat: config.nat });
-  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION });
+  // One VPC for every stage (they share its subnets, routes and NAT instances: a stage of its own would need two more Elastic IPs, which the account does not have). The stage that owns it makes it;
+  // the others read it by the owner's tags. What keeps the stages apart is not the network but the security groups below: the database of a stage takes connections from its service alone.
+  const vpc = config.vpcFrom === undefined
+    ? new sst.aws.Vpc('Vpc', {
+      nat: config.nat,
+      // SST lets the NAT instance take inbound traffic from anywhere. It only forwards what the VPC's own subnets send, so only the VPC's range may reach it.
+      transform: { natSecurityGroup: { ingress: [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: [VPC_CIDR] }] } },
+    })
+    : sst.aws.Vpc.get('Vpc', aws.ec2.getVpcOutput({ tags: { 'sst:app': $app.name, 'sst:stage': config.vpcFrom } }).id);
+  const serviceGroup = new aws.ec2.SecurityGroup('ServiceSecurityGroup', {
+    vpcId: vpc.id,
+    description: 'The service of one stage: its port is open to its load balancer alone (the rule is made with the service)',
+    egress: [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: ['0.0.0.0/0'] }],
+  });
+  const dbGroup = new aws.ec2.SecurityGroup('DbSecurityGroup', {
+    vpcId: vpc.id,
+    description: 'The database of one stage: PostgreSQL from the service of the same stage alone',
+    ingress: [{ protocol: 'tcp', fromPort: 5432, toPort: 5432, securityGroups: [serviceGroup.id] }],
+  });
+  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id] } } });
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
@@ -102,10 +120,22 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
       health: { [`${PORT}/http`]: { path: '/readyz', interval: '15 seconds', timeout: '5 seconds', healthyThreshold: 2, unhealthyThreshold: 3, successCodes: '200' } },
     },
     transform: {
+      // The component puts a service in the VPC's default group, which trusts the whole VPC: this stage's own group instead, with the subnets and the public address the component chose.
+      service: (args) => {
+        args.networkConfiguration = $output(args.networkConfiguration).apply((network) => ({ ...network, securityGroups: [serviceGroup.id] }) as aws.types.input.ecs.ServiceNetworkConfiguration);
+      },
       taskDefinition: (args) => {
         args.containerDefinitions = $output(args.containerDefinitions).apply((json) => JSON.stringify(inStartOrder(JSON.parse(json as string))));
       },
     },
+  });
+
+  new aws.vpc.SecurityGroupIngressRule('ServiceFromLoadBalancer', {
+    securityGroupId: serviceGroup.id,
+    referencedSecurityGroupId: service.nodes.loadBalancer.securityGroups.apply((groups) => groups[0]),
+    ipProtocol: 'tcp',
+    fromPort: PORT,
+    toPort: PORT,
   });
 
   return { url: service.url, projectId: identity.projectId };

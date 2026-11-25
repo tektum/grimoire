@@ -13,6 +13,8 @@ export interface StageConfig {
   /** Hosts of the Descope project besides the stage's own address: a stage that local runs sign in against approves the loopback names. */
   readonly localHosts: readonly string[];
   readonly nat: 'ec2' | 'managed';
+  /** The stage whose VPC this stage lives in. Absent: this stage owns its VPC and the others may read it, so it must be protected (a VPC with another stage's database in it is not for removing). */
+  readonly vpcFrom?: string;
   /** One task on purpose, whatever the stage: the migrations run under a database lock, so a second task would only wait. */
   readonly service: { readonly cpu: '0.25 vCPU' | '0.5 vCPU' | '1 vCPU'; readonly memory: '2 GB' | '4 GB' };
 }
@@ -29,6 +31,7 @@ const row = (name: string, value: unknown): StageConfig => {
   if (typeof v.protect !== 'boolean') bad('protect must be true or false');
   if (!Array.isArray(v.localHosts) || !v.localHosts.every((h) => typeof h === 'string' && h !== '')) bad('localHosts must be a list of hosts');
   if (v.nat !== 'ec2' && v.nat !== 'managed') bad('nat must be "ec2" or "managed"');
+  if (v.vpcFrom !== undefined && (typeof v.vpcFrom !== 'string' || v.vpcFrom === '')) bad('vpcFrom must name the stage whose VPC this one lives in');
   if (v.service?.cpu !== '0.25 vCPU' && v.service?.cpu !== '0.5 vCPU' && v.service?.cpu !== '1 vCPU') bad('service.cpu must be a Fargate size this stack uses');
   if (v.service?.memory !== '2 GB' && v.service?.memory !== '4 GB') bad('service.memory must be at least the collaboration guard\'s share (2 GB)');
   return v as StageConfig;

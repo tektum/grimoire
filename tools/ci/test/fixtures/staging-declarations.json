@@ -138,7 +138,57 @@
       "type": "sst.aws:Vpc",
       "name": "Vpc",
       "args": {
-        "nat": "ec2"
+        "nat": "ec2",
+        "transform": {
+          "natSecurityGroup": {
+            "ingress": [
+              {
+                "protocol": "-1",
+                "fromPort": 0,
+                "toPort": 0,
+                "cidrBlocks": [
+                  "10.0.0.0/16"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "aws.ec2:SecurityGroup",
+      "name": "ServiceSecurityGroup",
+      "args": {
+        "vpcId": "<Vpc.id>",
+        "description": "The service of one stage: its port is open to its load balancer alone (the rule is made with the service)",
+        "egress": [
+          {
+            "protocol": "-1",
+            "fromPort": 0,
+            "toPort": 0,
+            "cidrBlocks": [
+              "0.0.0.0/0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "aws.ec2:SecurityGroup",
+      "name": "DbSecurityGroup",
+      "args": {
+        "vpcId": "<Vpc.id>",
+        "description": "The database of one stage: PostgreSQL from the service of the same stage alone",
+        "ingress": [
+          {
+            "protocol": "tcp",
+            "fromPort": 5432,
+            "toPort": 5432,
+            "securityGroups": [
+              "<ServiceSecurityGroup.id>"
+            ]
+          }
+        ]
       }
     },
     {
@@ -146,7 +196,14 @@
       "name": "Db",
       "args": {
         "vpc": "<Vpc>",
-        "version": "17.9"
+        "version": "17.9",
+        "transform": {
+          "instance": {
+            "vpcSecurityGroupIds": [
+              "<DbSecurityGroup.id>"
+            ]
+          }
+        }
       }
     },
     {
@@ -396,8 +453,20 @@
           }
         },
         "transform": {
+          "service": "<function>",
           "taskDefinition": "<function>"
         }
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupIngressRule",
+      "name": "ServiceFromLoadBalancer",
+      "args": {
+        "securityGroupId": "<ServiceSecurityGroup.id>",
+        "referencedSecurityGroupId": "<Server.nodes.loadBalancer.securityGroups|apply(fn)>",
+        "ipProtocol": "tcp",
+        "fromPort": 8080,
+        "toPort": 8080
       }
     }
   ],
