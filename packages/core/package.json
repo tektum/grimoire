@@ -41,6 +41,10 @@
       "types": "./dist/search/*.d.ts",
       "default": "./dist/search/*.js"
     },
+    "./import/*": {
+      "types": "./dist/import/*.d.ts",
+      "default": "./dist/import/*.js"
+    },
     "./jobs/*": {
       "types": "./dist/jobs/*.d.ts",
       "default": "./dist/jobs/*.js"
