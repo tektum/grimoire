@@ -25,11 +25,13 @@ case "$1 $2" in
     cat "$d/task" ;;
   "ecs describe-tasks") case "$*" in *--query*) cat "$d/exit" ;; *) echo '{"tasks":[{"lastStatus":"STOPPED"}]}' ;; esac ;;
   "ecs describe-task-definition") case "$*" in *awslogs-group*) echo /sst/cluster/x/migrate ;; *) echo grimoire-dev ;; esac ;;
-  "logs get-log-events") printf '{"server_version":"17.9"}\\t{"rls_tables":15,"with_policies":15}\\n' ;;
+  "logs get-log-events")
+    n=$(( $(cat "$d/logs.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$d/logs.n"
+    if [ "$n" -le "$(cat "$d/empty")" ]; then echo; else printf '{"server_version":"17.9"}\\t{"rls_tables":15,"with_policies":15}\\n'; fi ;;
 esac
 `;
 
-function run(args, { task = TASK, exit = '0' } = {}) {
+function run(args, { task = TASK, exit = '0', emptyReads = 0 } = {}) {
   const dir = mkdtempSync(path.join(process.env.TMPDIR ?? tmpdir(), 'grimoire-db-check-'));
   mkdirSync(path.join(dir, 'bin'));
   writeFileSync(path.join(dir, 'bin/aws'), STUB);
@@ -37,10 +39,11 @@ function run(args, { task = TASK, exit = '0' } = {}) {
   writeFileSync(path.join(dir, 'service.json'), JSON.stringify({ taskDefinition: TD, networkConfiguration: NETWORK }));
   writeFileSync(path.join(dir, 'task'), task);
   writeFileSync(path.join(dir, 'exit'), exit);
+  writeFileSync(path.join(dir, 'empty'), String(emptyReads));
   try {
-    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, STUB_DIR: dir, ADOPT_POLL_SECONDS: '0' } });
+    const r = spawnSync('bash', [script, ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, STUB_DIR: dir, ADOPT_POLL_SECONDS: '0', DB_CHECK_LOG_SECONDS: '0' } });
     const read = (f) => (existsSync(path.join(dir, f)) ? readFileSync(path.join(dir, f), 'utf8') : undefined);
-    return { code: r.status, out: r.stdout, err: r.stderr, overrides: read('overrides.json'), network: read('network.json'), taskdef: read('taskdef') };
+    return { code: r.status, out: r.stdout, err: r.stderr, overrides: read('overrides.json'), network: read('network.json'), taskdef: read('taskdef'), logReads: Number(read('logs.n') ?? 0) };
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
@@ -52,6 +55,16 @@ test('it runs the check and nothing else as a task of the service: db-setup and 
   assert.equal(r.taskdef, TD, 'the task definition the service runs');
   assert.deepEqual(JSON.parse(r.network), NETWORK, 'the network of the service, so the task reaches the database');
   assert.match(r.out, /\{"server_version":"17\.9"\}\n\{"rls_tables":15,"with_policies":15\}/, 'what the check said');
+});
+
+test('it reads the output back until the summary line is there, since CloudWatch delivers late, and fails when it never is', () => {
+  const late = run([CLUSTER], { emptyReads: 2 });
+  assert.equal(late.code, 0, late.err);
+  assert.equal(late.logReads, 3, 'two empty reads, then the output');
+  assert.match(late.out, /\{"rls_tables":15,"with_policies":15\}/);
+  const never = run([CLUSTER], { emptyReads: 99 });
+  assert.equal(never.code, 1, 'an empty before or after must not pass as a check');
+  assert.match(never.err, /not read back/);
 });
 
 test('it fails when the check did not finish or the task did not start, and refuses a wrong call', () => {

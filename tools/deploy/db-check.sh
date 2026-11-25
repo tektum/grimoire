@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The read-only check of a stage's database (descope-infra.yml action=check): runs tools/deploy/db-check.js as a one-off task of the stage's service, in its migration
 # container (the migrator's connection, inside the stage's network: tenant-adopt.yml's pattern), with db-setup and the app made to exit at once so that nothing but the check
-# runs, and prints what the check said. Exits 1 when the task did not start or the check did not finish. Needs `aws` and `jq`; run with the stage's credentials.
+# runs, and prints what the check said. Exits 1 when the task did not start, the check did not finish, or its output could not be read back. Needs `aws` and `jq`; run with
+# the stage's credentials.
 set -euo pipefail
 cluster="${1:-}"
 [[ "${cluster}" =~ ^arn:aws[a-z-]*:ecs:[a-z0-9-]+:[0-9]+:cluster/[A-Za-z0-9-]+$ ]] || { echo "usage: db-check.sh <ecs cluster arn>" >&2; exit 2; }
@@ -17,5 +18,15 @@ bash "${here}/../adopt/wait-task.sh" "${cluster}" "${task}"
 code=$(aws ecs describe-tasks --cluster "${cluster}" --tasks "${task}" --query "tasks[0].containers[?name=='migrate'] | [0].exitCode" --output text)
 group=$(aws ecs describe-task-definition --task-definition "${taskdef}" --query "taskDefinition.containerDefinitions[?name=='migrate'] | [0].logConfiguration.options.\"awslogs-group\"" --output text)
 prefix=$(aws ecs describe-task-definition --task-definition "${taskdef}" --query "taskDefinition.containerDefinitions[?name=='migrate'] | [0].logConfiguration.options.\"awslogs-stream-prefix\"" --output text)
-aws logs get-log-events --log-group-name "${group}" --log-stream-name "${prefix}/migrate/${task##*/}" --query 'events[].message' --output text | tr '\t' '\n'
+# CloudWatch delivers a task's log a little after the task has stopped, so the log is read again, a pause at a time, until the check's last line (its summary) is
+# there: an empty before or after must not pass as a check. A failed check has no summary to wait for.
+polls="${DB_CHECK_LOG_POLLS:-6}"
+out=""
+for ((n = 1; n <= polls; n++)); do
+  out=$(aws logs get-log-events --log-group-name "${group}" --log-stream-name "${prefix}/migrate/${task##*/}" --query 'events[].message' --output text | tr '\t' '\n')
+  if grep -q '"rls_tables"' <<<"${out}" || [ "${code}" != "0" ]; then break; fi
+  [ "${n}" -lt "${polls}" ] && sleep "${DB_CHECK_LOG_SECONDS:-10}"
+done
+printf '%s\n' "${out}"
 [ "${code}" = "0" ] || { echo "the check did not finish (exit ${code})" >&2; exit 1; }
+grep -q '"rls_tables"' <<<"${out}" || { echo "the check's output was not read back: no summary line after ${polls} reads of its log" >&2; exit 1; }
