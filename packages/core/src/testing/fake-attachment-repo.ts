@@ -56,9 +56,9 @@ export class FakeAttachmentRepo implements AttachmentRepo {
     return Promise.resolve(this.rows.length < before);
   }
 
-  expiredPending(now: number, limit: number): Promise<readonly AttachmentRow[]> {
+  expiredPending(tenantId: string, now: number, limit: number): Promise<readonly AttachmentRow[]> {
     return Promise.resolve(
-      this.rows.filter((r) => r.status === 'pending' && r.expiresAt !== null && r.expiresAt < now).sort((a, b) => (a.expiresAt as number) - (b.expiresAt as number)).slice(0, limit),
+      this.rows.filter((r) => (r.tenantId ?? 'legacy') === tenantId && r.status === 'pending' && r.expiresAt !== null && r.expiresAt < now).sort((a, b) => (a.expiresAt as number) - (b.expiresAt as number)).slice(0, limit),
     );
   }
 

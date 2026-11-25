@@ -60,12 +60,17 @@ export interface TrashRepo {
    * The object keys of the attachments of every page the purge of the batch removes: the batch and any page below it that was deleted
    * earlier, in a batch of its own (a page cannot be removed while a child still points at it).
    */
-  attachmentKeys(batch: string): Promise<readonly string[]>;
+  attachmentKeys(tenantId: string, batch: string): Promise<readonly string[]>;
   /**
    * Marks the attachment rows with these object keys as deleted, for objects the store removed before it failed in a purge that therefore did not complete: a
    * restore of the batch then shows no attachment for an object that is gone. Keys that match no row, and rows already marked, are left as they are.
    */
-  markFilesRemoved(keys: readonly string[]): Promise<void>;
+  markFilesRemoved(tenantId: string, keys: readonly string[]): Promise<void>;
+  /**
+   * The batches of the tenant whose pages were deleted before `deletedBefore` (milliseconds), oldest first, at most `limit`: what the daily
+   * purge removes once the trash has kept them for 30 days. A batch is named by the id the purge takes.
+   */
+  expiredBatches(tenantId: string, deletedBefore: number, limit: number): Promise<readonly string[]>;
   /**
    * Deletes every page row of the batch, and the pages below it deleted earlier, in one statement (revisions and attachment rows go with
    * them) and writes the audit row `page.purged`, ids only, in the same transaction. A batch already gone deletes nothing and writes no

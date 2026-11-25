@@ -125,11 +125,11 @@ export const attachmentRepoConformance: readonly AttachmentRepoCase[] = [
       for (const r of [first, second, third, live]) assert.equal(r.kind, 'created');
       if (first.kind !== 'created' || second.kind !== 'created' || third.kind !== 'created' || live.kind !== 'created') return;
       await h.repo.markReady(third.row.id, t - 1500); // completed before it expired: a ready row is never listed
-      const listed = (await h.repo.expiredPending(t, 100)).filter((r) => [first, second, third, live].some((x) => x.kind === 'created' && x.row.id === r.id));
+      const listed = (await h.repo.expiredPending('legacy', t, 100)).filter((r) => [first, second, third, live].some((x) => x.kind === 'created' && x.row.id === r.id));
       assert.deepEqual(listed.map((r) => r.id), [first.row.id, second.row.id]);
       // The limit keeps the oldest row (other rows of the same database may sort first, so compare with the full listing).
-      const all = await h.repo.expiredPending(t, 100);
-      assert.deepEqual((await h.repo.expiredPending(t, 1)).map((r) => r.id), all.slice(0, 1).map((r) => r.id));
+      const all = await h.repo.expiredPending('legacy', t, 100);
+      assert.deepEqual((await h.repo.expiredPending('legacy', t, 1)).map((r) => r.id), all.slice(0, 1).map((r) => r.id));
     },
   },
   {

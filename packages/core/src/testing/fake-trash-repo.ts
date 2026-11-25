@@ -180,13 +180,22 @@ export class FakeTrashRepo implements TrashRepo {
     return Promise.resolve({ kind: 'restored', page });
   }
 
-  attachmentKeys(batch: string): Promise<readonly string[]> {
-    return Promise.resolve(this.purgeSet(batch).flatMap((r) => r.attachments));
+  attachmentKeys(tenantId: string, batch: string): Promise<readonly string[]> {
+    return Promise.resolve(this.purgeSet(batch).filter((r) => r.tenantId === tenantId).flatMap((r) => r.attachments));
   }
 
-  markFilesRemoved(keys: readonly string[]): Promise<void> {
-    for (const row of this.rows) for (const key of row.attachments) if (keys.includes(key)) this.deletedKeys.add(key);
+  markFilesRemoved(tenantId: string, keys: readonly string[]): Promise<void> {
+    for (const row of this.rows) if (row.tenantId === tenantId) for (const key of row.attachments) if (keys.includes(key)) this.deletedKeys.add(key);
     return Promise.resolve();
+  }
+
+  expiredBatches(tenantId: string, deletedBefore: number, limit: number): Promise<readonly string[]> {
+    const oldest = new Map<string, number>();
+    for (const r of this.rows) {
+      if (r.tenantId !== tenantId || r.deletedAt === null || r.batch === null || r.deletedAt >= deletedBefore) continue;
+      oldest.set(r.batch, Math.min(r.deletedAt, oldest.get(r.batch) ?? Infinity));
+    }
+    return Promise.resolve([...oldest].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(0, limit).map(([batch]) => batch));
   }
 
   purge(tenantId: string, batch: string, actorId: string, removedKeys: readonly string[]): Promise<{ pages: number }> {

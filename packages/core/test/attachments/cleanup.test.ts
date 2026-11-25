@@ -9,7 +9,7 @@ async function world() {
   const live = t.repo.seed(row({ id: 'l1', expiresAt: NOW + 1000 }));
   const ready = t.repo.seed(row({ id: 'r1', status: 'ready', expiresAt: null, readyAt: NOW - 9000 }));
   for (const r of [expired1, expired2, live, ready]) await t.files.put(r.key, new Uint8Array([1]), { size: 1, contentType: 'image/png' });
-  return { ...t, expired1, expired2, live, ready, run: (batch = 100) => cleanupExpiredAttachments({ repo: t.repo, files: t.files, now: () => NOW, batch }) };
+  return { ...t, expired1, expired2, live, ready, run: (batch = 100) => cleanupExpiredAttachments({ repo: t.repo, files: t.files, tenantId: 'legacy', now: () => NOW, batch }) };
 }
 const present = async (files: Awaited<ReturnType<typeof world>>['files'], key: string): Promise<boolean> => files.head(key).then(() => true, () => false);
 
@@ -37,13 +37,13 @@ describe('cleanupExpiredAttachments', () => {
   it('removes an object whose row is already gone, and does not count a row that completed in the meantime', async () => {
     const w = await world();
     const racing = { ...w.repo, expiredPending: w.repo.expiredPending.bind(w.repo), removeIfPending: (id: string) => (id === 'e1' ? Promise.resolve(false) : w.repo.removeIfPending(id)) } as unknown as typeof w.repo;
-    expect(await cleanupExpiredAttachments({ repo: racing, files: w.files, now: () => NOW, batch: 100 })).toBe(1);
+    expect(await cleanupExpiredAttachments({ repo: racing, files: w.files, tenantId: 'legacy', now: () => NOW, batch: 100 })).toBe(1);
   });
 
   it('stops on a store that is down and leaves the rows for the next run', async () => {
     const w = await world();
     const down = { ...w.files, delete: () => Promise.reject(new Error('down')) } as unknown as typeof w.files;
-    await expect(cleanupExpiredAttachments({ repo: w.repo, files: down, now: () => NOW, batch: 100 })).rejects.toThrow('down');
+    await expect(cleanupExpiredAttachments({ repo: w.repo, files: down, tenantId: 'legacy', now: () => NOW, batch: 100 })).rejects.toThrow('down');
     expect(w.repo.all().filter((r) => r.id.startsWith('e'))).toHaveLength(2);
   });
 });
