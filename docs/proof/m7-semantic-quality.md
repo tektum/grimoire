@@ -1,6 +1,6 @@
 # Semantic search: quality and cost of the two models (M7-T12)
 
-Measured on one machine (32 shared cores, Node 26, `onnxruntime-node` 1.31.1, `threads = 2` unless stated), with the real model files of `models/models.lock.json` through the embedder as the server uses it (`apps/server/test/semantic/quality.container.test.ts`, the corpus in `apps/server/test/semantic/corpus/`). Re-run it with `node scripts/fetch-models.mjs` and `GRIMOIRE_QUALITY_OUT=file.json bunx vitest run --project container apps/server/test/semantic/quality.container.test.ts`; it is run again, with no network, inside the image (below).
+Measured on one machine (32 shared cores, Node 26, `onnxruntime-node` 1.31.1, `threads = 2` unless stated), with the real model files of `models/models.lock.json` through the embedder as the server uses it (`apps/server/test/semantic/quality.container.test.ts`, the corpus in `apps/server/test/semantic/corpus/`). Re-run it with `node scripts/fetch-models.mjs` and `GRIMOIRE_QUALITY_OUT=file.json bunx vitest run --project container apps/server/test/semantic/quality.container.test.ts`; the image runs only a smoke check of both models, with no network (below), not this run.
 
 ## Recall at 5
 
