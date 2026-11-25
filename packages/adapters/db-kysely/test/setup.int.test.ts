@@ -27,7 +27,7 @@ const ROTATED = { app: 'rotated-app-password-0123456789', migrator: 'rotated-mig
 
 beforeAll(async () => {
   await asSuperuser('postgres', (q) => q(`drop database if exists ${DATABASE} with (force)`));
-  await asSuperuser('postgres', (q) => q(`create database ${DATABASE}`));
+  await asSuperuser('postgres', (q) => q(`create database ${DATABASE} template template0`)); // template0: template1 carries `vector` (db/init/03-vector.sql), which would make the check below mean nothing
 }, 60_000);
 afterAll(async () => {
   await asSuperuser('postgres', async (q) => {
@@ -85,7 +85,7 @@ describe('setupDatabase on a database that is not clean', () => {
   const reset = () => asSuperuser('postgres', async (q) => {
     await q(`drop database if exists ${DATABASE} with (force)`);
     for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, OTHER]) await q(`drop role if exists ${role}`);
-    await q(`create database ${DATABASE}`);
+    await q(`create database ${DATABASE} template template0`);
   });
   const roleFlags = (role: string) => asSuperuser('postgres', (q) => q(`select rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls from pg_roles where rolname = $1`, [role]));
 
@@ -140,7 +140,7 @@ describe('setupDatabase as the master user of a managed service (not a superuser
       await q(`drop database if exists ${DATABASE} with (force)`);
       for (const role of [ROLES.ops, ROLES.app, ROLES.migrator, MANAGED_ADMIN]) await q(`drop role if exists ${role}`);
       await q(`create role ${MANAGED_ADMIN} login createrole password 'managed-admin-password-0123'`);
-      await q(`create database ${DATABASE} owner ${MANAGED_ADMIN}`);
+      await q(`create database ${DATABASE} template template0 owner ${MANAGED_ADMIN}`);
     });
     // pgvector is not a trusted extension: a managed master user may create it only through a role such as rds_superuser, which a test role cannot hold. It is made here, as the provider's own tooling would, so the step's `if not exists` finds it.
     await asSuperuser(DATABASE, (q) => q('create extension if not exists vector'));

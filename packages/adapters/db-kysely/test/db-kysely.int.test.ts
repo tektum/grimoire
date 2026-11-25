@@ -63,7 +63,8 @@ const sqlMigration = (stmt: string): string =>
 async function resetDatabase(): Promise<void> {
   const init = await readFile(path.join(ROOT, 'db/init/roles.psql'), 'utf8');
   const tail = init.slice(init.indexOf('ALTER SCHEMA public OWNER'));
-  await sqlAs(URLS.admin, `DROP SCHEMA public CASCADE; CREATE SCHEMA public; ${tail}`);
+  // `vector` goes with the schema, and the migration role cannot make it again (it is not a trusted extension): the administrator does, as it does before the first migrate.
+  await sqlAs(URLS.admin, `DROP SCHEMA public CASCADE; CREATE SCHEMA public; ${tail}; CREATE EXTENSION IF NOT EXISTS vector`);
 }
 
 beforeAll(async () => {
