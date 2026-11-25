@@ -16,7 +16,7 @@ lockfile = true
 lockfile_platforms = ["linux-x64", "linux-x64-baseline", "linux-x64-musl", "linux-x64-musl-baseline", "linux-arm64", "linux-arm64-musl", "macos-arm64", "macos-x64", "macos-x64-baseline"]
 
 # The workflow lint, one command for CI and for a checkout: actionlint hands every `run:` script to shellcheck, but only when it finds one, and without one it says nothing and
-# exits 0 (a bare `! cmd`, which skips errexit, passed on a machine that had no shellcheck on its PATH). The pinned shellcheck is named explicitly, so a missing one is an error.
+# exits 0 (a bare `! cmd`, which skips errexit, passed on a machine that had no shellcheck on its PATH). `tools/ci/actionlint.sh` names the pinned shellcheck, and a missing one is an error.
 [tasks.lint-workflows]
 description = "actionlint with the pinned shellcheck, then zizmor"
-run = ["actionlint -shellcheck \"$(mise which shellcheck)\"", "zizmor --format=plain ."]
+run = ["tools/ci/actionlint.sh", "zizmor --format=plain ."]
