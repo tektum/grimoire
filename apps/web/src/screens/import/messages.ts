@@ -76,6 +76,12 @@ const WORDS: Record<string, (l: ImportLimits) => string> = {
   convert_failed: () => 'The file could not be converted.',
   collection_full: () => 'The collection is full.',
   internal: () => 'Something went wrong on our side with this file.',
+  // A database (its CSV): a row that is only in its table, and a table that could not become a page.
+  database_row: () => 'This row only repeats what its table shows: it is in the table, not a page of its own.',
+  table_too_large: (l) =>
+    `The table is too large for one page: more than 1,000 rows, or ${l.markdownBytes === undefined ? 'larger than the limit for a page' : `more than ${formatBytes(l.markdownBytes)}`} as a table.`,
+  csv_malformed: () => 'The table could not be read.',
+  csv_field_too_large: () => 'A cell of the table is too large.',
 };
 
 /**

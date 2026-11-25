@@ -58,7 +58,7 @@ const Item = z
     message: z.string().nullable().describe('For a skipped or failed file, the code of the reason (at most 300 characters, never a path)'),
     markdownBytes: z.number().int().nullable(),
     stateBytes: z.number().int().nullable(),
-    hasSource: z.boolean().describe('True for a failed page whose original Markdown is kept'),
+    hasSource: z.boolean().describe('True for a failed page or database whose original file is kept'),
     remoteImageFailures: z
       .record(z.string(), z.number().int())
       .describe(
@@ -117,7 +117,7 @@ export const listImportItems = defineRoute({
 });
 
 export const getImportItemSource = defineRoute({
-  method: 'get', path: '/v1/imports/{id}/items/{itemId}/source', operationId: 'getImportItemSource', summary: 'A short-lived address to download the original Markdown of a failed page', tags: ['imports'],
+  method: 'get', path: '/v1/imports/{id}/items/{itemId}/source', operationId: 'getImportItemSource', summary: 'A short-lived address to download the original file of a failed page or database', tags: ['imports'],
   policy: { kind: 'import', param: 'id', who: 'creator-or-admin' },
   request: { params: ItemParam },
   responses: { 200: json(Source, 'The address (a download, never shown in the page)'), 404: json(ErrorBody, 'No such item, or it has no kept original'), 503: json(ErrorBody, 'The file store is not configured or does not answer') },
@@ -247,6 +247,9 @@ const REASON_CODE = /^[a-z][a-z_]{0,31}$/;
 const failuresOf = (failures: Readonly<Record<string, number>>): Record<string, number> =>
   Object.fromEntries(Object.entries(failures).filter(([code, n]) => REASON_CODE.test(code) && Number.isSafeInteger(n) && n > 0));
 
+/** The kinds of file whose original is kept when it fails, to be downloaded from the report: a page, and a database's CSV. */
+const keepsOriginal = (kind: ImportItem['kind']): boolean => kind === 'page' || kind === 'database_csv';
+
 const itemOf = (item: ImportItem, hasSource: boolean) => ({
   id: item.id,
   path: cleanItemText(item.path),
@@ -269,13 +272,13 @@ router.openapi(listImportItems, async (c) => {
   if (keys !== undefined && !/^[0-9]{1,18}$/.test(String(keys[0]))) return fail('invalid');
   const rows = await c.get('deps').imports.listItems(tenant, id, { limit: limit + 1, ...(keys === undefined ? {} : { afterId: String(keys[0]) }) });
   const page = toPage('import-items', rows, limit, (row) => [row.id]);
-  // A failed page has a source to download when its original was kept: one look at the store for each such item of this page.
+  // A failed page or database has a source to download when its original was kept: one look at the store for each such item of this page.
   const files = attachmentDeps(c.get('deps'))?.deps.files;
   const withSource = new Set<string>();
   if (files !== undefined) {
-    const failedPages = page.items.filter((i) => i.status === 'failed' && i.kind === 'page');
-    const kept = await Promise.all(failedPages.map((i) => ifThere(c, 'import-items', () => files.head(importFailedKey(tenant, id, i.id)))));
-    failedPages.forEach((i, n) => { if (kept[n] !== undefined) withSource.add(i.id); });
+    const failed = page.items.filter((i) => i.status === 'failed' && keepsOriginal(i.kind));
+    const kept = await Promise.all(failed.map((i) => ifThere(c, 'import-items', () => files.head(importFailedKey(tenant, id, i.id)))));
+    failed.forEach((i, n) => { if (kept[n] !== undefined) withSource.add(i.id); });
   }
   noStore(c);
   return c.json({ items: page.items.map((i) => itemOf(i, withSource.has(i.id))), nextCursor: page.nextCursor }, 200);
@@ -286,7 +289,7 @@ router.openapi(getImportItemSource, async (c) => {
   const { id, itemId } = c.req.valid('param');
   await guardImport(c, id, 'creator-or-admin');
   const item = await c.get('deps').imports.getItem(tenant, id, itemId);
-  if (item === undefined || item.status !== 'failed' || item.kind !== 'page') return fail('not_found');
+  if (item === undefined || item.status !== 'failed' || !keepsOriginal(item.kind)) return fail('not_found');
   const files = store(c, 'import-source');
   const key = importFailedKey(tenant, id, itemId);
   if ((await ifThere(c, 'import-source', () => files.head(key))) === undefined) return fail('not_found');
