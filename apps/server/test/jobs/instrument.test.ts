@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instrument } from '../../src/jobs/instrument.js';
+import { instrument, reasonOf } from '../../src/jobs/instrument.js';
 import { fakeJobDeps } from './deps.js';
 
 const ctx = (over: { attempt?: number; retryLimit?: number; signal?: AbortSignal } = {}) => ({ jobId: 'j1', attempt: 1, retryLimit: 3, signal: new AbortController().signal, ...over });
@@ -37,6 +37,28 @@ describe('instrument', () => {
       ['jobs.retrying', 'NonError', 'just a string'],
     ]);
     expect(failures[0]?.fields).toMatchObject({ name: 'purge', jobId: 'j1', attempt: 1 });
+  });
+
+  it('never throws while describing a failure, whatever was thrown, so the original error is the one that reaches pg-boss and the log line is written', async () => {
+    const hostile = [
+      Object.assign(new Error('x'), { message: undefined }), Object.assign(new Error('x'), { name: 42 }), Object.create(null) as unknown, { toString() { throw new Error('no'); } }, null, undefined, 7,
+    ];
+    for (const thrown of hostile) {
+      const { deps, logger, clock } = fakeJobDeps();
+      await expect(instrument('purge', () => Promise.reject(thrown), deps.log, clock)({}, ctx())).rejects.toBe(thrown);
+      expect(logger.entries.map((e) => e.event)).toEqual(['jobs.started', 'jobs.retrying']);
+      const fields = logger.entries[1]?.fields as { errorName: string; errorMessage: string };
+      expect(typeof fields.errorName).toBe('string');
+      expect(typeof fields.errorMessage).toBe('string');
+    }
+  });
+
+  it('says what a connection error with no message of its own was: the first error inside it, or its code', () => {
+    const refused = new AggregateError([Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }), new Error('second')], '');
+    expect(reasonOf(refused)).toEqual({ errorName: 'AggregateError', errorMessage: 'connect ECONNREFUSED 127.0.0.1:5432' });
+    expect(reasonOf(Object.assign(new Error(''), { code: 'ECONNRESET' }))).toEqual({ errorName: 'Error', errorMessage: 'ECONNRESET' });
+    expect(reasonOf(new AggregateError([], ''))).toEqual({ errorName: 'AggregateError', errorMessage: '' });
+    expect(reasonOf(new Error('has its own message', { cause: 'x' }))).toEqual({ errorName: 'Error', errorMessage: 'has its own message' });
   });
 
   it('does not log the payload of the job', async () => {
