@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { checkHeader, duplicateIndexes } from '../../../src/import/checks.js';
 import type { ArchiveEntry } from '../../../src/import/checks.js';
 import { resolveLinkPath } from '../../../src/import/paths.js';
-import { isIgnoredEntry } from '../../../src/import/types.js';
+import { isIgnoredEntry, ITEM_FATE } from '../../../src/import/types.js';
 import { defaultImportConfig } from '../../../src/testing/fake-config.js';
 
 // M7-T03 (contracts section 4, stage 2, and section 7): the pure checks over the entry metadata of an archive, before anything is read. They name a reason, never an entry's name.
@@ -128,5 +128,12 @@ describe('entries that are never imported', () => {
   it('are folders, macOS resource forks, .DS_Store and Thumbs.db, at any depth, and nothing else', () => {
     for (const [path, dir] of [['a/', true], ['a', true], ['__MACOSX/a/._b.md', false], ['x/.DS_Store', false], ['Thumbs.db', false], ['deep/er/Thumbs.db', false]] as const) expect(isIgnoredEntry(path, dir), path).toBe(true);
     for (const path of ['a.md', 'x/__MACOSX.md', 'DS_Store', 'thumbs.db.md', 'a/b/c.png']) expect(isIgnoredEntry(path, false), path).toBe(false);
+  });
+});
+
+describe('what the report calls each reason', () => {
+  it('skipped for the five that leave an entry out (a limit included: entry_too_large), failed for the three that could not read it', () => {
+    expect(Object.entries(ITEM_FATE).filter(([, fate]) => fate === 'skipped').map(([reason]) => reason).sort()).toEqual(['duplicate_path', 'entry_too_large', 'ignored', 'nested_archive', 'too_large']);
+    expect(Object.entries(ITEM_FATE).filter(([, fate]) => fate === 'failed').map(([reason]) => reason).sort()).toEqual(['bad_name', 'invalid_encoding', 'size_mismatch']);
   });
 });
