@@ -24,4 +24,4 @@ The 100% case returned a full page of 20; the 1% case returned 12 (all that one 
 - **Decision 14:** `tenant_id` is **not** added to the search indexes. The query filters by tenant and by the readable collections after the index narrows by the words, and 1,000 rows of other tenants in an index of 11,000 did not slow the big tenant or the small ones; the small tenant's 6 ms median (17 ms worst of seven) is what an index of its own would give at this size.
 - **What this does not show:** one query, one vocabulary shape (a two-word AND matching a few percent of the pages), one size. A word that matches most pages, a much larger tenant, a loaded database, or the semantic list of M7-T14 added to the answer are not measured here. The statement timeout (`GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS`, 3 s by default) bounds the worst of them.
 
-To repeat it: `make db-up`, `bun run test:integration -- latency` (add `GRIMOIRE_LATENCY_OUT=<file>` to keep the lines it prints).
+To repeat it: `make db-up`, `bun run test:integration -- latency` (add `GRIMOIRE_LATENCY_OUT=latency.txt`, or any file name, to keep the lines it prints).
