@@ -33,7 +33,7 @@ export function decodeSearchCursor(cursor: string): SearchCursorKey {
   const keys = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 1 ? (parsed as { k?: unknown }).k : undefined;
   if (!Array.isArray(keys) || keys.length !== 3) throw new InvalidSearchCursor();
   const [rank, editedAt, id] = keys as unknown[];
-  if (typeof rank !== 'number' || !Number.isFinite(Math.fround(rank)) || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
+  if (typeof rank !== 'number' || !Number.isFinite(Math.fround(rank)) || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || editedAt < 0 || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
   const key = { rank, editedAt, id };
   if (encodeSearchCursor(key) !== cursor) throw new InvalidSearchCursor();
   return key;
@@ -63,7 +63,7 @@ export function decodeHybridCursor(cursor: string): SearchCursorKey | undefined 
   const keys = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length === 1 ? (parsed as { h?: unknown }).h : undefined;
   if (!Array.isArray(keys) || keys.length !== 3) throw new InvalidSearchCursor();
   const [rank, editedAt, id] = keys as unknown[];
-  if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0 || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
+  if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0 || typeof editedAt !== 'number' || !Number.isSafeInteger(editedAt) || editedAt < 0 || typeof id !== 'string' || !UUID.test(id)) throw new InvalidSearchCursor();
   const key = { rank, editedAt, id };
   if (encodeHybridCursor(key) !== cursor) throw new InvalidSearchCursor();
   return key;

@@ -70,7 +70,13 @@ router.openapi(search, async (c) => {
   if (cursor !== undefined) {
     // A cursor is checked here, before the person's collections are looked up: a hand-made one is 422 whatever the store behind does with it.
     // (Both kinds are read: the cursor of the full-text answer and the cursor of the hybrid one; anything else is invalid.)
-    try { decodeHybridCursor(cursor); } catch { return fail('invalid'); }
+    let key: ReturnType<typeof decodeHybridCursor>;
+    try { key = decodeHybridCursor(cursor); } catch { return fail('invalid'); }
+    // A hybrid cursor is a place in an order only the semantic search can go on in: an instance with none (set differently, or turned off between two pages) says "try again", as one whose model is gone does.
+    if (key !== undefined && hybrid === undefined) {
+      log.debug('search.semantic_fallback', { reason: 'continuation' });
+      return fail('unavailable');
+    }
   }
   // What the person may read is settled here and applied inside the query, so ranking, the limit and the cursor only ever see readable pages.
   const visible = (await authorizer.visibleCollections(user.id)).map((v) => v.collectionId);

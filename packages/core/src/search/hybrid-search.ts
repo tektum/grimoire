@@ -63,8 +63,12 @@ export async function hybridSearch(deps: HybridDeps, request: SearchRequest): Pr
     limit: candidates,
     ...(request.collectionId === undefined ? {} : { collectionId: request.collectionId }),
   };
-  const [fullText, meaning] = await Promise.all([deps.fullText.search(top), semanticList(semantic, request)]);
+  // The candidate query starts at once, beside the meaning; its failure matters only when the fusion needs it: a fallback answers from the requested page's own query, which a timeout of the longer one must not take down.
+  const candidateQuery = deps.fullText.search(top);
+  candidateQuery.catch(() => undefined);
+  const meaning = await semanticList(semantic, request);
   if ('fallback' in meaning) return fullTextOnly(deps, request, key, meaning.fallback);
+  const fullText = await candidateQuery;
 
   const ftHits = new Map(fullText.hits.map((h) => [h.pageId, h]));
   const chunkOf = new Map(meaning.chunks.map((c) => [c.pageId, c]));
@@ -80,7 +84,7 @@ export async function hybridSearch(deps: HybridDeps, request: SearchRequest): Pr
     const words = ftHits.get(row.id);
     const chunk = chunkOf.get(row.id);
     const passage = chunk === undefined ? '' : passageOf(chunk.text, 0, chunk.text.length);
-    const matchedPassage = passage === '' ? {} : { matchedPassage: { text: passage } };
+    const matchedPassage = chunk === undefined ? {} : { matchedPassage: { text: passage } }; // every page whose best chunk came from the semantic list, whatever its passage turned out to be
     if (words !== undefined) return { ...words, rank: row.score, ...matchedPassage };
     // Found only by meaning (a row of the fused list is in one list at least): the page's own row came with its chunk, and its snippet is the start of the passage.
     const c = chunk as NonNullable<typeof chunk>;

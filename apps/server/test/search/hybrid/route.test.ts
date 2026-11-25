@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChunkHit, EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
+import { encodeHybridCursor } from '@tektum/grimoire-core/search/cursor';
 import type { SemanticSearch } from '@tektum/grimoire-core/search/hybrid-search';
 import { FakeEmbedder } from '@tektum/grimoire-core/testing/fake-embedder';
 import { build, PAGE } from '../support.js';
@@ -104,6 +105,15 @@ describe('GET /v1/search with the semantic search', () => {
     expect(body.items).toHaveLength(5);
     expect(body.items.every((i) => i.matchedPassage !== undefined && i.snippet.ranges.length === 0)).toBe(true);
     expect(body.nextCursor).toBeNull();
+  });
+
+  it('says 503 unavailable, not 422, for a hybrid cursor when no semantic search is wired on this instance', async () => {
+    const t = build('read');
+    const cursor = encodeHybridCursor({ rank: 0.03, editedAt: 1_000_000, id: PAGE(1) });
+    const res = await t.call('member', `?q=plan&cursor=${cursor}`);
+    expect([res.status, ((await res.json()) as { error: { code: string } }).error.code]).toEqual([503, 'unavailable']);
+    const bad = await t.call('member', '?q=plan&cursor=bm90LWEtY3Vyc29y');
+    expect(bad.status).toBe(422);
   });
 
   it('continues a hybrid answer with its cursor, and says 503 unavailable, not a page of another order, when the semantic part is gone by then', async () => {

@@ -178,6 +178,23 @@ describe('when the semantic part cannot answer', () => {
     expect(s.asked).toEqual([]);
   });
 
+  it('answers a request from the full-text search alone when the semantic part is not ready, even if the longer candidate query fails: it is the requested page that is asked for', async () => {
+    const s = setup({ candidates: 100 });
+    s.word(id('a', 1), 'One');
+    s.embedder.setStatus('unavailable');
+    s.fullText.failNext = new Error('the candidate query timed out'); // only the first query fails: the candidate one, which a fallback must not wait for
+    const page = await hybridSearch(s.deps, s.request('one', { limit: 7 }));
+    expect([page.semantic, page.hits.map((h) => h.pageId)]).toEqual([false, [id('a', 1)]]);
+    expect(s.fullText.requests.at(-1)?.limit).toBe(7);
+  });
+
+  it('marks a page whose best chunk came from the semantic list with matchedPassage, also when the passage is empty', async () => {
+    const s = setup();
+    s.state.chunks = [s.meaning(id('b', 1), 'Blank', '   ')];
+    const page = await hybridSearch(s.deps, s.request('blank'));
+    expect(page.hits[0]?.matchedPassage).toEqual({ text: '' });
+  });
+
   it('does not let the full-text search fail inside the fusion be hidden: its error reaches the caller', async () => {
     const s = setup();
     s.fullText.failNext = new Error('boom');
@@ -233,6 +250,14 @@ describe('the pages of a hybrid answer', () => {
     expect(s.fullText.requests.at(-1)).toMatchObject({ cursor, limit: 2 });
     expect(s.asked).toEqual([]);
     expect(s.logs).toEqual([]);
+  });
+
+  it('refuses a hybrid cursor with a negative or fractional time as invalid', async () => {
+    const s = setup();
+    for (const editedAt of [-1, 1.5]) {
+      const forged = Buffer.from(JSON.stringify({ h: [0.5, editedAt, id('a', 1)] })).toString('base64url');
+      await expect(hybridSearch(s.deps, s.request('q', { cursor: forged })), String(editedAt)).rejects.toBeInstanceOf(InvalidSearchCursor);
+    }
   });
 
   it('refuses a cursor that is neither kind, as invalid', async () => {
