@@ -7,11 +7,22 @@ const OPEN: Record<Kind, RegExp> = { aside: /^(\s*)<aside>\s*$/, details: /^(\s*
 const CLOSE: Record<Kind, RegExp> = { aside: /^\s*<\/aside>\s*$/, details: /^\s*<\/details>\s*$/ };
 const SUMMARY = /^\s*<summary>(.*)<\/summary>\s*$/;
 const FENCE = /^\s*(`{3,}|~{3,})/;
+/** A line the bold of a callout's first line must not wrap: a block of its own (a list item, a heading, a quote, a fence, a table row), or an HTML tag (an icon picture). */
+const NOT_A_FIRST_LINE = /^(\s*([-*+]|\d{1,9}[.)])\s|\s*#{1,6}\s|\s*>|\s*(`{3,}|~{3,})|\s*\||\s*<[a-zA-Z/])/;
 /**
- * A line the bold of a callout's first line must not wrap: a block of its own (a list item, a heading, a quote, a fence, a table row), an HTML tag (an icon picture), or a line that
- * starts with a link (M7-T08: bold that starts on a link and spans two of them does not read back as the same document, so the converter would refuse the page).
+ * A line that starts with a link is not bold either, a callout's first line or a toggle's summary (M7-T08: bold that starts on a link and spans two of them does not read back as
+ * the same document, so the converter would refuse the page).
  */
-const NOT_A_FIRST_LINE = /^(\s*([-*+]|\d{1,9}[.)])\s|\s*#{1,6}\s|\s*>|\s*(`{3,}|~{3,})|\s*\||\s*<[a-zA-Z/]|\s*\[[^\]]*\]\()/;
+const STARTS_WITH_LINK = /^\s*\[[^\]]*\]\(/;
+
+/**
+ * `**text**`, the bold of the text itself taken apart first so that the bold is not broken; not in a code span or a link's target, where `**` and `__` are characters of a name,
+ * nor `__` inside a word. Bold around nothing would be a rule (`****`): nothing stays nothing.
+ */
+function bold(text: string): string {
+  const inner = text.trim().split(/(`[^`]*`|\]\([^)]*\))/).map((part, i) => (i % 2 === 1 ? part : part.replace(/\*\*|(?<![\p{L}\p{N}])__|__(?![\p{L}\p{N}])/gu, ''))).join('');
+  return inner === '' ? '' : `**${inner}**`;
+}
 
 /** The open and close lines of every block that is closed, outside code fences; a block that is never closed is no block. */
 function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close: number; indent: string }> {
@@ -48,7 +59,13 @@ export function convertConstructs(markdown: string): string {
   const frames: { kind: Kind; indent: string; from: number; first: boolean }[] = [];
   lines.forEach((line, i) => {
     const block = blocks.get(i);
-    if (block !== undefined) { frames.push({ kind: block.kind, indent: block.indent, from: out.length, first: true }); return; }
+    if (block !== undefined) {
+      // A block that opens before a callout's first line of text is that first line: the callout's own text after it is not bold.
+      const top = frames.at(-1);
+      if (top?.kind === 'aside') top.first = false;
+      frames.push({ kind: block.kind, indent: block.indent, from: out.length, first: true });
+      return;
+    }
     if (closes.has(i)) {
       const frame = frames.pop();
       // A callout's last lines that are only quote marks are its blank lines before the close: they go with the close.
@@ -62,11 +79,11 @@ export function convertConstructs(markdown: string): string {
     if (toggle?.first === true && content.trim() !== '') {
       toggle.first = false;
       const summary = SUMMARY.exec(content)?.[1];
-      if (summary !== undefined) content = `**${summary.trim()}**`;
+      if (summary !== undefined) content = STARTS_WITH_LINK.test(summary) ? summary.trim() : bold(summary);
     } else {
       const callout = callouts.at(-1);
       if (callout?.first === true && content.trim() !== '' && frames.at(-1) === callout) {
-        if (!NOT_A_FIRST_LINE.test(content)) { callout.first = false; content = `**${content.trim().replace(/\*\*|__/g, '')}**`; } else if (!/^\s*<[a-zA-Z]/.test(content)) callout.first = false;
+        if (!NOT_A_FIRST_LINE.test(content) && !STARTS_WITH_LINK.test(content)) { callout.first = false; content = bold(content); } else if (!/^\s*<[a-zA-Z]/.test(content)) callout.first = false;
       }
     }
     if (callouts.length === 0) { out.push(frames.length === 0 ? line : `${indent}${content}`); return; }

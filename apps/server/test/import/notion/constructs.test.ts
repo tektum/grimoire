@@ -18,6 +18,10 @@ describe('a callout', () => {
     expect(convertConstructs(lines('<aside>', '**Note:** read the [guide](Guide%20a.md)', '', '</aside>'))).toBe(lines('> **Note: read the [guide](Guide%20a.md)**'));
   });
 
+  it('takes apart only the bold of the text itself: a link\'s target, a code span and a word keep their __ and ** (they are characters of a name)', () => {
+    expect(convertConstructs(lines('<aside>', 'See [spec](my__notes.md), run `a**b` on the snake__case name **now**', '</aside>'))).toBe(lines('> **See [spec](my__notes.md), run `a**b` on the snake__case name now**'));
+  });
+
   it('keeps an icon picture as it is and bolds the first line of text after it', () => {
     expect(convertConstructs(lines('<aside>', '<img src="icon.png" alt="x" width="40px" />', 'Plan ahead', 'More', '', '</aside>'))).toBe(
       lines('> <img src="icon.png" alt="x" width="40px" />', '> **Plan ahead**', '> More'),
@@ -36,6 +40,10 @@ describe('a callout', () => {
     expect(convertConstructs(lines('<aside>', '💡 Outer', '<aside>', '🔥 Inner', '', '</aside>', '', '</aside>'))).toBe(lines('> **💡 Outer**', '> > **🔥 Inner**'));
   });
 
+  it('that opens with a callout nested in it has that one as its first line: its own text after the nested one is not bold', () => {
+    expect(convertConstructs(lines('<aside>', '<aside>', '🔥 Inner', '', '</aside>', '', 'Outer text', '', '</aside>'))).toBe(lines('> > **🔥 Inner**', '>', '> Outer text'));
+  });
+
   it('inside a code fence is code and stays exactly as it is; a callout that is never closed stays as it is', () => {
     const fenced = lines('```html', '<aside>', 'x', '</aside>', '```');
     expect(convertConstructs(fenced)).toBe(fenced);
@@ -45,6 +53,10 @@ describe('a callout', () => {
 });
 
 describe('a toggle', () => {
+  it('whose summary is empty becomes its content only (bold around nothing would be a rule)', () => {
+    expect(convertConstructs(lines('<details>', '<summary></summary>', 'Hidden text', '</details>'))).toBe(lines('', 'Hidden text'));
+  });
+
   it('becomes its summary as a bold paragraph, then its content', () => {
     expect(convertConstructs(lines('<details>', '<summary>More detail</summary>', '', 'Hidden text', '', '</details>', 'After'))).toBe(lines('**More detail**', '', 'Hidden text', '', 'After'));
   });
@@ -62,6 +74,19 @@ describe('with the real converter', () => {
       for (const words of ['Remember the lantern', 'Bring oil as well', 'Old notes', 'Kept under the stairs']) expect(back.text).toContain(words);
       expect(back.markdown).not.toMatch(/<\/?(aside|details|summary)>/);
       expect(back.markdown).toContain('> **💡 Remember the lantern**');
+    } finally {
+      await converter.close();
+    }
+  }, 30_000);
+
+  it('a toggle whose summary starts with links reads back as the same document, as a callout\'s first line does: that summary is not bold', async () => {
+    const converter = createMarkdownConverter({ maxStateBytes: 1_000_000, maxSeedMarkdownBytes: 131_072, seedTimeoutMs: 10_000, reseedTimeoutMs: 30_000, poolSize: 1, closeDeadlineMs: 5000, timeoutMs: 10_000 });
+    try {
+      const converted = convertConstructs(lines('<details>', '<summary>[Alpha](Alpha%20Page.md) [Beta](Beta%20Page.md)</summary>', '', 'Hidden text', '', '</details>'));
+      expect(converted).toBe(lines('[Alpha](Alpha%20Page.md) [Beta](Beta%20Page.md)', '', 'Hidden text', ''));
+      const seeded = await converter.seed(converted, 'user-1');
+      if (!seeded.ok) throw new Error('not seeded');
+      expect((await converter.toMarkdown(seeded.state)).ok).toBe(true);
     } finally {
       await converter.close();
     }
