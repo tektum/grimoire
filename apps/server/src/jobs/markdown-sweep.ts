@@ -30,7 +30,11 @@ export function createMarkdownSweep(deps: MarkdownSweepDeps): (signal: AbortSign
     let skipped = 0;
     let failed = 0;
     let attempts = 0;
-    for (const id of await deps.pages.listStale(PAGES_PER_RUN * 4)) {
+    // Pages that are backing off sit at the front of the list with their old marks: ask for room beyond them, and forget the ones that left the list (their mark was cleared by a save).
+    const listed = await deps.pages.listStale(PAGES_PER_RUN * 4 + failing.size);
+    const stale = new Set(listed);
+    for (const id of failing.keys()) if (!stale.has(id)) failing.delete(id);
+    for (const id of listed) {
       if (signal.aborted || attempts >= PAGES_PER_RUN) break;
       const now = deps.now();
       const backoff = failing.get(id);

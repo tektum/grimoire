@@ -89,6 +89,26 @@ describe('the markdown sweep', () => {
     expect((await w.run()).repaired).toBe(11);
   });
 
+  it('is not filled up by pages that keep failing: later stale pages are still reached', async () => {
+    const w = world({ convert: new FakeMarkdownConverter({ convert: (s) => (s[0] === 9 ? { ok: false, reason: 'internal', detail: 'x' } : { ok: true, markdown: 'm', text: 't' }) }) });
+    for (let i = 0; i < 210; i += 1) w.stalePage(`bad${String(i).padStart(3, '0')}`, 100 - i / 100, state(9));
+    for (let i = 0; i < 5; i += 1) await w.run(); // the failing ones are tried, 50 a run, and then back off: more than the 200 the sweep looks at
+    for (let i = 0; i < 10; i += 1) w.stalePage(`good${String(i)}`, 20 - i / 100);
+    expect((await w.run()).repaired).toBe(10);
+  });
+
+  it('forgets the backoff of a page whose mark was cleared, so a later failure of it is reported again', async () => {
+    const convert = new FakeMarkdownConverter({ convert: { ok: false, reason: 'internal', detail: 'x' } });
+    const w = world({ convert });
+    w.stalePage('p1', 5);
+    await w.run();
+    await w.pages.store('p1', { kind: 'converted', state: state(2), markdown: 'saved', text: 't', epoch: 0, editedAt: T0 }); // an editor save clears the mark
+    await w.run(); // the sweep sees p1 is no longer stale and drops what it knew
+    w.pages.stale.set('p1', T0 - 5 * MIN);
+    expect((await w.run()).failed).toBe(1); // not delayed by the old retry time
+    expect(w.failures).toEqual([['p1', 'internal'], ['p1', 'internal']]);
+  });
+
   it('skips a page without state or without a mark, and stops when the signal aborts', async () => {
     const w = world();
     w.pages.seed('nostate', null);
