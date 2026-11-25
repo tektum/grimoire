@@ -23,7 +23,7 @@ afterEach(() => { vi.useRealTimers(); });
 
 const make = (queue: RecordingQueue, errors: Error[] = []) => {
   const logger = new FakeLogger();
-  const config = makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' }, jobs: { stopGraceMs: 4321 } });
+  const config = makeFakeConfig({ database: { url: 'postgresql://u@127.0.0.1:1/db' }, jobs: { stopGraceMs: 1234 } });
   const runner = createJobRunner({ config, log: createEventLog(logger), make: () => Promise.resolve(queue), onError: (e) => { errors.push(e); } });
   return { runner, logger };
 };
@@ -49,7 +49,7 @@ describe('the job runner', () => {
     const { runner, logger } = make(queue);
     await runner.start();
     await runner.hook.run();
-    expect(queue.stopped).toEqual([{ graceMs: 4321 }]);
+    expect(queue.stopped).toEqual([{ graceMs: 1234 }]);
     expect(logger.entries.find((e) => e.event === 'jobs.stopped')?.fields).toEqual({ inFlight: 2 });
   });
 
