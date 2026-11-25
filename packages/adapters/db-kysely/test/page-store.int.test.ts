@@ -1,10 +1,10 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { createHash, randomUUID } from 'node:crypto';
-import { createDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createDatabase, createOpsDatabase, type OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { Database } from '@tektum/grimoire-core/ports/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createPageStore } from '../src/page-store.js';
-import { insertPage } from '@tektum/grimoire-test-support/database';
+import { insertPage, opsUrl } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from './page-store-support.js';
 
 const DB = `grimoire_m2t04_store_${String(process.pid)}`;
@@ -32,6 +32,7 @@ const databaseClockMoves = async (): Promise<void> => {
 };
 
 let db: Database;
+let ops: OperatorDatabase;
 /** Counts every statement the store sends. */
 const counted = (inner: Database, sink: string[]): Database => ({
   query: (sql, params) => { sink.push(sql); return inner.query(sql, params); },
@@ -39,13 +40,13 @@ const counted = (inner: Database, sink: string[]): Database => ({
   ping: () => inner.ping(), close: () => inner.close(),
 });
 
-beforeAll(async () => { requireBuild(); await createTestDatabase(DB, true); db = createDatabase(appUrl(DB), { maxConnections: 24 }); }, 60_000);
-afterAll(async () => { await db.close(); await dropTestDatabase(DB); });
+beforeAll(async () => { requireBuild(); await createTestDatabase(DB, true); db = createDatabase(appUrl(DB), { maxConnections: 24 }); ops = createOpsDatabase(opsUrl(DB)); }, 60_000);
+afterAll(async () => { await db.close(); await ops.close(); await dropTestDatabase(DB); });
 
 it('save hashes include the row title (page-store move regression)', async () => {
   const id = await newRow();
   await sqlAdmin(DB, `update pages set title = 'Saved title' where id = '${id}'`);
-  const store = createPageStore(db, clock);
+  const store = createPageStore(db, ops, clock);
   await store.store(id, { kind: 'converted', state: new Uint8Array([1]), markdown: 'Body', text: 'Body', epoch: 0, editedAt: Date.now() });
   expect((await row(id))?.markdown_hash).toEqual(expectedHash('Saved title', 'Body'));
   expect(Buffer.from((await row(id))?.markdown_hash ?? '').equals(markdownHash('Saved title', 'Body'))).toBe(true);
@@ -56,7 +57,7 @@ describe('seed', () => {
     const id = randomUUID();
     await insertPage(run, { id, markdown: '# Seeded' });
     const sent: string[] = [];
-    const store = createPageStore(counted(db, sent), clock);
+    const store = createPageStore(counted(db, sent), ops, clock);
     let builds = 0;
     let release: () => void = () => undefined;
     const open = new Promise<void>((resolve) => { release = resolve; });
@@ -78,7 +79,7 @@ describe('seed', () => {
   });
 
   it('a row with state, or with neither state nor Markdown, is not built', async () => {
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     const withState = randomUUID();
     await insertPage(run, { id: withState, ydoc: new Uint8Array([1, 2]), markdown: 'md' });
     const empty = await newRow();
@@ -102,7 +103,7 @@ describe('seed', () => {
       // The holder either takes the lock (lockTaken) or fails first (the race rejects with its error): the test fails at once and the cleanup below runs.
       await Promise.race([lockTaken, holder.then(() => { throw new Error('the holder ended before it took the lock'); })]);
       const t0 = Date.now();
-      await expect(createPageStore(db, clock, { lockTimeoutMs: 1000 }).seed(id, () => Promise.resolve(new Uint8Array([1])))).rejects.toMatchObject({ code: '55P03' });
+      await expect(createPageStore(db, ops, clock, { lockTimeoutMs: 1000 }).seed(id, () => Promise.resolve(new Uint8Array([1])))).rejects.toMatchObject({ code: '55P03' });
       expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
     } finally {
       release(); await holder.catch(() => undefined); await other.close();
@@ -119,7 +120,7 @@ describe('store', () => {
     const editor = await newUser();
     const before = (await row(id))?.updated_at;
     await databaseClockMoves();
-    expect(await createPageStore(db, clock).store(id, converted({ editedBy: editor }))).toEqual({ written: true });
+    expect(await createPageStore(db, ops, clock).store(id, converted({ editedBy: editor }))).toEqual({ written: true });
     const r = await row(id);
     expect(r).toMatchObject({ markdown: 'M', text_content: 'T', last_edited_by: editor });
     expect(Buffer.from(r?.ydoc ?? '')).toEqual(Buffer.from([9, 9]));
@@ -132,7 +133,7 @@ describe('store', () => {
   it('an equal hash writes nothing: updated_at is identical and no UPDATE statement is sent', async () => {
     const id = await newRow();
     const sent: string[] = [];
-    const store = createPageStore(counted(db, sent), clock);
+    const store = createPageStore(counted(db, sent), ops, clock);
     await store.store(id, converted());
     const first = (await row(id))?.updated_at;
     sent.length = 0;
@@ -144,7 +145,7 @@ describe('store', () => {
 
   it('an equal hash after a state-only save (stale row) still writes and clears the mark', async () => {
     const id = await newRow();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted());
     await store.store(id, { kind: 'state-only', state: new Uint8Array([5]), epoch: 0 });
     expect(await store.store(id, converted({ state: new Uint8Array([6])}))).toEqual({ written: true });
@@ -154,7 +155,7 @@ describe('store', () => {
 
   it('stale mark: state-only sets it once (the earliest time stays), a converted write clears it, listStale returns the stale pages oldest first', async () => {
     const a = await newRow(); const b = await newRow();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(a, converted());
     expect((await store.load(a))?.markdownStaleSince).toBeNull();
     await store.store(a, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
@@ -174,7 +175,7 @@ describe('store', () => {
 
   it('repairMarkdown writes the Markdown of the state it was made from, and only then', async () => {
     const id = await newRow();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted({ state: new Uint8Array([1]), markdown: 'old' }));
     await store.store(id, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
     const before = await row(id);
@@ -197,7 +198,7 @@ describe('store', () => {
 
   it('state-only writes the state and updated_at, never Markdown, text, hash or editor', async () => {
     const id = await newRow();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted({ editedBy: await newUser() }));
     const before = await row(id);
     await databaseClockMoves();
@@ -211,7 +212,7 @@ describe('store', () => {
   it('epoch-mismatch and no-row write nothing', async () => {
     const id = await newRow();
     await sqlAdmin(DB, `update pages set state_epoch = 3 where id = '${id}'`);
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     expect(await store.store(id, converted({ epoch: 2 }))).toEqual({ written: false, reason: 'epoch-mismatch' });
     expect((await row(id))?.markdown).toBeNull();
     expect(await store.store(randomUUID(), converted())).toEqual({ written: false, reason: 'no-row' });
@@ -220,7 +221,7 @@ describe('store', () => {
 
   it('load returns state, Markdown, hash and epoch; undefined for no row', async () => {
     const id = await newRow();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, converted());
     const loaded = await store.load(id);
     expect(loaded?.markdown).toBe('M');
@@ -234,7 +235,7 @@ describe('review fixes', () => {
 
   it('F7: the same Markdown with a different state writes the state, the time and the editor, not the Markdown columns; an identical state writes nothing', async () => {
     const id = await newRow(); const editor = await newUser();
-    const store = createPageStore(db, clock);
+    const store = createPageStore(db, ops, clock);
     await store.store(id, { ...same, state: new Uint8Array([1]) });
     const first = await row(id);
     await databaseClockMoves();
@@ -252,7 +253,7 @@ describe('review fixes', () => {
     const ids = await Promise.all(Array.from({ length: 20 }, async () => { const id = randomUUID(); await insertPage(run, { id, markdown: 'heavy' }); return id; }));
     // A pool of 2: a connection held during a build would serialise the builds (20 x 400 ms / 2 = 4 s).
     const small = createDatabase(appUrl(DB), { maxConnections: 2 });
-    const store = createPageStore(small, clock);
+    const store = createPageStore(small, ops, clock);
     let idleInTx = 0;
     const sample = async (): Promise<void> => { const r = await sqlAdmin<{ n: string }>(DB, "select count(*) as n from pg_stat_activity where datname = current_database() and usename = 'grimoire_app' and state like 'idle in transaction%'"); idleInTx = Math.max(idleInTx, Number(r[0]?.n)); };
     const t0 = Date.now();
@@ -273,7 +274,7 @@ describe('review fixes', () => {
     const id = randomUUID();
     await insertPage(run, { id, markdown: 'old' });
     const seen: string[] = [];
-    const r = await createPageStore(db, clock).seed(id, async (md) => {
+    const r = await createPageStore(db, ops, clock).seed(id, async (md) => {
       seen.push(md);
       if (md === 'old') await sqlAdmin(DB, `update pages set markdown = 'new' where id = '${id}'`);
       return new TextEncoder().encode(md);

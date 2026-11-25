@@ -114,7 +114,7 @@ describe('the PostgreSQL TrashRepo across tenants', () => {
 
 describe('the PostgreSQL RevisionRepo across tenants', () => {
   it('writes every revision of a page under the page\'s tenant, and shows it to that tenant only', async () => {
-    const revisions = createRevisions(t.app);
+    const revisions = createRevisions(t.app, t.ops);
     const made = await make('T-b', b.collection, b.boss, 'History', '# One');
     const created = await revisions.createFromPage({ pageId: made.id, reason: 'idle', authorIds: [b.boss], lastAuthorId: b.boss, at: Date.now() });
     if (created.kind !== 'created') throw new Error(created.kind);

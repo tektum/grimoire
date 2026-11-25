@@ -8,7 +8,7 @@ import { Shutdown } from '../../src/lifecycle/shutdown.js';
 import { makeContext } from '../server/support/context.js';
 import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
-const base = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
+const base = { GRIMOIRE_LOCAL: '1', GRIMOIRE_DEV_TOKEN_SECRET: 'test-secret-0123456789abcdef', GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl(), GRIMOIRE_DATABASE_OPS_URL: placeholderDatabaseUrl(), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080' };
 
 describe('the single composition root (S1/S7)', () => {
   it('only composition imports adapter implementations', () => {
@@ -36,7 +36,7 @@ describe('the single composition root (S1/S7)', () => {
     const result = compose(base);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.ctx.shutdownHooks.map((hook) => hook.name)).toEqual(['markdown-pool', 'embedder', 'jobs', 'page-store-pool', 'auth-pool', 'database-pool']);
+      expect(result.ctx.shutdownHooks.map((hook) => hook.name)).toEqual(['markdown-pool', 'embedder', 'jobs', 'page-store-pool', 'page-store-operator-pool', 'auth-pool', 'auth-operator-pool', 'database-pool', 'operator-pool']);
       expect(result.ctx.shutdown.isDraining()).toBe(false);
     }
   });

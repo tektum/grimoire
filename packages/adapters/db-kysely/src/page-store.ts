@@ -3,7 +3,7 @@ import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { PageStore, PageWrite, StoredPage, WriteOutcome } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
 import type { SelectType } from 'kysely';
-import type { PagesTable } from './index.js';
+import type { OperatorDatabase, PagesTable } from './index.js';
 
 export interface PageStoreOptions {
   /** `SET LOCAL lock_timeout` of the seed and save transactions (contracts section 6: 15 s). Tests shorten it. */
@@ -25,8 +25,11 @@ async function lockRow(tx: Queryable, id: string, lockTimeoutMs: number): Promis
   return rows[0];
 }
 
-/** `PageStore` over the `pages` table: one row per page, the Yjs state in `ydoc` and its Markdown copy beside it (contracts section 6). */
-export function createPageStore(db: Database, clock: Clock, options: PageStoreOptions = {}): PageStore {
+/**
+ * `PageStore` over the `pages` table: one row per page, the Yjs state in `ydoc` and its Markdown copy beside it (contracts section 6). The list of stale
+ * pages spans every tenant: it runs on `ops`, the operator connection (docs/tenancy.md section 3.2).
+ */
+export function createPageStore(db: Database, ops: OperatorDatabase, clock: Clock, options: PageStoreOptions = {}): PageStore {
   const lockTimeoutMs = options.lockTimeoutMs ?? 15_000;
   const seeding = new Map<string, Promise<{ state: Uint8Array | null; seeded: boolean; epoch: number }>>();
 
@@ -115,7 +118,7 @@ export function createPageStore(db: Database, clock: Clock, options: PageStoreOp
     },
 
     async listStale(limit) {
-      const rows = await db.query<{ id: string; stale_ms: number }>('select id, extract(epoch from markdown_stale_since) * 1000 as stale_ms from pages where markdown_stale_since is not null order by markdown_stale_since limit $1', [limit]);
+      const rows = await ops.transaction((tx) => tx.query<{ id: string; stale_ms: number }>('select id, extract(epoch from markdown_stale_since) * 1000 as stale_ms from pages where markdown_stale_since is not null order by markdown_stale_since limit $1', [limit]));
       return rows.map((r) => ({ id: r.id, staleSince: Number(r.stale_ms) }));
     },
   };

@@ -1,7 +1,7 @@
 import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import type { BeforeRestoreResult, CaughtUpRevision, ListedRevision, PageRevisionResult, Revision, RevisionAuthor, RevisionReason, RevisionRepo, RevisionSummary } from '@tektum/grimoire-core/ports/revision-repo';
 import { scoped } from './index.js';
-import type { KyselyDatabase } from './index.js';
+import type { KyselyDatabase, OperatorDatabase } from './index.js';
 
 interface Row {
   id: string; created_ms: string; sort_key?: string; title: string; reason: RevisionReason; last_author_id: string | null; last_author_name: string | null;
@@ -37,8 +37,8 @@ const summary = (r: Row): RevisionSummary => ({
   lastAuthor: r.last_author_id === null ? null : { id: r.last_author_id, name: r.last_author_name as string }, authors: r.authors,
 });
 
-/** The PostgreSQL RevisionRepo over `revisions`. */
-export function createRevisions(db: KyselyDatabase): RevisionRepo {
+/** The PostgreSQL RevisionRepo over `revisions`. The catch-up finds due pages in every tenant: it runs on `ops`, the operator connection (docs/tenancy.md section 3.2). */
+export function createRevisions(db: KyselyDatabase, ops: OperatorDatabase): RevisionRepo {
   return {
     async list(tenantId, pageId, query) {
       // Every branch reads `revisions_page_created_idx` (page, created_at desc, id) from the cursor on: a later page does not read the earlier ones.
@@ -98,7 +98,7 @@ export function createRevisions(db: KyselyDatabase): RevisionRepo {
       });
     },
     catchUp(editedBefore, limit) {
-      return db.transaction(async (tx): Promise<readonly CaughtUpRevision[]> => {
+      return ops.transaction(async (tx): Promise<readonly CaughtUpRevision[]> => {
         // One instance at a time: a second one waits, then finds the first one's revisions and has nothing left to make.
         await tx.query(`select pg_advisory_xact_lock(hashtext('grimoire.revisions.catch_up'))`);
         const due = `p.deleted_at is null and p.markdown is not null and p.markdown_hash is not null and p.markdown_stale_since is null

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createFileStorage, ensureBucket } from '@tektum/grimoire-adapter-files-s3';
-import { createAccessStore, createAttachments, createAudit, createCollections, createDatabase, createIdempotency, createPages, createTrash, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
-import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createAttachments, createAudit, createCollections, createDatabase, createIdempotency, createOpsDatabase, createPages, createTrash, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
+import type { KyselyDatabase, OperatorDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
@@ -12,7 +12,7 @@ import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
 import { createProvisioner } from '@tektum/grimoire-core/users/provisioner';
-import { insertCollection, insertPage, insertUser } from '@tektum/grimoire-test-support/database';
+import { insertCollection, insertPage, insertUser, opsUrl } from '@tektum/grimoire-test-support/database';
 import { createApp } from '../../src/app.js';
 import { deleteObjects } from '../../src/attachments/deps.js';
 import { appUrl, createTestDatabase, dropTestDatabase, repoRoot, requireBuild, sqlAdmin } from '../server/support/harness.js';
@@ -52,6 +52,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0
 const run = (sql: string) => sqlAdmin(DB, sql);
 
 let db: KyselyDatabase;
+let ops: OperatorDatabase;
 let files: FakeFileStorage;
 let call: ReturnType<typeof caller>;
 let pageId: string;
@@ -60,14 +61,14 @@ function appOver(store: FileStorage, settings: FilesConfig = FILES) {
   const t = makeContext();
   const config = makeFakeConfig({ files: settings, allowedEmailDomains: ['example.com'] });
   const verifier: AuthVerifier = { verify: (token) => Promise.resolve({ kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 }) };
-  const users = createUserStore(db, 1000);
+  const users = createUserStore(db, ops, 1000);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const access = createAccessStore(db);
   return createApp({
     ...t.ctx, config, auth: { verifier }, signInPolicy,
     http: {
       ...t.ctx.http, config, users, access: createPageAccess(access), authorizer: createAuthorizer(access), provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
-      idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db), pages: createPages(db), trash: createTrash(db),
+      idempotency: createIdempotency(db, ops), collections: createCollections(db), audit: createAudit(db, ops), pages: createPages(db), trash: createTrash(db),
       attachments: createAttachments(db), files: store, deleteFiles: deleteObjects(store),
     },
   });
@@ -81,6 +82,7 @@ beforeAll(async () => {
   requireBuild();
   await createTestDatabase(DB, true);
   db = createDatabase(appUrl(DB));
+  ops = createOpsDatabase(opsUrl(DB));
   await insertUser(run, { descope_user_id: 'd-member', email: 'member@example.com', role: 'member' });
   await insertUser(run, { descope_user_id: 'd-admin', email: 'admin@example.com', role: 'admin' });
   const collection = await insertCollection(run, { default_permission: 'read_write' });
@@ -91,6 +93,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.close();
+  await ops.close();
   await dropTestDatabase(DB);
 });
 

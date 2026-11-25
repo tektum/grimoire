@@ -23,14 +23,14 @@ afterAll(async () => { await t?.drop(); });
 describe('the PostgreSQL AuditLog', () => {
   it('appends a row with its detail, and nothing else about it can be read back by this port', async () => {
     const target = 'target-1';
-    await createAudit(t.app).append({ actorId: admin, action: 'thing.done', targetType: 'thing', targetId: target, detail: { n: 1 } });
-    await createAudit(t.app).append({ actorId: null, action: 'thing.done_by_nobody', targetType: 'thing', targetId: target });
+    await createAudit(t.app, t.ops).append({ actorId: admin, action: 'thing.done', targetType: 'thing', targetId: target, detail: { n: 1 } });
+    await createAudit(t.app, t.ops).append({ actorId: null, action: 'thing.done_by_nobody', targetType: 'thing', targetId: target });
     const rows = await t.admin.query<{ actor_id: string | null; detail: unknown }>(`select actor_id, detail from audit_events where target_id = $1 order by id`, [target]);
     expect(rows).toEqual([{ actor_id: admin, detail: { n: 1 } }, { actor_id: null, detail: null }]);
   });
 
   it('the runtime role cannot update or delete an audit row', async () => {
-    await createAudit(t.app).append({ actorId: admin, action: 'thing.kept', targetType: 'thing', targetId: 'target-2' });
+    await createAudit(t.app, t.ops).append({ actorId: admin, action: 'thing.kept', targetType: 'thing', targetId: 'target-2' });
     await expect(t.app.query(`update audit_events set action = 'x' where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
     await expect(t.app.query(`delete from audit_events where target_id = 'target-2'`)).rejects.toMatchObject({ code: '42501' });
     expect(await events('target-2')).toHaveLength(1);
@@ -39,7 +39,7 @@ describe('the PostgreSQL AuditLog', () => {
   it('records the tenant of the actor when the event names none, the named one when it does, and legacy for the system', async () => {
     await addTenant(t.app, 'T-audit');
     const actor = await addUser(t.app, 'audited', 'member', 'T-audit');
-    const audit = createAudit(t.app);
+    const audit = createAudit(t.app, t.ops);
     await audit.append({ actorId: actor, action: 'thing.unnamed', targetType: 'thing', targetId: 'target-3' });
     await audit.append({ actorId: actor, action: 'thing.named', targetType: 'thing', targetId: 'target-3', tenantId: 'legacy' });
     await audit.append({ actorId: null, action: 'thing.system', targetType: 'thing', targetId: 'target-3' });

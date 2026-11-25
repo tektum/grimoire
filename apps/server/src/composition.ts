@@ -22,7 +22,7 @@ import { checkCors, createBucket, createFileStorage, ensureBucket } from '@tektu
 import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadConfigFromProcessEnv } from '@tektum/grimoire-adapter-config-env';
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
-import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import { registerJobs } from './jobs/index.js';
@@ -97,6 +97,9 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   }
   const url = config.database.url;
   if (url === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ clock: systemClock })) };
+  // The operator connection (docs/tenancy.md section 3.2): every role signs people in, so every role needs it, and nothing falls back to the runtime pool.
+  const opsUrl = config.database.opsUrl;
+  if (opsUrl === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_OPS_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_OPS_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ clock: systemClock })) };
   const log = createEventLog(createJsonLogger({ level: config.logLevel, clock: systemClock }));
   const logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
   if (!config.local && (overrides.access !== undefined || overrides.verifier !== undefined)) {
@@ -115,12 +118,18 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const verifier = overrides.verifier ?? builtVerifier;
   const auth: AppContext['auth'] = { verifier, ...(dev ? { roles: dev.roles } : {}) };
   const signInPolicy: SignInPolicy = { firstAdminEmails: config.firstAdminEmails, allowedEmailDomains: config.allowedEmailDomains, refusedEmailDomains: config.refusedEmailDomains, allowDevRole: config.local };
+  // Each runtime pool has an operator pool beside it with the same limits, for the few statements of its adapters that cross tenants.
   const db = createDatabase(url);
+  const ops = createOpsDatabase(opsUrl, { maxConnections: 10 });
   const collabRole = config.role !== 'api';
-  const pageDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs, connectionTimeoutMs: config.collab.storeTimeoutMs }) : undefined;
-  const authDb = collabRole ? createDatabase(url, { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS }) : undefined;
+  const pageOptions = { maxConnections: 4, queryTimeoutMs: config.collab.storeTimeoutMs, connectionTimeoutMs: config.collab.storeTimeoutMs };
+  const authOptions = { maxConnections: 4, queryTimeoutMs: AUTH_QUERY_TIMEOUT_MS, connectionTimeoutMs: AUTH_QUERY_TIMEOUT_MS };
+  const pageDb = collabRole ? createDatabase(url, pageOptions) : undefined;
+  const pageOps = collabRole ? createOpsDatabase(opsUrl, pageOptions) : undefined;
+  const authDb = collabRole ? createDatabase(url, authOptions) : undefined;
+  const authOps = collabRole ? createOpsDatabase(opsUrl, authOptions) : undefined;
   const converter = createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) });
-  const httpUsers = createUserStore(db, config.tenantLimits.maxUsers);
+  const httpUsers = createUserStore(db, ops, config.tenantLimits.maxUsers);
   const files = config.files === undefined ? undefined : createFileStorage(config.files);
   const http: HttpDeps = {
     config, log, clock: systemClock, users: httpUsers,
@@ -130,16 +139,16 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     provisioner: createProvisioner({ users: httpUsers, verifier, policy: signInPolicy, logger }),
     ordering: createOrdering(), converter, search: createSearchRepo(db, { statementTimeoutMs: config.search.statementTimeoutMs }), imports: createImportRepo(db),
     enqueueImport: (payload, options) => (jobs === undefined ? Promise.reject(new Error('jobs-unavailable')) : jobs.enqueueImport(payload, options)),
-    idempotency: createIdempotency(db), collections: createCollections(db), audit: createAudit(db),
-    pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db), admin: createAdmin(db), pageState: createPageState(db),
+    idempotency: createIdempotency(db, ops), collections: createCollections(db), audit: createAudit(db, ops),
+    pages: createPages(db), trash: createTrash(db), revisions: createRevisions(db, ops), admin: createAdmin(db), pageState: createPageState(db),
     attachments: createAttachments(db),
     ...(files === undefined ? {} : { files }),
     // A purge removes the objects of the attachments it deletes before it deletes any row; without a store there is nothing to remove.
     deleteFiles: deleteObjects(files),
   };
   let collab: AppContext['collab'];
-  if (pageDb && authDb) {
-    const users = createUserStore(authDb, config.tenantLimits.maxUsers);
+  if (pageDb && pageOps && authDb && authOps) {
+    const users = createUserStore(authDb, authOps, config.tenantLimits.maxUsers);
     const provisioner = createProvisioner({ users, verifier, policy: signInPolicy, logger });
     const roles = dev?.roles;
     // Outside local mode: the row of the verified subject, nothing created on the WebSocket (the client calls GET /v1/me first,
@@ -153,7 +162,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
       : (_token, identity) => users.findByDescopeId(identity.userId);
     collab = {
       host: createCollabHost(facilities.breaker ? { breaker: facilities.breaker } : {}), pageDb,
-      deps: { config, logger, clock: systemClock, verifier, resolveUser, requireTenant: true, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb), pages: withSlowLoad(createPageStore(pageDb, systemClock), facilities.slowLoad), converter },
+      deps: { config, logger, clock: systemClock, verifier, resolveUser, requireTenant: true, access: overrides.access ?? createPageAccess(createAccessStore(authDb)), revisions: createRevisions(pageDb, pageOps), pages: withSlowLoad(createPageStore(pageDb, pageOps, systemClock), facilities.slowLoad), converter },
     };
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
@@ -161,8 +170,8 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: registerJobs({
-      config, log, clock: systemClock, tenants: createTenants(db), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
-      revisions: createRevisions(db), pages: createPageStore(db, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
+      config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
+      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }),
     }),
     onError: () => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0 }); } });
   const shutdownHooks: ShutdownHook[] = [
@@ -171,8 +180,11 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     ...(embedder === undefined ? [] : [{ name: 'embedder', phase: 'release-jobs' as const, deadlineMs: DERIVED_BUDGETS_MS.releaseJobs, run: () => embedder.close() }]),
     ...(jobs === undefined ? [] : [jobs.hook]),
     ...(pageDb ? [{ name: 'page-store-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageDb.close() }] : []),
+    ...(pageOps ? [{ name: 'page-store-operator-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => pageOps.close() }] : []),
     ...(authDb ? [{ name: 'auth-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authDb.close() }] : []),
+    ...(authOps ? [{ name: 'auth-operator-pool', phase: 'close-database' as const, deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => authOps.close() }] : []),
     { name: 'database-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => db.close() },
+    { name: 'operator-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => ops.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
   return { ok: true, ctx: { config, log, clock: systemClock, db, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder } }), ...(collab ? { collab } : {}) } };

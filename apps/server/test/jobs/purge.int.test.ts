@@ -22,7 +22,7 @@ describe('the purge job on a real database', () => {
     const older = await seedDeletedPage(db.sql, b, 90);
     const young = await seedDeletedPage(db.sql, a, 29);
     for (const { key } of [old, young]) await files.put(key, new Uint8Array([1]), { size: 1, contentType: 'image/png' }); // the object of `older` is already absent
-    const deps = { tenants: createTenants(db.app), trash: createTrash(db.app), deleteFiles: async (keys: readonly string[]) => { for (const k of keys) await files.delete(k); }, now: () => Date.now() };
+    const deps = { tenants: createTenants(db.ops), trash: createTrash(db.app), deleteFiles: async (keys: readonly string[]) => { for (const k of keys) await files.delete(k); }, now: () => Date.now() };
 
     expect(await runPurge(deps, new AbortController().signal)).toEqual({ pages: 2, objects: 2 });
     for (const page of [old, older]) {

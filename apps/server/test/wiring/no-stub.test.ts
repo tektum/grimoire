@@ -36,7 +36,7 @@ function createStubAuthorizer(): PageAccessChecker {
 }
 
 const nonLocal = {
-  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
+  GRIMOIRE_DATABASE_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_DATABASE_OPS_URL: placeholderDatabaseUrl('127.0.0.1:1'), GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DESCOPE_PROJECT_ID: 'P2abc', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test',
 };
 

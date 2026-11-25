@@ -9,7 +9,7 @@ import { createDescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import type { DescopeVerifier } from '@tektum/grimoire-adapter-auth-descope';
 import { createCollabHost, RECHECK_DATABASE_TIMEOUT_MS } from '@tektum/grimoire-adapter-collab-hocuspocus';
 import type { HocuspocusCollabHost } from '@tektum/grimoire-adapter-collab-hocuspocus';
-import { createAccessStore, createDatabase, createPageStore, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
+import { createAccessStore, createDatabase, createOpsDatabase, createPageStore, createUserStore } from '@tektum/grimoire-adapter-db-kysely';
 import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
 import type { KyselyDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
@@ -18,7 +18,7 @@ import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdown-converter';
 import { ALLOWED_ORIGIN, originSocket } from '@tektum/grimoire-test-support';
-import { insertPage } from '@tektum/grimoire-test-support/database';
+import { insertPage, opsUrl } from '@tektum/grimoire-test-support/database';
 import { appUrl, createTestDatabase, dropTestDatabase, requireBuild, sqlAdmin } from '../server/support/harness.js';
 import { createIssuer, KeyService, PROJECT_ID } from '../server/support/descope-double.js';
 import type { Issuer } from '../server/support/descope-double.js';
@@ -45,13 +45,14 @@ interface Rig {
   /** Calls of `facts` on the real access store and the size of each batch. */
   readonly facts: number[];
 }
-async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}): Promise<Rig> {
+async function rig(o: { proxy?: StallProxy; collab?: Record<string, number> } = {}): Promise<Rig> {
   const keys = new KeyService(issuer); await keys.start();
   const logger = new FakeLogger();
   const clock = { now: () => Date.now() };
   const verifier: DescopeVerifier = createDescopeVerifier({ projectId: PROJECT_ID, baseUrl: keys.baseUrl, logger, clock, maxTokenLifetimeMs: 3_600_000 });
-  const db = createDatabase(o.dbUrl ?? appUrl(DB), { maxConnections: 4, queryTimeoutMs: 1500, connectionTimeoutMs: 1500 });
-  const users = createUserStore(db, 1000);
+  const db = createDatabase(o.proxy?.url(DB) ?? appUrl(DB), { maxConnections: 4, queryTimeoutMs: 1500, connectionTimeoutMs: 1500 });
+  const ops = createOpsDatabase(o.proxy?.opsUrl(DB) ?? opsUrl(DB), { maxConnections: 4, queryTimeoutMs: 1500, connectionTimeoutMs: 1500 });
+  const users = createUserStore(db, ops, 1000);
   const real = createAccessStore(db);
   const facts: number[] = [];
   const store: AccessStore = { ...real, facts: (rs) => { facts.push(rs.length); return real.facts(rs); } };
@@ -59,7 +60,7 @@ async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}):
   await host.start({
     config: makeFakeConfig({ collab: { recheckSeconds: RECHECK_INTERVAL_SECONDS, connectAttemptsPerWindow: 10_000, ...o.collab } }), logger, clock, verifier,
     resolveUser: (_t, identity) => users.findByDescopeId(identity.userId),
-    access: createPageAccess(store), pages: createPageStore(db, clock), revisions: new FakeRevisionRepo(),
+    access: createPageAccess(store), pages: createPageStore(db, ops, clock), revisions: new FakeRevisionRepo(),
     converter: new FakeMarkdownConverter({ convert: () => ({ ok: true, markdown: '', text: '' }) }),
   });
   const server: Server = createServer();
@@ -68,7 +69,7 @@ async function rig(o: { dbUrl?: string; collab?: Record<string, number> } = {}):
   stops.push(async () => {
     await host.shutdown({ deadlineMs: 500 }); server.closeAllConnections();
     await new Promise<void>((r) => { server.close(() => { r(); }); });
-    verifier.close(); await db.close(); await keys.stop();
+    verifier.close(); await db.close(); await ops.close(); await keys.stop();
   });
   return { url: `ws://127.0.0.1:${String((server.address() as AddressInfo).port)}/collab`, logger, host, db, facts };
 }
@@ -284,7 +285,7 @@ describe('re-check on the real server and database (1 s interval)', () => {
 
   it('the database down for two intervals closes nobody with a valid session; when it is back the checks resume', async () => {
     const proxy = await StallProxy.start(); stops.push(() => proxy.stop());
-    const r = await rig({ dbUrl: proxy.url(DB) });
+    const r = await rig({ proxy });
     await user('T7outage');
     const p = await page();
     const c = open(r, p, await issuer.token('T7outage'));

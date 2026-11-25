@@ -1,13 +1,14 @@
 import type { ClaimResult, IdempotencyStore, StoredResponse } from '@tektum/grimoire-core/ports/idempotency-store';
-import type { KyselyDatabase } from './index.js';
+import type { KyselyDatabase, OperatorDatabase } from './index.js';
 
 interface Existing { same: boolean; status: number | null; response: unknown }
 
 /**
  * The PostgreSQL IdempotencyStore over `idempotency_keys` (primary key `(user_id, key)`): every statement is one indexed lookup or insert.
- * A key is stored in the tenant of its user (legacy for a user the database does not know).
+ * A key is stored in the tenant of its user (legacy for a user the database does not know). The clean-up of old keys spans every tenant: it runs on `ops`,
+ * the operator connection (docs/tenancy.md section 3.2).
  */
-export function createIdempotency(db: KyselyDatabase): IdempotencyStore {
+export function createIdempotency(db: KyselyDatabase, ops: OperatorDatabase): IdempotencyStore {
   return {
     async claim(userId, key, requestHash): Promise<ClaimResult> {
       const inserted = await db.query<{ one: number }>(
@@ -36,7 +37,7 @@ export function createIdempotency(db: KyselyDatabase): IdempotencyStore {
       await db.query(`delete from idempotency_keys where user_id = $1 and key = $2 and status is null`, [userId, key]);
     },
     async deleteCreatedBefore(cutoffMs): Promise<number> {
-      const rows = await db.query<{ one: number }>(`delete from idempotency_keys where created_at < to_timestamp($1::double precision / 1000.0) returning 1 as one`, [cutoffMs]);
+      const rows = await ops.transaction((tx) => tx.query<{ one: number }>(`delete from idempotency_keys where created_at < to_timestamp($1::double precision / 1000.0) returning 1 as one`, [cutoffMs]));
       return rows.length;
     },
   };

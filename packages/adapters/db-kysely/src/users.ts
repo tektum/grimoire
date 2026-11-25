@@ -1,5 +1,6 @@
 import type { CreateUserResult, Role, UserRecord, UserStore } from '@tektum/grimoire-core/ports/user-store';
 import type { Database, Queryable } from '@tektum/grimoire-core/ports/database';
+import type { OperatorDatabase } from './index.js';
 
 type NewUser = Parameters<UserStore['createIfAbsent']>[0];
 interface Row {
@@ -20,18 +21,22 @@ const toRecord = (r: Row): UserRecord => ({
 });
 const uniqueViolation = (e: unknown): boolean => typeof e === 'object' && e !== null && 'code' in e && e.code === '23505' && 'constraint' in e && e.constraint === 'users_email_key';
 
-/** `maxTenantUsers`: the cap of people of one tenant (GRIMOIRE_TENANT_MAX_USERS, docs/tenancy.md section 3.8). */
-export function createUserStore(db: Database, maxTenantUsers: number): UserStore {
+/**
+ * `maxTenantUsers`: the cap of people of one tenant (GRIMOIRE_TENANT_MAX_USERS, docs/tenancy.md section 3.8). The sign-in reads and writes run on `ops`, the
+ * operator connection (section 3.2): a person is looked up by subject before any row gives a tenant, the tenant-mismatch refusal must find the row in any
+ * tenant, and a new person's subject and email are unique across every tenant.
+ */
+export function createUserStore(db: Database, ops: OperatorDatabase, maxTenantUsers: number): UserStore {
   const get = async (q: Queryable, id: string): Promise<UserRecord | undefined> => {
     const rows = await q.query<Row>(`select ${RECORD} from users where descope_user_id = $1`, [id]);
     return rows[0] ? toRecord(rows[0]) : undefined;
   };
   return {
-    findByDescopeId: (id) => get(db, id),
+    findByDescopeId: (id) => ops.transaction((tx) => get(tx, id)),
     async createIfAbsent(input: NewUser): Promise<CreateUserResult> {
       const tenantId = input.tenant?.id ?? 'legacy';
       try {
-        return await db.transaction(async (tx): Promise<CreateUserResult> => {
+        return await ops.transaction(async (tx): Promise<CreateUserResult> => {
           // One lock for each tenant, taken before the count is read: two first sign-ins cannot both take the last place of the cap.
           await tx.query(`select pg_advisory_xact_lock(hashtextextended('grimoire.tenants.users.' || $1::text, 0))`, [tenantId]);
           // The tenant and the person are one statement, and the tenant is made only when the person row is: a refused person (the email is taken, or the tenant is full) and the loser
@@ -60,7 +65,7 @@ export function createUserStore(db: Database, maxTenantUsers: number): UserStore
         if (uniqueViolation(e)) {
           // A concurrent first sign-in of the SAME user: its row is committed by now and the unique violation was ours on the email index (the conflict target
           // above is the subject, so a clash on the other unique index raises instead of doing nothing). The row for this subject is the answer, not a refusal.
-          const same = await get(db, input.descopeUserId);
+          const same = await ops.transaction((tx) => get(tx, input.descopeUserId));
           if (same) return { kind: 'existing', user: same };
           return { kind: 'email-taken' };
         }

@@ -22,7 +22,7 @@ describe('the revision catch-up job on a real database', () => {
       markdown_hash: hashOf('T', 'M'), last_edited_at: raw(`now() - interval '${String(minutes)} minutes'`), last_edited_by: tenant.userId,
     });
     const [old, recent] = [await saved(6), await saved(4)];
-    const deps = { revisions: createRevisions(db.app), now: () => Date.now() };
+    const deps = { revisions: createRevisions(db.app, db.ops), now: () => Date.now() };
     expect(await runRevisionCatchUp(deps, new AbortController().signal)).toBe(1);
     expect(await revisions(old)).toEqual([{ reason: 'idle' }]);
     expect(await revisions(recent)).toEqual([]);
@@ -36,7 +36,7 @@ describe('the revision catch-up job on a real database', () => {
       collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'T', markdown: 'M',
       markdown_hash: hashOf('T', 'M'), last_edited_at: raw(`now() - interval '6 minutes'`), last_edited_by: tenant.userId,
     });
-    const revisionRepo = createRevisions(db.app);
+    const revisionRepo = createRevisions(db.app, db.ops);
     await Promise.all([
       runRevisionCatchUp({ revisions: revisionRepo, now: () => Date.now() }, new AbortController().signal),
       revisionRepo.createFromPage({ pageId: page, reason: 'idle', authorIds: [tenant.userId], lastAuthorId: tenant.userId, at: Date.now() - 6 * 60_000 }),

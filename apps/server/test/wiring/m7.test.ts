@@ -2,10 +2,12 @@ import { randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
+import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
 
 // M7-T00: by role, the composition has the job runner (api and all), or not (collab); the hook that stops the jobs is in the release-jobs phase.
 const base = {
   GRIMOIRE_DATABASE_URL: `postgresql://grimoire_app:${randomBytes(12).toString('hex')}@127.0.0.1:1/grimoire`,
+  GRIMOIRE_DATABASE_OPS_URL: placeholderDatabaseUrl('127.0.0.1:1'),
   GRIMOIRE_ALLOWED_ORIGINS: 'http://127.0.0.1:8080',
   GRIMOIRE_DEV_TOKEN_SECRET: randomBytes(24).toString('hex'),
   GRIMOIRE_LOCAL: '1',
