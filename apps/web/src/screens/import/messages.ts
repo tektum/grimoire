@@ -2,11 +2,20 @@ import { ImportError } from '../../import/api';
 import { formatBytes } from '../../editor/attachments/limits';
 import type { ImportItem, ImportState } from '../../import/types';
 
+/** What to do with an export that is larger than an import can take: what makes an export large is its big files, and the largest of them could not be imported anyway. */
+const SMALLER = 'Zip the export again without its big files, such as videos, and import that.';
+
+/** The plain words, with what to do, for an import that failed on the shape or the size of its zip; every other code is shown as a code. */
+const FAILED_WORDS: Readonly<Record<string, string>> = {
+  nested_or_split_export: 'The import failed: this zip holds other zips, the way an export in parts does. Unzip the parts into one folder, zip that folder, and import it.',
+  too_large: `The import failed: the zip holds more than an import can take. ${SMALLER}`,
+};
+
 /** What the person is told when a step of starting an import is refused. */
 export function refusal(error: unknown): string {
   if (!(error instanceof ImportError)) return 'The import could not be started. Try again.';
   if (error.step === 'create') {
-    if (error.status === 413) return 'That file is larger than an import may be.';
+    if (error.status === 413) return `That file is larger than an import can take. ${SMALLER}`;
     if (error.status === 404) return 'That collection can’t be found.';
     if (error.status === 403) return 'You can’t import into that collection.';
     if (error.status === 422) return 'That file can’t be imported.';
@@ -138,8 +147,11 @@ export function stateLine(state: ImportState): string {
       const more = [counts.skipped > 0 ? `${String(counts.skipped)} skipped` : '', counts.failed > 0 ? `${String(counts.failed)} failed` : ''].filter((s) => s !== '');
       return `Done: ${pages(counts.pagesDone)} imported${more.length > 0 ? `, ${more.join(', ')}` : ''}.`;
     }
-    case 'failed':
-      return `The import failed${state.error === null ? '' : ` (${state.error})`}. The pages it created were moved to the trash.`;
+    case 'failed': {
+      // Both end before any page is made, so there is nothing in the trash to mention.
+      const words = state.error === null || !Object.hasOwn(FAILED_WORDS, state.error) ? undefined : FAILED_WORDS[state.error];
+      return words ?? `The import failed${state.error === null ? '' : ` (${state.error})`}. The pages it created were moved to the trash.`;
+    }
     case 'cancelled':
       return 'Cancelled. The pages it created were moved to the trash.';
   }
