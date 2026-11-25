@@ -324,6 +324,20 @@ describe('the profile an import is read with is the one of its source', () => {
         expect(items.find((i) => i.path === `Tasks/r1 ${R1}.md`)).toMatchObject({ status: 'ok' });
       });
 
+      it('a folder that a page and a database share, when the database fails: its rows go under the page, as the folder\'s other pages do', async () => {
+        const ID3 = '00112233445566778899aabbccddeeff';
+        const rows = Array.from({ length: 1001 }, (_v, i) => `r${String(i)},Open`).join('\n');
+        const t = await setup([
+          md(`Roadmap ${ID1}.md\u0000# Roadmap\n\nOur plans.\n`),
+          csv(`Roadmap ${ID3}_all.csv`, `Name,Status\n${rows}\n`),
+          md(`Roadmap/r1 ${R1}.md\u0000# r1\n\nStatus: Open\n`),
+        ], { source: 'notion_md_csv', files: true });
+        await t.run();
+        const items = await t.items();
+        expect(items.find((i) => i.path === `Roadmap ${ID3}_all.csv`)).toMatchObject({ status: 'failed', message: 'table_too_large' });
+        expect(t.repo.written.find((w) => w.page.title === 'r1')?.page.parentId).toBe(items.find((i) => i.path === `Roadmap ${ID1}.md`)?.pageId);
+      });
+
       it('a row is matched to its table in one Unicode form: a title with a decomposed accent is the row its table spells composed', async () => {
         const ID3 = '00112233445566778899aabbccddeeff';
         const t = await setup([

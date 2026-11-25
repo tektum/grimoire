@@ -309,9 +309,12 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       }
     }
   }
+  const tableShown = (db: ImportItem): boolean => status.get(db.id) === 'ok' || status.get(db.id) === 'pending';
   const parentOf = (i: ImportItem): ImportItem | undefined => {
     const row = rowOf.get(i.id);
-    if (row !== undefined) return row;
+    // A row goes under its database while the table is, or is still to be, written; a database that failed shows no table, so its rows go under the page that shares the
+    // folder, as the folder's other pages do (decision 167). The database comes before its rows, so it has settled when a row is written.
+    if (row !== undefined && tableShown(row)) return row;
     const folder = isContainer(i) ? segmentsOf(i.path).slice(0, -1).join('/') : profile.parentPathOf(i.path, lowerPaths);
     if (folder === null || folder === '') return undefined;
     const parent = folderPage.get(folderKey(folder));
@@ -338,7 +341,6 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     const parent = parentOf(i);
     return parent?.kind === 'database_csv' ? parent : undefined;
   };
-  const tableShown = (db: ImportItem): boolean => status.get(db.id) === 'ok' || status.get(db.id) === 'pending';
   const repeatsRow = new Map<string, boolean>();
   for (const i of all) if (i.status === 'skipped' && i.message === 'database_row') repeatsRow.set(i.id, true);
   const rowIsBare = async (i: ImportItem, text?: string): Promise<boolean> => {
