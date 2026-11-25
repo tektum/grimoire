@@ -1,4 +1,5 @@
 import { createRevisions } from '@tektum/grimoire-adapter-db-kysely';
+import { markdownHash } from '@tektum/grimoire-core/pages/hash';
 import { insertPage, raw } from '@tektum/grimoire-test-support/database';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runRevisionCatchUp } from '../../src/jobs/revision-catchup.js';
@@ -8,6 +9,9 @@ let db: Awaited<ReturnType<typeof jobsDatabase>>;
 beforeAll(async () => { db = await jobsDatabase('grimoire_m7t02_catchup'); }, 120_000);
 afterAll(async () => { await db?.drop(); });
 
+/** The stored hash of a page is the rule's hash of its title and Markdown (what the page store writes): the job and the first-open path both compare against it. */
+const hashOf = (title: string, markdown: string) => raw(`decode('${Buffer.from(markdownHash(title, markdown)).toString('hex')}', 'hex')`);
+
 const revisions = async (page: string): Promise<{ reason: string }[]> => (await db.sql(`select reason from revisions where page_id = '${page}'`)) as { reason: string }[];
 
 describe('the revision catch-up job on a real database', () => {
@@ -15,7 +19,7 @@ describe('the revision catch-up job on a real database', () => {
     const tenant = await seedTenant(db.sql, 'T-catchup');
     const saved = (minutes: number) => insertPage(db.sql, {
       collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'T', markdown: 'M',
-      markdown_hash: raw(`decode(repeat('01', 32), 'hex')`), last_edited_at: raw(`now() - interval '${String(minutes)} minutes'`), last_edited_by: tenant.userId,
+      markdown_hash: hashOf('T', 'M'), last_edited_at: raw(`now() - interval '${String(minutes)} minutes'`), last_edited_by: tenant.userId,
     });
     const [old, recent] = [await saved(6), await saved(4)];
     const deps = { revisions: createRevisions(db.app), now: () => Date.now() };
@@ -30,7 +34,7 @@ describe('the revision catch-up job on a real database', () => {
     const tenant = await seedTenant(db.sql, 'T-catchup-race');
     const page = await insertPage(db.sql, {
       collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'T', markdown: 'M',
-      markdown_hash: raw(`decode(repeat('02', 32), 'hex')`), last_edited_at: raw(`now() - interval '6 minutes'`), last_edited_by: tenant.userId,
+      markdown_hash: hashOf('T', 'M'), last_edited_at: raw(`now() - interval '6 minutes'`), last_edited_by: tenant.userId,
     });
     const revisionRepo = createRevisions(db.app);
     await Promise.all([
