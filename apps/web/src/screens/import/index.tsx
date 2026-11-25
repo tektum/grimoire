@@ -14,6 +14,7 @@ import './import.css';
 /** The import of a zip into a collection (R11.3). Only for people who can write: a viewer gets the not-found screen, and nothing about imports is asked of the API before it is known who they are. */
 export default function ImportScreen() {
   const api = useApi();
+  const [params] = useSearchParams();
   const me = useApiQuery<{ role: 'admin' | 'member' | 'viewer' }>(api, '/v1/me');
   if (me.isError && me.data === undefined) {
     return (
@@ -24,7 +25,7 @@ export default function ImportScreen() {
   }
   if (me.data === undefined) return <p>Loading</p>;
   if (me.data.role === 'viewer') return <NotFoundScreen />;
-  return <Importing />;
+  return <Importing key={params.get('import') ?? ''} />;
 }
 
 function Importing() {
@@ -75,7 +76,7 @@ function Importing() {
               Cancel import
             </Button>
           ) : null}
-          {cancelFailed ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
+          {cancelFailed && state.data.status === 'running' ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
           {ENDED.includes(state.data.status) && id !== null ? <Report api={api} id={id} /> : null}
           {state.data.status === 'running' || state.data.status === 'created' || state.data.status === 'uploaded' ? null : (
             <Button

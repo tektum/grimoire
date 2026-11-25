@@ -4,6 +4,7 @@ import type { ImportItem } from '../../import/types';
 import type { ApiLike } from '../../api/query';
 import { isSafeHref } from '../../safety';
 import { Button } from '../../ui/primitives';
+import { reasonText } from './messages';
 
 const STATUS: Record<ImportItem['status'], string> = { imported: 'Imported', skipped: 'Skipped', failed: 'Failed' };
 
@@ -43,7 +44,7 @@ export function Report({ api, id }: { readonly api: ApiLike; readonly id: string
         {report.items.map((item) => (
           <li key={item.id} data-status={item.status}>
             <span className="import-report-path">{item.path}</span> <span className="import-report-status">{STATUS[item.status]}</span>
-            {item.message === null ? null : <span className="import-report-message"> {item.message}</span>}
+            {reasonText(item) === null ? null : <span className="import-report-message"> {reasonText(item)}</span>}
             {item.status === 'failed' && item.hasSource ? (
               <Button
                 aria-label={`Download source of ${item.path}`}

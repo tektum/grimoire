@@ -32,7 +32,7 @@ test('the import screen at 40 percent', async ({ page, context, browserName }) =
 const REPORT: readonly ScriptedItem[] = [
   { id: 'i1', path: 'handbook/welcome.md', status: 'imported' },
   { id: 'i2', path: 'handbook/guides/setup.md', status: 'imported' },
-  { id: 'i3', path: 'handbook/archive/everything.md', status: 'skipped', message: 'too_large: the page is over the limit of 1 MB' },
+  { id: 'i3', path: 'handbook/archive/everything.md', status: 'skipped', message: 'too_large: The page is larger than the limit of 128 KB.' },
   { id: 'i4', path: 'handbook/notes/broken.md', status: 'failed', message: 'The file could not be read as markdown.', hasSource: true },
 ];
 

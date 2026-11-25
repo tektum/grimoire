@@ -374,7 +374,8 @@ describe('the report of an ended import', () => {
         .getAllByRole('listitem')
         .map((li) => li.getAttribute('data-status')),
     ).toEqual(['imported', 'skipped', 'failed']);
-    expect(list.textContent).toContain('too_large: over the limit of 1 MB');
+    expect(list.textContent).toContain('over the limit of 1 MB');
+    expect(list.textContent).not.toContain('too_large');
     expect(list.textContent).toContain('<b>bold</b>.md');
     expect(list.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(list.querySelector('b, img')).toBeNull();
@@ -449,6 +450,55 @@ describe('a report that is not shaped as the contract says', () => {
     show(t.api, '/import?import=imp1');
     expect((await screen.findByRole('alert')).textContent).toContain('The report can’t be read right now.');
     expect(screen.queryByRole('listitem')).toBeNull();
+  });
+});
+
+describe('what a person is told about a file', () => {
+  const reasons = (messages: (string | null)[], status: ImportItem['status'] = 'skipped') => fake({ states: [ended()], items: [messages.map((message, n) => item({ id: `r${String(n)}`, status, message }))] });
+
+  it('shows the words the server gave, without the code in front of them, and the limit as the server named it', async () => {
+    show(reasons(['too_large: The page is larger than the limit of 128 KB.', 'tenant-pages-full: The workspace has reached its limit of 10000 pages.']).api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+    expect(list.textContent).toContain('The page is larger than the limit of 128 KB.');
+    expect(list.textContent).toContain('The workspace has reached its limit of 10000 pages.');
+    expect(list.textContent).not.toMatch(/too_large|tenant-pages-full/);
+  });
+
+  it('puts a reason that is only a code into words, a code it does not know and a missing reason into the words of the status, and never shows a code', async () => {
+    show(reasons(['too_large', 'tenant-storage-full', 'collection_full', 'some_new_code', null]).api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(5));
+    const texts = within(list)
+      .getAllByRole('listitem')
+      .map((li) => li.querySelector('.import-report-message')?.textContent?.trim());
+    expect(texts).toEqual(['The page is larger than the limit for a page.', 'The workspace has run out of storage.', 'The collection is full.', 'The file was left out.', 'The file was left out.']);
+    expect(list.textContent).not.toMatch(/too_large|tenant-storage-full|collection_full|some_new_code/);
+  });
+});
+
+describe('the progress bar of an ended import', () => {
+  it('is full for an import that is done, with the skipped and the failed counted as handled', async () => {
+    show(fake({ states: [ended({ done: 2, total: 4, counts: { pagesTotal: 4, pagesDone: 2, attachments: 0, skipped: 1, failed: 1 } })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100'));
+  });
+
+  it('counts the skipped and the failed as handled while it runs, and shows how far a cancelled import got', async () => {
+    show(fake({ states: [state({ done: 2, total: 10, counts: { pagesTotal: 10, pagesDone: 2, attachments: 0, skipped: 1, failed: 1 } })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('40'));
+    cleanup();
+    show(fake({ states: [state({ status: 'cancelled', done: 3, total: 10 })] }).api, '/import?import=imp1');
+    await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('30'));
+  });
+});
+
+describe('a cancel that was refused', () => {
+  it('is not said once the import has ended, which the read after the refusal shows', async () => {
+    const t = fake({ states: [state(), ended()], cancel: { status: 500 } });
+    show(t.api, '/import?import=imp1');
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel import' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Done'));
+    expect(screen.queryByText('The import could not be cancelled. Try again.')).toBeNull();
   });
 });
 
@@ -710,5 +760,18 @@ describe('the progress of an import', () => {
       path === '/v1/imports/{id}' ? { error: {}, response: new Response(null, { status: 404 }) } : { data: path === '/v1/me' ? { role: 'member' } : { items: COLLECTIONS }, response: new Response(null, { status: 200 }) };
     show(t.api, '/import?import=gone');
     expect((await screen.findByRole('alert')).textContent).toContain('That import can’t be read.');
+  });
+});
+
+describe('a failed file with no reason', () => {
+  it('says in words that it could not be imported', async () => {
+    show(fake({ states: [ended()], items: [[item({ id: 'z', status: 'failed', message: 'internal_error' }), item({ id: 'y', status: 'failed', message: null })]] }).api, '/import?import=imp1');
+    const list = await screen.findByRole('list', { name: 'Files of the import' });
+    await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2));
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('.import-report-message')?.textContent?.trim()),
+    ).toEqual(['The file could not be imported.', 'The file could not be imported.']);
   });
 });
