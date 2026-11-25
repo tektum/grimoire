@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiLike } from '../../src/api/query';
 import { createWebApi } from '../../src/api/client';
 import { guardedFetch, markClientOutdated } from '../../src/gate/outdated';
-import { notify, Toaster } from '../../src/ui/primitives';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { POLL_MS } from '../../src/import/api';
 import type { ImportState } from '../../src/import/types';
@@ -343,13 +342,14 @@ describe('one message for a refusal', () => {
         return json(404, {});
       }),
     );
+    const notices = vi.fn();
     const auth = { getToken: async () => 'token', refresh: async () => false, signOut: async () => undefined } as unknown as Session['auth'];
     const api = createWebApi({
       baseUrl: 'http://api.test',
       getToken: () => auth.getToken(),
       refresh: () => auth.refresh(),
       signOut: (r) => auth.signOut(r),
-      notify,
+      notify: notices, // the session's own client tells the person through this; the form's client must not
       reload: markClientOutdated,
       fetch: guardedFetch,
     }) as unknown as ApiLike;
@@ -358,7 +358,6 @@ describe('one message for a refusal', () => {
       <SessionContext.Provider value={session}>
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <MemoryRouter initialEntries={['/import']}>
-            <Toaster />
             <Routes>
               <Route path="/import" element={<ImportScreen />} />
             </Routes>
@@ -369,10 +368,7 @@ describe('one message for a refusal', () => {
     await choose();
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     expect((await screen.findByRole('alert')).textContent).toBe('That is not a zip file.');
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    }); // a notice, if one were sent, is drawn by now
-    expect(document.body.textContent).not.toContain('Something went wrong');
+    expect(notices).not.toHaveBeenCalled(); // no generic notice: the request has been answered by now, and the client tells its notice before it returns the answer
   });
 });
 
