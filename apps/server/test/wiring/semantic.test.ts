@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { compose } from '../../src/composition.js';
 import type { AppContext } from '../../src/composition.js';
@@ -60,5 +62,12 @@ describe('the registry and the embedding jobs', () => {
     expect(jobs.map((j) => j.schedule)).toEqual([undefined, undefined]);
     const ctx = { jobId: 'j', attempt: 1, retryLimit: 3, signal: new AbortController().signal };
     for (const j of jobs) await expect(j.handler({ tenantId: 'T-a', pageId: 'p' }, ctx)).resolves.toBeUndefined();
+  });
+});
+
+describe('the server and the adapter package', () => {
+  it('depends on it, as it does on the other adapters (the composition is the only place that constructs one)', () => {
+    const server = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    expect(server.dependencies['@tektum/grimoire-adapter-embedder-onnx']).toBe('*');
   });
 });
