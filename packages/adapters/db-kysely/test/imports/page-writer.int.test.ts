@@ -219,5 +219,12 @@ describe('the attachments of a page', () => {
     expect((await t.app.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [dup.id]))[0]?.n).toBe(0);
     expect((await t.app.query<{ n: number }>(`select count(*)::int as n from revisions r join pages p on p.id = r.page_id where p.collection_id = $1`, [s.collectionId]))[0]?.n).toBe(0);
     expect((await repo.getItem('legacy', s.importId, s.items.get('a.md') as string))?.status).toBe('pending');
+    // Recovery: the same item, written again with a good attachment, succeeds (no lock or status was left behind by the rollback).
+    const good = attachment();
+    const again = await repo.writePage('legacy', s.importId, page(s.items.get('a.md') as string, s.collectionId, { attachments: [good] }), LIMITS, NOW);
+    expect(again.kind).toBe('ok');
+    expect(await pagesOf(s.collectionId)).toHaveLength(1);
+    expect((await t.app.query<{ n: number }>(`select count(*)::int as n from attachments where id = $1`, [good.id]))[0]?.n).toBe(1);
+    expect((await repo.getItem('legacy', s.importId, s.items.get('a.md') as string))?.status).toBe('ok');
   });
 });
