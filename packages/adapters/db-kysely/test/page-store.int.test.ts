@@ -164,11 +164,35 @@ describe('store', () => {
     await store.store(b, { kind: 'state-only', state: new Uint8Array([1]), epoch: 0 });
     await store.store(a, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
     expect((await store.load(a))?.markdownStaleSince).toBe(first);
-    const ids = (await store.listStale(100)).filter((x) => x === a || x === b);
+    const ids = (await store.listStale(100)).map((x) => x.id).filter((x) => x === a || x === b);
     expect(ids).toEqual([a, b]);
     await store.store(a, converted({ markdown: 'M2' }));
     expect((await store.load(a))?.markdownStaleSince).toBeNull();
-    expect(await store.listStale(100)).not.toContain(a);
+    expect((await store.listStale(100)).map((x) => x.id)).not.toContain(a);
+    expect((await store.listStale(100)).find((x) => x.id === b)?.staleSince).toEqual(expect.any(Number));
+  });
+
+  it('repairMarkdown writes the Markdown of the state it was made from, and only then', async () => {
+    const id = await newRow();
+    const store = createPageStore(db, clock);
+    await store.store(id, converted({ state: new Uint8Array([1]), markdown: 'old' }));
+    await store.store(id, { kind: 'state-only', state: new Uint8Array([2]), epoch: 0 });
+    const before = await row(id);
+    // A save came in after the state [2] was read: the state is now [3].
+    await store.store(id, { kind: 'state-only', state: new Uint8Array([3]), epoch: 0 });
+    expect(await store.repairMarkdown(id, { state: new Uint8Array([2]), epoch: 0 }, { markdown: 'from 2', text: 't' })).toBe('skipped');
+    expect((await row(id))?.markdown).toBe('old');
+    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 1 }, { markdown: 'wrong epoch', text: 't' })).toBe('skipped');
+    expect(await store.repairMarkdown(randomUUID(), { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'no row', text: 't' })).toBe('skipped');
+    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'from 3', text: 'text 3' })).toBe('repaired');
+    const after = await row(id);
+    expect([after?.markdown, after?.text_content, Buffer.from(after?.ydoc ?? '')]).toEqual(['from 3', 'text 3', Buffer.from([3])]);
+    expect(after?.markdown_hash).toEqual(expectedHash('', 'from 3'));
+    expect(after?.last_edited_by).toBe(before?.last_edited_by);
+    expect((await store.load(id))?.markdownStaleSince).toBeNull();
+    expect(await store.repairMarkdown(id, { state: new Uint8Array([3]), epoch: 0 }, { markdown: 'again', text: 't' })).toBe('skipped'); // no longer stale
+    const bare = await newRow();
+    expect(await store.repairMarkdown(bare, { state: new Uint8Array([1]), epoch: 0 }, { markdown: 'no state', text: 't' })).toBe('skipped');
   });
 
   it('state-only writes the state and updated_at, never Markdown, text, hash or editor', async () => {

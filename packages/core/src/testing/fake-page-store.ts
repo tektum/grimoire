@@ -42,8 +42,18 @@ export class FakePageStore implements PageStore {
     return { state: built, seeded: true, epoch: this.epoch };
   }
 
-  listStale(limit: number): Promise<string[]> {
-    return Promise.resolve([...this.stale].filter(([, v]) => v !== null).sort((a, b) => (a[1] ?? 0) - (b[1] ?? 0)).slice(0, limit).map(([id]) => id));
+  listStale(limit: number): Promise<{ id: string; staleSince: number }[]> {
+    return Promise.resolve([...this.stale].filter((e): e is [string, number] => e[1] !== null).sort((a, b) => a[1] - b[1]).slice(0, limit).map(([id, staleSince]) => ({ id, staleSince })));
+  }
+
+  repairMarkdown(id: string, seen: { readonly state: Uint8Array; readonly epoch: number }, converted: { readonly markdown: string; readonly text: string }): Promise<'repaired' | 'skipped'> {
+    const have = this.rows.get(id);
+    if (!have || seen.epoch !== this.epoch || !Buffer.from(have).equals(Buffer.from(seen.state)) || (this.stale.get(id) ?? null) === null) return Promise.resolve('skipped');
+    this.markdowns.set(id, converted.markdown);
+    this.texts.set(id, converted.text);
+    this.hashes.set(id, hashOf(converted.markdown));
+    this.stale.set(id, null);
+    return Promise.resolve('repaired');
   }
 
   load(id: string): Promise<StoredPage | undefined> {
