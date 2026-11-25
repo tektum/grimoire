@@ -9,6 +9,7 @@ const letters = (n: number): string => Array.from({ length: n }, () => String.fr
 /** A word nobody else has written: one lexeme whatever the language of the index does to it. */
 const rare = (): string => `quokka${letters(10)}`;
 
+// The address of a page is `/p/<slug of the title>-<urlId>` (the search links and the page screen use the canonical one), so it is matched by its urlId at the end.
 test('a page is found by a word of its body from the results screen, with the word marked, and the result opens the page', async ({ page, context }) => {
   const word = rare();
   const made = await makePage(`# Field notes\n\nThe ${word} was seen near the water, and the ${word} came back.\n`, { title: `Notes ${word}` });
@@ -20,7 +21,7 @@ test('a page is found by a word of its body from the results screen, with the wo
   await expect(marks.first()).toBeVisible();
   for (const text of await marks.allInnerTexts()) expect(text.toLowerCase(), 'what is marked is the word').toContain('quokka');
   await result.click();
-  await expect(page).toHaveURL(new RegExp(`/p/page-${made.urlId}`));
+  await expect(page).toHaveURL(new RegExp(`/p/[^/?#]*-${made.urlId}`));
   await expect(page.getByTestId('editor-root')).toBeVisible();
 });
 
@@ -36,7 +37,7 @@ test('the palette finds the same page by its word and opens it with Enter', asyn
   const option = page.getByRole('option', { name: new RegExp(`Palette ${word}`) });
   await expect(option).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(new RegExp(`/p/page-${made.urlId}`));
+  await expect(page).toHaveURL(new RegExp(`/p/[^/?#]*-${made.urlId}`));
 });
 
 test('more results than a page holds are got by the real cursor, and a word nobody wrote has "No results"', async ({ page, context }) => {

@@ -55,6 +55,7 @@ test('a file that is not a zip is refused by the start with its own words, and t
 
 test('a viewer gets the not-found screen from the stack, and a member who cannot write in a collection is not offered it', async ({ page, context, browser, baseURL }) => {
   const readOnly = await makePage('# Read only\n', { permission: 'read' });
+  const writable = await makePage('# Writable\n');
   await signInAs(context, 'e2e-vera', 'viewer');
   await page.goto('/import');
   await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();
@@ -64,6 +65,8 @@ test('a viewer gets the not-found screen from the stack, and a member who cannot
     const member = await other.newPage();
     await member.goto('/import');
     await expect(member.getByLabel('Into the collection')).toBeVisible();
+    // The options arrive after the screen: wait for one the person can write in first, so that the absence below is of a list that has loaded.
+    await expect(member.getByLabel('Into the collection').getByRole('option', { name: writable.collectionName })).toHaveCount(1);
     await expect(member.getByLabel('Into the collection').getByRole('option', { name: readOnly.collectionName })).toHaveCount(0);
   } finally {
     await other.close();
