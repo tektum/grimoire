@@ -6,7 +6,7 @@ const MESSAGE_LIMIT = 200;
 /** How much of a message is read before it is cut to `MESSAGE_LIMIT`: well above it, so a value that starts inside the limit and ends after it is still taken out, and small enough that the patterns cannot be made to cost seconds by a message of a few hundred KB with no spaces. */
 const REDACT_WINDOW = 8 * MESSAGE_LIMIT;
 
-// eslint-disable-next-line no-control-regex -- the point is to take control characters out of a log line
+// Control characters on purpose: the point is to take them out of a log line.
 const CONTROL = /[\u0000-\u001f\u007f]+/g;
 
 /** Text of any value that cannot throw: a string as it is, nothing for `undefined` and `null`, anything else through `String`, and `''` when even that throws (a null-prototype object, a hostile `toString`). */

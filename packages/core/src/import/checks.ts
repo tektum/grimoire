@@ -23,9 +23,9 @@ export type HeaderCheck = { readonly ok: true } | { readonly ok: false; readonly
 export const MAX_ENTRY_PATH_BYTES = 2048;
 /** The longest a reported name is, in characters. */
 export const MAX_REPORTED_NAME_LENGTH = 300;
-// eslint-disable-next-line no-control-regex -- the point is to find them: C0, DEL, C1, and the line and paragraph separators
+// Control characters on purpose, to find them: C0, DEL, C1, and the line and paragraph separators.
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
-// eslint-disable-next-line no-control-regex -- the point is to remove them
+// The same, to remove them.
 const CONTROL_GLOBAL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 
 /**
