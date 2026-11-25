@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { focusWhenReady } from '../../ui/focus';
 
 /** The longest title (R3.21): 1 to 255 characters. */
 export const TITLE_MAX = 255;
@@ -76,7 +77,7 @@ export function PageTitle({ title, editable, startEditing, onSave }: { title: st
         defaultValue={title}
         maxLength={TITLE_MAX}
         disabled={saving}
-        autoFocus
+        ref={focusWhenReady}
         onFocus={(e) => e.currentTarget.select()}
         onBlur={(e) => void finish(e.currentTarget.value, { save: true, refocus: false })}
         onKeyDown={(e) => {

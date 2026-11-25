@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { type ApiLike, queryKey } from '../../api/query';
 import { HttpError } from '../../tree/useTree';
+import { focusWhenReady } from '../../ui/focus';
 import { Button, Confirm } from '../../ui/primitives';
 import { GroupMembers } from './GroupMembers';
 import './admin.css';
@@ -80,7 +81,7 @@ export function GroupsScreen({ api }: { readonly api: ApiLike }) {
                     aria-label={`New name for ${g.name}`}
                     defaultValue={g.name}
                     maxLength={100}
-                    autoFocus
+                    ref={focusWhenReady}
                     onFocus={(e) => { e.currentTarget.select(); }}
                     onBlur={() => { setRenaming(null); }}
                     onKeyDown={(e) => {

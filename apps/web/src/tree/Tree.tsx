@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { type MoveHandler, type NodeApi, type NodeRendererProps, type TreeApi, Tree as Arborist } from 'react-arborist';
+import { focusWhenReady } from '../ui/focus';
 import { Button, Confirm, Modal, notify } from '../ui/primitives';
 import { RowMenu } from './RowMenu';
 import type { TreeActions } from './actions';
@@ -48,7 +49,7 @@ function RenameInput({ node }: { node: NodeApi<TreeItem> }) {
       aria-label={`New title for ${node.data.name}`}
       defaultValue={node.data.title}
       maxLength={255}
-      autoFocus
+      ref={focusWhenReady}
       onFocus={(e) => { e.currentTarget.select(); }}
       onBlur={() => { node.reset(); }}
       onKeyDown={(e) => {
