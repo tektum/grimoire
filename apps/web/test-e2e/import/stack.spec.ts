@@ -38,6 +38,15 @@ function watchStore(page: Page): { readonly seen: string[] } {
   return { seen };
 }
 
+/** Runs `check` and, when it fails, adds what `watchStore` saw to the message (a message given to `expect` is built before the wait, when nothing has happened yet). */
+async function explained(store: { readonly seen: string[] }, check: () => Promise<void>): Promise<void> {
+  try {
+    await check();
+  } catch (error) {
+    throw new Error(`${(error as Error).message}\nwhat the browser did with the zip: ${JSON.stringify(store.seen)}`);
+  }
+}
+
 const stateOf = async (id: string): Promise<{ status: string }> => {
   const response = await fetch(`${apiUrl()}/v1/imports/${id}`, { headers: { Authorization: `Bearer ${buildDevToken(devSecret(), 'e2e-alice', 'member')}` } });
   expect(response.status).toBe(200);
@@ -60,7 +69,7 @@ test('a zip is created, sent to the file store and started through the real rout
   });
   const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
-  await expect(page, `the zip was sent: ${JSON.stringify(store.seen)}`).toHaveURL(/\/import\?import=[0-9a-f-]{36}/);
+  await explained(store, () => expect(page).toHaveURL(/\/import\?import=[0-9a-f-]{36}/));
   const id = new URL(page.url()).searchParams.get('import') as string;
   await expect(page.getByRole('progressbar')).toBeVisible();
   await expect(page.getByRole('status').first()).toHaveText('Waiting to start…');
@@ -80,7 +89,7 @@ test('a file that is not a zip is refused by the start with its own words, and t
   await page.getByLabel('Choose a .zip file').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('this is text, not an archive, and long enough to be a file') });
   const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
-  await expect(page.getByRole('alert'), `the zip was sent: ${JSON.stringify(store.seen)}`).toHaveText('That is not a zip file.');
+  await explained(store, () => expect(page.getByRole('alert')).toHaveText('That is not a zip file.'));
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
 });
 
