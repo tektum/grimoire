@@ -31,7 +31,7 @@ test('the whole value of an input is checked, not one line of it, and the variab
 });
 
 test('the database and the cluster come from one step that runs the tested script, and the snapshot and the task both take its outputs', () => {
-  assert.match(runs, /bash tools\/adopt\/targets\.sh "\$\{STAGE\}" "\$\{DATABASE_KIND\}" \| tee -a "\$\{GITHUB_OUTPUT\}"/);
+  assert.match(runs, /bash tools\/adopt\/targets\.sh "\$\{STAGE\}" \| tee -a "\$\{GITHUB_OUTPUT\}"/);
   assert.match(workflow, /DATABASE: \$\{\{ steps\.targets\.outputs\.database \}\}/);
   assert.match(workflow, /KIND: \$\{\{ steps\.targets\.outputs\.database_kind \}\}/);
   assert.match(workflow, /CLUSTER: \$\{\{ steps\.targets\.outputs\.cluster \}\}/);
@@ -45,7 +45,8 @@ test('the database and the cluster come from one step that runs the tested scrip
 
 test('no input is written into a script: every one goes through an environment variable', () => {
   assert.doesNotMatch(runs, /\$\{\{/, 'a run block holds an expression');
-  for (const name of ['TO', 'NAME', 'DOMAIN', 'STAGE', 'CONFIRM', 'DATABASE_KIND']) assert.match(workflow, new RegExp(`${name}: \\$\\{\\{ inputs\\.`), name);
+  for (const name of ['TO', 'NAME', 'DOMAIN', 'STAGE', 'CONFIRM']) assert.match(workflow, new RegExp(`${name}: \\$\\{\\{ inputs\\.`), name);
+  assert.doesNotMatch(workflow, /database_kind: \$\{\{ inputs|inputs\.database_kind/, 'the database is the one the service connects to: nobody names its kind');
 });
 
 test('the command is the one of the migration step\'s container, from legacy, and the app container of the task exits at once', () => {
