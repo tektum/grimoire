@@ -56,11 +56,18 @@ test("the report lists both models as MIT and exits 0, for the real models list 
     mkdirSync(join(dir, "models"), { recursive: true });
     writeFileSync(join(dir, "models", "models.lock.json"), JSON.stringify(lock));
     writeFileSync(join(dir, "compose.yaml"), "services: {}\n");
-    const r = spawnSync(process.execPath, [runMjs, "--root", dir, "--out", join(dir, "out"), "--check-images"], { encoding: "utf8" });
+    // One installed MIT package below a workspace: the report refuses a lock with no dependency graph at all.
+    mkdirSync(join(dir, "node_modules", "good"), { recursive: true });
+    writeFileSync(join(dir, "node_modules", "good", "package.json"), JSON.stringify({ name: "good", version: "1.0.0", license: "MIT" }));
+    const workspaces = { "": { name: "fx" }, "packages/app": { name: "app", dependencies: { good: "1" } } };
+    writeFileSync(join(dir, "bun.lock"), JSON.stringify({ lockfileVersion: 1, workspaces, packages: { app: ["app@workspace:packages/app"], good: ["good@1.0.0", "", {}, "sha512-fixture"] } }));
+    const r = spawnSync(process.execPath, [runMjs, "--root", dir, "--out", join(dir, "out")], { encoding: "utf8" });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /Models/);
     assert.match(r.stdout, /multilingual-e5-base\s+MIT/);
     assert.match(r.stdout, /multilingual-e5-small\s+MIT/);
+    const written = JSON.parse(readFileSync(join(dir, "out", "licence-report.json"), "utf8"));
+    assert.deepEqual(written.models.map((m) => [m.name, m.licence]), [["multilingual-e5-base", "MIT"], ["multilingual-e5-small", "MIT"]], "the report the job keeps lists the models too");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

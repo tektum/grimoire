@@ -51,7 +51,8 @@ describe('scripts/fetch-models.mjs', () => {
   async function setup(files: { name: string; body: Buffer; claim?: { sha256?: string; size?: number } }[]): Promise<{ lock: string; out: string; port: number }> {
     const bodies = new Map(files.map((f) => [`/${f.name}`, f.body]));
     const server: Server = createServer((req, res) => {
-      const url = req.url ?? '/';
+      // The addresses of a lock name the commit (`/resolve/<revision>/<file>`, as the real ones do): the fixture server answers for the file under it.
+      const url = (req.url ?? '/').replace(/^\/resolve\/a{40}/, '');
       if (url.startsWith('/hop/')) return void res.writeHead(302, { location: `/${url.slice(5)}` }).end();
       if (url.startsWith('/away/')) return void res.writeHead(302, { location: `http://localhost:${String((server.address() as AddressInfo).port)}/${url.slice(6)}` }).end();
       const body = bodies.get(url);
@@ -68,7 +69,14 @@ describe('scripts/fetch-models.mjs', () => {
       lock,
       JSON.stringify({
         redirectHosts: ['127.0.0.1'],
-        files: files.map((f) => ({ model: 'm', name: f.name, revision: 'a'.repeat(40), url: `http://127.0.0.1:${String(port)}/${f.name}`, sha256: f.claim?.sha256 ?? sha(f.body), size: f.claim?.size ?? f.body.length })),
+        files: files.map((f) => ({
+          model: 'm',
+          name: f.name,
+          revision: 'a'.repeat(40),
+          url: `http://127.0.0.1:${String(port)}/resolve/${'a'.repeat(40)}/${f.name}`,
+          sha256: f.claim?.sha256 ?? sha(f.body),
+          size: f.claim?.size ?? f.body.length,
+        })),
       }),
     );
     return { lock, out: path.join(dir, 'models'), port };
@@ -121,10 +129,10 @@ describe('scripts/fetch-models.mjs', () => {
     const body = Buffer.from('fine bytes');
     const s = await setup([{ name: 'ok', body }]);
     const lock = JSON.parse(readFileSync(s.lock, 'utf8')) as { files: { url: string }[] };
-    lock.files[0]!.url = `http://127.0.0.1:${String(s.port)}/hop/ok`;
+    lock.files[0]!.url = `http://127.0.0.1:${String(s.port)}/resolve/${'a'.repeat(40)}/hop/ok`;
     writeFileSync(s.lock, JSON.stringify(lock));
     expect((await run(s.lock, s.out)).status).toBe(0);
-    lock.files[0]!.url = `http://127.0.0.1:${String(s.port)}/away/ok`;
+    lock.files[0]!.url = `http://127.0.0.1:${String(s.port)}/resolve/${'a'.repeat(40)}/away/ok`;
     writeFileSync(s.lock, JSON.stringify(lock));
     const away = await run(s.lock, path.join(s.out, '2'));
     expect(away.status).toBe(1);
@@ -155,6 +163,7 @@ describe('scripts/fetch-models.mjs', () => {
       ['sha256', 'abc'],
       ['size', -1],
       ['revision', 'main'],
+      ['url', 'https://huggingface.co/Xenova/m/resolve/main/model_quantized.onnx'],
     ] as const) {
       writeFileSync(s.lock, JSON.stringify({ ...lock, files: [{ ...lock.files[0], [key]: value }] }));
       const r = await run(s.lock, s.out);

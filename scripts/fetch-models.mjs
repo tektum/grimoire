@@ -49,7 +49,8 @@ function readLock(text) {
     if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) say('sha256');
     if (!Number.isSafeInteger(f.size) || f.size <= 0) say('size');
     try {
-      new URL(f.url);
+      // The address names the commit: a lock whose `revision` the download does not use would look pinned and follow a branch.
+      if (!new URL(f.url).pathname.includes(`/resolve/${f.revision}/`)) say('url (it must contain /resolve/<revision>/)');
     } catch {
       say('url');
     }

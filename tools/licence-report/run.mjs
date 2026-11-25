@@ -100,6 +100,7 @@ const report = {
   summary,
   packages: packageResult.packages,
   images: imageResult.images,
+  models,
   violations: { packages: packageResult.violations, images: imageResult.violations },
   pending: pendingHits,
   unusedExceptions,
