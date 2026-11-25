@@ -109,6 +109,8 @@ test('semantic search is off in the app of every stage, with the same value ever
   for (const name of NAMES) {
     const app = record(name, 'any.example.test').find((c) => c.type === 'sst.aws:Service').args.containers.find((c) => c.name === 'app');
     assert.equal(app.environment.GRIMOIRE_SEMANTIC_SEARCH, 'off', `${name} sets the switch itself, so a new default cannot turn it on`);
+  }
+});
 
 test('one VPC for every stage: the stage that owns it is protected and makes it, the others look it up by the owner\'s tags and make no VPC, NAT or address of their own', () => {
   const owners = NAMES.filter((n) => stages[n].vpcFrom === undefined);
