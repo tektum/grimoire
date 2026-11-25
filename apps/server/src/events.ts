@@ -16,7 +16,12 @@ export type ShutdownReason = 'SIGTERM' | 'SIGINT' | 'uncaughtException' | 'unhan
 export type ConsoleMethod = 'log' | 'info' | 'debug' | 'warn' | 'error';
 export type RequestMethod = string; // an HTTP method token, as Hono reports it
 
+/** What a job event says: the queue's name for it, the job's id, the run (1 for the first) and the milliseconds it took (0 at the start). */
+export type JobEvent = { name: string; jobId: string; attempt: number; ms: number };
+
 export interface DebugEvents {
+  /** A search: how long it took and how many pages it found. Never the query text. */
+  'search.query': { ms: number; results: number };
   'http.request': { method: RequestMethod; route: string; status: number; ms: number };
   'http.validation_failed': { route: string; issues: number };
   'console.info_output': { method: ConsoleMethod };
@@ -37,6 +42,17 @@ export interface InfoEvents {
   'attachments.upload_created': { attachmentId: string; size: number };
   'attachments.completed': { attachmentId: string };
   'attachments.cleaned': { count: number };
+  /** Job queue (M7). Ids, names and counts only: a payload, a key or a file name is never logged. */
+  'jobs.started': JobEvent;
+  'jobs.completed': JobEvent;
+  'jobs.stopped': { inFlight: number };
+  'import.created': { importId: string };
+  'import.started': { importId: string };
+  'import.progress': { importId: string; pagesDone: number; pagesTotal: number };
+  'import.finished': { importId: string; ok: number; skipped: number; failed: number };
+  'import.cancelled': { importId: string };
+  'import.swept': { importId: string; action: string };
+  'purge.completed': { pages: number; objects: number };
   'admin.user_changed': { userId: string };
   'admin.group_changed': { groupId: string };
   'server.starting': { role: string; local: boolean };
@@ -64,6 +80,14 @@ export interface InfoEvents {
 }
 
 export interface WarnEvents {
+  'jobs.retrying': JobEvent;
+  'jobs.aborted': { name: string; jobId: string };
+  /** A search that ran into its statement timeout. */
+  'search.timeout': Record<string, never>;
+  'import.failed': { importId: string; reason: string };
+  /** The archive was refused before any entry was read. `reason` is a code, never a name from the archive. */
+  'import.archive_refused': { importId: string; reason: string };
+  'import.item_failed': { importId: string; kind: string; reason: string };
   'http.rate_limited': { scope: 'user' | 'address' | 'route'; route: string };
   'http.auth_rejected': { reason: 'missing' | 'invalid' | 'suspended' | 'no-user' };
   /** An upload that was refused at completion and removed. The id of the attachment, never its key or name. */
@@ -81,6 +105,7 @@ export interface WarnEvents {
 }
 
 export interface ErrorEvents {
+  'jobs.failed': JobEvent;
   /** The file store did not answer (or is not configured): the operation that needed it, nothing of the request, the key or the store's message. */
   'files.unavailable': { operation: 'create' | 'complete' | 'download' | 'urls' | 'cleanup' | 'delete' };
   'http.request_failed': { errorName: string };
