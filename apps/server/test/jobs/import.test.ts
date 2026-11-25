@@ -22,11 +22,8 @@ const md = (s: string) => ({ name: s.split('\u0000')[0] as string, data: Buffer.
 class EchoConverter implements MarkdownConverter {
   seeds = 0;
   seedHook: ((markdown: string) => SeedResult | undefined) | undefined;
-  /** A conversion that takes this long (it yields to the event loop while it waits, as real I/O does). */
-  takes = 0;
   async seed(markdown: string): Promise<SeedResult> {
     this.seeds++;
-    for (const until = Date.now() + this.takes; Date.now() < until; ) await new Promise<void>((resolve) => { setImmediate(resolve); });
     return this.seedHook?.(markdown) ?? { ok: true, state: text(markdown.length === 0 ? ' ' : markdown) };
   }
   toMarkdown(state: Uint8Array): Promise<ConvertResult> { const markdown = new TextDecoder().decode(state).replace(/^ $/, ''); return Promise.resolve({ ok: true, markdown, text: markdown }); }
@@ -36,7 +33,7 @@ class EchoConverter implements MarkdownConverter {
 
 const ctx = (over: Partial<JobContext> = {}): JobContext => ({ jobId: 'job-1', attempt: 1, retryLimit: 3, signal: new AbortController().signal, ...over });
 
-async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; repo?: FakeImportRepo; chunkMs?: number; batchPages?: number; maxPages?: number } = {}) {
+async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
   const repo = over.repo ?? new FakeImportRepo();
   repo.seed({ id: IMPORT, tenantId: TENANT, status: over.status ?? 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey(TENANT, IMPORT) });
   const files = new FakeFileStorage();
@@ -52,7 +49,7 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
       enqueueImport: (payload, options) => { enqueued.push({ name: 'import', payload, options }); return handle.queueOverride?.() ?? Promise.resolve('id'); },
       enqueueImportCleanup: (payload) => { enqueued.push({ name: 'import-cleanup', payload, options: undefined }); return Promise.resolve('id'); },
     },
-    ...(over.chunkMs === undefined ? {} : { chunkMs: over.chunkMs }), ...(over.batchPages === undefined ? {} : { batchPages: over.batchPages }), ...(over.maxPages === undefined ? {} : { maxPages: over.maxPages }),
+    ...(over.chunkSignal === undefined ? {} : { chunkSignal: over.chunkSignal }), ...(over.batchPages === undefined ? {} : { batchPages: over.batchPages }), ...(over.maxPages === undefined ? {} : { maxPages: over.maxPages }),
   });
   const run = (context: JobContext = ctx(), payload: unknown = { tenantId: TENANT, importId: IMPORT }) => handler(payload, context);
   const record = () => repo.get(TENANT, IMPORT);
@@ -185,12 +182,17 @@ describe('endings that are not the end of the run', () => {
   });
 
   it('a chunk that has used its time does the same (at least one batch of pages is done each time), and the continuations finish the import', async () => {
-    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n'), md('c.md\u0000# C\n')], { chunkMs: 1, batchPages: 1 });
-    t.converter.takes = 15;
+    // The chunk's time is the injected signal, so the test does not depend on the wall clock: each chunk's time is up once one page has been converted.
+    const asked: number[] = [];
+    const t = await setup([md('a.md\u0000# A\n'), md('b.md\u0000# B\n'), md('c.md\u0000# C\n')], {
+      batchPages: 1,
+      chunkSignal: (ms) => { asked.push(ms); const expired = new AbortController(); t.converter.seedHook = () => { expired.abort(); return undefined; }; return expired.signal; },
+    });
     let runs = 0;
     while ((await t.record())?.status !== 'done' && runs < 10) { await t.run(); runs++; }
     expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 3 } });
     expect(runs).toBe(3);
+    expect(asked).toEqual([300_000, 300_000, 300_000]); // the budget of a chunk is the 5 minutes of the job
     expect(t.enqueued.filter((e) => e.name === 'import')).toHaveLength(2); // the last run ended the import and needed none
     expect(t.repo.written.map((w) => w.page.title).sort()).toEqual(['A', 'B', 'C']);
   });
