@@ -38,6 +38,7 @@ export default defineConfig({
         "apps/web/src/login-main.tsx", // the entry of the sign-in document: reads the configuration and mounts the screen; the screen is tested, the entry by the browser checks
         "apps/web/src/editor/core/{mount,api,real-provider}.ts", // bind the real editor and the real provider: both need a browser (a real editor does not run in the test DOM); the end-to-end editor specs run them
         "apps/web/src/screens/page/engine.ts", // hands those two to the page screen; the screen's tests use a stand-in engine
+        "packages/adapters/embedder-onnx/src/{worker,tokenizer}.ts", // the model's thread and the tokenizer load the real model files (278 MB), which the unit run does not have: both are thin shells, run by conformance.container.test.ts with the real models
         "**/*.d.ts", // type declarations: no code
         "**/test/**", // tests and their helpers
         "**/test-e2e/**", // end-to-end scenarios (run in containers)
