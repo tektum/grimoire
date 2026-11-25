@@ -68,7 +68,7 @@ export function poolDatabase(url: string): Database {
 
 /** A queue with quick supervision, so a crashed worker's job comes back within seconds. */
 export function startQueue(url: string): Promise<PgBossJobQueue> {
-  return createJobQueue({ connectionString: url, max: 4, cron: true, onError: () => undefined }, (o) => new PgBoss({ ...o, superviseIntervalSeconds: 5 }));
+  return createJobQueue({ connectionString: url, max: 4, onError: () => undefined }, (o) => new PgBoss({ ...o, superviseIntervalSeconds: 5 }));
 }
 
 export type { JobQueue };
