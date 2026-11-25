@@ -87,7 +87,8 @@ describe('writing a page of an import', () => {
     if (parent.kind !== 'ok') throw new Error(parent.kind);
     const child = await repo.writePage('legacy', s.importId, page(s.items.get('a/b.md') as string, s.collectionId, { parentId: parent.pageId }), LIMITS, NOW);
     expect(child.kind).toBe('ok');
-    expect((await pagesOf(s.collectionId)).map((r) => r.parent_id).sort()).toEqual([null, parent.pageId]);
+    expect((await pagesOf(s.collectionId)).map((r) => r.parent_id)).toEqual(expect.arrayContaining([null, parent.pageId]));
+    expect(await pagesOf(s.collectionId)).toHaveLength(2);
     const other = await started(['x.md']);
     expect((await repo.writePage('legacy', other.importId, page(other.items.get('x.md') as string, other.collectionId, { parentId: parent.pageId }), LIMITS, NOW)).kind).toBe('no-parent');
   });

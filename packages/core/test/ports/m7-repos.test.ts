@@ -18,7 +18,7 @@ describe('FakeImportRepo', () => {
     it(`meets the conformance case ${c.name}`, async () => {
       const repo = new FakeImportRepo();
       let n = 0;
-      await c.run({ repo, tenantId: 'a', otherTenantId: 'b', now: 1_700_000_000_000, seedStatus: (id, status) => { repo.setStatus(id, status); return Promise.resolve(); }, seed: (status) => Promise.resolve(repo.seed({ id: `imp${String(++n)}`, tenantId: 'a', status })) });
+      await c.run({ repo, tenantId: 'a', otherTenantId: 'b', userId: 'u', now: 1_700_000_000_000, seedStatus: (id, status) => { repo.setStatus(id, status); return Promise.resolve(); }, seed: (status) => Promise.resolve(repo.seed({ id: `imp${String(++n)}`, tenantId: 'a', status })) });
     });
   }
 });
