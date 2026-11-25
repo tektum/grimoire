@@ -32,10 +32,11 @@ const MIN_TOKENS = 3;
 interface Piece { readonly start: number; readonly end: number; readonly tokens: number }
 
 /**
- * Ends of a sentence: a full stop, question or exclamation mark with the quotes and brackets that may close it, then white space; and the full-width ones (。！？), which Chinese and
- * Japanese text writes with no white space after them, with the closing quotes and brackets that stay with the sentence, at the point after them.
+ * Ends of a sentence: a full stop, question or exclamation mark with the quotes and brackets that may close it (at most three: the look-behind reads a few characters, never a whole
+ * run), then white space; and the full-width ones (。！？), which Chinese and Japanese text writes with no white space after them, with the closing quotes and brackets that stay with
+ * the sentence, at the point after them (never before another closer or another mark: a run of marks is one end).
  */
-const SENTENCE_END = /(?<=[.!?…]["')\]»”’]*)\s+|(?<=[。！？]["')\]」』）»”’]*)(?!["')\]」』）»”’])/g;
+const SENTENCE_END = /(?<=[.!?…]["')\]»”’]{0,3})\s+|(?<=[。！？]["')\]」』）»”’]{0,3})(?!["')\]」』）»”’。！？])/g;
 const WHITE_SPACE = /\s+/g;
 
 /** The parts of `piece` between the matches of `separator` (white space is cut off both ends of every part), as pieces. */

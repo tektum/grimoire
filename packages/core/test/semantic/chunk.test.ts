@@ -14,7 +14,8 @@ const sentences = (count: number, perSentence = 10) => Array.from({ length: coun
 function uncovered(text: string, chunks: readonly { charStart: number; charEnd: number }[]): string {
   const covered = new Array<number>(text.length).fill(0);
   for (const c of chunks) for (let i = c.charStart; i < c.charEnd; i += 1) covered[i] = (covered[i] as number) + 1;
-  return [...text].map((ch, i) => ((covered[i] === 0 && ch.trim() !== '') || (covered[i] as number) > 1 ? `${ch}@${String(i)}` : '')).join('');
+  // By UTF-16 unit, like `covered` and the offsets: `[...text]` would go by code point and be off by one after every astral character.
+  return Array.from({ length: text.length }, (_, i) => text.charAt(i)).map((ch, i) => ((covered[i] === 0 && ch.trim() !== '') || (covered[i] as number) > 1 ? `${ch}@${String(i)}` : '')).join('');
 }
 
 describe('chunkText', () => {
@@ -133,6 +134,31 @@ describe('chunkText', () => {
     expect(uncovered(text, chunks)).toBe('');
     const closing = chunkText('「はい。」と言った。それから、「いいえ！」とも。'.repeat(8), count, { model: MODEL, targetTokens: 12, maxTokens: 16 });
     for (const c of closing) expect(c.text.startsWith('」')).toBe(false); // a closing quote stays with its sentence
+  });
+
+  it('the helper that checks coverage sees an uncovered character after an astral one', () => {
+    expect(uncovered('🙂a', [{ charStart: 0, charEnd: 2 }])).toBe('a@2');
+    expect(uncovered('🙂a', [{ charStart: 0, charEnd: 3 }])).toBe('');
+  });
+
+  it('keeps stacked full-width marks together: a cut after 本当？！ is after the second mark, never between them', () => {
+    const count = (t: string): number => Math.ceil(t.length / 2);
+    const text = '本当？！はい。'.repeat(40);
+    const chunks = chunkText(text, count, { model: MODEL, targetTokens: 2, maxTokens: 14 }); // a piece to a chunk, so every cut shows
+    expect(chunks.length).toBeGreaterThan(5);
+    for (const c of chunks) expect(['！', '？', '。'].includes(c.text.charAt(0))).toBe(false);
+    expect(uncovered(text, chunks)).toBe('');
+  });
+
+  it('does not take quadratic time on a long line of closing quotes or brackets', () => {
+    const count = (t: string): number => Math.ceil(t.length / 4);
+    for (const unit of ['"', '」', ')']) {
+      const text = `${unit.repeat(150_000)} end`;
+      const began = performance.now();
+      const chunks = chunkText(text, count, { model: MODEL });
+      expect(performance.now() - began, `${unit} run`).toBeLessThan(2000);
+      expect(uncovered(text, chunks)).toBe('');
+    }
   });
 
   it('counts the text it cuts a long run from in work that grows with the run, not with the run times its pieces', () => {
