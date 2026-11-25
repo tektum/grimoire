@@ -29,6 +29,8 @@ export interface ChunkHit {
  * view for the server's statistics and spans tenants.
  */
 export interface EmbeddingStore {
+  /** The text to embed and the Markdown hash it belongs to, for a live page of the tenant with Markdown (a page that is gone, in the trash, or has no Markdown has none). */
+  pageText(tenantId: string, pageId: string): Promise<{ readonly markdownHash: Uint8Array; readonly text: string } | undefined>;
   /** The content hash of each chunk of the page that is stored for `model`, by chunk index. */
   existingHashes(tenantId: string, pageId: string, model: string): Promise<Map<number, Uint8Array>>;
   /**

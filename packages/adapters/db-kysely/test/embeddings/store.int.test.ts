@@ -103,6 +103,16 @@ describe('replacePage', () => {
   });
 });
 
+describe('pageText', () => {
+  it('gives the text and hash of a live page of the tenant, and nothing for a trashed page, one without Markdown, another tenant or no page', async () => {
+    const id = await page({ hashByte: 7 });
+    expect(await store.pageText(TENANT, id)).toEqual({ markdownHash: hash(7), text: 'text' });
+    await run(`update pages set text_content = null where id = '${id}'`);
+    expect(await store.pageText(TENANT, id)).toEqual({ markdownHash: hash(7), text: '' });
+    for (const [tenant, other] of [[TENANT, await page({ deleted: true })], [TENANT, await page({ hashByte: null })], ['T-other', id], [TENANT, randomUUID()]] as const) expect(await store.pageText(tenant, other)).toBeUndefined();
+  });
+});
+
 describe('existingHashes', () => {
   it('returns the stored hashes by chunk index, for the model and the tenant asked', async () => {
     const id = await page();

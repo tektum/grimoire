@@ -121,6 +121,20 @@ describe('FakeEmbeddingStore', () => {
   });
 });
 
+describe('FakeEmbeddingStore, the text of a page', () => {
+  it('gives the text and hash of a live page of the tenant, and nothing for a trashed page, one without Markdown, another tenant or no page', async () => {
+    const store = new FakeEmbeddingStore(() => NOW);
+    store.seedPage({ id: 'p1', collectionId: 'open', markdownHash: hash(1), text: 'hello world' });
+    store.seedPage({ id: 'p2', collectionId: 'open', markdownHash: null });
+    store.seedPage({ id: 'p3', collectionId: 'open', markdownHash: hash(3) });
+    store.trashPage('p3');
+    expect(await store.pageText('legacy', 'p1')).toEqual({ markdownHash: hash(1), text: 'hello world' });
+    store.editPage('p1', hash(2), NOW, 'changed text');
+    expect(await store.pageText('legacy', 'p1')).toEqual({ markdownHash: hash(2), text: 'changed text' });
+    for (const [tenant, id] of [['legacy', 'p2'], ['legacy', 'p3'], ['other', 'p1'], ['legacy', 'nope']] as const) expect(await store.pageText(tenant, id)).toBeUndefined();
+  });
+});
+
 describe('FakeEmbeddingStore, chunks that did not change', () => {
   it('keeps the stored vector of a chunk given without one, updates its offsets, and throws when there is none to keep', async () => {
     const store = new FakeEmbeddingStore(() => NOW);

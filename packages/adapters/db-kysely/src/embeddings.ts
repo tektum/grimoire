@@ -8,6 +8,12 @@ const bytes = (b: Uint8Array): Buffer => Buffer.from(b);
 /** The chunk rows of page_chunks and the state row of page_embedding_state (migration 0011): see the port for what each method means. */
 export function createEmbeddingStore(db: Database): EmbeddingStore {
   return {
+    async pageText(tenantId, pageId) {
+      const [row] = await db.query<{ markdown_hash: Buffer; text_content: string | null }>(
+        `select markdown_hash, text_content from pages where id = $1 and tenant_id = $2 and deleted_at is null and markdown_hash is not null`, [pageId, tenantId]);
+      return row === undefined ? undefined : { markdownHash: new Uint8Array(row.markdown_hash), text: row.text_content ?? '' };
+    },
+
     async existingHashes(tenantId, pageId, model) {
       const rows = await db.query<{ chunk_index: number; content_hash: Buffer }>(
         `select chunk_index, content_hash from page_chunks where page_id = $1 and tenant_id = $2 and model = $3`, [pageId, tenantId, model]);

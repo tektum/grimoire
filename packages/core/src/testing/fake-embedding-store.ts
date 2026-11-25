@@ -2,7 +2,7 @@ import { EMBED_MAX_ATTEMPTS, type ChunkHit, type ChunkRow, type EmbeddingStore }
 
 /** A chunk as stored: the embedding is always there. */
 type StoredChunk = ChunkRow & { readonly embedding: Float32Array };
-interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean }
+interface PageFact { readonly tenantId: string; readonly collectionId: string; markdownHash: Uint8Array | null; editedAt: number; deleted: boolean; text: string }
 interface StateRow { model: string; markdownHash: Uint8Array; status: 'ready' | 'failed'; attempts: number; error: string | null }
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -19,14 +19,19 @@ export class FakeEmbeddingStore implements EmbeddingStore {
 
   constructor(private readonly now: () => number = () => Date.now()) {}
 
-  seedPage(page: { readonly id: string; readonly collectionId: string; readonly markdownHash: Uint8Array | null; readonly tenantId?: string; readonly editedAt?: number }): void {
-    this.pages.set(page.id, { tenantId: page.tenantId ?? 'legacy', collectionId: page.collectionId, markdownHash: page.markdownHash, editedAt: page.editedAt ?? 0, deleted: false });
+  seedPage(page: { readonly id: string; readonly collectionId: string; readonly markdownHash: Uint8Array | null; readonly tenantId?: string; readonly editedAt?: number; readonly text?: string }): void {
+    this.pages.set(page.id, { tenantId: page.tenantId ?? 'legacy', collectionId: page.collectionId, markdownHash: page.markdownHash, editedAt: page.editedAt ?? 0, deleted: false, text: page.text ?? '' });
   }
 
-  /** The page's Markdown changed (as a save does): its hash and edit time. */
-  editPage(id: string, markdownHash: Uint8Array, editedAt: number): void {
+  /** The page's Markdown changed (as a save does): its hash and edit time, and its text when given. */
+  editPage(id: string, markdownHash: Uint8Array, editedAt: number, text?: string): void {
     const page = this.pages.get(id);
-    if (page !== undefined) Object.assign(page, { markdownHash, editedAt });
+    if (page !== undefined) Object.assign(page, { markdownHash, editedAt, ...(text === undefined ? {} : { text }) });
+  }
+
+  pageText(tenantId: string, pageId: string): Promise<{ readonly markdownHash: Uint8Array; readonly text: string } | undefined> {
+    const page = this.page(tenantId, pageId);
+    return Promise.resolve(page === undefined || page.deleted || page.markdownHash === null ? undefined : { markdownHash: page.markdownHash, text: page.text });
   }
 
   trashPage(id: string): void {
