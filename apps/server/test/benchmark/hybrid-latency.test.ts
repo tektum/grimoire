@@ -27,6 +27,8 @@ const ONE_PERCENT_P95_MS = 100;
 // GRIMOIRE_HYBRID_ASSERT=0 records the numbers and asserts nothing: the CI job runs the statement on the database as staging has it (1 GiB, about 180 MB of shared buffers, 2 vCPU) beside the one that must meet the limits.
 const ASSERT = process.env['GRIMOIRE_HYBRID_ASSERT'] !== '0';
 const SHAPE = process.env['GRIMOIRE_HYBRID_SHAPE'] ?? 'default';
+// GRIMOIRE_HYBRID_EXPERIMENTS=1 adds the experiments (the approximate index, the table settings): the CI job of this test sets it; the nightly benchmark run, which has a shorter time and no shaped database, does not.
+const EXPERIMENTS = process.env['GRIMOIRE_HYBRID_EXPERIMENTS'] === '1';
 const ROUNDS = 3; // each limit is judged on the median of this many p95 values (all of them are recorded)
 const check = (value: number, limit: number): void => {
   if (ASSERT) expect(value).toBeLessThanOrEqual(limit);
@@ -91,7 +93,6 @@ beforeAll(async () => {
   store = createEmbeddingStore(db, ops);
   const user = await insertUser(run, {});
   for (let c = 0; c < COLLECTIONS; c += 1) collections.push(await insertCollection(run, { created_by: user, default_permission: 'read' }));
-  const random = seeded(7);
   const hash = (n: number): Uint8Array => new Uint8Array(32).fill(n);
   const hex = '01'.repeat(32);
   const key = modelKey(model);
@@ -101,14 +102,18 @@ beforeAll(async () => {
     for (;;) {
       const index = next++;
       if (index >= PAGES) return;
+      const random = seeded(7919 * (index + 1)); // a generator of the page's own: what a page holds does not depend on which worker got to it first
       const text = sentence(random, 14 * 8);
       const id = await insertPage(run, { collection_id: collections[index % COLLECTIONS] as string, created_by: user, title: `Page ${String(index)}`, text_content: text, markdown_hash: raw(`decode('${hex}', 'hex')`) });
       const chunks = Array.from({ length: CHUNKS }, (_, i) => ({ chunkIndex: i, contentHash: hash(2 + (i % 200)), charStart: i * 8, charEnd: i * 8 + 7, tokenCount: 8, embedding: vector(random) }));
       if ((await store.replacePage(TENANT, id, hash(1), key, chunks)) !== 'ok') throw new Error(`page ${String(index)} was not written`);
     }
   };
-  await Promise.all(Array.from({ length: 8 }, worker));
-  for (let q = 0; q < QUERIES; q += 1) queryVectors.push(vector(random));
+  // Every worker is awaited before a failure is thrown: the other workers must not go on writing into a database that `afterAll` is about to drop.
+  const outcomes = await Promise.allSettled(Array.from({ length: 8 }, worker));
+  const failed = outcomes.find((o): o is PromiseRejectedResult => o.status === 'rejected');
+  if (failed !== undefined) throw failed.reason;
+  for (let q = 0; q < QUERIES; q += 1) queryVectors.push(vector(seeded(104729 * (q + 1))));
   await run('analyze page_chunks');
   const counts = await store.counts(key);
   record('data', { shape: SHAPE, asserted: ASSERT, pages: PAGES, chunks: counts.chunks, dims: DIMS, collections: COLLECTIONS, loadSeconds: Math.round((Date.now() - started) / 1000) });
@@ -141,6 +146,15 @@ describe('the semantic statement without an index', () => {
     const settings = await run(
       `select name, setting, unit from pg_settings where name in ('shared_buffers', 'work_mem', 'effective_cache_size', 'max_parallel_workers_per_gather', 'max_parallel_workers', 'max_worker_processes', 'jit') order by name`,
     );
+    expect((settings as { name: string }[]).map((r) => r.name).sort()).toEqual([
+      'effective_cache_size',
+      'jit',
+      'max_parallel_workers',
+      'max_parallel_workers_per_gather',
+      'max_worker_processes',
+      'shared_buffers',
+      'work_mem',
+    ]);
     record('postgresSettings', settings);
     const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
     const ids = `{${collections.join(',')}}`;
@@ -149,10 +163,9 @@ describe('the semantic statement without an index', () => {
          where c.model = '${modelKey(model)}' and c.tenant_id = '${TENANT}' and p.tenant_id = '${TENANT}' and p.deleted_at is null and p.collection_id = any('${ids}'::uuid[]) and 1 - (c.embedding <=> '${vectorText}'::vector) >= 0
          order by distance, c.page_id, c.chunk_index limit 300) select count(*) from nearest`,
     );
-    record(
-      'plan',
-      (plan as { 'QUERY PLAN': string }[]).map((r) => r['QUERY PLAN']),
-    );
+    const planLines = (plan as { 'QUERY PLAN': string }[]).map((r) => r['QUERY PLAN']);
+    expect(planLines.some((l) => l.includes('page_chunks'))).toBe(true); // the plan is of the table's scan (a hand-written copy of the `nearest` step of the store's statement: the join and the final limit are left out)
+    record('planOfTheNearestStep', planLines);
   });
 
   it('has p95 within 400 ms for a user who sees every collection', { timeout: 600_000 }, async () => {
@@ -184,24 +197,26 @@ describe('the semantic statement without an index', () => {
     const semantic: SemanticSearch = { embedder, store, settings: { enabled: true, queryTimeoutMs: 1500, minSimilarity: 0, candidates: 100 } };
     const fullText = createSearchRepo(db, { statementTimeoutMs: 5000 });
     const rounds: { p95: number; max: number }[] = [];
+    let fallbacks = 0; // a request that answered from the words alone (the semantic part ran past its 1,500 ms): counted, and an error only where the limits are asserted
     for (let round = 0; round < ROUNDS; round += 1) {
       const times: number[] = [];
       for (let i = 0; i < QUERIES; i += 1) {
         const t = performance.now();
         const page = await hybridSearch({ fullText, semantic, log }, { tenantId: TENANT, collectionIds: collections, query: `${WORDS[i]} ${WORDS[i + 50]}`, limit: 20 });
         times.push(performance.now() - t);
-        expect(page.semantic).toBe(true);
+        if (!page.semantic) fallbacks += 1;
       }
       rounds.push({ p95: Math.round(p95(times)), max: Math.round(Math.max(...times)) });
     }
-    record('hybridRequest', { rounds, medianOfMaxMs: median(rounds.map((r) => r.max)), medianP95Ms: median(rounds.map((r) => r.p95)) });
+    record('hybridRequest', { fallbacks, rounds, medianOfMaxMs: median(rounds.map((r) => r.max)), medianP95Ms: median(rounds.map((r) => r.p95)) });
+    if (ASSERT) expect(fallbacks).toBe(0);
     check(median(rounds.map((r) => r.max)), REQUEST_MS);
   });
 
   // The approximate index, for the decision, on this data and this database (the column has no fixed dimension, so the index is on `embedding::vector(768)` and a statement has to say the same to use it): build time and size, the time of the statement, and how much of the exact answer it returns (recall of the 300 nearest
   // chunks). The vectors here are uniformly random, which is the worst case for a graph index (real embeddings cluster), so the recall is a floor. The filter on collections is the point of the
   // 1% line: an index scan finds its nearest first and the permission filter comes after (iterative scan keeps going until it has enough). Never asserted.
-  it('records the approximate index: build, size, time and recall against the exact scan, for all collections and for 1%', { timeout: 2_400_000 }, async () => {
+  it.runIf(EXPERIMENTS)('records the approximate index: build, size, time and recall against the exact scan, for all collections and for 1%', { timeout: 2_400_000 }, async () => {
     await experiment('experimentHnsw', async () => {
       const key = modelKey(model);
       // One statement for each call (the connection speaks the extended protocol): the settings are the database's own, set before, and the exact scan is forced by an expression the index cannot serve.
@@ -241,10 +256,13 @@ describe('the semantic statement without an index', () => {
   });
   // Evidence for the decision between tuning the table and an approximate index, recorded after the assertions (it changes the table): the schema as it ships against more scan workers and against the layout before migration 0013 (the vector out of line in TOAST, which was
   // 3x slower and too noisy on a hosted runner to assert). Never asserted.
-  it('records the shipped layout against more scan workers and against the vector out of line', { timeout: 1_800_000 }, async () => {
+  it.runIf(EXPERIMENTS)('records the shipped layout against more scan workers and against the vector out of line', { timeout: 1_800_000 }, async () => {
     await experiment('experimentTableSettings', async () => {
-      // One round to warm the cache, then the 30 queries; and the workers the scan really got, read from the plan of one query.
-      const measure = async (): Promise<{ p95Ms: number; workersLaunched: string; scan: string }> => {
+      // The index of the experiment before this one is dropped: it would be counted in the sizes below, and every rewrite of the table would have to keep its graph up.
+      await run('drop index if exists page_chunks_hnsw');
+      // One round to warm the cache, then the 30 queries (the timed ones are `store.search`, the statement the server runs). The workers are read from the plan of the BARE scan of the table (no join, no
+      // permission predicate): it says how the table is read, not what the full statement's planner chose.
+      const measure = async (): Promise<{ p95Ms: number; bareScanWorkersLaunched: string; bareScan: string }> => {
         await statement(collections);
         const p95Ms = Math.round(p95(await statement(collections)));
         const vectorText = `[${[...(queryVectors[0] as Float32Array)].join(',')}]`;
@@ -254,8 +272,8 @@ describe('the semantic statement without an index', () => {
         const lines = plan.map((r) => r['QUERY PLAN']);
         return {
           p95Ms,
-          workersLaunched: lines.find((l) => l.includes('Workers Launched'))?.trim() ?? 'none',
-          scan:
+          bareScanWorkersLaunched: lines.find((l) => l.includes('Workers Launched'))?.trim() ?? 'none',
+          bareScan:
             lines
               .find((l) => l.includes('Scan on page_chunks'))
               ?.trim()

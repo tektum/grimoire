@@ -103,7 +103,7 @@ jobs:
           echo "semantic=$semantic" >> "$GITHUB_OUTPUT"
           # The search latency job loads 140,000 vectors (minutes): only a pull request that touches the search or the embeddings pays for it; the nightly benchmark job runs the same test for everything else.
           search=false
-          if [ -n "${BASE_SHA:-}" ] && git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(packages/core/src/(search|semantic)/|packages/core/src/ports/(search-repo|embedding-store)\.ts$|packages/adapters/db-kysely/src/(search|embeddings)\.ts$|db/migrations/|apps/server/test/benchmark/hybrid-latency\.test\.ts$)'; then search=true; fi
+          if [ -n "${BASE_SHA:-}" ] && git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(packages/core/src/(search|semantic)/|packages/core/src/ports/(search-repo|embedding-store)\.ts$|packages/adapters/db-kysely/src/(search|embeddings)\.ts$|db/migrations/|apps/server/test/benchmark/hybrid-latency\.test\.ts$|compose\.search-latency\.yaml$|\.github/workflows/ci\.yml$)'; then search=true; fi
           echo "search=$search" >> "$GITHUB_OUTPUT"
 
   static:
@@ -776,6 +776,7 @@ jobs:
       LATENCY_PG_CACHE_SIZE: ${{ matrix.cache_size }}
       GRIMOIRE_HYBRID_SHAPE: ${{ matrix.shape }}
       GRIMOIRE_HYBRID_ASSERT: ${{ matrix.assert }}
+      GRIMOIRE_HYBRID_EXPERIMENTS: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

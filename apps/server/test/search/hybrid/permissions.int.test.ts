@@ -82,7 +82,9 @@ function appOver() {
 }
 
 let app: ReturnType<typeof appOver>;
-const get = (path: string) => app.request(path, { headers: { authorization: 'Bearer member' } });
+// `/v1/search` allows 30 requests a minute to one person, and a case follows its cursors (about five requests): each case is a person of its own, or the file would run into the limit and answer 429.
+const PEOPLE = 24;
+const get = (path: string, who = 'u0') => app.request(path, { headers: { authorization: `Bearer ${who}` } });
 
 beforeAll(async () => {
   requireBuild();
@@ -90,7 +92,7 @@ beforeAll(async () => {
   db = createDatabase(appUrl(DB));
   ops = createOpsDatabase(opsUrl(DB));
   store = createEmbeddingStore(db, ops);
-  await insertUser(run, { descope_user_id: 'd-member', email: 'member@example.com', role: 'member' });
+  for (let i = 0; i < PEOPLE; i += 1) await insertUser(run, { descope_user_id: `d-u${String(i)}`, email: `u${String(i)}@example.com`, role: 'member' });
   open = await insertCollection(run, { default_permission: 'read' });
   hidden = await insertCollection(run, {}); // no default permission and no grant: the member cannot read it
   // Pages the member can read: some near the query, some far. Words shared with the generated queries ("plan", "notes") so the full-text list has rows too.
@@ -112,15 +114,18 @@ afterAll(async () => {
 const queries = Array.from({ length: 20 }, (_, i) => ['plan', 'notes', `number ${String(i % 6)}`, 'open collection', `plan notes ${String(i)}`, 'passage', 'secret', MARKER.toLowerCase()][i % 8] as string);
 
 /** Every page of the answer, followed through its cursors, as raw text. */
-async function bodies(query: string, extra = ''): Promise<{ texts: string[]; items: { pageId: string; collectionId: string }[] }> {
+async function bodies(query: string, who: string, extra = ''): Promise<{ texts: string[]; items: { pageId: string; collectionId: string }[] }> {
   const texts: string[] = [];
   const items: { pageId: string; collectionId: string }[] = [];
   let cursor: string | null = null;
   for (let guard = 0; guard < 20; guard += 1) {
-    const res = await get(`/v1/search?q=${encodeURIComponent(query)}&limit=2${extra}${cursor === null ? '' : `&cursor=${cursor}`}`);
+    const res = await get(`/v1/search?q=${encodeURIComponent(query)}&limit=2${extra}${cursor === null ? '' : `&cursor=${cursor}`}`, who);
     expect(res.status, query).toBe(200);
     const text = await res.text();
     texts.push(text);
+    // A cursor is base64url of its key: it is read as what it holds as well, since the encoded text could never contain an id as it is written.
+    const sent = (JSON.parse(text) as { nextCursor: string | null }).nextCursor;
+    if (sent !== null) texts.push(Buffer.from(sent, 'base64url').toString('utf8'));
     const body = JSON.parse(text) as { items: { pageId: string; collectionId: string }[]; nextCursor: string | null };
     items.push(...body.items);
     if (body.nextCursor === null) break;
@@ -140,8 +145,9 @@ describe('the semantic list and the fused list never show a page the caller cann
     expect(none).toEqual([]);
   });
 
-  it.each(queries.map((q, i) => [i, q] as const))('query %i (%s): no body of the whole answer, cursors included, holds the marker, the unreadable page or the trashed one', async (_i, query) => {
-    const answer = await bodies(query);
+  it.each(queries.map((q, i) => [i, q] as const))('query %i (%s): no body of the whole answer, cursors included, holds the marker, the unreadable page or the trashed one', async (i, query) => {
+    const who = `u${String(i)}`;
+    const answer = await bodies(query, who);
     for (const text of answer.texts) {
       expect(text).not.toContain(MARKER);
       expect(text).not.toContain(ids.hidden);
@@ -149,13 +155,13 @@ describe('the semantic list and the fused list never show a page the caller cann
     }
     expect(answer.items.map((i) => i.collectionId).every((c) => c === open)).toBe(true);
     expect(answer.items.length).toBeGreaterThan(0); // the readable pages are found (by meaning at least): the scan above is not passing on an empty answer
-    const semantic = await get(`/v1/search?q=${encodeURIComponent(query)}&limit=2`);
+    const semantic = await get(`/v1/search?q=${encodeURIComponent(query)}&limit=2`, who);
     expect(((await semantic.json()) as { semantic: boolean }).semantic).toBe(true);
   });
 
   it('a collection the caller cannot read, asked for by id, is an empty 200 with no cursor', async () => {
     for (const query of queries.slice(0, 4)) {
-      const res = await get(`/v1/search?q=${encodeURIComponent(query)}&collectionId=${hidden}`);
+      const res = await get(`/v1/search?q=${encodeURIComponent(query)}&collectionId=${hidden}`, 'u21');
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(JSON.parse(text)).toMatchObject({ items: [], nextCursor: null });
@@ -164,7 +170,7 @@ describe('the semantic list and the fused list never show a page the caller cann
   });
 
   it('a readable collection asked for by id gives only its pages, and the trashed page is absent from it', async () => {
-    const answer = await bodies('plan notes', `&collectionId=${open}`);
+    const answer = await bodies('plan notes', 'u20', `&collectionId=${open}`);
     expect(answer.items.map((i) => i.pageId)).not.toContain(ids.trashed);
     expect(new Set(answer.items.map((i) => i.pageId)).size).toBe(answer.items.length); // each page once through the cursors
   });
