@@ -87,7 +87,7 @@ export function buildZip(entries: readonly BuilderEntry[], options: { zip64?: bo
  * It is what makes a bomb of 2 GiB cost a few megabytes of memory.
  */
 export function deflateZeros(bytes: number): Buffer {
-  const out: number[] = [];
+  let out: number[] = [];
   let acc = 0;
   let nbits = 0;
   const bits = (value: number, count: number, msbFirst = false): void => {
@@ -98,12 +98,30 @@ export function deflateZeros(bytes: number): Buffer {
       if (nbits === 8) { out.push(acc); acc = 0; nbits = 0; }
     }
   };
+  const match = (): void => { bits(0b11000101, 8, true); bits(0, 5, true); }; // length 258 (symbol 285), distance 1 (code 0)
   bits(1, 1); bits(1, 2); // final block, fixed Huffman
   bits(0x30, 8, true); // literal 0 (code 00110000)
   let left = bytes - 1;
-  while (left >= 258) { bits(0b11000101, 8, true); bits(0, 5, true); left -= 258; } // length 258 (symbol 285), distance 1 (code 0)
+  // A match is 13 bits, so 8 of them are 13 whole bytes and leave the bit writer in the state it began in: every group of 8 is the same 13 bytes.
+  // One group is written bit by bit to get the unit and the rest is a fill, so a 2 GiB bomb costs milliseconds, not millions of bit writes.
+  const group = 258 * 8;
+  let head = Buffer.alloc(0);
+  let repeated = Buffer.alloc(0);
+  if (left >= 2 * group) {
+    const before = out.length;
+    for (let i = 0; i < 8; i++) match();
+    left -= group;
+    const unit = Buffer.from(out.slice(before));
+    const groups = Math.floor(left / group);
+    left -= groups * group;
+    head = Buffer.from(out);
+    repeated = Buffer.alloc(unit.length * groups);
+    repeated.fill(unit);
+    out = [];
+  }
+  while (left >= 258) { match(); left -= 258; }
   while (left > 0) { bits(0x30, 8, true); left--; } // the rest as literals
   bits(0, 7, true); // end of block (symbol 256)
   if (nbits > 0) out.push(acc);
-  return Buffer.from(out);
+  return Buffer.concat([head, repeated, Buffer.from(out)]);
 }
