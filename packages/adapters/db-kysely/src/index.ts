@@ -22,6 +22,7 @@ export * from './attachments.js';
 export * from './setup.js';
 export * from './tenant-adopt.js';
 export * from './search.js';
+export * from './embeddings.js';
 export * from './imports.js';
 export * from './tenants.js';
 
