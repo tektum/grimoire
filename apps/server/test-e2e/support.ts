@@ -171,7 +171,9 @@ function devPassword(): string {
   } catch { /* no .env */ }
   return 'grimoire-dev';
 }
-const db = createDatabase(`postgresql://grimoire_app:${devPassword()}@127.0.0.1:55432/grimoire`, { maxConnections: 2 });
+// The scenarios' own reads and seeds, as the operator role: it has the runtime role's grants (it is a member of it) and a row-level security policy that passes every
+// tenant's rows (migration 0014). The runtime role sees only the rows of the tenant its transaction set, and these fixtures set none (docs/tenancy.md section 3.2).
+const db = createDatabase(`postgresql://grimoire_ops:${devPassword()}@127.0.0.1:55432/grimoire`, { maxConnections: 2 });
 export const closeDb = (): Promise<void> => db.close();
 
 /** The development collection "Dev" (contracts section 4, default read_write): every dev member may edit its pages, a viewer reads them. */
@@ -193,7 +195,7 @@ export async function userIdOf(subject: string): Promise<string> {
   return id;
 }
 
-/** Inserts a page row in "Dev" through the runtime database URL and returns its id. */
+/** Inserts a page row in "Dev" through the operator role (see `db` above) and returns its id. */
 export async function newPage(): Promise<string> {
   const id = randomUUID();
   await ensureDevCollection();
