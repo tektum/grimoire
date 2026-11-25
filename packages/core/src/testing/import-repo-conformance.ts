@@ -63,6 +63,22 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'a-settled-page-item-has-no-page-and-so-no-ids',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'b.md'));
+      const [a, b] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(a && b);
+      assert.ok(a.pageId !== null && a.urlId !== null);
+      await h.repo.settle(h.tenantId, made.id, a.id, { status: 'failed', message: 'content-lost' });
+      await h.repo.settle(h.tenantId, made.id, b.id, { status: 'skipped', message: 'too_large' });
+      for (const i of [a, b]) {
+        const row = await h.repo.getItem(h.tenantId, made.id, i.id);
+        assert.deepEqual([row?.pageId, row?.urlId], [null, null], i.path);
+      }
+    },
+  },
+  {
     name: 'scan-items-pages-through-every-item-by-id',
     async run(h) {
       const made = await h.seed('running');

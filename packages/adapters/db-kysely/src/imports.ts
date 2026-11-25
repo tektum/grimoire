@@ -71,7 +71,7 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     },
     async settle(tenantId, importId, itemId, outcome) {
       const rows = await db.query(
-        `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7
+        `update import_items set status = $4, message = $5, markdown_bytes = $6, state_bytes = $7, page_id = null, url_id = null
          where tenant_id = $1 and import_id = $2 and id = $3::bigint and status = 'pending' returning 1`,
         [tenantId, importId, itemId, outcome.status, cleanItemText(outcome.message), outcome.markdownBytes ?? null, outcome.stateBytes ?? null],
       );

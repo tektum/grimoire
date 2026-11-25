@@ -72,7 +72,7 @@ export class FakeImportRepo implements ImportRepo {
     const at = this.stored.findIndex((s) => s.tenantId === tenantId && s.importId === importId && s.item.id === itemId && s.item.status === 'pending');
     const found = this.stored[at];
     if (found === undefined) return Promise.resolve(false);
-    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, message: clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
+    this.stored[at] = { ...found, item: { ...found.item, status: outcome.status, pageId: null, urlId: null, message: clean(outcome.message), markdownBytes: outcome.markdownBytes ?? null, stateBytes: outcome.stateBytes ?? null } };
     return Promise.resolve(true);
   }
 
