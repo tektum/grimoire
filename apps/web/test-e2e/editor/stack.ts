@@ -27,12 +27,38 @@ export function recreateEnv(settings: Record<string, string> = {}): NodeJS.Proce
  * `M6_MIN_CLIENT_VERSION`) and waits until it answers. With no settings it returns the app to the stack's defaults: a spec that changed them calls it in `finally`.
  */
 export async function recreateApp(settings: Record<string, string> = {}): Promise<void> {
+  const began = Date.now();
   await run('docker', ['compose', '-p', 'grimoire', 'up', '-d', '--no-deps', '--force-recreate', 'app'], {
     cwd: repoRoot,
     maxBuffer: 64 * 1024 * 1024,
     env: recreateEnv(settings),
   });
-  await waitReady();
+  const upMs = Date.now() - began;
+  try {
+    await waitReady();
+  } catch (error) {
+    console.log(`recreateApp: compose up ${seconds(upMs)}, then /readyz never answered (${seconds(Date.now() - began - upMs)})\n${await stackReport()}`);
+    throw error;
+  }
+  const readyMs = Date.now() - began - upMs;
+  console.log(`recreateApp: compose up ${seconds(upMs)}, /readyz ${seconds(readyMs)}`);
+  if (upMs + readyMs > SLOW_RECREATE_MS) console.log(`recreateApp was slow (${seconds(upMs + readyMs)})\n${await stackReport()}`);
+}
+
+/** A recreate that takes longer than this is described in the output: it is the stall that cost three specs and about seven minutes of a browser run twice. */
+const SLOW_RECREATE_MS = 30_000;
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
+
+/** What the stack looks like now (containers and the last lines of the app's log), for a recreate that was slow or failed; never throws, and is cut short. */
+async function stackReport(): Promise<string> {
+  const part = async (label: string, args: string[]): Promise<string> => {
+    try {
+      return `--- ${label}\n${(await compose(...args)).trim().slice(-1500)}`;
+    } catch (error) {
+      return `--- ${label}: ${error instanceof Error ? error.message.slice(0, 200) : 'failed'}`;
+    }
+  };
+  return [await part('docker compose ps', ['ps', '--all']), await part('app log, last lines', ['logs', '--no-log-prefix', '--tail', '25', 'app'])].join('\n');
 }
 
 /** Waits for the app to answer `/readyz` again (after a restart or a start). */
