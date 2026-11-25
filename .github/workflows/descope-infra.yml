@@ -140,3 +140,10 @@ jobs:
           GRIMOIRE_REFUSED_EMAIL_DOMAINS: ${{ vars.GRIMOIRE_REFUSED_EMAIL_DOMAINS }}
           GRIMOIRE_FIRST_ADMIN_EMAILS: ${{ vars.GRIMOIRE_FIRST_ADMIN_EMAILS }}
         run: bunx sst "$ACTION" --stage "$STAGE"
+      # A deploy that leaves the site without a healthy task must not end green: wait for the one complete deployment and readyz 200 (three polls in a row), or fail the run.
+      - name: Wait until the stage serves
+        if: steps.gate.outputs.blocked != 'true' && inputs.action == 'deploy'
+        env:
+          STAGE: ${{ inputs.stage }}
+          GRIMOIRE_DOMAIN: ${{ vars.GRIMOIRE_DOMAIN }}
+        run: tools/deploy/wait-healthy.sh "$STAGE" "$GRIMOIRE_DOMAIN"
