@@ -92,6 +92,8 @@ export interface InfoEvents {
 
 export interface WarnEvents {
   'jobs.retrying': JobFailureEvent;
+  /** A job's payload was not the shape of its queue: the run is dropped, as a retry could not make it right. Never the payload. */
+  'jobs.payload_invalid': { name: string; jobId: string };
   /** `grimoire migrate` replaced a queue made with another policy (pg-boss cannot change one): the jobs it held were dropped, and the scheduler sends the next runs again at start. */
   'jobs.queue_recreated': { queue: string; from: string; to: string; pending: number; finished: number };
   /** The stale-Markdown sweep could not convert a page (at most once an hour for each): the page's id and the converter's failure code, never content. */

@@ -7,6 +7,7 @@ import type { AppContext } from '../../src/composition.js';
 import { registerJobs } from '../../src/jobs/index.js';
 import { FakeEmbedder } from '@tektum/grimoire-core/testing/fake-embedder';
 import { placeholderDatabaseUrl } from '@tektum/grimoire-core/testing/database-url';
+import { FakeEmbeddingStore } from '@tektum/grimoire-core/testing/fake-embedding-store';
 import { fakeJobDeps } from '../jobs/deps.js';
 
 // M7-T11: the semantic search is built in the roles `api` and `all` when it is on, and in no other; the two embedding jobs are registered with it.
@@ -51,7 +52,7 @@ describe('the composition and the semantic search', () => {
 });
 
 describe('the registry and the embedding jobs', () => {
-  const names = (embedder?: FakeEmbedder) => registerJobs(fakeJobDeps(embedder === undefined ? {} : { embedder }).deps).map((j) => j.name);
+  const names = (embedder?: FakeEmbedder) => registerJobs(fakeJobDeps(embedder === undefined ? {} : { embedder, embeddings: new FakeEmbeddingStore() }).deps).map((j) => j.name);
 
   it('registers embed-sweep and embed-page when there is an embedder, and neither when there is not', () => {
     expect(names(new FakeEmbedder())).toEqual(expect.arrayContaining(['embed-sweep', 'embed-page']));
@@ -59,11 +60,9 @@ describe('the registry and the embedding jobs', () => {
     expect(names()).not.toEqual(expect.arrayContaining(['embed-page']));
   });
 
-  it('the two entries have a handler that finishes (M7-T13 fills them) and no schedule yet', async () => {
-    const jobs = registerJobs(fakeJobDeps({ embedder: new FakeEmbedder() }).deps).filter((j) => j.name.startsWith('embed-'));
+  it('the two entries have no cron schedule (the sweep sends its own next run)', () => {
+    const jobs = registerJobs(fakeJobDeps({ embedder: new FakeEmbedder(), embeddings: new FakeEmbeddingStore() }).deps).filter((j) => j.name.startsWith('embed-'));
     expect(jobs.map((j) => j.schedule)).toEqual([undefined, undefined]);
-    const ctx = { jobId: 'j', attempt: 1, retryLimit: 3, signal: new AbortController().signal };
-    for (const j of jobs) await expect(j.handler({ tenantId: 'T-a', pageId: 'p' }, ctx)).resolves.toBeUndefined();
   });
 });
 
@@ -73,3 +72,20 @@ describe('the server and the adapter package', () => {
     expect(server.dependencies['@tektum/grimoire-adapter-embedder-onnx']).toBe('*');
   });
 });
+
+describe('the rate cap of the registered embed-page job', () => {
+  it('is measured in real time whatever clock the registry was given: a frozen clock does not hold a page back for ever', async () => {
+    const embeddings = new FakeEmbeddingStore();
+    const page = '11111111-1111-4111-8111-111111111111';
+    embeddings.seedPage({ id: page, collectionId: 'c', markdownHash: new Uint8Array(32).fill(1), text: Array.from({ length: 5 }, (_, p) => Array.from({ length: 120 }, (_, k) => `p${String(p)}w${String(k)}`).join(' ')).join('\n\n') });
+    const embedder = new FakeEmbedder({ maxTokens: 512 });
+    const { deps } = fakeJobDeps({ embedder, embeddings }); // the fake clock of fakeJobDeps never advances
+    const job = registerJobs(deps).find((j) => j.name === 'embed-page');
+    const ctx = { jobId: 'j', attempt: 1, retryLimit: 3, signal: new AbortController().signal };
+    const began = Date.now();
+    await job?.handler({ tenantId: 'legacy', pageId: page }, ctx);
+    expect(Date.now() - began).toBeLessThan(3000);
+    expect(embeddings.stored(page, 'fake-e5-v1').chunks.length).toBeGreaterThanOrEqual(3);
+  }, 10_000);
+});
+

@@ -195,6 +195,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
   embeddings: {
     pageText: async (tn) => { s.hash = (await embeddings().pageText(tn, s.page))?.markdownHash; },
     existingHashes: (tn) => embeddings().existingHashes(tn, s.page, 'guard'),
+    saveChunks: (tn) => embeddings().saveChunks(tn, s.page, s.hash ?? new Uint8Array(), 'guard', [{ chunkIndex: 0, contentHash: new Uint8Array(32), charStart: 0, charEnd: 1, tokenCount: 1, embedding: vector }]),
     replacePage: (tn) => embeddings().replacePage(tn, s.page, s.hash ?? new Uint8Array(), 'guard', [{ chunkIndex: 0, contentHash: new Uint8Array(32), charStart: 0, charEnd: 1, tokenCount: 1, embedding: vector }]),
     markFailed: (tn) => embeddings().markFailed(tn, s.page, s.hash ?? new Uint8Array(), 'guard', 'x'),
     pagesNeedingEmbedding: (tn) => embeddings().pagesNeedingEmbedding(tn, 'guard', { olderThanSeconds: 0, limit: 10 }),

@@ -40,6 +40,12 @@ export interface ChunkHit {
 export interface EmbeddingStore {
   /** The text to embed and the Markdown hash it belongs to, for a live page of the tenant with Markdown (a page that is gone, in the trash, or has no Markdown has none). */
   pageText(tenantId: string, pageId: string): Promise<{ readonly markdownHash: Uint8Array; readonly text: string } | undefined>;
+  /**
+   * Stores `chunks`, each with its vector, for `model` and leaves everything else of the page as it is: the other chunks, and the state (the page is not `ready` yet). It is the progress of a
+   * page that takes more than one run to embed (the rate cap makes a long page slow): the next run finds these chunks in `existingHashes` and does not embed them again, and the `replacePage`
+   * that finishes the page keeps them. Rechecks the page's Markdown hash as `replacePage` does: `stale` writes nothing.
+   */
+  saveChunks(tenantId: string, pageId: string, markdownHash: Uint8Array, model: string, chunks: readonly (ChunkRow & { readonly embedding: Float32Array })[]): Promise<'ok' | 'stale'>;
   /** The content hash of each chunk of the page that is stored for `model`, by chunk index. */
   existingHashes(tenantId: string, pageId: string, model: string): Promise<Map<number, Uint8Array>>;
   /**

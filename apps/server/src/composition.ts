@@ -2,6 +2,7 @@
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
 import { createOnnxEmbedder } from '@tektum/grimoire-adapter-embedder-onnx';
 import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
+import type { EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import { createJobQueue, migratePgBoss, type MigrateOptions as MigratePgBossOptions } from '@tektum/grimoire-adapter-jobs-pgboss';
 import { jobQueues } from '@tektum/grimoire-core/jobs/queues';
 import type { QueueDefinition } from '@tektum/grimoire-core/ports/job-queue';
@@ -23,7 +24,7 @@ import { ConfigError, type ConfigProblem, loadConfig, parseTestFacilities, loadC
 import type { Env } from '@tektum/grimoire-adapter-config-env';
 import { deleteObjects } from './attachments/deps.js';
 import { seedLocal } from './seed/index.js';
-import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, scoped, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
+import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createEmbeddingStore, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, scoped, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
 import { registerJobs } from './jobs/index.js';
@@ -52,7 +53,7 @@ export interface AppContext {
   readonly signInPolicy: SignInPolicy;
   readonly shutdown: Shutdown;
   /** The semantic search: built in the roles `api` and `all` when `GRIMOIRE_SEMANTIC_SEARCH` is on. The store and the routes that use it come with M7-T13 and M7-T14. */
-  readonly semantic?: { readonly embedder: Embedder };
+  readonly semantic?: { readonly embedder: Embedder; readonly store: EmbeddingStore };
   /** The collaboration host and what it needs; absent when the role has none (`api`). */
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
   /** Every port the routes use, built here and nowhere else. */
@@ -172,11 +173,12 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
   const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
+  const embeddings = createEmbeddingStore(db, ops);
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: (queue) => registerJobs({
       config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
-      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder }), imports: http.imports, queue,
+      revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder, embeddings }), imports: http.imports, queue,
     }),
     onError: (error) => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0, ...reasonOf(error) }); } });
   const shutdownHooks: ShutdownHook[] = [
@@ -192,7 +194,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     { name: 'operator-pool', phase: 'close-database', deadlineMs: DERIVED_BUDGETS_MS.closeDatabase, run: () => ops.close() },
   ];
   const testFacilities: AppContext['testFacilities'] = [...(facilities.slowConvert ? ['slow-convert' as const] : []), ...(facilities.breaker ? ['breaker-disabled' as const] : []), ...(facilities.slowLoad ? ['slow-load' as const] : [])];
-  return { ok: true, ctx: { config, log, clock: systemClock, db, ops, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder } }), ...(collab ? { collab } : {}) } };
+  return { ok: true, ctx: { config, log, clock: systemClock, db, ops, http, auth, signInPolicy, shutdown: new Shutdown(systemClock), shutdownHooks, testFacilities, ...(jobs === undefined ? {} : { jobs }), ...(embedder === undefined ? {} : { semantic: { embedder, store: embeddings } }), ...(collab ? { collab } : {}) } };
 }
 
 export interface CommandComposition { readonly config: Config; readonly db: KyselyDatabase; readonly log: EventLog }
