@@ -78,7 +78,8 @@ export interface ImportItem {
 
 /** How an item ends without a page: left out on purpose (`skipped`) or not readable (`failed`), with the reason as its message. */
 export interface ItemOutcome {
-  readonly status: 'skipped' | 'failed';
+  /** `ok` is for a file used by a page (an attachment item); a page item becomes `ok` only through `writePage`, and a settle of it as `ok` is refused. */
+  readonly status: 'ok' | 'skipped' | 'failed';
   readonly message: string;
   readonly markdownBytes?: number;
   readonly stateBytes?: number;

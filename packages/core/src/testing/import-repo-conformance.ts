@@ -82,6 +82,22 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'a-file-item-can-be-settled-ok-and-a-page-item-cannot',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'p.md', kind: 'page' }, { path: 'f.png', kind: 'attachment' }]);
+      const [page] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      const [file] = await h.repo.pending(h.tenantId, made.id, 'attachment', 10);
+      assert.ok(page && file);
+      assert.equal(await h.repo.settle(h.tenantId, made.id, page.id, { status: 'ok', message: '' }), false, 'a page becomes ok only through writePage');
+      assert.equal((await h.repo.getItem(h.tenantId, made.id, page.id))?.status, 'pending');
+      assert.equal(await h.repo.settle(h.tenantId, made.id, file.id, { status: 'ok', message: '' }), true);
+      const done = await h.repo.getItem(h.tenantId, made.id, file.id);
+      assert.deepEqual([done?.status, done?.message, done?.pageId], ['ok', null, null]);
+      assert.equal(await h.repo.settle(h.tenantId, made.id, file.id, { status: 'skipped', message: 'unreferenced' }), false, 'it is no longer pending');
+    },
+  },
+  {
     name: 'a-settled-page-item-has-no-page-and-so-no-ids',
     async run(h) {
       const made = await h.seed('running');
