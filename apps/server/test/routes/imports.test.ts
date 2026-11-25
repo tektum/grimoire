@@ -203,22 +203,24 @@ describe('POST /v1/imports/{id}/start', () => {
     expect(t.enqueued).toEqual([]);
   });
 
-  it('checks the signature the archive reader requires, not just PK: a file that starts with PK and is not a zip is 422 not_a_zip, one that is a zip the import cannot take is 422 invalid_archive; both stay as they were', async () => {
+  it('checks the signature the archive reader requires (the same two), not just PK: a file that starts with PK and is not a zip start is 422 not_a_zip, an empty archive and a zip are taken; and a store that fails on the read is 503, never not_a_zip', async () => {
     const t = build();
-    const headerOfAnother = Buffer.from(ZIP);
-    headerOfAnother[2] = 0x01; // `PK\x01\x02`: the signature of a central directory entry, not of an archive's start
-    const unsafe = buildZip([{ name: '../outside.md', data: Buffer.from('x') }]);
-    for (const [bytes, wanted] of [
-      [headerOfAnother, 'not_a_zip'],
-      [unsafe, 'invalid_archive'],
-    ] as const) {
-      const { id } = await t.made({ size: bytes.length });
-      await t.sent(id, 'T-a', bytes);
-      const res = await t.call('ada', 'POST', `/v1/imports/${id}/start`);
-      expect([res.status, await code(res)], wanted).toEqual([422, wanted]);
-      expect((await t.imports.get('T-a', id))?.status).toBe('created');
-    }
-    expect(t.enqueued).toEqual([]);
+    const notAStart = Buffer.from(ZIP);
+    notAStart[2] = 0x01; // `PK\x01\x02`: the signature of a central directory entry, not of an archive's start
+    const { id } = await t.made({ size: notAStart.length });
+    await t.sent(id, 'T-a', notAStart);
+    const refused = await t.call('ada', 'POST', `/v1/imports/${id}/start`);
+    expect([refused.status, await code(refused)]).toEqual([422, 'not_a_zip']);
+    expect((await t.imports.get('T-a', id))?.status).toBe('created');
+    const empty = Buffer.concat([Buffer.from([0x50, 0x4b, 0x05, 0x06]), Buffer.alloc(18)]); // an archive with no entry
+    const e = await t.made({ size: empty.length });
+    await t.sent(e.id, 'T-a', empty);
+    expect((await t.call('ada', 'POST', `/v1/imports/${e.id}/start`)).status).toBe(202);
+    const f = await t.made();
+    await t.sent(f.id);
+    vi.spyOn(t.files, 'get').mockImplementationOnce(() => Promise.reject(new FileStorageError('unavailable', 'down')));
+    expect((await t.call('ada', 'POST', `/v1/imports/${f.id}/start`)).status).toBe(503);
+    expect((await t.imports.get('T-a', f.id))?.status).toBe('created');
   });
 
   it("is the creator's alone: another person, an administrator of the workspace and an administrator of another are all 404", async () => {

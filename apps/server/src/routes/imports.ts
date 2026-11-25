@@ -14,7 +14,7 @@ import type { AppEnv } from '../http/env.js';
 import { createRouter, defineRoute } from '../http/factory.js';
 import { guardImport } from '../http/import-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
-import { openArchive } from '../import/zip-reader.js';
+import { ZIP_MAGIC } from '../import/zip-reader.js';
 import type { ErrorEvents } from '../events.js';
 
 const json = <T extends z.ZodType>(schema: T, description: string) => ({ description, content: { 'application/json': { schema } } });
@@ -86,7 +86,7 @@ export const startImport = defineRoute({
     202: json(Started, 'The import is accepted and its job queued'),
     404: json(ErrorBody, 'Not found, not the caller\'s, or the caller can no longer write in the collection'),
     409: json(ErrorBody, '`upload_missing`, `size_mismatch` or `already_started`'),
-    422: json(ErrorBody, '`not_a_zip` (the file is not a zip archive) or `invalid_archive` (a zip the import cannot take)'),
+    422: json(ErrorBody, '`not_a_zip`: the file does not start as a zip archive'),
     503: json(ErrorBody, 'The file store does not answer, or the job queue is not up'),
   },
 });
@@ -167,6 +167,13 @@ const present = (r: ImportRecord) => ({
   error: r.error,
 });
 
+/** The first four bytes of the object. */
+async function signature(files: FileStorage, key: string): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of (await files.get(key, { range: { start: 0, end: 3 } })).body) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
 const router = createRouter();
 
 router.openapi(createImport, async (c) => {
@@ -201,11 +208,11 @@ router.openapi(startImport, async (c) => {
   const head = await ifThere(c, 'import-start', () => files.head(key));
   if (head === undefined) return fail('upload_missing');
   if (head.size !== record.bytes) return fail('size_mismatch');
-  // The archive reader's own first look (the signature, the central directory, the header checks): what it would refuse later, in the job, is refused now with the documented answer.
-  const opened = await ifThere(c, 'import-start', () => openArchive(files, key, head.size, deps.config.import));
-  if (opened === undefined) return fail('upload_missing');
-  if (opened.kind === 'refused') return fail(opened.reason === 'not_a_zip' ? 'not_a_zip' : 'invalid_archive');
-  opened.reader.close();
+  // Only the signature the archive reader requires (four bytes): the central directory and the header checks are the job's first stage, where the work is bounded by the workers of the
+  // queue, and not a request's, which a person can repeat at will. A zip the reader refuses there ends the import as failed, with its code.
+  const first = await ifThere(c, 'import-start', () => signature(files, key));
+  if (first === undefined) return fail('upload_missing');
+  if (!ZIP_MAGIC.some((m) => first.equals(m))) return fail('not_a_zip');
   if (!(await deps.imports.markUploaded(tenant, id))) return fail('already_started');
   // Accepted: audited once, by the start that moved it from `created`; asking again while it waits (or after the job could not be queued) is a retry, not another start.
   if (record.status === 'created') await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });

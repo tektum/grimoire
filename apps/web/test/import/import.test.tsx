@@ -271,7 +271,6 @@ describe('the import screen', () => {
     ['a collection that is gone', { create: { status: 404 } }, 'That collection can’t be found.'],
     ['not a zip', { start: { status: 422, code: 'not_a_zip' } }, 'That is not a zip file.'],
     ['a file that did not arrive', { start: { status: 409, code: 'upload_missing' } }, 'The file did not arrive. Try again.'],
-    ['a zip the import cannot take', { start: { status: 422, code: 'invalid_archive' } }, 'That zip cannot be imported.'],
     ['a file of another size than was said', { start: { status: 409, code: 'size_mismatch' } }, 'The file that arrived is not the size it was said to be. Try again.'],
     ['a collection that cannot be written', { create: { status: 403 } }, 'You can’t import into that collection.'],
     ['a file that cannot be imported', { create: { status: 422 } }, 'That file can’t be imported.'],
