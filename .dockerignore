@@ -12,7 +12,3 @@ models/*
 docs
 test-results
 **/*.tsbuildinfo
-
-
-# sst
-.sst
