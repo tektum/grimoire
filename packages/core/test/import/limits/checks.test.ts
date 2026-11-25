@@ -8,6 +8,8 @@ import { defaultImportConfig } from '../../../src/testing/fake-config.js';
 // M7-T03 (contracts section 4, stage 2, and section 7): the pure checks over the entry metadata of an archive, before anything is read. They name a reason, never an entry's name.
 const limits = defaultImportConfig;
 const file = (path: string, over: Partial<ArchiveEntry> = {}): ArchiveEntry => ({ path, size: 10, compressedSize: 10, isSymlink: false, isDirectory: false, isRegular: true, ...over });
+// No lone surrogate: a high one not followed by a low one, or a low one not preceded by a high one.
+const wellFormed = (text: string): boolean => !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(text);
 const check = (entries: readonly ArchiveEntry[], archiveBytes = 1000) => checkHeader(entries, archiveBytes, limits);
 
 describe('an entry name that could write outside the import', () => {
@@ -57,10 +59,10 @@ describe('a name that cannot be kept and shown as it is is one failed item (bad_
     const emoji = '\u{1f600}';
     const cut = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 1)}\n${emoji}`);
     expect(cut).toBe('a'.repeat(MAX_REPORTED_NAME_LENGTH - 1));
-    expect(cut.isWellFormed()).toBe(true);
+    expect(wellFormed(cut)).toBe(true);
     const whole = reportedName(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
     expect(whole).toBe(`${'a'.repeat(MAX_REPORTED_NAME_LENGTH - 2)}${emoji}`);
-    expect(reportedName(`${'\u{1f600}'.repeat(200)}`).isWellFormed()).toBe(true);
+    expect(wellFormed(reportedName('\u{1f600}'.repeat(200)))).toBe(true);
   });
 
   it('a NUL, a backslash, a drive, an absolute path or a .. segment are still attacks and still refuse the archive', () => {
