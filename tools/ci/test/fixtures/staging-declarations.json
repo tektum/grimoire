@@ -160,17 +160,7 @@
       "name": "ServiceSecurityGroup",
       "args": {
         "vpcId": "<Vpc.id>",
-        "description": "The service of one stage: its port is open to its load balancer alone (the rule is made with the service)",
-        "egress": [
-          {
-            "protocol": "-1",
-            "fromPort": 0,
-            "toPort": 0,
-            "cidrBlocks": [
-              "0.0.0.0/0"
-            ]
-          }
-        ]
+        "description": "The service of one stage: its port is open to its load balancer alone"
       }
     },
     {
@@ -178,17 +168,114 @@
       "name": "DbSecurityGroup",
       "args": {
         "vpcId": "<Vpc.id>",
-        "description": "The database of one stage: PostgreSQL from the service of the same stage alone",
-        "ingress": [
-          {
-            "protocol": "tcp",
-            "fromPort": 5432,
-            "toPort": 5432,
-            "securityGroups": [
-              "<ServiceSecurityGroup.id>"
-            ]
-          }
-        ]
+        "description": "The database of one stage: PostgreSQL from the service of the same stage alone"
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupIngressRule",
+      "name": "DbFromService",
+      "args": {
+        "securityGroupId": "<DbSecurityGroup.id>",
+        "referencedSecurityGroupId": "<ServiceSecurityGroup.id>",
+        "ipProtocol": "tcp",
+        "fromPort": 5432,
+        "toPort": 5432,
+        "description": "PostgreSQL from the service"
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupEgressRule",
+      "name": "ServiceToDatabase",
+      "args": {
+        "securityGroupId": "<ServiceSecurityGroup.id>",
+        "referencedSecurityGroupId": "<DbSecurityGroup.id>",
+        "ipProtocol": "tcp",
+        "fromPort": 5432,
+        "toPort": 5432,
+        "description": "PostgreSQL to the database"
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupEgressRule",
+      "name": "ServiceToHttps",
+      "args": {
+        "securityGroupId": "<ServiceSecurityGroup.id>",
+        "cidrIpv4": "0.0.0.0/0",
+        "ipProtocol": "tcp",
+        "fromPort": 443,
+        "toPort": 443,
+        "description": "HTTPS to the identity provider, the file store and the registry"
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupEgressRule",
+      "name": "ServiceToDnsUdp",
+      "args": {
+        "securityGroupId": "<ServiceSecurityGroup.id>",
+        "cidrIpv4": "10.0.0.0/16",
+        "ipProtocol": "udp",
+        "fromPort": 53,
+        "toPort": 53,
+        "description": "Name resolution in the VPC"
+      }
+    },
+    {
+      "type": "aws.vpc:SecurityGroupEgressRule",
+      "name": "ServiceToDnsTcp",
+      "args": {
+        "securityGroupId": "<ServiceSecurityGroup.id>",
+        "cidrIpv4": "10.0.0.0/16",
+        "ipProtocol": "tcp",
+        "fromPort": 53,
+        "toPort": 53,
+        "description": "Name resolution in the VPC"
+      }
+    },
+    {
+      "type": "aws.kms:Key",
+      "name": "VpcFlowLogsKey",
+      "args": {
+        "description": "Encrypts the VPC flow log group",
+        "enableKeyRotation": true,
+        "deletionWindowInDays": 30,
+        "policy": "<aws.iam.getPolicyDocumentOutput({\"statements\":[{\"sid\":\"AccountAdministersTheKey\",\"effect\":\"Allow\",\"principals\":[{\"type\":\"AWS\",\"identifiers\":[\"<interpolate:arn:aws:iam::{<aws.getCallerIdentityOutput({}).accountId>}:root>\"]}],\"actions\":[\"kms:*\"],\"resources\":[\"*\"]},{\"sid\":\"CloudWatchLogsUsesTheKeyForThisGroupOnly\",\"effect\":\"Allow\",\"principals\":[{\"type\":\"Service\",\"identifiers\":[\"<interpolate:logs.{<aws.getRegionOutput.region>}.amazonaws.com>\"]}],\"actions\":[\"kms:Encrypt*\",\"kms:Decrypt*\",\"kms:ReEncrypt*\",\"kms:GenerateDataKey*\",\"kms:Describe*\"],\"resources\":[\"*\"],\"conditions\":[{\"test\":\"ArnEquals\",\"variable\":\"kms:EncryptionContext:aws:logs:arn\",\"values\":[\"<interpolate:arn:aws:logs:{<aws.getRegionOutput.region>}:{<aws.getCallerIdentityOutput({}).accountId>}:log-group:{/aws/vpc/grimoire-recorded/flow-logs}>\"]}]}]}).json>"
+      }
+    },
+    {
+      "type": "aws.cloudwatch:LogGroup",
+      "name": "VpcFlowLogs",
+      "args": {
+        "name": "/aws/vpc/grimoire-recorded/flow-logs",
+        "retentionInDays": 365,
+        "kmsKeyId": "<VpcFlowLogsKey.arn>"
+      }
+    },
+    {
+      "type": "aws.iam:Role",
+      "name": "VpcFlowLogsRole",
+      "args": {
+        "description": "Lets the VPC flow log service write the flow log group",
+        "assumeRolePolicy": "<aws.iam.getPolicyDocumentOutput({\"statements\":[{\"effect\":\"Allow\",\"principals\":[{\"type\":\"Service\",\"identifiers\":[\"vpc-flow-logs.amazonaws.com\"]}],\"actions\":[\"sts:AssumeRole\"],\"conditions\":[{\"test\":\"StringEquals\",\"variable\":\"aws:SourceAccount\",\"values\":[\"<aws.getCallerIdentityOutput({}).accountId>\"]},{\"test\":\"ArnLike\",\"variable\":\"aws:SourceArn\",\"values\":[\"<interpolate:arn:aws:ec2:{<aws.getRegionOutput.region>}:{<aws.getCallerIdentityOutput({}).accountId>}:vpc-flow-log/*>\"]}]}]}).json>"
+      }
+    },
+    {
+      "type": "aws.iam:RolePolicy",
+      "name": "VpcFlowLogsRolePolicy",
+      "args": {
+        "role": "<VpcFlowLogsRole.name>",
+        "policy": "<aws.iam.getPolicyDocumentOutput({\"statements\":[{\"effect\":\"Allow\",\"actions\":[\"logs:CreateLogStream\",\"logs:PutLogEvents\",\"logs:DescribeLogStreams\"],\"resources\":[\"<VpcFlowLogs.arn>\",\"<interpolate:{<VpcFlowLogs.arn>}:*>\"]}]}).json>"
+      }
+    },
+    {
+      "type": "aws.ec2:FlowLog",
+      "name": "VpcFlowLog",
+      "args": {
+        "vpcId": "<Vpc.id>",
+        "trafficType": "ALL",
+        "logDestinationType": "cloud-watch-logs",
+        "logDestination": "<VpcFlowLogs.arn>",
+        "iamRoleArn": "<VpcFlowLogsRole.arn>",
+        "maxAggregationInterval": 60
       }
     },
     {
@@ -466,7 +553,23 @@
         "referencedSecurityGroupId": "<Server.nodes.loadBalancer.securityGroups|apply(fn)>",
         "ipProtocol": "tcp",
         "fromPort": 8080,
-        "toPort": 8080
+        "toPort": 8080,
+        "description": "The service port from the load balancer"
+      }
+    },
+    {
+      "type": "aws.ec2:DefaultSecurityGroup",
+      "name": "VpcDefaultSecurityGroup",
+      "args": {
+        "vpcId": "<Vpc.id>",
+        "ingress": [],
+        "egress": []
+      },
+      "opts": {
+        "dependsOn": [
+          "<Db>",
+          "<Server>"
+        ]
       }
     }
   ],

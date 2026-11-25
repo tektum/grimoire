@@ -49,7 +49,8 @@ export function recordProgram(run) {
       if (typeof prop !== 'string') return undefined;
       const path = `${prefix}.${prop}`;
       if (/^[A-Z]/.test(prop)) return klass(`${prefix}:${prop}`);
-      if (/^get.*Output$/.test(prop)) return (args) => ({ region: placeholder(`${path}.region`), id: placeholder(`${path}(${JSON.stringify(plain(args ?? {}))}).id`) });
+      // A data lookup (`getXOutput(args)`): whatever is read from the result is a placeholder named after the lookup and its arguments (`region` keeps its older, shorter name).
+      if (/^get.*Output$/.test(prop)) return (args) => new Proxy({}, { get: (_, field) => (typeof field !== 'string' ? undefined : field === 'region' ? placeholder(`${path}.region`) : placeholder(`${path}(${JSON.stringify(plain(args ?? {}))}).${field}`)) });
       if (/^[a-z]/.test(prop) && prefix.split('.').length > 1) return (args) => ({ call: path, args: plain(args ?? {}) });
       return namespace(path);
     },

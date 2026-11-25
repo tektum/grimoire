@@ -2,6 +2,7 @@ import { descopeProject } from './descope/project.ts';
 import { POSTGRES_VERSION, type StageConfig, type StageSettings } from './stages.ts';
 import { databaseUrl, RDS_CA_BUNDLE } from './stack/database-url.ts';
 import { inStartOrder } from './stack/init-order.ts';
+import { openServiceToLoadBalancer, stageSecurityGroups, stripDefaultGroup, vpcFlowLogs } from './stack/network.ts';
 
 /** The Route 53 zone of the sites' domain (every stage's address is in it): it exists already (the parent delegates to it), so it is looked up and never made here. */
 const ZONE_ID = 'Z09474701DSI18DNI458V';
@@ -28,16 +29,8 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
       transform: { natSecurityGroup: { ingress: [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: [VPC_CIDR] }] } },
     })
     : sst.aws.Vpc.get('Vpc', aws.ec2.getVpcOutput({ tags: { 'sst:app': $app.name, 'sst:stage': config.vpcFrom } }).id);
-  const serviceGroup = new aws.ec2.SecurityGroup('ServiceSecurityGroup', {
-    vpcId: vpc.id,
-    description: 'The service of one stage: its port is open to its load balancer alone (the rule is made with the service)',
-    egress: [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: ['0.0.0.0/0'] }],
-  });
-  const dbGroup = new aws.ec2.SecurityGroup('DbSecurityGroup', {
-    vpcId: vpc.id,
-    description: 'The database of one stage: PostgreSQL from the service of the same stage alone',
-    ingress: [{ protocol: 'tcp', fromPort: 5432, toPort: 5432, securityGroups: [serviceGroup.id] }],
-  });
+  const { serviceGroup, dbGroup } = stageSecurityGroups(vpc, VPC_CIDR);
+  if (config.vpcFrom === undefined) vpcFlowLogs(vpc);
   const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id] } } });
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
@@ -130,13 +123,8 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
     },
   });
 
-  new aws.vpc.SecurityGroupIngressRule('ServiceFromLoadBalancer', {
-    securityGroupId: serviceGroup.id,
-    referencedSecurityGroupId: service.nodes.loadBalancer.securityGroups.apply((groups) => groups[0]),
-    ipProtocol: 'tcp',
-    fromPort: PORT,
-    toPort: PORT,
-  });
+  openServiceToLoadBalancer(serviceGroup, service, PORT);
+  if (config.vpcFrom === undefined) stripDefaultGroup(vpc, [db, service]);
 
   return { url: service.url, projectId: identity.projectId };
 }

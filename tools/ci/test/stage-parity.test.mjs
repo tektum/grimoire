@@ -64,10 +64,10 @@ const record = (name, domain, extra = {}) => recordProgram(() => stage(stageConf
 test('the staging stack declares what its fixture holds: every resource it had before, under the same name, plus the security groups of the shared VPC, so a deploy replaces nothing', () => {
   const golden = JSON.parse(readFileSync(new URL('./fixtures/staging-declarations.json', import.meta.url), 'utf8')).calls;
   assert.deepEqual(record('staging', 'grimoire.descope.io'), golden);
-  assert.equal(golden.length, 32);
-  const added = ['DbSecurityGroup', 'ServiceFromLoadBalancer', 'ServiceSecurityGroup'];
-  assert.deepEqual(golden.filter((c) => added.includes(c.name)).map((c) => c.name).sort(), added);
-  assert.equal(golden.filter((c) => !added.includes(c.name)).length, 29, 'the 29 resources of before are all still declared');
+  const before = ["Project", "Settings", "Otp", "UserToken", "Session", "Password", "Magiclink", "Enchantedlink", "Embeddedlink", "Totp", "Passkey", "Oauth", "Styles", "Flow-sign-up-or-in", "Vpc", "Db", "DbAppPassword", "DbMigratorPassword", "DbOpsPassword", "Files", "Cluster", "AdminUrl", "AppPassword", "MigratorPassword", "OpsPassword", "MigratorUrl", "AppUrl", "OpsUrl", "Server"];
+  const added = golden.map((c) => c.name).filter((n) => !before.includes(n));
+  assert.ok(before.every((n) => golden.some((c) => c.name === n)), 'every resource of before is still declared, under the same name');
+  assert.ok(added.length > 0 && added.every((n) => /^(Service|Db|VpcFlow|VpcDefault)/.test(n)), `what is new belongs to the network: ${added}`);
 });
 
 test('the operator role (docs/tenancy.md section 3.2) has a password of its own: db-setup alone receives it, and the server alone its connection', () => {
@@ -89,7 +89,7 @@ test('no two stages share a project name: Descope refuses a second project of a 
 
 test('the dev stack declares the same resources as the staging one: they differ in the address, the project\'s name and tag, and the size of the task, and in nothing else', () => {
   const normal = (calls, domain, cpu, name, tag) => JSON.stringify(calls).replaceAll(domain, 'DOMAIN').replaceAll(cpu, 'CPU').replaceAll(name, 'NAME').replaceAll(`"${tag}"`, '"TAG"').replaceAll('"127.0.0.1","localhost"', '').replace(/,\]/g, ']').replace(/\[,/g, '[').replace(/,,/g, ',');
-  const sameNetwork = (calls) => calls.filter((c) => !/^sst\.aws:Vpc/.test(c.type)); // the one allowed difference: the stage that owns the VPC makes it, the others read it
+  const sameNetwork = (calls) => calls.filter((c) => !/^Vpc/.test(c.name)); // the one allowed difference: the stage that owns the VPC makes it, the others read it
   const dev = normal(sameNetwork(record('dev', 'dev.example.test')), 'dev.example.test', '0.25 vCPU', 'Grimoire dev stage', 'development');
   const staging = normal(sameNetwork(record('staging', 'dev.example.test')), 'dev.example.test', '0.5 vCPU', 'Grimoire staging', 'staging');
   assert.equal(dev, staging);
@@ -132,27 +132,73 @@ test('one VPC for every stage: the stage that owns it is protected and makes it,
   assert.deepEqual(read, [{ type: 'sst.aws:Vpc.get', name: 'Vpc', args: { id: '<aws.ec2.getVpcOutput({"tags":{"sst:app":"grimoire","sst:stage":"staging"}}).id>' } }]);
 });
 
-test('every stage has its own security groups: the database takes 5432 from this stage\'s service group alone, and the service takes its port from this stage\'s load balancer alone', () => {
+test('every stage has its own security groups, each with a description and rules that name groups, not address ranges, wherever a group can be named', () => {
   for (const name of NAMES) {
     const calls = record(name, 'any.example.test');
     const one = (type, n) => { const found = calls.filter((c) => c.type === type && c.name === n); assert.equal(found.length, 1, `${name}: one ${n}`); return found[0]; };
-    const service = one('aws.ec2:SecurityGroup', 'ServiceSecurityGroup');
-    const db = one('aws.ec2:SecurityGroup', 'DbSecurityGroup');
-    assert.equal(service.args.vpcId, '<Vpc.id>');
-    assert.equal(service.args.ingress, undefined, 'the service group has no inline rules: its one rule names the load balancer, which is made after it');
-    assert.deepEqual(service.args.egress, [{ protocol: '-1', fromPort: 0, toPort: 0, cidrBlocks: ['0.0.0.0/0'] }]);
-    assert.deepEqual(db.args.ingress, [{ protocol: 'tcp', fromPort: 5432, toPort: 5432, securityGroups: ['<ServiceSecurityGroup.id>'] }], 'no address range, no other group');
-    assert.equal(db.args.egress, undefined);
-    const rule = one('aws.vpc:SecurityGroupIngressRule', 'ServiceFromLoadBalancer');
-    assert.equal(rule.args.securityGroupId, '<ServiceSecurityGroup.id>');
-    assert.equal(rule.args.ipProtocol, 'tcp');
-    assert.equal(rule.args.fromPort, 8080);
-    assert.equal(rule.args.toPort, 8080);
-    assert.match(String(rule.args.referencedSecurityGroupId), /Server\.nodes\.loadBalancer\.securityGroups/);
-    assert.equal(rule.args.cidrIpv4, undefined);
+    const groups = calls.filter((c) => c.type === 'aws.ec2:SecurityGroup');
+    assert.deepEqual(groups.map((g) => g.name).sort(), ['DbSecurityGroup', 'ServiceSecurityGroup']);
+    for (const g of groups) {
+      assert.ok(g.args.description.length >= 20, `${g.name} says what it is for`);
+      assert.equal(g.args.ingress, undefined, `${g.name} has no inline rules: each rule is a resource of its own, so none is lost to the other kind`);
+      assert.equal(g.args.egress, undefined);
+      assert.equal(g.args.vpcId, '<Vpc.id>');
+    }
+    const rules = (type) => calls.filter((c) => c.type === type).map((c) => ({ name: c.name, ...c.args }));
+    assert.deepEqual(rules('aws.vpc:SecurityGroupIngressRule').map((r) => r.name).sort(), ['DbFromService', 'ServiceFromLoadBalancer']);
+    const dbIn = one('aws.vpc:SecurityGroupIngressRule', 'DbFromService').args;
+    assert.deepEqual({ ...dbIn, description: undefined }, { securityGroupId: '<DbSecurityGroup.id>', referencedSecurityGroupId: '<ServiceSecurityGroup.id>', ipProtocol: 'tcp', fromPort: 5432, toPort: 5432, description: undefined });
+    const lb = one('aws.vpc:SecurityGroupIngressRule', 'ServiceFromLoadBalancer').args;
+    assert.equal(lb.securityGroupId, '<ServiceSecurityGroup.id>');
+    assert.deepEqual([lb.ipProtocol, lb.fromPort, lb.toPort, lb.cidrIpv4], ['tcp', 8080, 8080, undefined]);
+    assert.match(String(lb.referencedSecurityGroupId), /Server\.nodes\.loadBalancer\.securityGroups/);
+    // Out of the service: HTTPS to the internet (the identity provider, the file store, the registry), the database by group, and name resolution inside the VPC. Nothing else.
+    const out = rules('aws.vpc:SecurityGroupEgressRule').map((r) => [r.name, r.securityGroupId, r.ipProtocol, r.fromPort, r.toPort, r.cidrIpv4 ?? r.referencedSecurityGroupId]);
+    assert.deepEqual(out.sort((a, b) => String(a[0]).localeCompare(String(b[0]))), [
+      ['ServiceToDatabase', '<ServiceSecurityGroup.id>', 'tcp', 5432, 5432, '<DbSecurityGroup.id>'],
+      ['ServiceToDnsTcp', '<ServiceSecurityGroup.id>', 'tcp', 53, 53, '10.0.0.0/16'],
+      ['ServiceToDnsUdp', '<ServiceSecurityGroup.id>', 'udp', 53, 53, '10.0.0.0/16'],
+      ['ServiceToHttps', '<ServiceSecurityGroup.id>', 'tcp', 443, 443, '0.0.0.0/0'],
+    ]);
     const pg = one('sst.aws:Postgres', 'Db');
     assert.deepEqual(pg.args.transform, { instance: { vpcSecurityGroupIds: ['<DbSecurityGroup.id>'] } });
   }
+});
+
+test('nothing runs in the VPC\'s default security group, and the owner of the VPC strips it of every rule, after the database and the service have left it', () => {
+  const source = readFileSync(path.join(root, 'infra/stage.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(source, /vpc\.securityGroups|defaultSecurityGroup/, 'no component is given the VPC\'s own groups');
+  const owner = recordProgram(() => stage(stageConfig('staging'), { domain: 'g.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [] })).calls;
+  const stripped = owner.filter((c) => c.type === 'aws.ec2:DefaultSecurityGroup');
+  assert.equal(stripped.length, 1);
+  assert.deepEqual(stripped[0].args, { vpcId: '<Vpc.id>', ingress: [], egress: [] });
+  assert.deepEqual(stripped[0].opts.dependsOn, ['<Db>', '<Server>'], 'it is stripped only once nothing of this stage depends on it');
+  assert.equal(record('dev', 'dev.example.test').filter((c) => c.type === 'aws.ec2:DefaultSecurityGroup').length, 0, 'the stage that does not own the VPC does not touch its groups');
+});
+
+test('the VPC logs all its traffic: the owner of the VPC makes a flow log to an encrypted log group with a retention, through a role that can write to that group and nothing else', () => {
+  const calls = record('staging', 'grimoire.example.test');
+  const one = (type) => { const found = calls.filter((c) => c.type === type); assert.equal(found.length, 1, type); return found[0]; };
+  const key = one('aws.kms:Key');
+  assert.equal(key.args.enableKeyRotation, true);
+  assert.match(String(key.args.policy), /aws\.iam\.getPolicyDocumentOutput\(/);
+  assert.match(String(key.args.policy), /logs\.\{?[^"]*amazonaws\.com|logs\./, 'CloudWatch Logs may use the key');
+  const group = one('aws.cloudwatch:LogGroup');
+  assert.equal(group.args.retentionInDays, 365);
+  assert.equal(group.args.kmsKeyId, '<VpcFlowLogsKey.arn>');
+  const flow = one('aws.ec2:FlowLog');
+  assert.deepEqual({ ...flow.args, tags: undefined }, { vpcId: '<Vpc.id>', trafficType: 'ALL', logDestinationType: 'cloud-watch-logs', logDestination: '<VpcFlowLogs.arn>', iamRoleArn: '<VpcFlowLogsRole.arn>', maxAggregationInterval: 60, tags: undefined });
+  const role = one('aws.iam:Role');
+  assert.match(String(role.args.assumeRolePolicy), /vpc-flow-logs\.amazonaws\.com/);
+  assert.match(String(role.args.assumeRolePolicy), /aws:SourceAccount/);
+  const policy = one('aws.iam:RolePolicy');
+  assert.equal(policy.args.role, '<VpcFlowLogsRole.name>');
+  const doc = String(policy.args.policy);
+  assert.match(doc, /logs:CreateLogStream/);
+  assert.match(doc, /logs:PutLogEvents/);
+  assert.doesNotMatch(doc, /"resources":\["\*"\]|logs:\*|iam:/, 'only this log group, only writing');
+  const dev = record('dev', 'dev.example.test').map((c) => c.type);
+  for (const type of ['aws.ec2:FlowLog', 'aws.kms:Key', 'aws.cloudwatch:LogGroup', 'aws.iam:Role', 'aws.iam:RolePolicy']) assert.ok(!dev.includes(type), `${type} belongs to the stage that owns the VPC`);
 });
 
 test('the service runs in the stage\'s own service group, with the subnets and the public address the component chose', () => {
