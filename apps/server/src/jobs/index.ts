@@ -3,6 +3,7 @@ import type { AttachmentRepo } from '@tektum/grimoire-core/ports/attachment-repo
 import type { PageStore } from '@tektum/grimoire-core/ports/collaboration-host';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
+import type { EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import { FileStorageError, type FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
@@ -11,7 +12,7 @@ import type { RevisionRepo } from '@tektum/grimoire-core/ports/revision-repo';
 import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import type { TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
 import type { EventLog } from '../events.js';
-import { handleEmbedPage } from './embed-page.js';
+import { createEmbedPage } from './embed-page.js';
 import { handleEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
@@ -19,6 +20,7 @@ import { runImportCleanup } from './import-cleanup.js';
 import { runImportSweep } from './import-sweep.js';
 import { createMarkdownSweep } from './markdown-sweep.js';
 import { runPurge } from './purge.js';
+import { createRateLimiter, sleepUnlessAborted } from './rate-limit.js';
 import { runRevisionCatchUp } from './revision-catchup.js';
 import type { JobsApi } from './runner.js';
 import { isImportPayload, type ImportPayload } from './types.js';
@@ -46,6 +48,7 @@ export interface JobDeps {
   readonly converter: MarkdownConverter;
   /** Absent when the semantic search is off or the role has none: the two embedding jobs are then not registered. */
   readonly embedder?: Embedder;
+  readonly embeddings?: EmbeddingStore;
   readonly imports: ImportRepo;
   /** The queue, for the jobs that ask about or add another job (the import sweep and the cleanups). */
   readonly queue: JobsApi;
@@ -113,6 +116,9 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     { name: 'revision-catchup', schedule: config.jobs.revisionCron, handler: async (_payload, ctx) => { await runRevisionCatchUp({ revisions: deps.revisions, now: () => clock.now() }, ctx.signal); } },
     { name: 'markdown-sweep', schedule: MARKDOWN_SWEEP_CRON, handler: async (_payload, ctx) => { await sweep(ctx.signal); } },
     // M7-T13 fills the handlers and decides the cadence of the sweep (`GRIMOIRE_SEMANTIC_SWEEP_SECONDS` is finer than a cron).
-    ...(deps.embedder === undefined ? [] : [{ name: 'embed-sweep', handler: handleEmbedSweep }, { name: 'embed-page', handler: handleEmbedPage as RegisteredJob['handler'] }]),
+    ...(deps.embedder === undefined || deps.embeddings === undefined ? [] : [
+      { name: 'embed-sweep', handler: handleEmbedSweep },
+      { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: () => clock.now(), sleep: sleepUnlessAborted }) }) },
+    ]),
   ];
 }
