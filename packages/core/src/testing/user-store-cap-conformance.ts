@@ -10,7 +10,7 @@ const person = (h: UserStoreCapHarness, n: string, over: { email?: string; desco
 });
 
 /**
- * The order in which a new person is judged, the same in every store (the adapter and the fake): a person who has a row is that person (`existing`), whatever the count; then an email
+ * The order in which a new person is judged, the same in every store (the adapter and the fake): a person who has a row is that person (`existing`), whatever the count and whatever email this sign-in carries; then an email
  * another person has is `email-taken`; only then the cap. So a duplicate in a full tenant gets the answer of the duplicate, not `tenant-full`.
  */
 export const userStoreCapCases: readonly UserStoreCapCase[] = [
@@ -20,6 +20,16 @@ export const userStoreCapCases: readonly UserStoreCapCase[] = [
       await h.store.createIfAbsent(person(h, 'a'));
       await h.store.createIfAbsent(person(h, 'b'));
       assert.equal((await h.store.createIfAbsent(person(h, 'a'))).kind, 'existing');
+    },
+  },
+  {
+    name: 'a person who has a row is existing even when the sign-in carries an email another person has (two first sign-ins of one subject race, one with a different address)',
+    async run(h) {
+      await h.store.createIfAbsent(person(h, 'a'));
+      await h.store.createIfAbsent(person(h, 'b'));
+      const again = await h.store.createIfAbsent(person(h, 'a', { email: `b@${h.tenant}.test` }));
+      assert.equal(again.kind, 'existing');
+      assert.equal(again.kind === 'existing' ? again.user.email : '', `a@${h.tenant}.test`, 'the row is not changed');
     },
   },
   {

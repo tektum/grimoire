@@ -101,14 +101,15 @@ describe('createUserStore', () => {
     // publicly returned database row for the follow-up select if a mutation wrongly suppresses this other constraint error.
     const cause = Object.assign(new Error('users_pkey duplicate key'), { code: '23505', constraint: 'users_pkey' });
     const collided: UserRecord = { id: 'collision', descopeUserId: 'collision-subject', email: 'collision@example.test', name: 'Collision', role: 'member', suspended: false, tenantId: 'legacy' };
-    let readAlreadySupplied = false;
+    let reads = 0;
     const failing: Database = {
       async query<Row>(source: string): Promise<readonly Row[]> {
         if (source.includes('pg_advisory_xact_lock')) return [];
         if (source.startsWith('select 1 from users where email')) return []; // the email check finds nobody
         if (source.startsWith('insert ')) throw cause;
-        if (source.startsWith('select ') && !readAlreadySupplied) {
-          readAlreadySupplied = true;
+        // The first read (the person is not there yet) finds nobody; a read after the failure would find the row, if a mutation wrongly went on to look.
+        if (source.startsWith('select ') && reads++ === 0) return [];
+        if (source.startsWith('select ')) {
           return [{ id: collided.id, descope_user_id: collided.descopeUserId, email: collided.email, name: collided.name, avatar_url: null, role: collided.role, suspended_at: null } as Row];
         }
         throw new Error('unexpected database operation after unique error');
@@ -120,7 +121,7 @@ describe('createUserStore', () => {
     const caught = await createUserStore(failing, 1000).createIfAbsent({ descopeUserId: collided.descopeUserId, email: collided.email, name: collided.name, role: 'member' }).catch((error: unknown) => error);
     expect(caught).toBe(cause);
     expect(caught).not.toEqual({ kind: 'email-taken' });
-    expect(readAlreadySupplied).toBe(false);
+    expect(reads, 'no read after the failure').toBe(1);
   });
 
   it('two simultaneous different subjects with the same email ignoring case produce one created and one email-taken', async () => {
