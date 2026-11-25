@@ -27,9 +27,16 @@ describe('splitName', () => {
 });
 
 describe('titleOf', () => {
-  it('is the file name without the id, and two pages with one title and different ids are two titles for two pages', () => {
-    expect(titleOf(`Marketing campaign ${ID}.md`, '# Something else\n')).toBe('Marketing campaign');
-    expect(titleOf(`Same title ${ID}.md`, '')).toBe(titleOf(`Same title ${ID2}.md`, ''));
+  it('is the # heading on the first line (Q1: a real export writes the whole title there, where the file name may be cut or have characters replaced)', () => {
+    expect(titleOf(`Marketing campaign for the spr ${ID}.md`, '# Marketing campaign for the spring launch: budget\n\nBody')).toBe('Marketing campaign for the spring launch: budget');
+    expect(titleOf(`Plan ${ID}.md`, '#   Plan, revised   \r\nBody')).toBe('Plan, revised');
+  });
+
+  it('else is the file name without the id: a heading on a later line, of a lower level, or empty is not the title', () => {
+    expect(titleOf(`Marketing campaign ${ID}.md`, '\n# Something else\n')).toBe('Marketing campaign');
+    expect(titleOf(`Marketing campaign ${ID}.md`, '## Something else\n')).toBe('Marketing campaign');
+    expect(titleOf(`Marketing campaign ${ID}.md`, '#  \nBody')).toBe('Marketing campaign');
+    expect(titleOf(`Same title ${ID}.md`, '')).toBe(titleOf(`Same title ${ID2}.md`, '')); // two pages, one title
   });
 
   it('is the title a plain Markdown zip gives when the name has none (R10.17: the first level-one heading outside code, else the first heading), else the base name', () => {
