@@ -13,7 +13,7 @@ const STATES: readonly [string, ScriptedState][] = [
 ];
 
 const REPORT: readonly ScriptedItem[] = [
-  { id: 'i1', path: 'docs/welcome.md', status: 'imported' },
+  { id: 'i1', path: 'docs/welcome.md', status: 'ok' },
   { id: 'i2', path: 'docs/big.md', status: 'skipped', message: 'too_large' },
   { id: 'i3', path: 'docs/odd.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];

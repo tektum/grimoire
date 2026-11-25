@@ -30,8 +30,8 @@ test('the import screen at 40 percent', async ({ page, context, browserName }) =
 });
 
 const REPORT: readonly ScriptedItem[] = [
-  { id: 'i1', path: 'handbook/welcome.md', status: 'imported' },
-  { id: 'i2', path: 'handbook/guides/setup.md', status: 'imported' },
+  { id: 'i1', path: 'handbook/welcome.md', status: 'ok' },
+  { id: 'i2', path: 'handbook/guides/setup.md', status: 'ok' },
   { id: 'i3', path: 'handbook/archive/everything.md', status: 'skipped', message: 'too_large' },
   { id: 'i4', path: 'handbook/notes/broken.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];

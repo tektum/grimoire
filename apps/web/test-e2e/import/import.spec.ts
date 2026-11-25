@@ -15,8 +15,8 @@ async function open(page: Page, context: Parameters<typeof signInAs>[0], states:
 }
 
 const FILES: readonly ScriptedItem[] = [
-  { id: 'i1', path: 'docs/welcome.md', status: 'imported' },
-  { id: 'i2', path: 'docs/guide/setup.md', status: 'imported' },
+  { id: 'i1', path: 'docs/welcome.md', status: 'ok' },
+  { id: 'i2', path: 'docs/guide/setup.md', status: 'ok' },
   { id: 'i3', path: 'docs/big.md', status: 'skipped', message: 'too_large' },
   { id: 'i4', path: 'docs/<b>odd</b>.md', status: 'failed', message: 'invalid-markdown', hasSource: true },
 ];

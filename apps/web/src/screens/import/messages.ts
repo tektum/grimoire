@@ -82,7 +82,7 @@ const WORDS: Record<string, (l: ImportLimits) => string> = {
  * server's configuration. A code it does not know, no message, and anything that is not a code (a text is never shown) have the generic sentence of the status.
  */
 export function reasonText(item: Pick<ImportItem, 'status' | 'message'>, limits: ImportLimits): string | null {
-  if (item.status === 'imported') return null;
+  if (item.status === 'ok') return null;
   const words = item.message === null || !Object.hasOwn(WORDS, item.message) ? undefined : WORDS[item.message];
   return words === undefined ? FALLBACK[item.status] : words(limits);
 }

@@ -7,7 +7,7 @@ import { Button } from '../../ui/primitives';
 import { useApiQuery } from '../../api/query';
 import { importLimitsOf, reasonText } from './messages';
 
-const STATUS: Record<ImportItem['status'], string> = { imported: 'Imported', skipped: 'Skipped', failed: 'Failed' };
+const STATUS: Record<ImportItem['status'], string> = { ok: 'Imported', skipped: 'Skipped', failed: 'Failed' };
 
 /** Hands the browser the address of a file to download. Only an address `isSafeHref` accepts is used; the anchor is the browser's own way to start a download. */
 function download(url: string): boolean {

@@ -351,7 +351,7 @@ const item = (over: Partial<ImportItem> & { id: string }): ImportItem => ({
   path: `docs/${over.id}.md`,
   kind: 'page',
   pageId: 'p1',
-  status: 'imported',
+  status: 'ok',
   message: null,
   markdownBytes: 10,
   stateBytes: 20,
@@ -373,7 +373,7 @@ describe('the report of an ended import', () => {
       within(list)
         .getAllByRole('listitem')
         .map((li) => li.getAttribute('data-status')),
-    ).toEqual(['imported', 'skipped', 'failed']);
+    ).toEqual(['ok', 'skipped', 'failed']);
     expect(list.textContent).toContain('The page is larger than the limit for a page.');
     expect(list.textContent).not.toContain('too_large');
     expect(list.textContent).toContain('<b>bold</b>.md');
