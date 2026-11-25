@@ -93,9 +93,12 @@ function PaletteDialog() {
   const here = useRef(location.key);
   here.current = location.key;
 
+  // The pages of a collection the person cannot read now (the tree answers 403 or 404: access removed, collection deleted) are not offered, the rule of the contents panel; a failed re-read keeps the last
+  // data, which is why the answer is looked at and not only the data.
+  const unreadable = tree.error?.status === 404 || tree.error?.status === 403;
   const commands = useMemo(
-    () => commandsFor({ role: me.data?.role, collections: collections.data ?? [], pages: tree.data ?? [], canMakePage: writable && collectionId !== undefined }),
-    [me.data?.role, collections.data, tree.data, writable, collectionId],
+    () => commandsFor({ role: me.data?.role, collections: collections.data ?? [], pages: unreadable ? [] : (tree.data ?? []), canMakePage: writable && collectionId !== undefined && !unreadable }),
+    [me.data?.role, collections.data, tree.data, unreadable, writable, collectionId],
   );
   const shown = useMemo(() => filterCommands(commands, text), [commands, text]);
 

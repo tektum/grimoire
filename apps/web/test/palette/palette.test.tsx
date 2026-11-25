@@ -20,14 +20,17 @@ const TREE = [
 ];
 const HIT = (id: string, title: string, text: string, ranges: [number, number][]) => ({ pageId: id, urlId: `u${id}`, title, snippet: { text, ranges }, collectionId: 'c1', rank: 1, updatedAt: '2026-11-20T00:00:00Z' });
 
-function fake(options: { role?: string; search?: (q: string) => { status: number; body?: unknown } } = {}) {
+function fake(options: { role?: string; search?: (q: string) => { status: number; body?: unknown }; tree?: () => number } = {}) {
   const searches: string[] = [];
   const answer = (status: number, body?: unknown) => ({ data: status < 300 ? body : undefined, error: status < 300 ? undefined : body, response: new Response(null, { status }) });
   const api = {
     GET: async (path: string, init?: { params?: { query?: { q?: string } } }) => {
       if (path === '/v1/me') return answer(200, { id: 'u', name: 'Alice Archer', email: 'a@dev.invalid', role: options.role ?? 'member' });
       if (path === '/v1/collections') return answer(200, { items: COLLECTIONS });
-      if (path === '/v1/collections/{id}/tree') return answer(200, { pages: TREE });
+      if (path === '/v1/collections/{id}/tree') {
+        const status = options.tree?.() ?? 200;
+        return answer(status, status < 300 ? { pages: TREE } : { error: { code: 'not_found' } });
+      }
       if (path === '/v1/search') {
         const q = init?.params?.query?.q ?? '';
         searches.push(q);
@@ -107,6 +110,19 @@ describe('the command palette', () => {
     await userEvent.keyboard('meeting{Enter}');
     await waitFor(() => expect(where()).toBe('/p/meeting-notes-zz99'));
     await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+  });
+
+  it('drops the pages of the collection when a later read of its tree is refused (access removed, collection deleted): the last data is kept by the query, and not offered', async () => {
+    let reads = 0;
+    show(fake({ tree: () => (reads++ === 0 ? 200 : 404) }).api);
+    await openIt();
+    expect(await screen.findByRole('option', { name: 'Quarterly plan' })).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'Quarterly plan' })).toBeNull());
+    expect(screen.queryByRole('option', { name: 'New page' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'Trash' })).toBeTruthy(); // the places stay
   });
 
   it('does not offer New page in a collection the person can only read', async () => {

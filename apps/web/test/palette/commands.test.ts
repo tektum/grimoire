@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandsFor, filterCommands, type CommandWorld } from '../../src/palette/commands';
+import { commandsFor, filterCommands, PAGES_TYPED, PAGES_UNTYPED, type CommandWorld } from '../../src/palette/commands';
 
 const world = (over: Partial<CommandWorld> = {}): CommandWorld => ({
   role: 'member',
@@ -49,6 +49,16 @@ describe('the commands of the palette', () => {
     expect(where('go:admin', world({ role: 'admin' }))).toBe('/admin/users');
     expect(where('action:new-page')).toBe('new page');
   });
+  it('shows at most a few pages before anything is typed and a screenful while typing, whatever the size of the collection (cmdk does not virtualise)', () => {
+    const many = Array.from({ length: 5000 }, (_, i) => ({ id: `p${String(i)}`, urlId: `u${String(i)}`, title: `Page ${String(i)}` }));
+    const all = commandsFor(world({ pages: many }));
+    const pages = (q: string) => filterCommands(all, q).filter((c) => c.group === 'Pages').length;
+    expect(pages('')).toBe(PAGES_UNTYPED);
+    expect(pages('page')).toBe(PAGES_TYPED);
+    expect(pages('page 4999')).toBe(1); // the one page that matches is found even though it is far down the list
+    expect(filterCommands(all, '').filter((c) => c.group !== 'Pages').length).toBe(commandsFor(world()).filter((c) => c.group !== 'Pages').length); // the other groups are not cut
+  });
+
   it('filters by every word of the typed text, in any case, and returns all for nothing typed', () => {
     const all = commandsFor(world());
     expect(filterCommands(all, '').length).toBe(all.length);

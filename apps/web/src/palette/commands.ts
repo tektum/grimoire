@@ -32,11 +32,18 @@ export function commandsFor(world: CommandWorld): Command[] {
   return commands;
 }
 
-/** The commands whose label holds every word of `q` (any case); all of them for an empty `q`. */
+/** How many page commands the palette draws: a few before anything is typed, a screenful while typing. The list is not virtualised, and a collection can have thousands of pages. */
+export const PAGES_UNTYPED = 8;
+export const PAGES_TYPED = 20;
+
+/** The commands whose label holds every word of `q` (any case); all of them for an empty `q`, except that the pages are cut to the first few (the matching is over all the pages, then cut). */
 export function filterCommands(commands: readonly Command[], q: string): Command[] {
   const words = q
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w !== '');
-  return commands.filter((c) => words.every((w) => c.label.toLowerCase().includes(w)));
+  const matching = commands.filter((c) => words.every((w) => c.label.toLowerCase().includes(w)));
+  const room = words.length === 0 ? PAGES_UNTYPED : PAGES_TYPED;
+  let pages = 0;
+  return matching.filter((c) => c.group !== 'Pages' || ++pages <= room);
 }
