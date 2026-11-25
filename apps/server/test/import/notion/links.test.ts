@@ -41,6 +41,16 @@ describe('images and files', () => {
   });
 });
 
+describe('what a resolved link is', () => {
+  it('is the id of an item of the export (and a fragment), never a path: nothing here can be written into a page as an href', () => {
+    const r = resolveNotionLink(`../${encodeURIComponent(home)}#top`, child, index);
+    expect(Object.keys(r ?? {}).sort()).toEqual(['fragment', 'itemId', 'kind']);
+    // even a path that holds a colon is only looked up: it comes back as an item, not as text
+    const withColon = buildIndex([{ itemId: 'x', path: 'dir/a:b.md', kind: 'page' }]);
+    expect(resolveNotionLink('./a:b.md', 'dir/index.md', withColon)).toEqual({ kind: 'page', itemId: 'x' });
+  });
+});
+
 describe('what does not resolve', () => {
   it.each(['https://example.com/x', 'mailto:a@b.c', '#top', '../../../../escape.md', 'Missing%20page%2088ac0cea4cb245efb44d63ace0a37d1e.md', 'nowhere.md'])('%s is left as it is', (url) => {
     expect(resolveNotionLink(url, home, index)).toBeUndefined();
