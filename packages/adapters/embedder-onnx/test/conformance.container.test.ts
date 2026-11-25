@@ -37,6 +37,21 @@ for (const model of ['multilingual-e5-base', 'multilingual-e5-small'] as const) 
     };
     for (const c of embedderConformance) it(c.name, { timeout: 180_000 }, () => c.run(harness));
 
+    it("takes a text that counts model.maxTokens tokens: the room for the special tokens and the prefix is the adapter's", { timeout: 180_000 }, async () => {
+      const e = await harness.make();
+      try {
+        const words = 'The quick brown fox jumps over the lazy dog while the quarterly plan waits for review. '.split(' ');
+        let text = '';
+        for (let i = 0; e.countTokens(text) < e.model.maxTokens; i += 1) text += `${words[i % words.length] as string} `;
+        while (e.countTokens(text) > e.model.maxTokens) text = text.slice(0, -2);
+        expect(e.countTokens(text)).toBeLessThanOrEqual(e.model.maxTokens);
+        expect(e.countTokens(text)).toBeGreaterThan(e.model.maxTokens - 4);
+        for (const call of [() => e.embedPassages([text]), () => e.embedQuery(text)]) expect(await call()).toMatchObject({ ok: true });
+      } finally {
+        await e.close();
+      }
+    });
+
     it('has the model dimensions and ranks a paraphrase above an unrelated text', { timeout: 180_000 }, async () => {
       const e = await harness.make();
       try {

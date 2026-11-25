@@ -11,6 +11,11 @@ import { loadTokenCounter, type TokenCounter } from './tokenizer.js';
 /** The models the setting names: the length of their vectors, and the most tokens a text may have (the model's limit, the special tokens and the prefix included). */
 const MODELS = { 'multilingual-e5-base': { dims: 768 }, 'multilingual-e5-small': { dims: 384 } } as const;
 const MAX_TOKENS = 512;
+/**
+ * What the model reads besides a text, in tokens: the two special tokens and the prefix (`passage: ` is two tokens, `query: ` two or three), with room to spare. `model.maxTokens` is
+ * what `countTokens` may say of a text that is sure to fit, so the chunker, which keeps its chunks under it, never meets the `too-long` of the engine, which counts all of this.
+ */
+const RESERVED_TOKENS = 8;
 /** Texts of one call go to the model this many at a time: an aborted call leaves at most one batch running, and a query does not wait behind a whole page. */
 const BATCH = 8;
 const MINUTE_MS = 60_000;
@@ -82,7 +87,8 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
       await next.start({ weights: verified.weights, tokenizer: verified.tokenizer });
     } catch {
       await next.close();
-      return fail('load-failed');
+      // Closed while it was starting: nothing to report and no retry to schedule.
+      return closed ? undefined : fail('load-failed');
     }
     if (closed) return void (await next.close());
     next.onStopped(() => {
@@ -162,7 +168,7 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
 
   return {
     get model() {
-      return { name: config.model, version, dims, maxTokens: MAX_TOKENS };
+      return { name: config.model, version, dims, maxTokens: MAX_TOKENS - RESERVED_TOKENS };
     },
     status: () => (closed ? 'unavailable' : status),
     countTokens: (text) => (counter === undefined ? Math.ceil(text.length / 3) : counter.count(text)),

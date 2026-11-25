@@ -120,7 +120,8 @@ describe('loading', () => {
     expect(e.countTokens('one two three')).toBe(5); // an estimate until the tokenizer is there
     expect(await e.embedPassages(['a'])).toEqual({ ok: false, reason: 'unavailable' });
     await ready(e);
-    expect(e.model).toEqual({ name: 'multilingual-e5-base', version: `int8@${sha(weights).slice(0, 8)}`, dims: 768, maxTokens: 512 });
+    // 512 is the model's limit; the text a chunker may hand over leaves room for the two special tokens and the prefix.
+    expect(e.model).toEqual({ name: 'multilingual-e5-base', version: `int8@${sha(weights).slice(0, 8)}`, dims: 768, maxTokens: 504 });
     expect(e.countTokens('one two three')).toBe(3);
     expect(s.logs).toEqual([]);
     await e.close();
@@ -128,7 +129,7 @@ describe('loading', () => {
 
   it('describes the small model with its own vector length', async () => {
     const s = setup();
-    expect(s.make({}, { model: 'multilingual-e5-small' }).model).toMatchObject({ name: 'multilingual-e5-small', dims: 384, maxTokens: 512 });
+    expect(s.make({}, { model: 'multilingual-e5-small' }).model).toMatchObject({ name: 'multilingual-e5-small', dims: 384, maxTokens: 504 });
   });
 
   it('is unavailable with model-missing for no lock or no file, says so once, and loads when the files come (the retry)', async () => {
@@ -229,6 +230,29 @@ describe('loading', () => {
     await e.close();
     release();
     await vi.waitFor(() => expect(slow.closed).toBe(true));
+    expect(e.status()).toBe('unavailable');
+  });
+});
+
+describe('closing while the model starts', () => {
+  it('reports nothing and starts no retry when the start that was running fails after the close', async () => {
+    const s = setup();
+    let fail: (e: Error) => void = () => undefined;
+    let entered = false;
+    const slow = new FakeBackend();
+    slow.start = () =>
+      new Promise<void>((_, reject) => {
+        entered = true;
+        fail = reject;
+      });
+    const e = s.make({ makeBackend: () => slow });
+    await vi.waitFor(() => expect(entered).toBe(true));
+    await e.close();
+    fail(new Error('refused'));
+    await vi.waitFor(() => expect(slow.closed).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 100)); // five retry periods
+    expect(s.logs).toEqual([]);
+    expect(s.backends).toHaveLength(0);
     expect(e.status()).toBe('unavailable');
   });
 });
