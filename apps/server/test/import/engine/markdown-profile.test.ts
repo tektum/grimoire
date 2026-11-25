@@ -12,7 +12,56 @@ describe('classify', () => {
   });
 });
 
+describe('classify: a name that is only an extension is not a page', () => {
+  it.each([['.md'], ['.markdown'], ['dir/.MARKDOWN'], ['dir/.md']])('%s is an attachment candidate', (path) => {
+    expect(p.classify({ path })).toBe('attachment');
+  });
+  it('a one-character name is a page', () => {
+    expect([p.classify({ path: 'a.markdown' }), p.classify({ path: 'a.md' })]).toEqual(['page', 'page']);
+  });
+});
+
+describe('folderPathOf: the folder a page file stands for', () => {
+  it('is the folder for an index.md or README.md, and undefined for any other page', () => {
+    expect(p.folderPathOf('dir/index.md')).toBe('dir');
+    expect(p.folderPathOf('a/dir/README.MD')).toBe('a/dir');
+    expect(p.folderPathOf('dir/other.md')).toBeUndefined();
+    expect(p.folderPathOf('index.md')).toBeUndefined(); // at the root there is no folder
+  });
+
+  it('README.md beside an index.md stands for nothing: the index file wins', () => {
+    const all = new Set(['dir/index.md', 'dir/readme.md']);
+    expect(p.folderPathOf('dir/index.md', all)).toBe('dir');
+    expect(p.folderPathOf('dir/README.md', all)).toBeUndefined();
+  });
+
+  it('agrees with parentPathOf: a child of the folder has the folder path as its parent', () => {
+    expect(p.parentPathOf('dir/child.md')).toBe(p.folderPathOf('dir/index.md'));
+  });
+});
+
 describe('titleOf', () => {
+  it('finds a heading after a byte order mark, with or without front matter', () => {
+    expect(p.titleOf('a.md', '\uFEFF# Real\n')).toBe('Real');
+    expect(p.titleOf('a.md', '\uFEFF---\ntitle: X\n---\n# Real\n')).toBe('Real');
+  });
+
+  it('a fence is closed only by a fence of the same character, at least as long, with no info string', () => {
+    expect(p.titleOf('f.md', '````\n```\n# hidden\n````\n')).toBe('f');
+    expect(p.titleOf('f.md', '```\n```js\n# hidden\n```\n')).toBe('f');
+    expect(p.titleOf('f.md', '~~~\n```\n# hidden\n~~~\n')).toBe('f');
+    expect(p.titleOf('f.md', '```\ncode\n```\n# After\n')).toBe('After');
+    expect(p.titleOf('f.md', '````\n# hidden\n`````\n# After\n')).toBe('After');
+  });
+
+  it('a quote or a list item above --- is a thematic break after it, not a setext heading', () => {
+    expect(p.titleOf('article.md', '> Quoted\n---\n')).toBe('article');
+    expect(p.titleOf('list.md', '1. Item\n---\n')).toBe('list');
+    expect(p.titleOf('list2.md', '1) Item\n===\n')).toBe('list2');
+    expect(p.titleOf('b.md', '- bullet\n---\n')).toBe('b');
+    expect(p.titleOf('s.md', 'Real setext\n---\n')).toBe('Real setext');
+  });
+
   it('is the first heading of the page, wherever it is, when there is one', () => {
     expect(p.titleOf('notes/a.md', 'Intro text\n\n# The Title\n\nbody\n\n# Second\n')).toBe('The Title');
     expect(p.titleOf('a.md', 'Setext Title\n============\n\nbody')).toBe('Setext Title');
@@ -90,6 +139,23 @@ describe('preprocess: front matter is stripped (R10.10)', () => {
     const open = '---\ntitle: X\nno end\n';
     expect(p.preprocess(open, ctx)).toBe(open);
     expect(p.preprocess('Text\n---\ntitle: X\n---\n', ctx)).toBe('Text\n---\ntitle: X\n---\n');
+  });
+
+  it('validates the whole block: a page that starts with a rule and a line with a colon is not front matter', () => {
+    const page = '---\nNote: read first\n\nA long paragraph that is prose, not a key.\n\n---\nMore\n';
+    expect(p.preprocess(page, ctx)).toBe(page);
+    const toml = '+++\nNote = x\n\nA prose line.\n+++\nMore\n';
+    expect(p.preprocess(toml, ctx)).toBe(toml);
+  });
+
+  it('strips real YAML in all its common shapes: lists, nested maps, comments, blank lines, folded text', () => {
+    const yaml = '---\n# a comment\ntitle: "X: Y"\ntags:\n  - a\n  - b\nauthor:\n  name: Ada\n\nsummary: >\n  folded text\n  continues\nlist-key: [1, 2]\n- loose item\n---\nBody\n';
+    expect(p.preprocess(yaml, ctx)).toBe('Body\n');
+  });
+
+  it('strips real TOML: tables, arrays over lines, comments', () => {
+    const toml = '+++\ntitle = "X"\n# comment\n[extra]\nweight = 3\ntags = [\n  "a",\n  "b",\n]\n+++\nBody\n';
+    expect(p.preprocess(toml, ctx)).toBe('Body\n');
   });
 
   it('strips a block that is empty', () => {

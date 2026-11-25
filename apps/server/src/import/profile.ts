@@ -30,6 +30,11 @@ export interface ImportProfile {
   parentPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | null;
   preprocess(markdown: string, ctx: { readonly path: string }): string;
   resolveLink(url: string, fromPath: string, index: LinkIndex): Target | undefined;
+  /**
+   * The folder this page file stands for (the page of the folder `dir` is the file the profile names, so the engine attaches the folder's children to it instead of making an empty
+   * container page), or undefined when the file is an ordinary page. `lowerPaths` as for `parentPathOf`: a folder with two candidates has one winner.
+   */
+  folderPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | undefined;
   /** A database export (a CSV) as a Markdown table; only a profile that has such exports provides it. */
   csvToMarkdown?(rows: readonly (readonly string[])[]): string;
 }
