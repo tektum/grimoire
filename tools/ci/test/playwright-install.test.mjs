@@ -33,7 +33,7 @@ exit 0
 const run = (bin, extra = {}) =>
   spawnSync('sh', [script, 'webkit', 'firefox'], {
     encoding: 'utf8',
-    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
+    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
   });
 
 test('installs the browsers, then the libraries, once each when nothing fails', () => {
@@ -74,4 +74,41 @@ test('without a browser name it says how to use it and does nothing', () => {
   const r = spawnSync('sh', [script], { encoding: 'utf8' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage/);
+});
+
+/** A stand-in for `dpkg --configure -a` that logs its calls. */
+function fakeRepair() {
+  const bin = path.join(dir, 'fake-repair');
+  const log = path.join(dir, 'repairs.log');
+  writeFileSync(log, '');
+  writeFileSync(bin, `#!/bin/sh\necho repaired >> "${log}"\n`);
+  chmodSync(bin, 0o755);
+  return { bin, count: () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).length };
+}
+
+test('dpkg is repaired before each retry of the libraries (a killed apt leaves it half done), and not for a retry of the browsers or when nothing failed', () => {
+  const deps = fake({ failing: 'install-deps', failures: 2 });
+  const repairDeps = fakeRepair();
+  assert.equal(run(deps.bin, { PLAYWRIGHT_REPAIR_CMD: repairDeps.bin }).status, 0);
+  assert.equal(repairDeps.count(), 2);
+
+  const browsers = fake({ failing: 'install', failures: 2 });
+  const repairBrowsers = fakeRepair();
+  assert.equal(run(browsers.bin, { PLAYWRIGHT_REPAIR_CMD: repairBrowsers.bin }).status, 0);
+  assert.equal(repairBrowsers.count(), 0);
+
+  const clean = fake({});
+  const repairClean = fakeRepair();
+  assert.equal(run(clean.bin, { PLAYWRIGHT_REPAIR_CMD: repairClean.bin }).status, 0);
+  assert.equal(repairClean.count(), 0);
+});
+
+test('the time for the whole install is bounded: when it is used up it stops trying and says so, instead of running into the budget of the job', () => {
+  const f = fake({ failing: 'install', failures: 99, hang: true });
+  const started = Date.now();
+  const r = run(f.bin, { PLAYWRIGHT_TOTAL_SECONDS: '2', PLAYWRIGHT_ATTEMPT_TIMEOUT: '1', PLAYWRIGHT_RETRY_DELAYS: '1 1' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /used up|failed after/);
+  assert.match(r.stderr, /not a test failure/);
+  assert.ok(Date.now() - started < 12_000, 'it stopped within a few seconds of its total');
 });
