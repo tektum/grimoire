@@ -48,7 +48,6 @@ describe('the refusals name the variable', () => {
   it('the import expiry is at most the 24 hours the job queue accepts, and an empty value (what the Compose pass-through gives when nothing is set) is the default', () => {
     expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '86400' }).jobs.importExpireSeconds).toBe(86_400);
     expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '' }).jobs.importExpireSeconds).toBe(900);
-    expect(load({ GRIMOIRE_JOBS_SWEEP_CRON: '' }).jobs.sweepCron).toBe('*/5 * * * *');
   });
 
   it('a zip larger than the import as a whole is refused, on the variable of the zip, and so is a quota of staged bytes smaller than one whole import (it could never be made)', () => {
@@ -60,6 +59,10 @@ describe('the refusals name the variable', () => {
   it('a file of a zip is refused above the largest single PUT the store takes (4 GiB): it goes up in one request', () => {
     expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967297' }).some((i) => i.includes('GRIMOIRE_IMPORT_MAX_ENTRY_BYTES'))).toBe(true);
     expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967296' })).toEqual([]);
+  });
+
+  it('an empty value of the sweep schedule (what the Compose pass-through gives when nothing is set) is the default of every 5 minutes', () => {
+    expect(load({ GRIMOIRE_JOBS_SWEEP_CRON: '' }).jobs.sweepCron).toBe('*/5 * * * *');
   });
 
   it('a remote image larger than an upload is refused, on the variable of the remote limit', () => {
