@@ -38,6 +38,7 @@ const BY_EXTENSION: Readonly<Record<string, string>> = {
   gif: 'image/gif',
   webp: 'image/webp',
   avif: 'image/avif',
+  heic: 'image/heic',
   pdf: 'application/pdf',
   txt: 'text/plain',
   csv: 'text/csv',
@@ -49,6 +50,7 @@ const BY_EXTENSION: Readonly<Record<string, string>> = {
   zip: 'application/zip',
   mp4: 'video/mp4',
   webm: 'video/webm',
+  mov: 'video/quicktime',
 };
 
 /** The media type of a file name by its extension, case-insensitively, or undefined when the extension is not one of the allowed types'. */
