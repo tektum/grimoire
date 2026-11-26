@@ -60,7 +60,7 @@ describe('the construct report of an ended import', () => {
     expect(text('Icons and cover images')).toContain('Left out');
     expect(text('Rows that only repeat their table')).toContain('Left out: the table already shows what these pages said');
     expect(text('Rows that only repeat their table')).toContain('A link to one opens the page of the table');
-    expect(text('Links to pages that are not in the zip')).toContain('Kept as written');
+    expect(text('Links and images whose file is not in the zip')).toContain('Kept as written');
     expect(text('HTML left in pages')).toContain('Kept as written');
   });
 

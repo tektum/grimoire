@@ -171,7 +171,7 @@ export const CONSTRUCT_NAME: Record<ConstructKind, string> = {
   front_matter: 'Front matter (properties at the top of a file)',
   icon_cover: 'Icons and cover images',
   database_row: 'Rows that only repeat their table',
-  unresolved_link: 'Links to pages that are not in the zip',
+  unresolved_link: 'Links and images whose file is not in the zip',
   raw_html: 'HTML left in pages',
 };
 
@@ -184,7 +184,7 @@ export const CONSTRUCT_EFFECT: Record<ConstructKind, string> = {
   front_matter: 'Left out: the properties at the top of a file are not imported.',
   icon_cover: 'Left out: icons and cover images are not imported.',
   database_row: 'Left out: the table already shows what these pages said. A link to one opens the page of the table.',
-  unresolved_link: "Kept as written: no file in the zip matched the link's target.",
+  unresolved_link: 'Kept as written: no file in the zip matched the target of the link or image.',
   raw_html: 'Kept as written: the page still holds the HTML.',
 };
 

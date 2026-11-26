@@ -1001,7 +1001,7 @@ describe('the construct report on the import screen', () => {
     rawHtmlCapped: false,
   };
 
-  it('is shown for an ended import, above the list of files', async () => {
+  it('is shown for a finished import, above the list of files', async () => {
     show(fake({ states: [ended({ report: REPORT })], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
     const heading = await screen.findByRole('heading', { name: 'What happened to the content' });
     const files = await screen.findByRole('list', { name: 'Files of the import' });
@@ -1015,6 +1015,12 @@ describe('the construct report on the import screen', () => {
     expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
     cleanup();
     show(fake({ states: [ended()], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
+    await screen.findByRole('list', { name: 'Files of the import' });
+    expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
+  });
+
+  it.each(['failed', 'cancelled'] as const)('is not shown for an import that was %s: its pages went to the trash, so the links of the report would lead nowhere', async (status) => {
+    show(fake({ states: [ended({ status, report: REPORT })], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
     await screen.findByRole('list', { name: 'Files of the import' });
     expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
   });
