@@ -104,13 +104,13 @@ const SETUP_ONLY = 'is required to run files-setup';
 
 const MIME_RULE = 'must be a comma list of lowercase type/subtype names';
 const FORBIDDEN_TYPES = ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'text/xml', 'application/xml', 'text/javascript', 'application/javascript'];
-// The 15 types of R9.14: images, documents, archives and video that a browser never runs inline.
+// The 17 types of R9.14: images, documents, archives and video that a browser never runs inline.
 const DEFAULT_TYPES = [
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/heic', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/zip', 'video/mp4', 'video/webm',
+  'application/zip', 'video/mp4', 'video/webm', 'video/quicktime',
 ];
 // Script and XML families as well as the exact names: a browser runs (or renders as XML, with scripts) every one of them inline.
 const executableType = (t: string): boolean => FORBIDDEN_TYPES.includes(t) || /(^|\/)(x-)?(java|ecma)script$|^text\/(javascript1\.[0-5]|jscript|livescript)$|[+/]xml$/.test(t);

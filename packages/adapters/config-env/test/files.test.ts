@@ -41,8 +41,8 @@ describe('Config.files', () => {
       region: 'us-east-1', addressing: 'path', createOnlyHeader: 'if-none-match', corsMode: 'api',
       maxBytes: 26_214_400, pendingMaxPerUser: 10,
     });
-    expect(files?.allowedTypes).toHaveLength(15);
-    expect(files?.allowedTypes).toContain('application/pdf');
+    expect(files?.allowedTypes).toHaveLength(17);
+    expect(files?.allowedTypes).toEqual(expect.arrayContaining(['application/pdf', 'video/quicktime', 'image/heic']));
   });
 
   it('takes the public origin from the public endpoint, without its path', () => {
