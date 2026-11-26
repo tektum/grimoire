@@ -1,5 +1,5 @@
-import { cleanItemText as clean, ImportBusyError, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
-import type { ImportCounts, ImportItem, ImportItemKind, ImportPart, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
+import { cleanItemText as clean, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
+import type { ConstructKind, ConstructReport, ImportCounts, ImportItem, ImportItemKind, ImportPart, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
 
@@ -153,6 +153,36 @@ export class FakeImportRepo implements ImportRepo {
     if (found === undefined || found.part.uploadId === null) return Promise.resolve(false);
     found.part = { ...found.part, uploadId: null };
     return Promise.resolve(true);
+  }
+
+  constructReport(tenantId: string, importId: string): Promise<ConstructReport | undefined> {
+    if (this.find(tenantId, importId) === -1) return Promise.resolve(undefined);
+    const items = this.stored.filter((s) => s.tenantId === tenantId && s.importId === importId).map((s) => s.item).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+    const lines = new Map<ConstructKind, { count: number; pages: { itemId: string; path: string; urlId: string | null }[]; capped: boolean }>();
+    const html: { itemId: string; path: string; urlId: string | null; fragments: number }[] = [];
+    const note = (kind: ConstructKind, item: ImportItem, n: number): void => {
+      const line = lines.get(kind) ?? { count: 0, pages: [], capped: false };
+      line.count += n;
+      if (line.pages.length < MAX_REPORT_PAGES) line.pages.push({ itemId: item.id, path: item.path, urlId: item.urlId });
+      else line.capped = true;
+      lines.set(kind, line);
+    };
+    for (const item of items) {
+      if (item.status === 'ok') {
+        const counts = this.written.find((w) => w.tenantId === tenantId && w.importId === importId && w.page.itemId === item.id)?.page.constructs ?? {};
+        for (const kind of Object.keys(CONSTRUCT_FATES) as ConstructKind[]) {
+          const n = counts[kind] ?? 0;
+          if (n > 0) note(kind, item, n);
+        }
+        if ((counts.raw_html ?? 0) > 0) html.push({ itemId: item.id, path: item.path, urlId: item.urlId, fragments: counts.raw_html ?? 0 });
+        if (item.kind === 'database_csv') note('database_table', item, 1);
+      } else if (item.status === 'skipped' && item.message === 'database_row') note('database_row', item, 1);
+    }
+    return Promise.resolve({
+      constructs: (Object.keys(CONSTRUCT_FATES) as ConstructKind[]).flatMap((kind) => { const line = lines.get(kind); return line === undefined ? [] : [{ kind, fate: CONSTRUCT_FATES[kind], ...line }]; }),
+      rawHtmlPages: html.slice(0, MAX_REPORT_PAGES),
+      rawHtmlCapped: html.length > MAX_REPORT_PAGES,
+    });
   }
 
   markUploaded(tenantId: string, id: string): Promise<boolean> {

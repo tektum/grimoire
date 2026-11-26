@@ -2,7 +2,7 @@ import { duplicateIndexes, isBadName, reportedName } from '@tektum/grimoire-core
 import { isIgnoredEntry } from '@tektum/grimoire-core/import/types';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import type { ImportConfig } from '@tektum/grimoire-core/ports/config';
-import type { ImportCounts, ImportItem, ImportRecord, ImportRepo, NewImportItem, WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
+import type { ConstructKind, ImportCounts, ImportItem, ImportRecord, ImportRepo, NewImportItem, WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import type { TenantPageLimits } from '@tektum/grimoire-core/ports/page-repo';
 import type { Ordering } from '@tektum/grimoire-core/tree/position';
@@ -440,6 +440,9 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     let markdown = '';
     let titleSource = '';
     let name = '';
+    /** What this page held that was converted, dropped or kept (the construct report): counted while the text is handled, and kept only for a page that is written. */
+    const constructs: Partial<Record<ConstructKind, number>> = {};
+    const noted = (kind: ConstructKind): void => { constructs[kind] = (constructs[kind] ?? 0) + 1; };
     if (isContainer(item)) {
       name = segmentsOf(item.path).at(-1) ?? item.path;
     } else {
@@ -477,7 +480,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       } else {
         try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
         if (await rowIsBare(item, titleSource)) { await settle(item, 'skipped', 'database_row'); return { bytes: read.bytes.length }; }
-        markdown = profile.preprocess(titleSource, { path: item.path });
+        markdown = profile.preprocess(titleSource, { path: item.path, onConstruct: noted });
       }
       name = profile.titleOf(item.path, titleSource);
     }
@@ -538,6 +541,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
     }, (url) => copied.get(url)?.url);
     own += rewritten.unresolved.length;
+    for (const [kind, n] of [['page_mention', rewritten.pageLinks], ['unresolved_link', rewritten.unresolved.length], ['raw_html', rewritten.htmlFragments]] as const) if (n > 0) constructs[kind] = n;
 
     const bytes = original?.length ?? 0;
     const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);
@@ -552,7 +556,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     }
     const written: WriteImportedPageResult = await repo.writePage(tenantId, importId, {
       itemId: item.id, collectionId: record.targetCollectionId, parentId: parentPageId(item), position: (before, after) => deps.ordering.between(before, after), title, createdBy: importer,
-      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, remoteImageFailures: failures, attachments: [...staged.values(), ...copied.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
+      content: { state: outcome.state, markdown: outcome.markdown, text: outcome.text, hash: outcome.hash }, markdownBytes: outcome.markdownBytes, stateBytes: outcome.stateBytes, warnings: own, constructs, remoteImageFailures: failures, attachments: [...staged.values(), ...copied.values()].map((f) => f.row), attachmentItemIds: [...staged.keys()],
     }, deps.pageLimits, deps.now());
     switch (written.kind) {
       case 'ok': status.set(item.id, 'ok'); warned.set(item.id, own); for (const id of staged.keys()) if (status.get(id) === 'pending') status.set(id, 'ok'); return { bytes, wrote: 'here' };

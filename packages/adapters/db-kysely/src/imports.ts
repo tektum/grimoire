@@ -1,5 +1,5 @@
-import { cleanItemText, ImportBusyError, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
-import type { ImportCounts, ImportItem, ImportRecord, ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import type { ConstructCounts, ConstructKind, ConstructLine, ImportCounts, ImportItem, ImportRecord, ImportRepo, RawHtmlPage, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
 import type { WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import { createAttachments } from './attachments.js';
 import { scoped } from './index.js';
@@ -12,6 +12,7 @@ interface ImportRow {
 }
 
 interface PartRow { ordinal: number; s3_key: string; bytes: string; upload_id: string | null }
+interface ReportRow { kind: string; total: string; id: string; path: string; url_id: string | null; n: string; rn: number }
 interface ItemRow {
   id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
   markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; remote_failures: Record<string, number>;
@@ -20,6 +21,11 @@ interface ItemRow {
 const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error, bytes::text as bytes, s3_key,
   (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
 const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
+
+/** The counts a page keeps, as JSON: the kinds the report knows, each a whole number from 1. */
+const constructsJson = (counts: ConstructCounts | undefined): string =>
+  JSON.stringify(Object.fromEntries(Object.entries(counts ?? {}).filter(([kind, n]) => kind in CONSTRUCT_FATES && Number.isSafeInteger(n) && n > 0)));
+const CONSTRUCT_KINDS = Object.keys(CONSTRUCT_FATES) as ConstructKind[];
 
 const ms = (value: string | null): number | null => (value === null ? null : Number(value));
 
@@ -131,8 +137,8 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
           await tx.query(`update import_items set status = 'ok', message = null where tenant_id = $1 and import_id = $2 and id = any($3::bigint[]) and kind = 'attachment' and status = 'pending'`, [tenantId, importId, page.attachmentItemIds]);
         }
         await tx.query(
-          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
-          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {})],
+          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb or $10::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb, 'constructs', $10::jsonb) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
+          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {}), constructsJson(page.constructs)],
         );
         return { kind: 'ok', pageId: row.id, urlId: row.url_id };
       });
@@ -193,6 +199,38 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     async closePart(tenantId, importId, ordinal) {
       const rows = await scoped(db, tenantId).query(`update import_parts set upload_id = null where tenant_id = $1 and import_id = $2 and ordinal = $3 and upload_id is not null returning 1`, [tenantId, importId, ordinal]);
       return rows.length === 1;
+    },
+    async constructReport(tenantId, importId) {
+      return scoped(db, tenantId).transaction(async (tx) => {
+        if ((await tx.query(`select 1 from imports where tenant_id = $1 and id = $2`, [tenantId, importId])).length === 0) return undefined;
+        // One statement: the counts a written page kept, the databases that became a table and the rows that were left out, ranked by item id inside each kind. The first
+        // `MAX_REPORT_PAGES` are named; the one after them only says that there are more.
+        const rows = await tx.query<ReportRow>(
+          `with src as (
+             select i.id, i.path, i.url_id, k.key as kind, k.value::bigint as n
+               from import_items i
+               cross join lateral jsonb_each_text(case when jsonb_typeof(i.detail->'constructs') = 'object' then i.detail->'constructs' else '{}'::jsonb end) k
+              where i.tenant_id = $1 and i.import_id = $2 and i.status = 'ok' and k.value ~ '^[0-9]{1,9}$'
+             union all
+             select id, path, url_id, 'database_table', 1 from import_items where tenant_id = $1 and import_id = $2 and kind = 'database_csv' and status = 'ok'
+             union all
+             select id, path, url_id, 'database_row', 1 from import_items where tenant_id = $1 and import_id = $2 and status = 'skipped' and message = 'database_row'
+           ), ranked as (
+             select kind, id, path, url_id, n, row_number() over (partition by kind order by id) as rn, sum(n) over (partition by kind) as total from src where kind = any($3::text[])
+           )
+           select kind, total::text as total, id::text as id, path, url_id, n::text as n, rn::int as rn from ranked where rn <= $4::int + 1 order by kind, rn`,
+          [tenantId, importId, CONSTRUCT_KINDS, MAX_REPORT_PAGES],
+        );
+        const page = (r: ReportRow): ReportPage => ({ itemId: r.id, path: r.path, urlId: r.url_id });
+        const constructs: ConstructLine[] = CONSTRUCT_KINDS.flatMap((kind) => {
+          const mine = rows.filter((r) => r.kind === kind);
+          if (mine.length === 0) return [];
+          return [{ kind, fate: CONSTRUCT_FATES[kind], count: Number(mine[0]?.total), pages: mine.filter((r) => r.rn <= MAX_REPORT_PAGES).map(page), capped: mine.some((r) => r.rn > MAX_REPORT_PAGES) }];
+        });
+        const html = rows.filter((r) => r.kind === 'raw_html');
+        const rawHtmlPages: RawHtmlPage[] = html.filter((r) => r.rn <= MAX_REPORT_PAGES).map((r) => ({ ...page(r), fragments: Number(r.n) }));
+        return { constructs, rawHtmlPages, rawHtmlCapped: html.some((r) => r.rn > MAX_REPORT_PAGES) };
+      });
     },
     async markUploaded(tenantId, id) {
       const rows = await scoped(db, tenantId).query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);

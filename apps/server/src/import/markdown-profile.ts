@@ -16,12 +16,23 @@ const YAML_LINE = /^(?:\s*|#.*|[ \t]+.*|-(?:[ \t].*)?|[A-Za-z0-9_"'.-][^:\n]*:(?
 /** The same for TOML: blank, a comment, indented (an array over lines), a closing bracket, a table header, or `key = value`. */
 const TOML_LINE = /^(?:\s*|#.*|[ \t]+.*|[\]}].*|\[[^\]\n]*\]|[A-Za-z0-9_"'.-]+[ \t]*=.*)$/;
 
+/** What a front matter block held, for the construct report: the page's icon or cover (the keys `icon` and `cover`), and any other key. A block of comments and blanks holds neither. */
+function frontMatterKinds(block: string, toml: boolean): readonly ('front_matter' | 'icon_cover')[] {
+  const keys = lines(block).flatMap((line) => {
+    const match = (toml ? /^([A-Za-z0-9_"'.-]+)[ \t]*=/ : /^([A-Za-z0-9_"'.-][^:\n]*):(?:[ \t]|$)/).exec(line.replace(/\r$/, ''));
+    return match?.[1] === undefined ? [] : [match[1].replace(/^["']|["']$/g, '').trim().toLowerCase()];
+  });
+  const kinds: ('front_matter' | 'icon_cover')[] = [];
+  if (keys.some((key) => key === 'icon' || key === 'cover')) kinds.push('icon_cover');
+  if (keys.some((key) => key !== 'icon' && key !== 'cover')) kinds.push('front_matter');
+  return kinds;
+}
 /**
  * Front matter (R10.10) is removed: a YAML block between `---` and `---` (or `...`), or a TOML block between `+++` lines, at the very start (a byte order mark before it goes
  * too). Every line of the block must be of the shapes the format has, so a page that only starts with a horizontal rule (even with a sentence that has a colon right after it),
  * or has an opening line and no closing one, is left exactly as it is.
  */
-function stripFrontMatter(markdown: string): string {
+function stripFrontMatter(markdown: string, onConstruct?: (kind: 'front_matter' | 'icon_cover') => void): string {
   const text = markdown.startsWith('\uFEFF') ? markdown.slice(1) : markdown;
   const open = /^(---|\+\+\+)[ \t]*\r?\n/.exec(text);
   if (open === null) return markdown;
@@ -35,7 +46,11 @@ function stripFrontMatter(markdown: string): string {
     const closes = toml ? line.trimEnd() === '+++' : line.trimEnd() === '---' || line.trimEnd() === '...';
     // A closed block that has lines but no content (only blanks and comments, a `# Title` between two rules) is a horizontal rule and some text, not front matter; a block with no
     // line at all (`---` and `---` one after the other) is an empty front matter and goes.
-    if (closes) return sawContent || at === open[0].length ? (end === -1 ? '' : text.slice(end + 1)) : markdown;
+    if (closes) {
+      if (!(sawContent || at === open[0].length)) return markdown;
+      if (onConstruct !== undefined) for (const kind of frontMatterKinds(text.slice(open[0].length, at), toml)) onConstruct(kind);
+      return end === -1 ? '' : text.slice(end + 1);
+    }
     if (!shape.test(line)) return markdown;
     if (line.trim() !== '' && !line.trimStart().startsWith('#')) sawContent = true;
     if (end === -1) return markdown;
@@ -109,7 +124,7 @@ export const markdownProfile: ImportProfile = {
     if (folder !== undefined) segments.pop();
     return segments.length === 0 ? null : segments.join('/');
   },
-  preprocess: (markdown) => stripFrontMatter(markdown),
+  preprocess: (markdown, ctx) => stripFrontMatter(markdown, ctx.onConstruct),
   resolveLink(url, fromPath, index: LinkIndex): Target | undefined {
     const path = resolveLinkPath(url, fromPath);
     if (path === undefined) return undefined;

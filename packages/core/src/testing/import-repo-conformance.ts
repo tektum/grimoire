@@ -623,4 +623,68 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.equal(await h.repo.closePart(h.tenantId, made.id, 9), false, 'a part that is not there');
     },
   },
+  {
+    name: 'construct-report-counts-the-constructs-of-written-pages-and-reads-the-databases-from-the-items',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [
+        ...pages('a.md', 'b.md', 'c.md', 'd.md'),
+        { path: 'db.csv', kind: 'database_csv' as const },
+        { path: 'row.md', kind: 'page' as const, status: 'skipped' as const, message: 'database_row' },
+      ]);
+      const [a, b, c, d] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      const [db] = await h.repo.pending(h.tenantId, made.id, 'database_csv', 10);
+      assert.ok(a && b && c && d && db);
+      const write = async (id: string, constructs?: NewImportedPage['constructs']) => assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, id, { collectionId: made.targetCollectionId, ...(constructs === undefined ? {} : { constructs }) }), limits, h.now)).kind, 'ok');
+      await write(a.id, { callout: 2, raw_html: 3, page_mention: 1 });
+      await write(b.id, { callout: 1, front_matter: 1 });
+      await write(c.id);
+      await write(db.id);
+      await h.repo.settle(h.tenantId, made.id, d.id, { status: 'failed', message: 'internal' });
+      const report = await h.repo.constructReport(h.tenantId, made.id);
+      const items = await h.repo.scanItems(h.tenantId, made.id, { limit: 20 });
+      const at = (path: string) => items.find((i) => i.path === path);
+      assert.deepEqual(report?.constructs.map((l) => [l.kind, l.fate, l.count, l.pages.map((p) => p.path), l.capped]), [
+        ['callout', 'converted', 3, ['a.md', 'b.md'], false],
+        ['front_matter', 'dropped', 1, ['b.md'], false],
+        ['page_mention', 'converted', 1, ['a.md'], false],
+        ['raw_html', 'kept', 3, ['a.md'], false],
+        ['database_table', 'converted', 1, ['db.csv'], false],
+        ['database_row', 'dropped', 1, ['row.md'], false],
+      ]);
+      assert.deepEqual(report?.constructs[0]?.pages[0], { itemId: a.id, path: 'a.md', urlId: at('a.md')?.urlId });
+      assert.ok(at('a.md')?.urlId, 'a written page has its url id');
+      assert.equal(report?.constructs.find((l) => l.kind === 'database_row')?.pages[0]?.urlId, null, 'a row that was left out has no page');
+      assert.deepEqual(report?.rawHtmlPages, [{ itemId: a.id, path: 'a.md', urlId: at('a.md')?.urlId, fragments: 3 }]);
+      assert.equal(report?.rawHtmlCapped, false);
+    },
+  },
+  {
+    name: 'construct-report-names-at-most-100-pages-for-a-kind-and-says-when-it-cut',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages(...Array.from({ length: 101 }, (_, i) => `p${String(i).padStart(3, '0')}.md`)));
+      const all = await h.repo.pending(h.tenantId, made.id, 'page', 200);
+      assert.equal(all.length, 101);
+      for (const item of all) assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, item.id, { collectionId: made.targetCollectionId, constructs: { callout: 1, raw_html: 2 } }), limits, h.now)).kind, 'ok');
+      const report = await h.repo.constructReport(h.tenantId, made.id);
+      const callout = report?.constructs.find((l) => l.kind === 'callout');
+      assert.equal(callout?.count, 101, 'the count is of all of them');
+      assert.equal(callout?.pages.length, 100);
+      assert.equal(callout?.capped, true);
+      assert.deepEqual(callout?.pages.map((p) => p.path), all.slice(0, 100).map((i) => i.path), 'the first 100, in order');
+      assert.equal(report?.constructs.find((l) => l.kind === 'raw_html')?.count, 202);
+      assert.equal(report?.rawHtmlPages.length, 100);
+      assert.equal(report?.rawHtmlCapped, true);
+    },
+  },
+  {
+    name: 'construct-report-is-empty-for-an-import-with-none-and-absent-for-another-tenant',
+    async run(h) {
+      const made = await h.seed('running');
+      assert.deepEqual(await h.repo.constructReport(h.tenantId, made.id), { constructs: [], rawHtmlPages: [], rawHtmlCapped: false });
+      assert.equal(await h.repo.constructReport(h.otherTenantId, made.id), undefined);
+      assert.equal(await h.repo.constructReport(h.tenantId, '00000000-0000-4000-8000-0000000000ff'), undefined);
+    },
+  },
 ];

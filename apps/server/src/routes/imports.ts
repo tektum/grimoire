@@ -3,8 +3,8 @@ import type { Context } from 'hono';
 import { v7 } from 'uuid';
 import { cleanFileName } from '@tektum/grimoire-core/attachments/file-name';
 import { importFailedKey, importZipKey } from '../import/keys.js';
-import { cleanItemText } from '@tektum/grimoire-core/ports/import-repo';
-import type { ImportItem, ImportRecord } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, CONSTRUCT_FATES, MAX_REPORT_PAGES } from '@tektum/grimoire-core/ports/import-repo';
+import type { ConstructKind, ConstructReport, ImportItem, ImportRecord, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import { attachmentDeps } from '../attachments/deps.js';
@@ -40,6 +40,26 @@ const CreateBody = z
 const Upload = z.object({ method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.string().describe('ISO 8601') }).openapi('ImportUpload');
 const Created = z.object({ id: z.string().uuid(), upload: Upload }).openapi('ImportCreated');
 const Status = z.enum(['created', 'uploaded', 'running', 'done', 'failed', 'cancelled']);
+const CONSTRUCT_KINDS = Object.keys(CONSTRUCT_FATES) as [ConstructKind, ...ConstructKind[]];
+const ReportPageBody = z.object({
+  itemId: z.string(),
+  path: z.string().describe('The path of the file in the zip, at most 300 characters, without control characters'),
+  urlId: z.string().nullable().describe('The id the page has in the address (`/p/<urlId>`); null for a row that was left out'),
+});
+const ConstructLine = z.object({
+  kind: z.enum(CONSTRUCT_KINDS).describe('callout and toggle, page_mention (a link now pointing at the imported page), database_table: converted; front_matter, icon_cover, database_row: dropped; unresolved_link (a link that matched nothing, left as written) and raw_html: kept'),
+  fate: z.enum(['converted', 'dropped', 'kept']),
+  count: z.number().int().describe('How many times it occurred in the pages that were written'),
+  pages: z.array(ReportPageBody).max(MAX_REPORT_PAGES).describe('The first pages that hold it, by file order'),
+  capped: z.boolean().describe('True when more pages hold it than are named'),
+});
+const Report = z
+  .object({
+    constructs: z.array(ConstructLine),
+    rawHtmlPages: z.array(ReportPageBody.extend({ fragments: z.number().int() })).max(MAX_REPORT_PAGES).describe('Pages that still hold HTML, with the number of fragments, so that someone can clean them up'),
+    rawHtmlCapped: z.boolean(),
+  })
+  .openapi('ImportConstructReport');
 const State = z
   .object({
     status: Status,
@@ -47,6 +67,7 @@ const State = z
     startedAt: z.string().nullable().describe('ISO 8601; null until the import starts'),
     finishedAt: z.string().nullable().describe('ISO 8601; null until it ends'),
     error: z.string().nullable().describe('A code, never text, for a failed import'),
+    report: Report.describe('What the import did to the constructs of the pages written so far: converted, dropped and kept ones, counted (empty before anything is written)'),
   })
   .openapi('ImportState');
 const Item = z
@@ -236,11 +257,15 @@ router.openapi(startImport, async (c) => {
   return c.json({ status: 'uploaded' as const }, 202);
 });
 
+/** What the report is when the import is gone between the guard and the read (a purge): nothing was converted, dropped or kept. */
+const NO_REPORT: ConstructReport = { constructs: [], rawHtmlPages: [], rawHtmlCapped: false };
 router.openapi(getImport, async (c) => {
   const { id } = c.req.valid('param');
   const record = await guardImport(c, id, 'creator-or-admin');
+  const report = (await c.get('deps').imports.constructReport(record.tenantId, id)) ?? NO_REPORT;
   noStore(c);
-  return c.json(present(record), 200);
+  const page = (p: ReportPage): ReportPage => ({ itemId: p.itemId, path: cleanItemText(p.path), urlId: p.urlId });
+  return c.json({ ...present(record), report: { constructs: report.constructs.map((l) => ({ ...l, pages: l.pages.map(page) })), rawHtmlPages: report.rawHtmlPages.map((p) => ({ ...page(p), fragments: p.fragments })), rawHtmlCapped: report.rawHtmlCapped } }, 200);
 });
 
 /** A reason code is lower-case words with underscores and a count is a whole number from 1: anything else (a key that could carry an address) is not passed on. */

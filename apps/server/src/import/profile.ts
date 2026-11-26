@@ -1,4 +1,4 @@
-import type { ImportItemKind } from '@tektum/grimoire-core/ports/import-repo';
+import type { ConstructKind, ImportItemKind } from '@tektum/grimoire-core/ports/import-repo';
 
 /** The longest title a page has, in code points: the engine cuts a longer one (a warning); a profile that leaves a title line out of the body keeps a longer one in it. */
 export const MAX_TITLE = 255;
@@ -32,7 +32,8 @@ export interface ImportProfile {
    * other entries (a folder with two candidates for its page) reads it; without it the answer is the one for a folder that has no other candidate.
    */
   parentPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | null;
-  preprocess(markdown: string, ctx: { readonly path: string }): string;
+  /** `onConstruct` hears of each construct the step converts or drops (the construct report counts them). */
+  preprocess(markdown: string, ctx: { readonly path: string; readonly onConstruct?: (kind: ConstructKind) => void }): string;
   resolveLink(url: string, fromPath: string, index: LinkIndex): Target | undefined;
   /**
    * The folder this page file stands for (the page of the folder `dir` is the file the profile names, so the engine attaches the folder's children to it instead of making an empty

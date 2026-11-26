@@ -16,6 +16,10 @@ export interface RewriteResult {
   readonly markdown: string;
   /** Targets replaced. */
   readonly rewritten: number;
+  /** Of those, the links that now point at an imported page. */
+  readonly pageLinks: number;
+  /** The HTML fragments of the page, left as they are (an inline tag and its closing tag are two). */
+  readonly htmlFragments: number;
   /** Relative targets that matched nothing, as written (left as they are; each is the warning `unresolved_link`). */
   readonly unresolved: readonly string[];
   /** `http` and `https` image addresses, in document order (left as they are here; the remote image step of stage 4d works from this list). */
@@ -37,7 +41,10 @@ export function rewriteMarkdown(markdown: string, resolve: ResolveTarget, remote
   const unresolved: string[] = [];
   const remoteImages: string[] = [];
   let rewritten = 0;
+  let pageLinks = 0;
+  let htmlFragments = 0;
   visit(tree, (node) => {
+    if (node.type === 'html') { htmlFragments += 1; return; }
     if (node.type !== 'link' && node.type !== 'image') return;
     const url = node.url;
     if (url === '' || url.startsWith('#')) return;
@@ -55,6 +62,7 @@ export function rewriteMarkdown(markdown: string, resolve: ResolveTarget, remote
     if (replacement === undefined) { unresolved.push(url); return; }
     node.url = hash === -1 || replacement.kind === 'file' ? replacement.url : replacement.url + url.slice(hash);
     rewritten += 1;
+    if (replacement.kind === 'page') pageLinks += 1;
   });
-  return { markdown: rewritten === 0 ? markdown : String(printer.stringify(tree)), rewritten, unresolved, remoteImages };
+  return { markdown: rewritten === 0 ? markdown : String(printer.stringify(tree)), rewritten, pageLinks, htmlFragments, unresolved, remoteImages };
 }
