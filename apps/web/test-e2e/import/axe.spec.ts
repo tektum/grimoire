@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
 import { expectNoAxeViolations } from '../support/axe';
+import { horizontalOverflow } from '../a11y/support';
 import { signInAs } from '../support/sign-in';
-import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
+import { CONSTRUCT_REPORT, scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
 
 // Axe on the import screen in each state, in both schemes. Against the stand-in of the API and a scripted import.
 const STATES: readonly [string, ScriptedState][] = [
@@ -48,6 +49,24 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/import?import=imp1');
       await expect(page.getByRole('list', { name: 'Files of the import' }).getByRole('listitem')).toHaveCount(3);
       await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    test('done, with the construct report (every kind, the pages behind a disclosure opened, the pages that hold HTML), has none', async ({ page }) => {
+      await scriptedImports(page, [{ status: 'done', total: 5, done: 5, report: CONSTRUCT_REPORT }], { items: REPORT });
+      await page.goto('/import?import=imp1');
+      await expect(page.getByRole('rowheader')).toHaveCount(9);
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+      for (const summary of await page.locator('.import-constructs summary').all()) await summary.click();
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    test('the construct report does not scroll sideways at 320 CSS pixels (400% zoom), its lists opened', async ({ page }) => {
+      await scriptedImports(page, [{ status: 'done', total: 5, done: 5, report: CONSTRUCT_REPORT }], { items: REPORT });
+      await page.setViewportSize({ width: 320, height: 640 });
+      await page.goto('/import?import=imp1');
+      await expect(page.getByRole('rowheader')).toHaveCount(9);
+      for (const summary of await page.locator('.import-constructs summary').all()) await summary.click();
+      expect(await horizontalOverflow(page)).toBe(0);
     });
 
     test('running, with its Cancel button, has none', async ({ page }) => {

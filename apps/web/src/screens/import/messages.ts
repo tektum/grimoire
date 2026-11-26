@@ -1,6 +1,6 @@
 import { ImportError } from '../../import/api';
 import { formatBytes } from '../../editor/attachments/limits';
-import type { ImportItem, ImportState } from '../../import/types';
+import type { ConstructKind, ImportItem, ImportState } from '../../import/types';
 
 /** What to do with an export that is larger than an import can take: what makes an export large is its big files, and the largest of them could not be imported anyway. */
 const SMALLER = 'Zip the export again without its big files, such as videos, and import that.';
@@ -161,3 +161,36 @@ export function stateLine(state: ImportState): string {
       return 'Cancelled. The pages it created were moved to the trash.';
   }
 }
+
+/** The kinds of content the report counts, in the words of a person who has not read the importer: what it is called in a Notion export. */
+export const CONSTRUCT_NAME: Record<ConstructKind, string> = {
+  callout: 'Callouts',
+  toggle: 'Toggles',
+  page_mention: 'Mentions of other pages',
+  database_table: 'Database tables',
+  front_matter: 'Front matter (properties at the top of a file)',
+  icon_cover: 'Icons and cover images',
+  database_row: 'Rows that only repeat their table',
+  unresolved_link: 'Links and images whose file is not in the zip',
+  raw_html: 'HTML left in pages',
+};
+
+/** What became of each kind, with the word that says it first (Converted, Left out, Kept as written): the fate is never told by a colour alone. */
+export const CONSTRUCT_EFFECT: Record<ConstructKind, string> = {
+  callout: 'Converted.',
+  toggle: 'Converted.',
+  page_mention: 'Converted: each now links to the imported page.',
+  database_table: 'Converted: each is now a table, and its rows with text of their own are pages under it.',
+  front_matter: 'Left out: the properties at the top of a file are not imported.',
+  icon_cover: 'Left out: icons and cover images are not imported.',
+  database_row: 'Left out: the table already shows what these pages said. A link to one opens the page of the table.',
+  unresolved_link: 'Kept as written: no file in the zip matched the target of the link or image.',
+  raw_html: 'Kept as written: the page still holds the HTML.',
+};
+
+const plural = (n: number, one: string, many: string): string => `${String(n)} ${n === 1 ? one : many}`;
+/** The summary of the pages that hold a kind: how many are named, or that these are the first ones. */
+export const pagesSummary = (line: { readonly pages: readonly unknown[]; readonly capped: boolean }): string =>
+  line.capped ? `First ${plural(line.pages.length, 'page', 'pages')}` : plural(line.pages.length, 'page', 'pages');
+export const fragmentsText = (n: number): string => plural(n, 'fragment', 'fragments');
+export const rawHtmlCappedText = (listed: number): string => `Only the first ${String(listed)} pages are listed; more pages hold HTML.`;

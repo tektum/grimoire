@@ -8,7 +8,7 @@ import { createWebApi } from '../../src/api/client';
 import { guardedFetch, markClientOutdated } from '../../src/gate/outdated';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { POLL_MS, useImportReport } from '../../src/import/api';
-import type { ImportItem, ImportState } from '../../src/import/types';
+import type { ImportConstructReport, ImportItem, ImportState } from '../../src/import/types';
 import ImportScreen from '../../src/screens/import';
 import '../support/dom';
 
@@ -31,6 +31,7 @@ const state = (over: Partial<ImportState> & { done?: number; total?: number } = 
   error: null,
   ...(over.status === undefined ? {} : { status: over.status }),
   ...(over.error === undefined ? {} : { error: over.error }),
+  ...(over.report === undefined ? {} : { report: over.report }),
 });
 
 type Refusal = { status: number; code?: string };
@@ -990,5 +991,43 @@ describe('the progress of an import', () => {
       path === '/v1/imports/{id}' ? { error: {}, response: new Response(null, { status: 404 }) } : { data: path === '/v1/me' ? { role: 'member' } : { items: COLLECTIONS }, response: new Response(null, { status: 200 }) };
     show(t.api, '/import?import=gone');
     expect((await screen.findByRole('alert')).textContent).toContain('That import can’t be read.');
+  });
+});
+
+describe('the construct report on the import screen', () => {
+  const REPORT: ImportConstructReport = {
+    constructs: [{ kind: 'callout', fate: 'converted', count: 2, pages: [{ itemId: '1', path: 'handbook/welcome.md', urlId: 'abc123' }], capped: false }],
+    rawHtmlPages: [],
+    rawHtmlCapped: false,
+  };
+
+  it('is shown for a finished import, above the list of files', async () => {
+    show(fake({ states: [ended({ report: REPORT })], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
+    const heading = await screen.findByRole('heading', { name: 'What happened to the content' });
+    const files = await screen.findByRole('list', { name: 'Files of the import' });
+    expect(heading.compareDocumentPosition(files) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('rowheader', { name: 'Callouts' })).toBeTruthy();
+  });
+
+  it('is not shown while the import runs, though the server already counts, nor for a server that says nothing', async () => {
+    show(fake({ states: [state({ done: 4, report: REPORT })] }).api, '/import?import=imp1');
+    await screen.findByRole('progressbar');
+    expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
+    cleanup();
+    show(fake({ states: [ended()], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
+    await screen.findByRole('list', { name: 'Files of the import' });
+    expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
+  });
+
+  it.each(['failed', 'cancelled'] as const)('is not shown for an import that was %s: its pages went to the trash, so the links of the report would lead nowhere', async (status) => {
+    show(fake({ states: [ended({ status, report: REPORT })], items: [[item({ id: 'a' })]] }).api, '/import?import=imp1');
+    await screen.findByRole('list', { name: 'Files of the import' });
+    expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
+  });
+
+  it('is an error of reading the import when it is not shaped as the API says, not a screen of guesses', async () => {
+    show(fake({ states: [ended({ report: { constructs: 'many' } as unknown as ImportConstructReport })] }).api, '/import?import=imp1');
+    expect(await screen.findByText(/That import can.t be read/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'What happened to the content' })).toBeNull();
   });
 });

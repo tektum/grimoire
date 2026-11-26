@@ -7,6 +7,33 @@ export interface CreatedImport {
 /** `imports.status` (M7 import pipeline): created, then uploaded, then running, then one of the three ends. */
 export type ImportStatus = 'created' | 'uploaded' | 'running' | 'done' | 'failed' | 'cancelled';
 
+/** What the import did to a kind of content of the pages it wrote (`GET /v1/imports/{id}`, `report.constructs`): converted into Grimoire's own form, dropped, or kept as it was written. */
+export type ConstructKind = 'callout' | 'toggle' | 'page_mention' | 'database_table' | 'front_matter' | 'icon_cover' | 'database_row' | 'unresolved_link' | 'raw_html';
+export type ConstructFate = 'converted' | 'dropped' | 'kept';
+
+/** A page that holds a construct: its item, its path in the zip (plain text, at most 300 characters) and its address id (`/p/<urlId>`), null for a row that was left out. */
+export interface ReportPage {
+  readonly itemId: string;
+  readonly path: string;
+  readonly urlId: string | null;
+}
+
+/** One kind of content: how often it occurred in the pages written, and the first pages (at most 100) that hold it; `capped` when more pages hold it than are named. */
+export interface ConstructLine {
+  readonly kind: ConstructKind;
+  readonly fate: ConstructFate;
+  readonly count: number;
+  readonly pages: readonly ReportPage[];
+  readonly capped: boolean;
+}
+
+/** What the import did to the constructs of the pages it wrote, and the pages that still hold HTML (with the number of fragments), so that someone can clean them up. */
+export interface ImportConstructReport {
+  readonly constructs: readonly ConstructLine[];
+  readonly rawHtmlPages: readonly (ReportPage & { readonly fragments: number })[];
+  readonly rawHtmlCapped: boolean;
+}
+
 /** What `GET /v1/imports/{id}` answers (R6.41). */
 export interface ImportState {
   readonly status: ImportStatus;
@@ -15,6 +42,8 @@ export interface ImportState {
   readonly finishedAt: string | null;
   /** A code, not text, for a `failed` import. */
   readonly error: string | null;
+  /** Absent from a server that does not say; empty before anything is written. */
+  readonly report?: ImportConstructReport;
 }
 
 /** The statuses after which nothing changes: the polling stops. */
