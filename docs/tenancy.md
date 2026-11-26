@@ -61,7 +61,7 @@ The rule, for every table: a `tenant_id` column that is not null and references 
 | `attachments` | `tenant_id`, same composite key to the page. |
 | `audit_events` | `tenant_id`; an admin reads only their tenant's events. |
 | `idempotency_keys` | The stored key is scoped by tenant as well as by user. |
-| `imports`, `import_items` | `tenant_id`; the target collection must be in the same tenant. |
+| `imports`, `import_items`, `import_parts` | `tenant_id`; the target collection must be in the same tenant, and an item or a part must be in the tenant of its import (composite key). |
 | job queue (pg-boss) | Every job payload carries the tenant id, and a handler loads its rows with it, so a payload cannot reach another tenant's row. |
 
 ### 3.2 Defence in depth: row-level security

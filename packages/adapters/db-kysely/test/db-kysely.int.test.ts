@@ -220,7 +220,7 @@ describe('least privilege', () => {
     const expected = [
       ...['collection_access', 'collections', 'group_members', 'groups', 'pages', 'users', 'attachments', 'idempotency_keys', 'page_chunks', 'page_embedding_state'].map((t) => ({ t, p: crud })),
       ...['revisions', 'audit_events', 'tenants'].map((t) => ({ t, p: 'INSERT,SELECT' })),
-      ...['imports', 'import_items'].map((t) => ({ t, p: 'INSERT,SELECT,UPDATE' })),
+      ...['imports', 'import_items', 'import_parts'].map((t) => ({ t, p: 'INSERT,SELECT,UPDATE' })),
     ].sort((a, b) => a.t.localeCompare(b.t));
     expect([...rows].sort((a, b) => a.t.localeCompare(b.t))).toEqual(expected);
   });

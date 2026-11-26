@@ -587,4 +587,40 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.ended(h.otherTenantId, { since: 0, limit: 10 }), []);
     },
   },
+  {
+    name: 'create-makes-the-first-zip-part-zero',
+    async run(h) {
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d1', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 77, s3Key: 'tenants/t/imports/d1/source.zip' });
+      assert.deepEqual(await h.repo.parts(h.tenantId, made.id), [{ ordinal: 0, s3Key: 'tenants/t/imports/d1/source.zip', bytes: 77, uploadId: null }]);
+      assert.deepEqual(await h.repo.parts(h.otherTenantId, made.id), [], 'another tenant sees no part');
+    },
+  },
+  {
+    name: 'add-part-adds-a-zip-to-a-created-import-only',
+    async run(h) {
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d2', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 10, s3Key: 'k/0' });
+      const second = { ordinal: 1, s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' };
+      assert.equal(await h.repo.addPart(h.tenantId, made.id, second), true);
+      assert.deepEqual((await h.repo.parts(h.tenantId, made.id)).map((p) => p.ordinal), [0, 1], 'by ordinal');
+      assert.equal(await h.repo.addPart(h.tenantId, made.id, { ...second, s3Key: 'other' }), false, 'a taken ordinal');
+      assert.deepEqual((await h.repo.parts(h.tenantId, made.id))[1], second, 'and the part is as it was');
+      assert.equal(await h.repo.addPart(h.otherTenantId, made.id, { ordinal: 2, s3Key: 'k/2', bytes: 1, uploadId: null }), false, 'another tenant');
+      await h.repo.markUploaded(h.tenantId, made.id);
+      assert.equal(await h.repo.addPart(h.tenantId, made.id, { ordinal: 2, s3Key: 'k/2', bytes: 1, uploadId: null }), false, 'an import that is no longer created');
+      assert.equal((await h.repo.parts(h.tenantId, made.id)).length, 2);
+    },
+  },
+  {
+    name: 'close-part-ends-an-open-upload-once',
+    async run(h) {
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d3', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 10, s3Key: 'k/0' });
+      await h.repo.addPart(h.tenantId, made.id, { ordinal: 1, s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' });
+      assert.equal(await h.repo.closePart(h.otherTenantId, made.id, 1), false, 'another tenant');
+      assert.equal(await h.repo.closePart(h.tenantId, made.id, 1), true);
+      assert.equal((await h.repo.parts(h.tenantId, made.id))[1]?.uploadId, null);
+      assert.equal(await h.repo.closePart(h.tenantId, made.id, 1), false, 'a second time');
+      assert.equal(await h.repo.closePart(h.tenantId, made.id, 0), false, 'a part with no upload open');
+      assert.equal(await h.repo.closePart(h.tenantId, made.id, 9), false, 'a part that is not there');
+    },
+  },
 ];
