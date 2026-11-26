@@ -526,7 +526,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
           if (!/^https:/i.test(url)) { why('scheme'); continue; }
           if (deps.remote.fetcher === undefined) { why('not_fetched'); continue; }
           const got = await stageRemoteImage(stage, deps.remote.fetcher, budget, url, item.path);
-          if (got.kind === 'ok') copied.set(url, got); else why(got.reason);
+          if (got.kind === 'ok') { copied.set(url, got); copiedBytes += got.row.size; } else why(got.reason);
         }
       }
     }
@@ -597,7 +597,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     if (step.wrote !== 'here' && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
       for (const f of [...staged.values(), ...copied.values()]) await deps.files.delete(f.row.key);
       // The copies are gone: their bytes are given back to the budget, which counts the copies that are kept.
-      copiedBytes -= [...staged.values()].reduce((sum, f) => sum + f.row.size, 0);
+      copiedBytes -= [...staged.values(), ...copied.values()].reduce((sum, f) => sum + f.row.size, 0);
     }
     return step;
   };

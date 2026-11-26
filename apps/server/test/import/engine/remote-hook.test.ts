@@ -47,7 +47,7 @@ class ScriptedFetcher implements RemoteImageFetcher {
 const ok = (bytes: Buffer, contentType = 'image/png'): RemoteResult => ({ ok: true, bytes: (async function* () { yield bytes; })(), contentType, size: bytes.length });
 const fail = (reason: Extract<RemoteResult, { ok: false }>['reason']): RemoteResult => ({ ok: false, reason });
 
-async function setup(entries: readonly BuilderEntry[], over: { fetcher?: RemoteImageFetcher | undefined; remote?: boolean; maxImages?: number; filesMaxBytes?: number } = {}) {
+async function setup(entries: readonly BuilderEntry[], over: { fetcher?: RemoteImageFetcher | undefined; remote?: boolean; maxImages?: number; filesMaxBytes?: number; copiedMaxBytes?: number } = {}) {
   const store = new SegmentStore(buildSegments(entries as BuilderEntry[]));
   const opened = await openArchive(store, 'imports/x.zip', store.size, defaultImportConfig);
   if (opened.kind !== 'ok') throw new Error(`refused: ${opened.reason}`);
@@ -58,7 +58,7 @@ async function setup(entries: readonly BuilderEntry[], over: { fetcher?: RemoteI
   await passOne(repo, TENANT, 'imp', opened.entries, { profile: markdownProfile, allowNestedZips: false, maxPages: 10_000 });
   const deps = {
     repo, files, converter, profile: markdownProfile, ordering: { between: (b: string | null) => `${b ?? ''}a` }, reader: opened.reader, entries: opened.entries, now: () => 1_700_000_000_000,
-    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000 },
+    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000, ...(over.copiedMaxBytes === undefined ? {} : { maxCopiedBytes: over.copiedMaxBytes }) },
     pageLimits: { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 },
     attachments: { maxBytes: over.filesMaxBytes ?? 25 * 1024 * 1024, allowedTypes: ['image/png', 'image/jpeg', 'image/gif', 'image/webp'], sniff: sniffType },
     ...(over.remote === false ? {} : { remote: { fetcher: over.fetcher, config: { ...defaultImportConfig.remote, maxImages: over.maxImages ?? 200 } } }),
@@ -69,6 +69,18 @@ async function setup(entries: readonly BuilderEntry[], over: { fetcher?: RemoteI
   return { repo, files, converter, run, byPath, page };
 }
 
+describe('the budget of copies of an import counts the pictures copied from the web as it counts a file of the zip', () => {
+  // What the written pages keep (the rows of both kinds) is what a resumed run counts from, so a run that did not count the remote ones would fail on resume what it let through.
+  it('a remote picture is charged when it is copied: the next copy of a file of the zip that would pass the budget without it stops the import', async () => {
+    const picture = Buffer.concat([PNG, Buffer.alloc(59)]);
+    const fetcher = new ScriptedFetcher(() => ok(picture));
+    const t = await setup([md('a.md\u0000![f](f.png)\n![r](https://img.example/a.png)\n'), md('b.md\u0000![f](f.png)\n'), { name: 'f.png', data: picture }], { fetcher, copiedMaxBytes: 3 * picture.length - 1 });
+    const result = await t.run();
+    expect(result).toMatchObject({ kind: 'stopped', reason: 'attachment_budget' });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a']);
+    expect((await t.byPath('a.md'))?.attachmentBytes).toBe(2 * picture.length);
+  });
+});
 describe('an absolute https image is copied into the tool', () => {
   it('the fetcher is called once with the URL and the budget; on success the image points at a new attachment of the page, stored like an upload', async () => {
     const fetcher = new ScriptedFetcher();
