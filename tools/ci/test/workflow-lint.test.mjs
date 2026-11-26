@@ -21,7 +21,7 @@ test('the task and the CI step both run the script that names the pinned shellch
   const task = read('mise.toml').match(/\[tasks\.lint-workflows\][\s\S]*?(?=\n\[|$)/)?.[0] ?? '';
   assert.match(task, /run = \["tools\/ci\/actionlint\.sh"/);
   const ci = read('.github/workflows/ci.yml');
-  assert.match(ci, /install_args: actionlint zizmor shellcheck\n/);
+  assert.match(ci, /install_args: (?:gitleaks )?actionlint zizmor shellcheck\n/); // the secret scan shares the one install of the Checks job
   assert.match(ci, /run: tools\/ci\/actionlint\.sh\n/);
   assert.doesNotMatch(ci, /run: actionlint\b/, 'a bare `actionlint` is the form that skips the scripts');
   assert.match(read('tools/ci/actionlint.sh'), /actionlint -shellcheck "\$shellcheck"/);
