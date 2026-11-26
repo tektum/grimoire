@@ -33,8 +33,12 @@ export interface ArchiveReader {
   close(): void;
 }
 export type OpenResult =
-  | { readonly kind: 'ok'; readonly reader: ArchiveReader; readonly entries: readonly ZipEntry[] }
+  | { readonly kind: 'ok'; readonly reader: ZipReader; readonly entries: readonly ZipEntry[] }
   | { readonly kind: 'refused'; readonly reason: HeaderRefusal | 'not_a_zip'; readonly index?: number };
+/** The result of `openParts`: the entries of all the zips and a reader that opens each from its own zip. */
+export type OpenPartsResult =
+  | { readonly kind: 'ok'; readonly reader: ArchiveReader; readonly entries: readonly ZipEntry[] }
+  | { readonly kind: 'refused'; readonly reason: HeaderRefusal | 'not_a_zip' };
 
 /** A yauzl random-access reader over ranged `get` calls of the file store: no temporary file, a read-ahead window for the small reads. */
 /** Resolves when `out` has drained or closed, and leaves neither listener behind (one per chunk would pile up over a long read). */
@@ -191,7 +195,7 @@ async function collect(body: AsyncIterable<Uint8Array>): Promise<Buffer[]> {
  * (the count of entries and their bytes), and their entries follow one another in the order of the parts, numbered across them. A folder that several parts name is the folder of the first; a
  * file that two parts hold is the first part's, and pass one reports the later one as `duplicate_path`. A single zip is read exactly as before.
  */
-export async function openParts(files: FileStorage, parts: readonly { readonly key: string; readonly size: number }[], limits: Pick<ImportConfig, 'maxEntries' | 'maxUncompressedBytes' | 'maxRatio'>): Promise<OpenResult> {
+export async function openParts(files: FileStorage, parts: readonly { readonly key: string; readonly size: number }[], limits: Pick<ImportConfig, 'maxEntries' | 'maxUncompressedBytes' | 'maxRatio'>): Promise<OpenPartsResult> {
   const [first] = parts;
   if (first === undefined) return { kind: 'refused', reason: 'not_a_zip' };
   if (parts.length === 1) return openArchive(files, first.key, first.size, limits);
