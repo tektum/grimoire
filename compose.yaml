@@ -63,6 +63,8 @@ services:
       GRIMOIRE_LOCAL: "1"
       # On unless a test target turns it off: the e2e jobs build the image without the model files (GRIMOIRE_IMAGE_MODELS=skip) and run with it off.
       GRIMOIRE_SEMANTIC_SEARCH: "${GRIMOIRE_SEMANTIC_SEARCH:-on}"
+      # A setting a test target may change and the stack otherwise leaves to the default of the server: empty counts as unset (the restart test of M7 sets 20 so that a run a killed container left is taken back in seconds, not 15 minutes).
+      GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: "${GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS:-}"
       # The server refuses local mode on a non-loopback bind unless told this is fine. It is fine here: inside the container the app must listen
       # on 0.0.0.0 (GRIMOIRE_HOST in the image), but this file publishes the port on 127.0.0.1 only (`ports` below), so only this machine reaches it.
       # Do not widen the published address while local mode is on: development tokens are the only sign-in.
@@ -165,6 +167,8 @@ services:
         condition: service_healthy
     environment:
       GRIMOIRE_DATABASE_MIGRATION_URL: postgresql://grimoire_migrator:${GRIMOIRE_DEV_DB_PASSWORD}@postgres:5432/grimoire
+      # The queues are defined by this command, so the expiry of the import queue is the one it is given (empty counts as unset; see the same line of the app).
+      GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: "${GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS:-}"
     command: ["apps/server/dist/cli.js", "migrate"]
     read_only: true
     cap_drop: [ALL]

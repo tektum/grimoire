@@ -1,3 +1,4 @@
+import { jobQueues } from '@tektum/grimoire-core/jobs/queues';
 import { composeMigrate as composeDatabase, migrateAdapter } from '../composition.js';
 import type { MigrateOptions, CommandCompositionResult } from '../composition.js';
 
@@ -6,6 +7,6 @@ export function composeMigrate(options: MigrateOptions = {}): CommandComposition
   const result = composeDatabase(options);
   return { ...result, migrate: (dir) => {
     if (!result.ok) return Promise.reject(new Error('migration configuration refused'));
-    return migrateAdapter(result.ctx.db, dir, result.ctx.config.database.migrationUrl ?? '', undefined, (e) => { result.ctx.log.warn('jobs.queue_recreated', e); });
+    return migrateAdapter(result.ctx.db, dir, result.ctx.config.database.migrationUrl ?? '', jobQueues(result.ctx.config.jobs.importExpireSeconds), (e) => { result.ctx.log.warn('jobs.queue_recreated', e); });
   } };
 }

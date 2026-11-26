@@ -44,7 +44,7 @@ export interface MigrateOptions {
    */
   readonly dropScheduledRuns?: readonly string[];
   /** Test seam: builds the PgBoss that runs the library's own migration. */
-  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue'>;
+  readonly make?: (options: ConstructorOptions) => Pick<PgBoss, 'start' | 'stop' | 'on' | 'getQueue' | 'createQueue' | 'updateQueue'>;
   /** Called for each queue that was recreated because it had another policy: pg-boss cannot change a policy, and the scheduled queues keep no state worth keeping (they are sent again at start). */
   readonly onQueueRecreated?: (e: { readonly queue: string; readonly from: string; readonly to: string; readonly pending: number; readonly finished: number }) => void;
 }
@@ -54,11 +54,15 @@ export interface MigrateOptions {
  * with the queue's name. Created and retry jobs go with it (the scheduler sends the next run at start), as do finished ones; the counts are reported.
  * The check and the deletion are one transaction that holds the queue's job rows, which servers still running skip (they fetch with `skip locked`), so none can claim a job in between.
  */
-async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue'>, db: MigrateOptions['database'], definition: QueueDefinition, options: MigrateOptions): Promise<void> {
+async function reconcileQueue(boss: Pick<PgBoss, 'getQueue' | 'createQueue' | 'updateQueue'>, db: MigrateOptions['database'], definition: QueueDefinition, options: MigrateOptions): Promise<void> {
   const existing = await boss.getQueue(definition.name);
   if (existing === null) return boss.createQueue(definition.name, queueOptions(definition));
   const from = existing.policy ?? 'standard';
-  if (from === definition.policy) return;
+  if (from === definition.policy) {
+    // The queue stays. Its expiry is the one thing a setting changes (GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS), so a run of the migration with another value applies it, in place.
+    if (existing.expireInSeconds !== undefined && existing.expireInSeconds !== definition.expireInSeconds) await boss.updateQueue(definition.name, { expireInSeconds: definition.expireInSeconds });
+    return;
+  }
   const states = await db.transaction(async (tx) => {
     const rows = await tx.query<{ state: string }>(`select state::text as state from ${PGBOSS_SCHEMA}.job where name = $1 for update`, [definition.name]);
     if (rows.some((r) => r.state === 'active')) throw new Error(`queue ${definition.name} has policy ${from}, the definition says ${definition.policy}, and a job of it is active: stop the running servers, then run the migration again`);

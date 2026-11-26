@@ -36,11 +36,16 @@ describe('the refusals name the variable', () => {
     ['GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS', 'yes'], ['GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES', '2'],
     ['GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES', '0'], ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '61'],
     ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '9'], ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '3601'], ['GRIMOIRE_IMPORT_CONCURRENCY', '0'],
-    ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '1501'],
+    ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '0'], ['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS', '86401'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '0'], ['GRIMOIRE_JOBS_STOP_GRACE_MS', '1501'],
     ['GRIMOIRE_JOBS_PURGE_CRON', 'daily'], ['GRIMOIRE_JOBS_SWEEP_CRON', '* * * *'], ['GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON', '*/5 * * * * *'], ['GRIMOIRE_JOBS_REVISION_CRON', '; rm * * * *'],
     ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '5'], ['GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS', '30001'],
   ])('%s=%s', (name, value) => {
     expect(issuesOf({ [name]: value }).some((i) => i.includes(name))).toBe(true);
+  });
+
+  it('the import expiry is at most the 24 hours the job queue accepts, and an empty value (what the Compose pass-through gives when nothing is set) is the default', () => {
+    expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '86400' }).jobs.importExpireSeconds).toBe(86_400);
+    expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '' }).jobs.importExpireSeconds).toBe(900);
   });
 
   it('a remote image larger than an upload is refused, on the variable of the remote limit', () => {
