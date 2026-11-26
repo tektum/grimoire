@@ -1,4 +1,4 @@
-This export is constructed from the documented format and from other importers' tests, and is not observed: no real Notion export was used to make it (the real one is checked by M7-T08, when the owner provides it).
+This export is synthetic: invented names and tiny files, constructed from the documented format, from other importers' tests and from the shapes a real export showed in M7-T08 (counted in aggregates, see `docs/proof/m7-real-export.md`); nothing in it comes from that export.
 
 # The synthetic Notion export
 
@@ -15,16 +15,18 @@ This export is constructed from the documented format and from other importers' 
 - `<aside>` with an emoji, `<details><summary>`, a to-do list, a table, a code fence, a `$$` equation, front matter
 - a database: the `Name <id>_all.csv` and `Name <id>.csv` files, rows with page files and rows without, and a CSV with a byte order mark
 - a nested zip
+- the shapes of a real export (M7-T08): a page's folder without an id (`Notes/` beside `Notes <id>.md`); a name cut at 50 characters, and one with an unsafe character replaced by a space, each with its whole title in the `# heading` on its first line; a database exported as `_all.csv` only, linked both as its `_all.csv` and as if it were a page (`Projects <id>.md`, a file the export does not hold); a callout with blank lines inside, a list and a callout nested in it; a row page that only repeats its row, and one with text of its own
+- `buildNotionExportInParts`: an export in parts, one zip that holds two part zips, a page of the first using a file of the second
 
-## What was assumed
+## What was assumed, and what a real export showed
 
-Each item above is an assumption about the export format, not an observation:
+The first six items were assumptions about the export format. M7-T08 checked them against a real export:
 
-1. The 32-character id is lower-case hexadecimal, after a single space in a name, and sometimes glued to the name of a folder.
-2. A page with children is a `.md` file and a folder of the same base name.
-3. Links to other pages and to attachments are relative to the file that holds them, percent-encoded, and sometimes written with literal spaces.
-4. A database exports as two CSV files (the `_all` summary and the plain one) and a folder of its row pages; a row without a page has only its CSV line.
-5. HTML constructs (`<aside>`, `<details>`) are kept inside the Markdown.
-6. An export that is too large is split into nested archives.
+1. The 32-character id is lower-case hexadecimal, after a single space in a name, and sometimes glued to the name of a folder. Pages: confirmed. Folders: they have no id at all.
+2. A page with children is a `.md` file and a folder of the same base name. Confirmed, the folder without the id.
+3. Links to other pages and to attachments are relative to the file that holds them, percent-encoded, and sometimes written with literal spaces. Relative and mostly percent-encoded: confirmed (literal spaces were not counted); a link to a database is written as its `_all.csv` or as if it were a page.
+4. A database exports as two CSV files (the `_all` summary and the plain one) and a folder of its row pages; a row without a page has only its CSV line. Differs: only the `_all.csv`.
+5. HTML constructs (`<aside>`, `<details>`) are kept inside the Markdown. Confirmed, with blank lines and lists inside, and callouts nested.
+6. An export that is too large is split into nested archives. Confirmed: the full export is a zip of its part zips.
 
-M7-T06 builds its rules on this fixture; M7-T08 replaces the assumptions that turn out to be wrong with what the real export shows.
+The M7-T06 rules are built on both the assumed and the observed shapes, so the fixture keeps both.

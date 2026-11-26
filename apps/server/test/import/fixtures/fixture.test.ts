@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { defaultImportConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { openArchive } from '../../../src/import/zip-reader.js';
 import { SegmentStore } from '../hostile/segment-store.js';
-import { buildNotionExport, buildPlainMarkdownExport, NOTION_CONSTRUCTS, notionExportFiles, plainMarkdownFiles } from './notion-synthetic/build.js';
+import { buildNotionExport, buildNotionExportInParts, buildPlainMarkdownExport, NOTION_CONSTRUCTS, notionExportFiles, plainMarkdownFiles } from './notion-synthetic/build.js';
 
-// M7-T03a: the fixtures hold what the contracts list, read with the zip reader of M7-T03, and build to the same bytes every time.
+// M7-T03a: the fixtures hold what the contracts list, read with the zip reader of M7-T03, and build to the same bytes every time. M7-T08 added the shapes a real export showed.
 const REQUIRED = [
   'id of 32 hex characters after a space', 'id of 32 hex characters without a space', 'nested folders', 'a page with children', 'duplicate titles with different ids', 'a long name',
   'a URL-encoded link', 'a plain link with ../', 'images and files in sibling folders', 'a PDF', 'an aside with an emoji', 'details and summary', 'a to-do list', 'a table', 'a code fence',
   'a $$ equation', 'front matter', 'a database summary csv (_all.csv)', 'a database csv', 'database rows with page files and rows without', 'a csv with a BOM', 'a nested zip',
+  'a folder without an id beside its page', 'a name cut at 50 characters, its whole title in the first heading', 'a name with an unsafe character replaced by a space',
+  'a database exported as _all.csv only', 'a link to a database as if it were a page', 'a callout with blank lines, a list and a callout nested in it',
+  'a row page that only repeats its row, and one with text of its own',
 ];
 
 const readAll = async (archive: Buffer): Promise<Map<string, Buffer>> => {
@@ -46,10 +49,20 @@ describe('the synthetic Notion export', () => {
     expect(buildPlainMarkdownExport().equals(buildPlainMarkdownExport())).toBe(true);
   });
 
-  it('says in the first line of its README that it is constructed and not observed', () => {
+  it('says in the first line of its README that it is synthetic and that nothing in it comes from a real export (its shapes do, counted in aggregates)', () => {
     const first = readFileSync(new URL('./notion-synthetic/README.md', import.meta.url), 'utf8').split('\n')[0] ?? '';
-    expect(first).toContain('constructed');
-    expect(first).toContain('not observed');
+    expect(first).toContain('synthetic');
+    expect(first).toContain('nothing in it comes from');
+  });
+
+  it('comes in parts too: one zip that holds two part zips, a page of the first using a file of the second', async () => {
+    const outer = await readAll(buildNotionExportInParts());
+    expect([...outer.keys()].sort()).toEqual(['Export-Part-1.zip', 'Export-Part-2.zip']);
+    const first = await readAll(outer.get('Export-Part-1.zip') ?? Buffer.alloc(0));
+    const second = await readAll(outer.get('Export-Part-2.zip') ?? Buffer.alloc(0));
+    const page = [...first.entries()].find(([p]) => p.endsWith('.md'))?.[1].toString() ?? '';
+    expect(page).toContain('](Part%20page/picture.png)');
+    expect([...second.keys()]).toEqual(['Part page/picture.png']);
   });
 });
 

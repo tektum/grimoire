@@ -11,6 +11,7 @@ import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
 import { importFailedKey, importZipKey } from '../../src/import/keys.js';
 import { createImportHandler } from '../../src/jobs/import.js';
+import { buildNotionExport } from '../import/fixtures/notion-synthetic/build.js';
 import { buildZip } from '../import/hostile/zip-builder.js';
 import type { BuilderEntry } from '../import/hostile/zip-builder.js';
 
@@ -277,6 +278,32 @@ describe('the profile an import is read with is the one of its source', () => {
     const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n---\nowner: kept\n---\nBody\n`)], { source: 'notion_md_csv' });
     await t.run();
     expect(t.repo.written[0]?.page.content.markdown).toContain('owner: kept');
+  });
+
+  it('the synthetic export of Notion, in the shapes a real export writes (M7-T08): titles from headings, a folder without an id, a database with its rows, a link to it as a page, callouts as quotes', async () => {
+    const t = await setup(buildNotionExport(), { source: 'notion_md_csv', files: true });
+    await t.run();
+    const items = await t.items();
+    const written = (title: string) => t.repo.written.find((w) => w.page.title === title);
+    // The title is the first-line heading: a name cut at 50 characters, and a name with its slash replaced, give their whole titles.
+    expect(written('Quarterly planning notes for the spring and summer of next year')).toBeDefined();
+    expect(written('Q3/Q4 review')).toBeDefined();
+    // `Notes/` (no id) holds the pages of `Notes <id>.md`.
+    const notes = items.find((i) => /^Notes [0-9a-f]{32}\.md$/.test(i.path));
+    expect(written('First note')?.page.parentId).toBe(notes?.pageId);
+    // The database `_all.csv` is a page holding its rows: the one with text of its own under it, the one that only repeats its row left out.
+    const projects = items.find((i) => /^Projects [0-9a-f]{32}_all\.csv$/.test(i.path));
+    expect(projects).toMatchObject({ kind: 'database_csv', status: 'ok' });
+    expect(written('Launch')?.page.parentId).toBe(projects?.pageId);
+    expect(items.find((i) => i.path.startsWith('Projects/Archive '))).toMatchObject({ status: 'skipped', message: 'database_row' });
+    // Both links to the database (as its `_all.csv`, and as if it were a page) open its page, and every link of Notes resolves.
+    expect(written('Notes')?.page.content.markdown.split(`/p/${projects?.urlId ?? 'none'}`)).toHaveLength(3);
+    expect(notes).toMatchObject({ status: 'ok', warnings: 0 });
+    // The callout is a quote with a bold first line, its list inside, the nested one a quote in the quote.
+    const first = written('First note')?.page.content.markdown ?? '';
+    expect(first).toContain('> **\ud83d\udca1 Remember the lantern**');
+    expect(first).toContain('> - bring oil');
+    expect(first).toContain('> > **\ud83d\udd25 Nested inside**');
   });
 
   describe('a database of an export of Notion (decision 112: a source database is a plain table on a page)', () => {
