@@ -189,7 +189,7 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_CREATE_ONLY_HEADER: field(z.enum(['if-none-match', 'x-goog-if-generation-match'], msg('must be one of: if-none-match, x-goog-if-generation-match'))).default('if-none-match'),
   GRIMOIRE_S3_CORS_MODE: field(z.enum(['api', 'external'], msg('must be one of: api, external'))).default('api'),
-  // The size of what one import takes (an export in parts is several zips): sized from a real export of 94 GB of which 32 GB is video, with room (decision 179). The first four are what a person
+  // The size of what one import takes (an export in parts is several zips): sized from a real export of 94 GB of which 32 GB is video, with room (decision 180). The first four are what a person
   // may send; the quota is what a workspace may hold in uploads that are not over (their zips are in the store until the import ends).
   GRIMOIRE_IMPORT_MAX_ZIP_BYTES: field(int(1, MAX_INT)).default(34_359_738_368),
   GRIMOIRE_IMPORT_MAX_ZIPS: field(int(1, 64)).default(8),
