@@ -14,7 +14,7 @@ import { createRemoteBudget } from './remote-images/index.js';
 import type { RemoteImageFetcher } from './remote-images/index.js';
 import { buildLinkIndex } from './link-index.js';
 import { readCsv } from './notion/table.js';
-import type { ImportProfile, IndexedItem } from './profile.js';
+import { MAX_TITLE, type ImportProfile, type IndexedItem } from './profile.js';
 import { stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
@@ -164,7 +164,6 @@ export type PassTwoResult =
 
 const DEFAULT_BATCH_PAGES = 25;
 const DEFAULT_BATCH_BYTES = 8 * 1024 * 1024;
-const MAX_TITLE = 255;
 const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** The contract's largest table (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES` default) and most rows of a database's table (M7 contracts section 4). */

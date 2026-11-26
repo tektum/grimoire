@@ -158,14 +158,14 @@ describe('the profile an import is read with is the one of its source', () => {
     return byTitle;
   };
 
-  it('an export of Notion (notion_md_csv): the title is the file name without its id, and the pages of the folder beside a page are its children, with no empty page for the folder', async () => {
+  it('an export of Notion (notion_md_csv): the title is the # heading on the first line (Q1), and the pages of the folder beside a page are its children, with no empty page for the folder', async () => {
     const t = await setup(exported, { source: 'notion_md_csv' });
     await t.run();
-    expect(t.repo.written).toHaveLength(2); // no empty page for the folder (its title would read Plan too)
+    expect(t.repo.written).toHaveLength(2); // no empty page for the folder (its title would read Plan)
     const byTitle = await pages(t);
-    expect([...byTitle.keys()].sort()).toEqual(['Plan', 'Step']);
-    expect(byTitle.get('Step')?.parentId).toBe(byTitle.get('Plan')?.pageId);
-    expect(byTitle.get('Plan')?.parentId).toBeNull();
+    expect([...byTitle.keys()].sort()).toEqual(['Another heading', 'Step heading']);
+    expect(byTitle.get('Step heading')?.parentId).toBe(byTitle.get('Another heading')?.pageId);
+    expect(byTitle.get('Another heading')?.parentId).toBeNull();
   });
 
   it('an export of Notion whose folder beside a page has the name without the id (X/ beside X <id>.md): the folder\'s pages are the page\'s children, no empty page', async () => {
@@ -226,6 +226,35 @@ describe('the profile an import is read with is the one of its source', () => {
     const plain = await setup([page]);
     await plain.run();
     expect(plain.repo.written[0]?.page.content.markdown).toContain('<aside>');
+  });
+
+  it('an export of Notion: the # heading on the first line is the title and is not repeated in the body; a plain Markdown zip keeps its first line', async () => {
+    const page = md(`Plan for the ${ID1}.md\u0000# Plan for the year\n\nBody text\n`);
+    const notion = await setup([page], { source: 'notion_md_csv' });
+    await notion.run();
+    expect(notion.repo.written[0]?.page.title).toBe('Plan for the year');
+    expect(notion.repo.written[0]?.page.content.markdown).not.toContain('# Plan for the year');
+    expect(notion.repo.written[0]?.page.content.markdown).toContain('Body text');
+    const plain = await setup([page]);
+    await plain.run();
+    expect(plain.repo.written[0]?.page.content.markdown).toContain('# Plan for the year');
+  });
+
+  it('an export of Notion: a first line that is not the title heading is kept, and so is a heading longer than a title may be (the title is cut, the line keeps all of it)', async () => {
+    const long = `# ${'Long '.repeat(60)}end\n\nBody\n`;
+    const t = await setup([md(`Plan ${ID1}.md\u0000## Agenda\n\nBody\n`), md(`Long ${ID2}.md\u0000${long}`)], { source: 'notion_md_csv' });
+    await t.run();
+    const plan = t.repo.written.find((w) => w.page.title === 'Plan');
+    expect(plan?.page.content.markdown).toContain('## Agenda');
+    const cut = t.repo.written.find((w) => w.page.title.startsWith('Long Long'));
+    expect([...(cut?.page.title ?? '')]).toHaveLength(255);
+    expect(cut?.page.content.markdown).toContain('end');
+  });
+
+  it('an export of Notion: what follows the title line is never read as front matter (front matter sits at the very top of a file, and this file opens with its title)', async () => {
+    const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n---\nowner: kept\n---\nBody\n`)], { source: 'notion_md_csv' });
+    await t.run();
+    expect(t.repo.written[0]?.page.content.markdown).toContain('owner: kept');
   });
 
   describe('a database of an export of Notion (decision 112: a source database is a plain table on a page)', () => {

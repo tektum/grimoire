@@ -3,7 +3,7 @@ import type { ImportProfile } from '../profile.js';
 import { convertConstructs } from './constructs.js';
 import { resolveNotionLink } from './links.js';
 import { csvToMarkdownTable } from './table.js';
-import { idOf, splitName, titleOf } from './names.js';
+import { idOf, splitName, titleOf, withoutTitleLine } from './names.js';
 
 /** A path without `.` and empty segments, as the engine and `resolveLinkPath` read it. */
 const segmentsOf = (path: string): string[] => path.split('/').filter((segment) => segment !== '' && segment !== '.');
@@ -120,8 +120,14 @@ export const notionProfile: ImportProfile = {
     }
     return shared;
   },
-  /** Front matter goes as in the generic profile; callouts and toggles are converted before the schema sees them (`constructs.ts`). */
-  preprocess: (markdown, ctx) => convertConstructs(markdownProfile.preprocess(markdown, ctx)),
+  /**
+   * The title line is left out (`withoutTitleLine`); front matter goes as in the generic profile, but only for a file that does not open with its title line: front matter sits at
+   * the very top of a file, so what follows that line is never read as front matter. Callouts and toggles are converted before the schema sees them (`constructs.ts`).
+   */
+  preprocess: (markdown, ctx) => {
+    const body = withoutTitleLine(markdown);
+    return convertConstructs(body === markdown ? markdownProfile.preprocess(markdown, ctx) : body);
+  },
   resolveLink: resolveNotionLink,
   idOf,
   csvToMarkdown: csvToMarkdownTable,

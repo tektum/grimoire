@@ -1,5 +1,8 @@
 import type { ImportItemKind } from '@tektum/grimoire-core/ports/import-repo';
 
+/** The longest title a page has, in code points: the engine cuts a longer one (a warning); a profile that leaves a title line out of the body keeps a longer one in it. */
+export const MAX_TITLE = 255;
+
 /** An item of the archive a link can point to. */
 export interface IndexedItem { readonly itemId: string; readonly path: string; readonly kind: 'page' | 'attachment' }
 
