@@ -15,10 +15,13 @@ import { loadCorpus } from './quality.js';
 
 // M7-T07, the one figure `docs/search.md` says it lacks: the fused list (the words and the meaning of a search, fused by rank) against the full-text list alone, on the queries of the quality
 // corpus, with the real model, the real embedding job and the real PostgreSQL store in one run. Each passage of the corpus is a page; every query is asked of the full-text search and of the hybrid
-// search, five pages each, and the share of queries with a relevant page among them is the recall at 5 of each. The fused list must reach at least the recall of the full-text list, and a query
-// for a rare identifier must still find its page first. The figures are printed as `fusedRecall`.
+// search, five pages each, and the share of queries with a relevant page among them is the recall at 5 of each. The fused list must reach at least the recall of the full-text list and a floor of
+// its own (`FUSED_RECALL_FLOOR`: the model and the corpus are pinned, so the figure is the same on every run, and a fall of the fused list that stays above the full-text list must still fail),
+// and a query for a rare identifier must still find its page first. The figures are printed as `fusedRecall`.
 // Run it with the real files (`node scripts/fetch-models.mjs`, or GRIMOIRE_MODEL_DIR), a built tree (`bun run build`) and PostgreSQL (`make db-up`).
 const modelDir = process.env['GRIMOIRE_MODEL_DIR'] ?? '/app/models';
+/** The least recall at 5 of the fused list on this corpus: 0.972 (35 of 36) was measured, and the full-text list's 0.056 is far below it. */
+const FUSED_RECALL_FLOOR = 0.9;
 const DB = 'grimoire_m7t07_fused_recall';
 let db: Awaited<ReturnType<typeof jobsDatabase>>;
 beforeAll(async () => { db = await jobsDatabase(DB); }, 120_000);
@@ -79,6 +82,7 @@ describe('the fused list against the full-text list, with the real model', () =>
 
       expect(notSemantic, why).toEqual([]); // the model was ready for every search: the lists are fused, not full text under another name
       expect(fusedHits, why).toBeGreaterThanOrEqual(fullTextHits);
+      expect(fusedHits / total, why).toBeGreaterThanOrEqual(FUSED_RECALL_FLOOR); // 33 of 36 or more: a fall to 2 of 36 fails here, not only against the full-text list
       expect(identifierFirst.length, why).toBeGreaterThan(0);
       for (const row of identifierFirst) expect(row.wanted, `${row.q}: ${why}`).toContain(row.first);
     } finally {
