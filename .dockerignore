@@ -12,3 +12,5 @@ models/*
 docs
 test-results
 **/*.tsbuildinfo
+# The owner's real Notion export (M7-T08) is private: never in a build context or a layer.
+test-data

@@ -1,0 +1,56 @@
+{
+  "search": {
+    "files": [
+      "apps/server/test/search",
+      "packages/core/test/search",
+      "packages/adapters/db-kysely/test/search"
+    ]
+  },
+  "jobs": {
+    "files": [
+      "apps/server/test/jobs",
+      "packages/core/test/jobs"
+    ]
+  },
+  "hostile": {
+    "files": [
+      "apps/server/test/import/hostile"
+    ]
+  },
+  "synthetic": {
+    "files": [
+      "apps/server/test/import/fixtures",
+      "apps/server/test/import/notion",
+      "apps/server/test/import/engine"
+    ]
+  },
+  "remote-images": {
+    "files": [
+      "apps/server/test/import/remote-images"
+    ]
+  },
+  "restart": {
+    "pending": [
+      "apps/server/test/m7/restart.container.test.ts"
+    ],
+    "projects": [
+      "container"
+    ]
+  },
+  "semantic": {
+    "files": [
+      "apps/server/test/semantic",
+      "apps/server/test/migrations/semantic"
+    ],
+    "projects": [
+      "unit",
+      "integration",
+      "container"
+    ]
+  },
+  "security": {
+    "files": [
+      "apps/server/test/security/policy-walk.test.ts"
+    ]
+  }
+}
