@@ -565,7 +565,17 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       # The real-browser checks of the file store (apps/server/test-e2e/m5/browser) run inside `make test-m5`; the browser is installed here, once.
-      - run: bunx playwright install --with-deps chromium
+      - id: playwright-key
+        # The browsers are cached by the version of Playwright (and the image they were installed for): a new version, or a new runner image, downloads them again.
+        run: echo "value=playwright-${ImageOS:-unknown}-${RUNNER_ARCH}-$(bunx playwright --version | awk '{ print $2 }')-chromium" >> "$GITHUB_OUTPUT"
+      - id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-key.outputs.value }}
+      - run: tools/ci/playwright-install.sh chromium
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
       - run: make test-m5
       - name: Collect Compose logs
         if: failure()
@@ -611,7 +621,17 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       # The specs of apps/web/test-e2e run in a real browser against the stack. This job is not in `CI Required` yet: its first runs say what fails and who owns it.
-      - run: bunx playwright install --with-deps chromium
+      - id: playwright-key
+        # The browsers are cached by the version of Playwright (and the image they were installed for): a new version, or a new runner image, downloads them again.
+        run: echo "value=playwright-${ImageOS:-unknown}-${RUNNER_ARCH}-$(bunx playwright --version | awk '{ print $2 }')-chromium" >> "$GITHUB_OUTPUT"
+      - id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright-key.outputs.value }}
+      - run: tools/ci/playwright-install.sh chromium
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
       - run: make test-web-e2e
       - name: Collect Compose logs
         if: failure()
@@ -662,13 +682,17 @@ jobs:
       - run: bun install --frozen-lockfile
       # The same specs as `e2e-web` (Chromium), run in Firefox and in WebKit (R11.22: the latest Chrome, Edge, Firefox and Safari; Edge is Chromium, Safari is WebKit), each in its own
       # job so that the run time of a pull request is that of the slowest. Not in `CI Required`: like `e2e-web`, its first runs say what fails and who owns it.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: playwright-key
+        # The browsers are cached by the version of Playwright (and the image they were installed for): a new version, or a new runner image, downloads them again.
+        run: echo "value=playwright-${ImageOS:-unknown}-${RUNNER_ARCH}-$(bunx playwright --version | awk '{ print $2 }')-${{ matrix.browser }}" >> "$GITHUB_OUTPUT"
+      - id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-24.04-${{ matrix.browser }}-${{ hashFiles('bun.lock') }}
-      - run: bunx playwright install --with-deps "$BROWSER"
+          key: ${{ steps.playwright-key.outputs.value }}
+      - run: tools/ci/playwright-install.sh ${{ matrix.browser }}
         env:
-          BROWSER: ${{ matrix.browser }}
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
       - run: make test-web-e2e-browser
         env:
           BROWSER: ${{ matrix.browser }}

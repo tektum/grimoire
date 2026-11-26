@@ -36,8 +36,9 @@ test('it has the runner, the condition and the pinned actions of the Chromium jo
 });
 
 test('it installs its browser with its system libraries, caches the browsers, runs the target of its browser and keeps what a failure leaves', () => {
-  assert.match(browsers, /bunx playwright install --with-deps "\$BROWSER"\n {8}env:\n {10}BROWSER: \$\{\{ matrix\.browser \}\}/);
-  assert.match(browsers, /path: ~\/\.cache\/ms-playwright\n {10}key: playwright-\$\{\{ runner\.os \}\}-24\.04-\$\{\{ matrix\.browser \}\}-\$\{\{ hashFiles\('bun\.lock'\) \}\}/);
+  assert.match(browsers, /- run: tools\/ci\/playwright-install\.sh \$\{\{ matrix\.browser \}\}\n {8}env:\n {10}PLAYWRIGHT_CACHE_HIT: \$\{\{ steps\.playwright-cache\.outputs\.cache-hit \}\}/);
+  assert.match(browsers, /path: ~\/\.cache\/ms-playwright\n {10}key: \$\{\{ steps\.playwright-key\.outputs\.value \}\}/);
+  assert.match(browsers, /bunx playwright --version.*-\$\{\{ matrix\.browser \}\}" >> "\$GITHUB_OUTPUT"/);
   assert.match(browsers, /- run: make test-web-e2e-browser\n {8}env:\n {10}BROWSER: \$\{\{ matrix\.browser \}\}/);
   assert.match(browsers, /if: failure\(\)\n {8}uses: actions\/upload-artifact@[0-9a-f]{40} # v[\d.]+\n {8}with:\n {10}name: e2e-web-results-\$\{\{ matrix\.browser \}\}/);
   assert.match(browsers, /- name: Tear down\n {8}if: always\(\)\n {8}run: make down-volumes/);
