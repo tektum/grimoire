@@ -63,7 +63,8 @@ describe('a save, while the embedder is busy', () => {
         const [row] = (await db.sql(`select count(*) filter (where status = 'ready')::int as ready from page_embedding_state`)) as { ready: number }[];
         expect(row?.ready).toBe(6); // the busy page, and the five saved ones, found by the sweep after the debounce
       }, { timeout: 90_000, interval: 500 });
-      expect(embedder.calls.flatMap((c) => c.texts).filter((t) => t.includes(SAVED))).not.toHaveLength(0);
+      const [chunks] = (await db.sql(`select count(distinct page_id)::int as pages from page_chunks where page_id in (${others.map((id) => `'${id}'`).join(',')})`)) as { pages: number }[];
+      expect(chunks?.pages, JSON.stringify(embedder.calls.map((c) => c.texts.length))).toBe(others.length); // each saved page has its chunk rows: it was embedded, from its saved text
     } finally {
       embedder.gate.resolve();
       await runner.hook.run();
