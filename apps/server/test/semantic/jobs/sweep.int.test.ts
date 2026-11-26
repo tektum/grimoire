@@ -27,9 +27,9 @@ async function sweepRuns(): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((r) => [r.state, r.n]));
 }
 
-async function start(sweepSeconds: number, store: EmbeddingStore = createEmbeddingStore(db.app, db.ops)): Promise<JobRunner> {
-  const config = makeFakeConfig({ database: { url: appUrl(DB) }, semantic: { sweepSeconds, debounceSeconds: 1 } });
-  const { deps } = fakeJobDeps({ config, embedder: new FakeEmbedder({ maxTokens: 512, dims: 8 }), embeddings: store, tenants: { ids: async () => ((await db.sql('select id from tenants order by id')) as { id: string }[]).map((t) => t.id) } });
+async function start(sweepSeconds: number, store: EmbeddingStore = createEmbeddingStore(db.app, db.ops), o: { readonly embedder?: FakeEmbedder; readonly debounceSeconds?: number } = {}): Promise<JobRunner> {
+  const config = makeFakeConfig({ database: { url: appUrl(DB) }, semantic: { sweepSeconds, debounceSeconds: o.debounceSeconds ?? 1 } });
+  const { deps } = fakeJobDeps({ config, embedder: o.embedder ?? new FakeEmbedder({ maxTokens: 512, dims: 8 }), embeddings: store, tenants: { ids: async () => ((await db.sql('select id from tenants order by id')) as { id: string }[]).map((t) => t.id) } });
   const runner = createJobRunner({ config, log: deps.log, make: () => runtimeQueue(DB), jobs: (queue) => registerJobs({ ...deps, queue }) });
   runners.push(runner);
   await runner.start();
@@ -73,6 +73,39 @@ describe('the embed sweep, a chain of runs', () => {
       expect(await db.sql(`select status from page_embedding_state where page_id = '${settled}'`)).toEqual([{ status: 'ready' }]);
     }, { timeout: 60_000, interval: 500 });
     expect(await db.sql(`select status from page_embedding_state where page_id = '${typing}'`)).toEqual([]);
+    await stopAll();
+  }, 120_000);
+
+  it('ten saves of one page in a row make one embed, and no embed-page job while the saves go on: the debounce keeps the sweep off, and the page is embedded once, after it has settled', async () => {
+    const tenant = await seedTenant(db.sql, 'T-saves');
+    const id = randomUUID();
+    await insertPage(db.sql, {
+      id, collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'T', text_content: 'alpha beta gamma delta',
+      markdown_hash: raw(`decode(repeat('0f', 32), 'hex')`), last_edited_at: raw('now()'),
+    });
+    const embedder = new FakeEmbedder({ maxTokens: 512, dims: 8 });
+    await start(1, createEmbeddingStore(db.app, db.ops), { embedder, debounceSeconds: 5 });
+    for (let save = 0; save < 10; save++) await db.sql(`update pages set last_edited_at = now() where id = '${id}'`);
+    // Sweeps go on every second. A job seen while the page is inside its quiet time is recorded outside the retried callback (waitFor retries on a throw, which would hide it) and asserted after.
+    const early: number[] = [];
+    await vi.waitFor(async () => {
+      const [row] = (await db.sql(`select (select count(*)::int from pgboss.job where name = 'embed-sweep' and state = 'completed') as sweeps,
+                                          (select count(*)::int from pgboss.job where name = 'embed-page') as jobs,
+                                          (now() - last_edited_at) < interval '5 seconds' as inside from pages where id = '${id}'`)) as { sweeps: number; jobs: number; inside: boolean }[];
+      if (row?.inside === true && row.jobs > 0) early.push(row.jobs);
+      expect(row?.sweeps).toBeGreaterThanOrEqual(2);
+      expect(row?.inside).toBe(false); // sampled the whole quiet time, with sweeps running through it
+    }, { timeout: 60_000, interval: 200 });
+    expect(early).toEqual([]); // no job was sent while the page was inside its quiet time
+    await vi.waitFor(async () => {
+      expect(await db.sql(`select status from page_embedding_state where page_id = '${id}'`)).toEqual([{ status: 'ready' }]);
+    }, { timeout: 60_000, interval: 500 });
+    expect(embedder.calls).toHaveLength(1); // one embed, of the one chunk
+    // The queue is `stately`: one waiting job and one running job may share a key, so a sweep that picks the page up while its job runs sends one more, which finds every chunk stored and embeds nothing.
+    // The claim is one embed (above) and no pile-up: at most one job running and one waiting. CI saw 2 jobs for one embed; their timings are in the message if this fails.
+    const jobRows = (await db.sql(`select state::text as state, to_char(created_on, 'SS.MS') as created, to_char(started_on, 'SS.MS') as started, to_char(completed_on, 'SS.MS') as done from pgboss.job where name = 'embed-page' and data->>'pageId' = '${id}' order by created_on`)) as { state: string }[];
+    expect(jobRows.length, JSON.stringify(jobRows)).toBeLessThanOrEqual(2);
+    expect(jobRows.length, JSON.stringify(jobRows)).toBeGreaterThanOrEqual(1);
     await stopAll();
   }, 120_000);
 });
