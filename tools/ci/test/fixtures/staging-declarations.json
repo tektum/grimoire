@@ -349,6 +349,23 @@
       }
     },
     {
+      "type": "aws.s3:BucketLifecycleConfiguration",
+      "name": "FilesLifecycle",
+      "args": {
+        "bucket": "<Files.nodes.bucket.bucket>",
+        "rules": [
+          {
+            "id": "abort-incomplete-multipart",
+            "status": "Enabled",
+            "filter": {},
+            "abortIncompleteMultipartUpload": {
+              "daysAfterInitiation": 2
+            }
+          }
+        ]
+      }
+    },
+    {
       "type": "aws.s3:Bucket",
       "name": "LoadBalancerLogs",
       "args": {
@@ -556,7 +573,9 @@
             "actions": [
               "s3:GetObject",
               "s3:PutObject",
-              "s3:DeleteObject"
+              "s3:DeleteObject",
+              "s3:AbortMultipartUpload",
+              "s3:ListMultipartUploadParts"
             ],
             "resources": [
               "<interpolate:{<Files.arn>}/*>"
