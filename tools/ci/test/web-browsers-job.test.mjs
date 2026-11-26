@@ -43,10 +43,11 @@ test('it installs its browser with its system libraries, caches the browsers, ru
   assert.match(browsers, /- name: Tear down\n {8}if: always\(\)\n {8}run: make down-volumes/);
 });
 
-test('it is not in the merge gate: that is for the owner to change', () => {
+test('it is in the merge gate, with the browser job of Chromium (tools/ci/test/ci-required-gate.test.mjs runs the gate itself)', () => {
   const needs = job('ci-required').split('needs:\n')[1]?.split('steps:')[0] ?? '';
   assert.ok(needs.includes('- e2e-m5'), 'the list of the gate is read');
-  assert.ok(!needs.includes('e2e-web'), 'neither web job is in the gate');
+  assert.ok(needs.includes('- e2e-web\n'), 'the Chromium job is in the gate');
+  assert.ok(needs.includes('- e2e-web-browsers\n'), 'the Firefox and WebKit jobs are in the gate');
 });
 
 test('the make target takes its browser from BROWSER, refuses another, and the Makefile itself is not the place of it', () => {
