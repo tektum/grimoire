@@ -111,11 +111,17 @@ describe('what only the database does', () => {
       await gate;
     });
     await locked;
-    const adding = repo.addPart('legacy', made.id, { ordinal: 1, s3Key: 'k/1', bytes: 2, uploadId: null });
-    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the part waits for the update');
-    release();
-    await uploading;
-    expect(await adding).toBe(false);
+    // The gate is released whatever happens, so a failure here cannot leave the update open holding the row for the cases and the drop that follow.
+    try {
+      const adding = repo.addPart('legacy', made.id, { ordinal: 1, s3Key: 'k/1', bytes: 2, uploadId: null });
+      await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pg_stat_activity.pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the part waits for the update');
+      release();
+      await uploading;
+      expect(await adding).toBe(false);
+    } finally {
+      release();
+      await uploading;
+    }
     expect(await repo.parts('legacy', made.id)).toHaveLength(1);
-  });
+  }, 30_000);
 });
