@@ -120,4 +120,13 @@ describe('with the real converter', () => {
     convertConstructs(lines('<aside>', `x${'](a'.repeat(200_000)}`, '</aside>'));
     expect(performance.now() - started).toBeLessThan(2000);
   });
+
+  it('callouts nested deeper than the limit stay as text, so a crafted page cannot multiply its lines by its depth', () => {
+    const depth = 3000;
+    const page = lines(...Array.from({ length: depth }, () => '<aside>'), ...Array.from({ length: 20_000 }, () => ''), ...Array.from({ length: depth }, () => '</aside>'));
+    const started = performance.now();
+    const converted = convertConstructs(page);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(converted.length).toBeLessThan(page.length * 10);
+  });
 });

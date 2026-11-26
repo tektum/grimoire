@@ -40,10 +40,13 @@ function bold(text: string): string {
   return inner === '' ? '' : `**${inner}**`;
 }
 
+/** How deep blocks nest: a deeper opener is text, so a crafted page cannot make every line carry thousands of quote marks. Real pages nest a few. */
+const MAX_DEPTH = 8;
+
 /** The open and close lines of every block that is closed, outside code fences; a block that is never closed is no block. */
 function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close: number; indent: string }> {
   const blocks = new Map<number, { kind: Kind; close: number; indent: string }>();
-  const open: { kind: Kind; line: number; indent: string }[] = [];
+  const open: { kind: Kind; line: number; indent: string; skip: boolean }[] = [];
   let fence: string | undefined;
   lines.forEach((line, i) => {
     const marker = FENCE.exec(line)?.[1];
@@ -52,10 +55,10 @@ function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close:
     if (marker !== undefined) { fence = marker; return; }
     for (const kind of ['aside', 'details'] as const) {
       const opened = OPEN[kind].exec(line);
-      if (opened !== null) { open.push({ kind, line: i, indent: opened[1] ?? '' }); return; }
+      if (opened !== null) { open.push({ kind, line: i, indent: opened[1] ?? '', skip: open.length >= MAX_DEPTH }); return; }
       if (CLOSE[kind].test(line) && open.at(-1)?.kind === kind) {
-        const o = open.pop() as { kind: Kind; line: number; indent: string };
-        blocks.set(o.line, { kind, close: i, indent: o.indent });
+        const o = open.pop() as { kind: Kind; line: number; indent: string; skip: boolean };
+        if (!o.skip) blocks.set(o.line, { kind, close: i, indent: o.indent });
         return;
       }
     }
