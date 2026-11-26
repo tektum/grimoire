@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createEmbeddingStore, createPageStore } from '@tektum/grimoire-adapter-db-kysely';
@@ -71,6 +71,13 @@ describe('the real model, embedding a page of 20,000 words', () => {
       for (const id of others) await insertPage(db.sql, { id, collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'Saved', markdown: null });
 
       const began = performance.now();
+      // The garbage collections of this thread that took 20 ms or more (when, how long): a stall of the loop that is one of them is a collection, with no other cause to look for.
+      const gcs: { at: number; ms: number }[] = [];
+      const noteGc = (entries: readonly PerformanceEntry[]): void => {
+        for (const e of entries) if (e.duration >= 20) gcs.push({ at: Math.round(e.startTime - began), ms: Math.round(e.duration) });
+      };
+      const gcWatch = new PerformanceObserver((list) => noteGc(list.getEntries()));
+      gcWatch.observe({ entryTypes: ['gc'] });
       // What was running when the loop stalled: every store call of the job and every save is a span of this run (milliseconds from its start), and a 10 ms probe records each gap of more than 100 ms.
       const spans: { what: string; from: number; to: number }[] = [];
       const traced = <T>(what: string, call: () => Promise<T>): Promise<T> => {
@@ -120,6 +127,8 @@ describe('the real model, embedding a page of 20,000 words', () => {
       await embedded;
       const embedMs = performance.now() - began;
       delay.disable();
+      noteGc(gcWatch.takeRecords());
+      gcWatch.disconnect();
       probing = false;
       await probe;
       const { process: own, machine: shared } = splitStalls(stalls, await peer.stop());
@@ -129,7 +138,7 @@ describe('the real model, embedding a page of 20,000 words', () => {
         words: WORDS, chunks: state?.chunk_count, embedMs: Math.round(embedMs), savedWhileEmbedding, saveMsMax: Math.round(Math.max(...saved)),
         loopDelayMs: { p50: delay.percentile(50) / 1e6, p99: delay.percentile(99) / 1e6, max: delay.max / 1e6 },
       };
-      const detail = { stalls: own, machineStalls: shared, spans: spans.filter((s) => s.to - s.from >= 20 || stalls.some((x) => s.from <= x.at + x.ms && s.to >= x.at)) }; // the long spans, and any span a stall fell in
+      const detail = { stalls: own, machineStalls: shared, gcs, spans: spans.filter((s) => s.to - s.from >= 20 || stalls.some((x) => s.from <= x.at + x.ms && s.to >= x.at)) }; // the long spans, and any span a stall fell in
       console.log(JSON.stringify({ eventLoop: measured, ...detail }));
       const why = JSON.stringify({ ...measured, ...detail });
 

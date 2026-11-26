@@ -1,4 +1,6 @@
 import path from 'node:path';
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { embedderConformance } from '@tektum/grimoire-core/testing/embedder-conformance';
 import type { SemanticConfig } from '@tektum/grimoire-core/ports/config';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +9,9 @@ import { createOnnxEmbedder } from '../src/embedder.js';
 // The Embedder conformance suite on the real models. Needs the model files (`node scripts/fetch-models.mjs`, or the image's /app/models) and the compiled worker (`bun run build`): it runs
 // inside the built image (`docker run`), where both are, and where it is run again with no network, a read-only root filesystem and no capabilities.
 const modelDir = process.env['GRIMOIRE_MODEL_DIR'] ?? '/app/models';
+// A full GC on demand with no flag on the command line, so that the heap the test measures is the live one.
+v8.setFlagsFromString('--expose-gc');
+const fullGc = vm.runInNewContext('gc') as () => void;
 
 const configOf = (model: SemanticConfig['model']): SemanticConfig => ({
   enabled: true,
@@ -42,11 +47,26 @@ for (const model of ['multilingual-e5-base', 'multilingual-e5-small'] as const) 
       try {
         const words = 'The quick brown fox jumps over the lazy dog while the quarterly plan waits for review. '.split(' ');
         let text = '';
-        for (let i = 0; e.countTokens(text) < e.model.maxTokens; i += 1) text += `${words[i % words.length] as string} `;
-        while (e.countTokens(text) > e.model.maxTokens) text = text.slice(0, -2);
-        expect(e.countTokens(text)).toBeLessThanOrEqual(e.model.maxTokens);
-        expect(e.countTokens(text)).toBeGreaterThan(e.model.maxTokens - 4);
+        for (let i = 0; (await e.countTokens(text)) < e.model.maxTokens; i += 1) text += `${words[i % words.length] as string} `;
+        while ((await e.countTokens(text)) > e.model.maxTokens) text = text.slice(0, -2);
+        expect(await e.countTokens(text)).toBeLessThanOrEqual(e.model.maxTokens);
+        expect(await e.countTokens(text)).toBeGreaterThan(e.model.maxTokens - 4);
         for (const call of [() => e.embedPassages([text]), () => e.embedQuery(text)]) expect(await call()).toMatchObject({ ok: true });
+      } finally {
+        await e.close();
+      }
+    });
+
+    // The tokenizer is 160 MB of live objects. On the server's heap every full GC walks them and stops the event loop (150 ms and more on a loaded runner: the red of the event-loop test); on the model's
+    // thread the server's heap does not grow with the model. The measure is bytes, not time, so it does not depend on the machine.
+    it('keeps the tokenizer off the heap of this thread: the heap grows by less than 40 MB while the model loads and counts', { timeout: 180_000 }, async () => {
+      fullGc();
+      const before = v8.getHeapStatistics().used_heap_size;
+      const e = await harness.make();
+      try {
+        expect(await e.countTokens('a few words to count')).toBeGreaterThan(0);
+        fullGc();
+        expect((v8.getHeapStatistics().used_heap_size - before) / 1e6).toBeLessThan(40);
       } finally {
         await e.close();
       }

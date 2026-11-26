@@ -45,11 +45,14 @@ interface Piece { readonly start: number; readonly end: number; readonly tokens:
 const SENTENCE_END = /(?<=[.!?…]["')\]»”’]{0,3})\s+|(?<=[。！？]["')\]」』）»”’]{0,3})(?!["')\]」』）»”’。！？])/g;
 const WHITE_SPACE = /\s+/g;
 
-/** One call of the counter, then a step: the counter is the embedder's tokenizer, and every call of it is main-thread work, so a caller that wants to give the event loop a turn can do so after each. */
-function* counted(count: (t: string) => number, text: string): Generator<void, number> {
-  const tokens = count(text);
-  yield;
-  return tokens;
+/**
+ * The steps of the cut: each count it needs is a `yield` of the text to count, and the driver sends the number back with `next(tokens)`. The counter is the embedder's tokenizer, which is on the
+ * model's thread, so the answer may take a round trip: a driver awaits it, and the event loop has a turn at every count.
+ */
+type Steps<T> = Generator<string, T, number>;
+
+function* counted(text: string): Steps<number> {
+  return yield text;
 }
 
 /** The parts of `piece` between the matches of `separator` (white space is cut off both ends of every part), as `[start, end]` offsets in `text`: nothing is counted. */
@@ -73,51 +76,51 @@ function spansAt(text: string, piece: Piece, separator: RegExp): [number, number
 }
 
 /** The parts of `piece` between the matches of `separator`, as pieces, each counted (a step for each); a part that is all of the piece (the separator is not in it) is the piece, with its count. */
-function* splitAt(text: string, piece: Piece, separator: RegExp, count: (t: string) => number): Generator<void, Piece[]> {
+function* splitAt(text: string, piece: Piece, separator: RegExp): Steps<Piece[]> {
   const spans = spansAt(text, piece, separator);
   const only = spans[0];
   if (spans.length === 1 && only !== undefined && only[0] === piece.start && only[1] === piece.end) return [piece];
   const parts: Piece[] = [];
-  for (const [start, end] of spans) parts.push({ start, end, tokens: yield* counted(count, text.slice(start, end)) });
+  for (const [start, end] of spans) parts.push({ start, end, tokens: yield* counted(text.slice(start, end)) });
   return parts;
 }
 
 /** A piece that is one unbroken run of characters and still too long: cut at the longest prefix the counter accepts, never between the halves of a surrogate pair. */
-function* cutRun(text: string, piece: Piece, max: number, count: (t: string) => number): Generator<void, Piece[]> {
+function* cutRun(text: string, piece: Piece, max: number): Steps<Piece[]> {
   const parts: Piece[] = [];
   let start = piece.start;
   while (start < piece.end) {
     const remaining = piece.end - start;
     let hi = Math.min(remaining, 64);
     // Grow the window until the counter says it is too long, so the search costs what the piece costs and not what is left of the run.
-    while (hi < remaining && (yield* counted(count, text.slice(start, start + hi))) <= max) hi = Math.min(remaining, hi * 2);
+    while (hi < remaining && (yield* counted(text.slice(start, start + hi))) <= max) hi = Math.min(remaining, hi * 2);
     let lo = 1;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      if ((yield* counted(count, text.slice(start, start + mid))) <= max) lo = mid;
+      if ((yield* counted(text.slice(start, start + mid))) <= max) lo = mid;
       else hi = mid - 1;
     }
     let end = start + lo;
     const last = text.charCodeAt(end - 1);
     if (end < piece.end && end - 1 > start && last >= 0xd800 && last <= 0xdbff) end -= 1;
-    parts.push({ start, end, tokens: yield* counted(count, text.slice(start, end)) });
+    parts.push({ start, end, tokens: yield* counted(text.slice(start, end)) });
     start = end;
   }
   return parts;
 }
 
 /** Pieces of at most `max` tokens: a piece that is longer is cut at sentence ends, then at white space, then inside a word. */
-function* fit(text: string, piece: Piece, max: number, count: (t: string) => number): Generator<void, Piece[]> {
+function* fit(text: string, piece: Piece, max: number): Steps<Piece[]> {
   if (piece.tokens <= max) return [piece];
   const pieces: Piece[] = [];
-  for (const sentence of yield* splitAt(text, piece, SENTENCE_END, count)) {
+  for (const sentence of yield* splitAt(text, piece, SENTENCE_END)) {
     if (sentence.tokens <= max) {
       pieces.push(sentence);
       continue;
     }
-    for (const word of yield* splitAt(text, sentence, WHITE_SPACE, count)) {
+    for (const word of yield* splitAt(text, sentence, WHITE_SPACE)) {
       if (word.tokens <= max) pieces.push(word);
-      else for (const part of yield* cutRun(text, word, max, count)) pieces.push(part);
+      else for (const part of yield* cutRun(text, word, max)) pieces.push(part);
     }
   }
   return pieces;
@@ -137,13 +140,11 @@ function probeEnd(line: string, probe: number): number {
 }
 
 /**
- * The cut of a page's text into chunks as steps: a `yield` after each line has been counted and fitted and after each chunk has been made, so that a caller can give the event loop a turn
- * between them (counting the tokens of a page of 20,000 words is 600 ms of main-thread work on a hosted runner, in one piece). The blocks are the lines (a blank line is no block), packed in
+ * The cut of a page's text into chunks as steps (`Steps`): a request to count for each line, each piece and each chunk. The blocks are the lines (a blank line is no block), packed in
  * order up to about `targetTokens`, a block over `maxTokens` is cut at sentence ends and then at white space. The chunks cover every character that is not white space exactly once, in order,
- * and each keeps its offsets. A text of fewer than 3 tokens has no chunk. `countTokens` is the embedder's own counter; it is called once for each piece and once for each chunk, never for
- * the whole text.
+ * and each keeps its offsets. A text of fewer than 3 tokens has no chunk. The counter is the embedder's own; it is asked once for each piece and once for each chunk, never for the whole text.
  */
-function* chunkSteps(text: string, countTokens: (text: string) => number, options: ChunkOptions): Generator<void, Chunk[]> {
+function* chunkSteps(text: string, options: ChunkOptions): Steps<Chunk[]> {
   const max = options.maxTokens ?? 400;
   const target = Math.min(options.targetTokens ?? 200, max);
   // The lines are found without counting them: each is counted below, a step for each count.
@@ -152,8 +153,8 @@ function* chunkSteps(text: string, countTokens: (text: string) => number, option
   for (const [start, end] of spansAt(text, { start: 0, end: text.length, tokens: 0 }, /[\r\n]+/g)) {
     const line = text.slice(start, end);
     let tokens = Number.POSITIVE_INFINITY; // a line over the limit is cut by `fit` and its own count is not used
-    if (line.length <= probe || (yield* counted(countTokens, line.slice(0, probeEnd(line, probe)))) <= max) tokens = yield* counted(countTokens, line);
-    for (const piece of yield* fit(text, { start, end, tokens }, max, countTokens)) pieces.push(piece);
+    if (line.length <= probe || (yield* counted(line.slice(0, probeEnd(line, probe)))) <= max) tokens = yield* counted(line);
+    for (const piece of yield* fit(text, { start, end, tokens }, max)) pieces.push(piece);
   }
   if (pieces.reduce((sum, p) => sum + p.tokens, 0) < MIN_TOKENS) return [];
   const groups: Piece[][] = [];
@@ -170,11 +171,11 @@ function* chunkSteps(text: string, countTokens: (text: string) => number, option
   }
   const chunks: Omit<Chunk, 'chunkIndex' | 'charStart' | 'charEnd'>[] = [];
   /** A group is one chunk unless the counter says the whole is over the limit although the sum of its parts was not: then it is halved, by pieces, until it is not. */
-  function* emit(group: readonly Piece[]): Generator<void> {
+  function* emit(group: readonly Piece[]): Steps<void> {
     const start = (group[0] as Piece).start;
     const end = (group[group.length - 1] as Piece).end;
     const chunk = text.slice(start, end);
-    const tokenCount = yield* counted(countTokens, chunk);
+    const tokenCount = yield* counted(chunk);
     if (tokenCount > max && group.length > 1) {
       const half = Math.ceil(group.length / 2);
       yield* emit(group.slice(0, half));
@@ -201,21 +202,18 @@ function* chunkSteps(text: string, countTokens: (text: string) => number, option
   return chunks.map((c, chunkIndex) => ({ chunkIndex, ...c, charStart: pointAt(c.unitStart), charEnd: pointAt(c.unitEnd) }));
 }
 
-/** Cuts a page's text into chunks for the embedder (see `chunkSteps`), all at once. */
+/** Cuts a page's text into chunks for the embedder (see `chunkSteps`), all at once, with a counter that answers at once. */
 export function chunkText(text: string, countTokens: (text: string) => number, options: ChunkOptions): Chunk[] {
-  const steps = chunkSteps(text, countTokens, options);
+  const steps = chunkSteps(text, options);
   let step = steps.next();
-  while (step.done !== true) step = steps.next();
+  while (step.done !== true) step = steps.next(countTokens(step.value));
   return step.value;
 }
 
-/** The same chunks as `chunkText`, with `yieldToLoop` awaited between the steps: the caller says what a turn of its event loop is (`setImmediate`), so the cut is never one long block. */
-export async function chunkTextYielding(text: string, countTokens: (text: string) => number, options: ChunkOptions, yieldToLoop: () => Promise<void>): Promise<Chunk[]> {
-  const steps = chunkSteps(text, countTokens, options);
+/** The same chunks as `chunkText`, for a counter that answers later (the embedder's): every count is awaited, so the event loop has a turn between the counts and the cut is never one long block. */
+export async function chunkTextAsync(text: string, countTokens: (text: string) => Promise<number>, options: ChunkOptions): Promise<Chunk[]> {
+  const steps = chunkSteps(text, options);
   let step = steps.next();
-  while (step.done !== true) {
-    await yieldToLoop();
-    step = steps.next();
-  }
+  while (step.done !== true) step = steps.next(await countTokens(step.value));
   return step.value;
 }

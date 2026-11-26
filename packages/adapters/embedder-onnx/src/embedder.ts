@@ -6,7 +6,6 @@ import type { Backend } from './backend.js';
 import { readLock, verifyFiles, versionOf } from './lock.js';
 import type { TextKind } from './prefix.js';
 import { createThreadBackend } from './thread-backend.js';
-import { loadTokenCounter, type TokenCounter } from './tokenizer.js';
 
 /** The models the setting names: the length of their vectors, and the most tokens a text may have (the model's limit, the special tokens and the prefix included). */
 const MODELS = { 'multilingual-e5-base': { dims: 768 }, 'multilingual-e5-small': { dims: 384 } } as const;
@@ -29,8 +28,7 @@ export interface OnnxEmbedderOptions {
   /** The compiled `worker.js` of the default backend (default: the one next to this file, which is right when this file is compiled too). */
   readonly workerUrl?: URL;
   /** What runs the model (default: a worker thread). */
-  readonly makeBackend?: (threads: number, dims: number, tokens: TokenCounter) => Backend;
-  readonly loadTokenCounter?: (file: string) => TokenCounter;
+  readonly makeBackend?: (threads: number, dims: number) => Backend;
   readonly now?: () => number;
 }
 
@@ -53,14 +51,11 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
   const retryMs = options.retryMs ?? MINUTE_MS;
   const now = options.now ?? Date.now;
   const lockFile = options.lockFile ?? path.join(config.modelDir, 'models.lock.json');
-  const makeBackend =
-    options.makeBackend ?? ((threads, d, tokens) => createThreadBackend({ workerUrl: options.workerUrl ?? new URL('./worker.js', import.meta.url), threads, dims: d, maxTokens: MAX_TOKENS, encode: tokens.encode }));
-  const makeCounter = options.loadTokenCounter ?? loadTokenCounter;
+  const makeBackend = options.makeBackend ?? ((threads, d) => createThreadBackend({ workerUrl: options.workerUrl ?? new URL('./worker.js', import.meta.url), threads, dims: d, maxTokens: MAX_TOKENS }));
 
   let status: 'loading' | 'ready' | 'unavailable' = 'loading';
   let closed = false;
   let backend: Backend | undefined;
-  let counter: TokenCounter | undefined;
   let retry: NodeJS.Timeout | undefined;
   let reported = false;
   let running = false;
@@ -82,13 +77,8 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
     const verified = await verifyFiles(config.modelDir, config.model, locked);
     if (closed) return;
     if (!verified.ok) return fail(verified.reason);
-    // The tokenizer is loaded here, once, and the model's thread gets ids from it: only this thread holds it.
-    try {
-      counter = makeCounter(verified.tokenizer);
-    } catch {
-      return closed ? undefined : fail('load-failed');
-    }
-    const next = makeBackend(config.threads, dims, counter);
+    // The tokenizer is loaded by the model's thread, with the weights, and only there: a file it cannot read is a `load-failed` of the backend like a weights file it cannot read.
+    const next = makeBackend(config.threads, dims);
     try {
       await next.start({ weights: verified.weights, tokenizer: verified.tokenizer });
     } catch {
@@ -177,7 +167,7 @@ export function createOnnxEmbedder(config: SemanticConfig, options: OnnxEmbedder
       return { name: config.model, version, dims, maxTokens: MAX_TOKENS - RESERVED_TOKENS };
     },
     status: () => (closed ? 'unavailable' : status),
-    countTokens: (text) => (counter === undefined ? Math.ceil(text.length / 3) : counter.count(text)),
+    countTokens: async (text) => (await backend?.count(text)) ?? Math.ceil(text.length / 3),
     async embedPassages(texts, o) {
       const vectors: Float32Array[] = [];
       if (closed || status !== 'ready') return UNAVAILABLE;

@@ -31,7 +31,7 @@ const run = (sql: string) => sqlAdmin(DB, sql);
 const embedder: Embedder = {
   model: { name: 'fake-e5', version: 'v1', dims: DIMS, maxTokens: 64 },
   status: () => 'ready',
-  countTokens: (text) => text.split(/\s+/).length,
+  countTokens: (text) => Promise.resolve(text.split(/\s+/).length),
   embedPassages: () => Promise.resolve<EmbedResult>({ ok: false, reason: 'unavailable' }),
   embedQuery: () => Promise.resolve<EmbedResult>({ ok: true, vectors: [QUERY] }),
   stats: () => ({ threads: 1, queued: 0, chunksPerMinute: 0 }),

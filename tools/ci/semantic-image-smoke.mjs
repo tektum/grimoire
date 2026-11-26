@@ -35,7 +35,7 @@ for (const model of Object.keys(dims)) {
     assert.deepEqual(events, [], 'nothing was reported unavailable');
     const t = performance.now();
     for (let i = 0; i < 10; i += 1) assert.ok((await e.embedPassages([`${'The quarterly planning meeting covered hiring and the budget. '.repeat(15)}${String(i)}`])).ok);
-    console.log(JSON.stringify({ model, ok: true, loadMs, tokens: e.countTokens('word '.repeat(10)), textsPerSecond: Number((10 / ((performance.now() - t) / 1000)).toFixed(1)), rssMB: Math.round(process.memoryUsage().rss / 1048576) }));
+    console.log(JSON.stringify({ model, ok: true, loadMs, tokens: await e.countTokens('word '.repeat(10)), textsPerSecond: Number((10 / ((performance.now() - t) / 1000)).toFixed(1)), rssMB: Math.round(process.memoryUsage().rss / 1048576) }));
   } catch (error) {
     failed = true;
     console.log(JSON.stringify({ model, ok: false, error: String(error.message ?? error).slice(0, 300) }));

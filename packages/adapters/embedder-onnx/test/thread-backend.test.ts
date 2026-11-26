@@ -4,14 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createThreadBackend } from '../src/thread-backend.js';
 
 const workerUrl = pathToFileURL(path.resolve(import.meta.dirname, 'support/stub-worker.mjs'));
-// The tokenizer of the embedder's thread, as a stand-in: the plain text (the prefix taken off) says what the call does, and a long text has more ids than the limit.
-const encode = (text: string): number[] => {
-  const plain = text.replace(/^(query|passage): /, '');
-  if (plain === 'die') return [0, 900, 2];
-  if (plain === 'broken') return [0, 901, 2];
-  return plain.length > 12 ? Array.from({ length: plain.length }, () => 5) : [0, 5, 2];
-};
-const make = () => createThreadBackend({ workerUrl, threads: 1, dims: 4, maxTokens: 16, encode });
+const make = () => createThreadBackend({ workerUrl, threads: 1, dims: 4, maxTokens: 16 });
 const files = (weights: string) => ({ weights, tokenizer: 'tokenizer.json' });
 
 describe('the thread backend', () => {
@@ -28,32 +21,27 @@ describe('the thread backend', () => {
     const b = make();
     expect(await b.embed('query', ['a'])).toEqual({ ok: false, reason: 'unavailable' });
     await b.start(files('ok'));
-    // Refused here, before anything is sent: a text with more ids than the limit, and a text too long to fit whatever its ids are.
     expect(await b.embed('query', ['x'.repeat(20)])).toEqual({ ok: false, reason: 'too-long' });
-    expect(await b.embed('passage', ['y'.repeat(16 * 64)])).toEqual({ ok: false, reason: 'too-long' });
     expect(await b.embed('query', ['broken'])).toEqual({ ok: false, reason: 'internal' });
+    expect(await b.embed('passage', ['a']), 'the next call is served').toMatchObject({ ok: true });
     await b.close();
     await b.close();
     expect(await b.embed('query', ['a'])).toEqual({ ok: false, reason: 'unavailable' });
   });
 
-  it('answers internal, and does not throw, when the tokenizer fails, and the next call is served', async () => {
-    let fail = true;
-    const b = createThreadBackend({
-      workerUrl,
-      threads: 1,
-      dims: 4,
-      maxTokens: 16,
-      encode: (text) => {
-        if (fail) throw new Error('tokenizer broke');
-        return encode(text);
-      },
-    });
+  it('counts a text on the thread, and says undefined when it cannot: before it is started, for a tokenizer that throws, for a thread that dies with the count waiting, and after it is closed', async () => {
+    const b = make();
+    expect(await b.count('one two')).toBeUndefined();
+    let stopped = 0;
+    b.onStopped(() => (stopped += 1));
     await b.start(files('ok'));
-    expect(await b.embed('passage', ['a'])).toEqual({ ok: false, reason: 'internal' });
-    fail = false;
-    expect(await b.embed('passage', ['a'])).toMatchObject({ ok: true });
+    expect(await b.count('one two three')).toBe(3);
+    expect(await b.count('uncountable')).toBeUndefined();
+    expect(await b.count('and again'), 'the next one is served').toBe(2);
+    expect(await b.count('die')).toBeUndefined();
+    await vi.waitFor(() => expect(stopped).toBe(1));
     await b.close();
+    expect(await b.count('one two')).toBeUndefined();
   });
 
   it('rejects the start when the thread says it cannot load and when it dies before it is ready', async () => {

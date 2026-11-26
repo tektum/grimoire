@@ -89,7 +89,7 @@ export const embedderConformance: readonly EmbedderCase[] = [
     async run(h) {
       await using(h, async (e) => {
         const text = h.longText(e.model);
-        assert.ok(e.countTokens(text) > e.model.maxTokens, 'the text is over the limit');
+        assert.ok((await e.countTokens(text)) > e.model.maxTokens, 'the text is over the limit');
         const r = await e.embedPassages([text]);
         // Refused, or cut to the limit as the adapter documents; either way a vector has the dimension and norm 1.
         if (r.ok) {
@@ -146,9 +146,9 @@ export const embedderConformance: readonly EmbedderCase[] = [
       await using(h, async (e) => {
         const s = e.stats();
         assert.ok(s.threads >= 1 && s.queued >= 0 && s.chunksPerMinute >= 0);
-        assert.equal(e.countTokens(''), 0);
-        assert.ok(e.countTokens('a few words here') >= 1);
-        assert.ok(e.countTokens('a few words here and a few more words') > e.countTokens('a few'), 'more text, more tokens');
+        assert.equal(await e.countTokens(''), 0);
+        assert.ok((await e.countTokens('a few words here')) >= 1);
+        assert.ok((await e.countTokens('a few words here and a few more words')) > (await e.countTokens('a few')), 'more text, more tokens');
         assert.ok(e.model.dims > 0 && e.model.maxTokens > 0 && e.model.name !== '' && e.model.version !== '');
       });
     },
