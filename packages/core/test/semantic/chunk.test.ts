@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { ChunkRow } from '../../src/ports/embedding-store.js';
-import { chunkText } from '../../src/semantic/chunk.js';
+import { chunkText, chunkTextYielding } from '../../src/semantic/chunk.js';
 
 // One token per whitespace-separated word, as the task says.
 const words = (text: string): number => text.split(/\s+/).filter((w) => w !== '').length;
@@ -202,5 +202,34 @@ describe('chunkText', () => {
     expect(chunks.length).toBeGreaterThan(100);
     expect(counted).toBeLessThan(text.length * 30); // each piece costs a few probes of about its own size, not of the whole rest
     expect(chunks.map((c) => c.text).join('')).toBe(text);
+  });
+});
+
+describe('chunkTextYielding', () => {
+  const options = { model: MODEL };
+
+  it('gives the same chunks as chunkText, offsets and hashes included, for text with long lines, a long sentence, blank lines and an astral character', async () => {
+    const text = [sentences(30), '', `${gen(450, 'long')}`, `😀 ${sentences(8, 25)}`, '  ', gen(5, 'short'), `${'x'.repeat(3000)}`].join('\n');
+    const yielded = await chunkTextYielding(text, words, options, () => Promise.resolve());
+    expect(yielded.length).toBeGreaterThan(5);
+    expect(yielded).toEqual(chunkText(text, words, options));
+  });
+
+  it('awaits a turn between its steps, one for each line it counts and one for each chunk it makes, and the turns come while the work goes on, not after it', async () => {
+    const paragraphs = Array.from({ length: 12 }, (_, i) => gen(150, `p${String(i)}x`)).join('\n\n'); // 12 lines, 12 chunks of 150 tokens (a line is as long as the target)
+    let turns = 0;
+    let counted = 0;
+    const countedAtTurn: number[] = [];
+    const chunks = await chunkTextYielding(paragraphs, (t) => { counted += 1; return words(t); }, options, () => { turns += 1; countedAtTurn.push(counted); return Promise.resolve(); });
+    expect(chunks).toHaveLength(12);
+    expect(turns).toBe(24);
+    expect(countedAtTurn[0]).toBe(1); // the first turn comes after the first line is counted, not after all of them
+    expect(countedAtTurn[11]).toBeLessThan(counted); // and the last line step is not the end of the counting: the chunks are counted after it
+  });
+
+  it('has no chunk for a text of fewer than three tokens, after the turns for its lines', async () => {
+    let turns = 0;
+    expect(await chunkTextYielding('two words', words, options, () => { turns += 1; return Promise.resolve(); })).toEqual([]);
+    expect(turns).toBe(1);
   });
 });

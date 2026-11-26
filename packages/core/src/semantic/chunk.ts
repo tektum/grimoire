@@ -100,15 +100,22 @@ function fit(text: string, piece: Piece, max: number, count: (t: string) => numb
 }
 
 /**
- * Cuts a page's text into chunks for the embedder: the blocks are the lines (a blank line is no block), packed in order up to about `targetTokens`, a block over `maxTokens`
- * is cut at sentence ends and then at white space. The chunks cover every character that is not white space exactly once, in order, and each keeps its offsets. A text
- * of fewer than 3 tokens has no chunk. `countTokens` is the embedder's own counter; it is called once for each piece and once for each chunk, never for the whole text.
+ * The cut of a page's text into chunks as steps: a `yield` after each line has been counted and fitted and after each chunk has been made, so that a caller can give the event loop a turn
+ * between them (counting the tokens of a page of 20,000 words is 600 ms of main-thread work on a hosted runner, in one piece). The blocks are the lines (a blank line is no block), packed in
+ * order up to about `targetTokens`, a block over `maxTokens` is cut at sentence ends and then at white space. The chunks cover every character that is not white space exactly once, in order,
+ * and each keeps its offsets. A text of fewer than 3 tokens has no chunk. `countTokens` is the embedder's own counter; it is called once for each piece and once for each chunk, never for
+ * the whole text.
  */
-export function chunkText(text: string, countTokens: (text: string) => number, options: ChunkOptions): Chunk[] {
+function* chunkSteps(text: string, countTokens: (text: string) => number, options: ChunkOptions): Generator<void, Chunk[]> {
   const max = options.maxTokens ?? 400;
   const target = Math.min(options.targetTokens ?? 200, max);
-  const lines = splitAt(text, { start: 0, end: text.length, tokens: 0 }, /[\r\n]+/g, countTokens);
-  const pieces = lines.flatMap((line) => fit(text, line, max, countTokens));
+  // The lines are found without counting them: each is counted below, one step each.
+  const lines = splitAt(text, { start: 0, end: text.length, tokens: 0 }, /[\r\n]+/g, () => 0);
+  const pieces: Piece[] = [];
+  for (const line of lines) {
+    pieces.push(...fit(text, { ...line, tokens: countTokens(text.slice(line.start, line.end)) }, max, countTokens));
+    yield;
+  }
   if (pieces.reduce((sum, p) => sum + p.tokens, 0) < MIN_TOKENS) return [];
   const groups: Piece[][] = [];
   let tokens = 0;
@@ -137,7 +144,10 @@ export function chunkText(text: string, countTokens: (text: string) => number, o
     }
     chunks.push({ text: chunk, unitStart: start, unitEnd: end, tokenCount, contentHash: new Uint8Array(createHash('sha256').update(options.model).update('\0').update(chunk).digest()) });
   };
-  for (const group of groups) emit(group);
+  for (const group of groups) {
+    emit(group);
+    yield;
+  }
   // Code point offsets, in one pass over the text in order (the chunks are in order and never cut a surrogate pair).
   let unit = 0;
   let point = 0;
@@ -153,4 +163,23 @@ export function chunkText(text: string, countTokens: (text: string) => number, o
     return point;
   };
   return chunks.map((c, chunkIndex) => ({ chunkIndex, ...c, charStart: pointAt(c.unitStart), charEnd: pointAt(c.unitEnd) }));
+}
+
+/** Cuts a page's text into chunks for the embedder (see `chunkSteps`), all at once. */
+export function chunkText(text: string, countTokens: (text: string) => number, options: ChunkOptions): Chunk[] {
+  const steps = chunkSteps(text, countTokens, options);
+  let step = steps.next();
+  while (step.done !== true) step = steps.next();
+  return step.value;
+}
+
+/** The same chunks as `chunkText`, with `yieldToLoop` awaited between the steps: the caller says what a turn of its event loop is (`setImmediate`), so the cut is never one long block. */
+export async function chunkTextYielding(text: string, countTokens: (text: string) => number, options: ChunkOptions, yieldToLoop: () => Promise<void>): Promise<Chunk[]> {
+  const steps = chunkSteps(text, countTokens, options);
+  let step = steps.next();
+  while (step.done !== true) {
+    await yieldToLoop();
+    step = steps.next();
+  }
+  return step.value;
 }
