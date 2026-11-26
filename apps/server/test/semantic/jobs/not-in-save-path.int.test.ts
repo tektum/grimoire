@@ -52,7 +52,8 @@ describe('a save, while the embedder is busy', () => {
       const saves = createPageStore(db.app, db.ops, { now: () => Date.now() });
       for (const id of others) {
         const began = performance.now();
-        const outcome = await saves.store(tenant.tenantId, id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: `M ${SAVED}`, text: `${SAVED} ${id}`, epoch: 0, editedAt: Date.now() });
+        // At least three tokens: a text under `MIN_TOKENS` (3, chunk.ts) gets no chunks, so the page is `ready` with none and nothing is asked of the embedder.
+        const outcome = await saves.store(tenant.tenantId, id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: `M ${SAVED}`, text: `${SAVED} alpha beta ${id}`, epoch: 0, editedAt: Date.now() });
         expect(performance.now() - began).toBeLessThan(500);
         expect(outcome).toEqual({ written: true });
       }
