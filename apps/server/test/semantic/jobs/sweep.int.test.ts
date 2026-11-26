@@ -86,14 +86,17 @@ describe('the embed sweep, a chain of runs', () => {
     const embedder = new FakeEmbedder({ maxTokens: 512, dims: 8 });
     await start(1, createEmbeddingStore(db.app, db.ops), { embedder, debounceSeconds: 5 });
     for (let save = 0; save < 10; save++) await db.sql(`update pages set last_edited_at = now() where id = '${id}'`);
-    // Sweeps go on every second. While the page is inside its 5 s of quiet (read in the same statement, so a slow machine only makes the check weaker, never wrong), they hand nothing on.
+    // Sweeps go on every second. A job seen while the page is inside its quiet time is recorded outside the retried callback (waitFor retries on a throw, which would hide it) and asserted after.
+    const early: number[] = [];
     await vi.waitFor(async () => {
       const [row] = (await db.sql(`select (select count(*)::int from pgboss.job where name = 'embed-sweep' and state = 'completed') as sweeps,
                                           (select count(*)::int from pgboss.job where name = 'embed-page') as jobs,
                                           (now() - last_edited_at) < interval '4 seconds' as inside from pages where id = '${id}'`)) as { sweeps: number; jobs: number; inside: boolean }[];
+      if (row?.inside === true && row.jobs > 0) early.push(row.jobs);
       expect(row?.sweeps).toBeGreaterThanOrEqual(2);
-      if (row?.inside === true) expect(row.jobs).toBe(0);
+      expect(row?.inside).toBe(false); // sampled the whole quiet time, with sweeps running through it
     }, { timeout: 60_000, interval: 200 });
+    expect(early).toEqual([]); // no job was sent while the page was inside its quiet time
     await vi.waitFor(async () => {
       expect(await db.sql(`select status from page_embedding_state where page_id = '${id}'`)).toEqual([{ status: 'ready' }]);
     }, { timeout: 60_000, interval: 500 });
