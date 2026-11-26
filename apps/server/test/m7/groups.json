@@ -51,7 +51,9 @@
   },
   "security": {
     "files": [
-      "apps/server/test/security/policy-walk.test.ts"
+      "apps/server/test/security/policy-walk.test.ts",
+      "apps/server/test/security/tenant-walk.test.ts",
+      "apps/server/test/m7/operations.test.ts"
     ]
   }
 }
