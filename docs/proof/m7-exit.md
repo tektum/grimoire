@@ -1,6 +1,6 @@
 # The exit test of search and import (M7)
 
-Two things are not merged when this is written and are marked IN REVIEW: the restart scenario (#505) and the wording of the screen for the new limits (#521). Everything else is read from a run that is named.
+One thing is not merged when this is written and is marked IN REVIEW: the wording of the screen for the new limits (#521). Everything else is read from a run that is named.
 
 M7 is the search (full-text, and by meaning), the scheduled jobs, and the import of Markdown zips and of an export of Notion. This file says, for each thing the milestone promises, what proves it: the pull request, the test file or the group, the CI job and run, and the figure that run printed. A figure without a run beside it is not in this file.
 
@@ -26,7 +26,7 @@ Run 45818571461 (a dispatch of the Extended workflow for #517), job `M7 exit tes
 | hostile | 3 | 43 | PASS |
 | synthetic | 13 | 245 | PASS |
 | remote-images | 4 | 48 | PASS |
-| restart | 1 | - | PENDING at that run; it becomes a pass when #505 (in review) merges, figures below |
+| restart | 1 | - | PENDING at that run (the test was not on main yet); #505 made it a pass, figures below |
 | semantic | 22 | 86 | PASS |
 | security | 3 | 135 | PASS |
 
@@ -57,7 +57,7 @@ Run 45818571461 (a dispatch of the Extended workflow for #517), job `M7 exit tes
 |---|---|
 | Scheduled jobs: purge, upload cleanup, revision catch-up, import sweep; one waiting run for two replicas and for a restart; the failing job says why | #403, #404, #405 (schedules are a chain of sends, `stately` queues, migrate replaces a queue of another policy), #427, #450, #476. The `jobs` group of the nightly run above: 22 files, 174 tests |
 | The expiry of a run of the import is a setting that reaches the queue | #510: the queue is defined by `migrate`, so the setting is passed to it, an existing queue takes the new expiry in place, and the value is bounded at 24 hours (the limit of the job queue). `apps/server/test/migrations/import-expiry.int.test.ts` (the real `migrate` process: 900 s, then 20 s on an existing database, then 900 s), Integration 1078 of 1078 on head 00fe01f4, 3.4 s |
-| An import survives `docker kill` and `docker stop` of the application, with every page and attachment once | #505 (IN REVIEW), `apps/server/test/m7/restart.container.test.ts`, run by the `Exit test M5` job. First green run: head 95db4c60, job 139948223265, `restart.container.test.ts (2 tests) 194112ms`. `docker kill`: `{"restart":"kill","pagesDoneWhenKilled":50}`, the test took 121,251 ms (killed at 50 pages; the run is taken back after the 20 s queue expiry and the retry delay of the queue, and ends `done` with 401 pages, 8 attachments, each once). `docker stop`: `{"restart":"stop","pagesDoneWhenStopped":50,"pagesDoneAtReady":78,"statusAtReady":"running"}`, the test took 56,389 ms (the import was still `running` when the application was ready: a graceful stop ends the job and the `import-sweep` job, every minute in this test and every 5 minutes by default, R10.16, takes the import up again; it ends `done`, once). The durations are those of the whole test (import, interruption, resume, end); the test does not log the resume time alone. The importer counts 401 pages for the 400 files, with the page it makes for their folder |
+| An import survives `docker kill` and `docker stop` of the application, with every page and attachment once | #505 (merged, 6be5d74b), `apps/server/test/m7/restart.container.test.ts`, run by the `Exit test M5` job and listed in the `restart` group of `make test-m7`. Final head 8a8a3771, job 139962441752, success: `restart.container.test.ts (2 tests) 197430ms`. `docker kill`: `{"restart":"kill","pagesDoneWhenKilled":50}`, the test took 125,197 ms (killed at 50 pages; the run is taken back after the 20 s queue expiry and the retry delay of the queue, and ends `done` with 401 pages, 8 attachments, each once). `docker stop`: `{"restart":"stop","pagesDoneWhenStopped":50,"pagesDoneAtReady":75,"statusAtReady":"running"}`, the test took 54,627 ms (the import was still `running` when the application was ready: a graceful stop ends the job and the `import-sweep` job, every minute in this test and every 5 minutes by default, R10.16, takes the import up again; it ends `done`, once). The first green run, on head 95db4c60 (job 139948223265), had the same shape: 194,112 ms in all, 121,251 ms and 56,389 ms, stopped at 50 and 78 at ready. The durations are those of the whole test (import, interruption, resume, end); the test does not log the resume time alone. The importer counts 401 pages for the 400 files, with the page it makes for their folder |
 
 ### Import
 
