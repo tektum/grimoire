@@ -180,10 +180,11 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       const rows = await scoped(db, tenantId).query<PartRow>(`select ordinal::int as ordinal, s3_key, bytes::text as bytes, upload_id from import_parts where tenant_id = $1 and import_id = $2 order by ordinal`, [tenantId, importId]);
       return rows.map((r) => ({ ordinal: r.ordinal, s3Key: r.s3_key, bytes: Number(r.bytes), uploadId: r.upload_id }));
     },
+    // `for share` makes the insert wait for a `markUploaded` that is committing and look at the status again, as `writePage` does.
     async addPart(tenantId, importId, part) {
       const rows = await scoped(db, tenantId).query(
         `insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
-         select $1, $2, $3, $4, $5, $6 where exists (select 1 from imports where tenant_id = $1 and id = $2 and status = 'created')
+         select $1, $2, $3, $4, $5, $6 where exists (select 1 from imports where tenant_id = $1 and id = $2 and status = 'created' for share)
          on conflict (import_id, ordinal) do nothing returning 1`,
         [tenantId, importId, part.ordinal, part.s3Key, part.bytes, part.uploadId],
       );

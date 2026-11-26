@@ -1,3 +1,4 @@
+import { eventually } from '@tektum/grimoire-test-support/harness';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { importRepoConformance } from '@tektum/grimoire-core/testing/import-repo-conformance';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
@@ -96,5 +97,25 @@ describe('what only the database does', () => {
     await createImportRepo(t.app).addItems('legacy', made.id, [{ path: 'a.md', kind: 'page' }]);
     const rows = await t.admin.query<{ tenant_id: string }>('select tenant_id from import_items where import_id = $1', [made.id]);
     expect(rows.map((r) => r.tenant_id)).toEqual(['legacy']);
+  });
+  it('addPart waits for a markUploaded that is committing, and then adds nothing (the import is no longer created)', async () => {
+    const repo = createImportRepo(t.app);
+    const made = await repo.create('legacy', { id: '00000000-0000-4000-8000-0000000000e1', targetCollectionId: collectionId, createdBy: userId, source: 'markdown_zip', bytes: 1, s3Key: 'k/0' });
+    let held!: () => void;
+    const locked = new Promise<void>((resolve) => { held = resolve; });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const uploading = t.admin.transaction(async (tx) => {
+      await tx.query(`update imports set status = 'uploaded' where id = $1`, [made.id]);
+      held();
+      await gate;
+    });
+    await locked;
+    const adding = repo.addPart('legacy', made.id, { ordinal: 1, s3Key: 'k/1', bytes: 2, uploadId: null });
+    await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the part waits for the update');
+    release();
+    await uploading;
+    expect(await adding).toBe(false);
+    expect(await repo.parts('legacy', made.id)).toHaveLength(1);
   });
 });
