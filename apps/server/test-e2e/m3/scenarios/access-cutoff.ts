@@ -30,10 +30,18 @@ await scenario('access-cutoff', 180_000, async (t) => {
   await grant(collection, subs.demoted, 'read');
   await setRole(subs.viewer, 'viewer');
   // Each wait stamps its own close time; the bound is a few re-check intervals (5 s each) plus the time the database changes took.
-  const results = await Promise.all((([['suspended', susp], ['removed', removed], ['demoted', demoted], ['viewer', viewer]]) as [string, Peer][]).map(async ([label, p]) => {
-    const c = await firstClose(p, 40_000, `the ${label} session to be closed`);
-    return { label, reason: c.reason, ms: Date.now() - changedAt };
-  }));
+  // The four waits run together (the time of the slowest, not their sum), and when more than one runs out the failure that is reported is the first in this order, not whichever timer fired first:
+  // `Promise.all` reports the first to reject, which with four waits of one deadline is not stable, and the mutation proof (mutation.ts) names the failure it expects.
+  const settled = await Promise.allSettled(
+    (([['suspended', susp], ['removed', removed], ['demoted', demoted], ['viewer', viewer]]) as [string, Peer][]).map(async ([label, p]) => {
+      const c = await firstClose(p, 40_000, `the ${label} session to be closed`);
+      return { label, reason: c.reason, ms: Date.now() - changedAt };
+    }),
+  );
+  const results = settled.map((r) => {
+    if (r.status === 'rejected') throw r.reason;
+    return r.value;
+  });
   for (const r of results) {
     t.equal(r.reason, 'access-changed', `${r.label}: closed access-changed`);
     t.check(r.ms < 25_000, `${r.label}: closed within a few re-check intervals (${String(r.ms)} ms)`);
