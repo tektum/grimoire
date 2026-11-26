@@ -21,7 +21,8 @@ export interface Target { readonly kind: 'page' | 'attachment'; readonly itemId:
  */
 export interface ImportProfile {
   readonly source: 'markdown_zip' | 'notion_md_csv';
-  classify(entry: { readonly path: string }): ImportItemKind;
+  /** What an entry is; `lowerPaths` as for `parentPathOf` (a profile whose answer depends on the other entries reads it). */
+  classify(entry: { readonly path: string }, lowerPaths?: ReadonlySet<string>): ImportItemKind;
   titleOf(path: string, markdown: string): string;
   /**
    * The path of the folder (or page) this page goes under, or null at the top. `lowerPaths` is every path of the archive, canonical (`.` and empty segments dropped) and lower-cased: a profile whose answer depends on the
@@ -35,8 +36,13 @@ export interface ImportProfile {
    * container page), or undefined when the file is an ordinary page. `lowerPaths` as for `parentPathOf`: a folder with two candidates has one winner.
    */
   folderPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | undefined;
+  /**
+   * The folders that one page and one database of one name share (`X/` beside `X <id>.md` and `X <id2>_all.csv`), by the folder's key (canonical path, NFC, lower case): the
+   * page's and the database's paths. The engine puts a page of such a folder under the database when its title is a row of the table, else under the page (decision 167).
+   */
+  sharedFoldersOf?(pagePaths: readonly string[], lowerPaths: ReadonlySet<string>): ReadonlyMap<string, { readonly page: string; readonly database: string }>;
   /** The id a name carries, for an export that names its pages by an id (the link index then finds an item by it); a profile without such names has none. */
   idOf?(path: string): string | undefined;
-  /** A database export (a CSV) as a Markdown table; only a profile that has such exports provides it. */
-  csvToMarkdown?(rows: readonly (readonly string[])[]): string;
+  /** A database export (a CSV) as a Markdown table, or undefined when the table would be over `maxBytes`; only a profile that has such exports provides it. */
+  csvToMarkdown?(rows: readonly (readonly string[])[], maxBytes: number): string | undefined;
 }

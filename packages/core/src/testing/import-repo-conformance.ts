@@ -192,6 +192,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'a-pending-database-item-gets-its-page-id-and-url-id-too-it-becomes-a-page',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'Tasks 0123456789abcdef0123456789abcdef_all.csv', kind: 'database_csv' }, { path: 'Notes.csv', kind: 'attachment' }]);
+      const [database] = await h.repo.pending(h.tenantId, made.id, 'database_csv', 10);
+      assert.ok(typeof database?.pageId === 'string' && database.pageId !== '' && typeof database.urlId === 'string' && database.urlId !== '', 'a database item has the ids of the page it becomes');
+      const [file] = await h.repo.pending(h.tenantId, made.id, 'attachment', 10);
+      assert.deepEqual([file?.pageId, file?.urlId], [null, null]);
+    },
+  },
+  {
     name: 'an-item-can-be-added-already-skipped-or-failed',
     async run(h) {
       const made = await h.seed('running');
@@ -510,6 +521,17 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.equal(first?.pages, 2, 'the two written pages; a failed or skipped item has none');
       assert.equal(first?.batches.length, 2, 'each imported root is a batch of its own');
       assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id), { batches: [], pages: 0 }, 'a second call finds nothing left to move');
+    },
+  },
+  {
+    name: 'trash-imported-moves-a-written-database-page-too',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, [{ path: 'Tasks 0123456789abcdef0123456789abcdef_all.csv', kind: 'database_csv' }]);
+      const [database] = await h.repo.pending(h.tenantId, made.id, 'database_csv', 10);
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, database!.id, { collectionId: made.targetCollectionId }), limits, h.now)).kind, 'ok');
+      await h.seedStatus(made.id, 'cancelled');
+      assert.deepEqual(await h.repo.trashImported(h.tenantId, made.id).then((r) => r?.pages), 1, 'a database page at the root is an imported page like any other (decision 167)');
     },
   },
   {

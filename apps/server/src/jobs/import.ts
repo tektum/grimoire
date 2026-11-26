@@ -125,7 +125,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         const current = (await imports.get(tenantId, importId)) ?? record;
         const result = await passTwo({
           repo: imports, files, converter: deps.converter, profile: PROFILES[record.source], ordering: deps.ordering, reader: opened.reader, entries: opened.entries,
-          limits: { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes },
+          limits: { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes, maxTableBytes: config.import.maxTableBytes },
           pageLimits: { maxDepth: 32, maxPages: deps.maxPages ?? 10_000, maxTenantPages: config.tenantLimits.maxPages }, now,
           ...(config.files === undefined ? {} : { attachments: { maxBytes: config.files.maxBytes, allowedTypes: config.files.allowedTypes, sniff: deps.sniff } }),
           remote: { fetcher: deps.fetcher, config: config.import.remote },

@@ -20,7 +20,8 @@ export function splitName(name: string): SplitName {
  * outside code and front matter, else the file name), so the two profiles read a heading the same way.
  */
 export function titleOf(path: string, markdown: string): string {
-  const { base } = splitName(path.split('/').at(-1) ?? path);
+  // A database's `X <id>_all.csv` is titled `X`, as its `X <id>.csv` would be (M7-T08).
+  const { base } = splitName((path.split('/').at(-1) ?? path).replace(/_all(\.csv)$/i, '$1'));
   return base !== '' ? base : markdownProfile.titleOf(path, markdown);
 }
 

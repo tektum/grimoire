@@ -13,10 +13,12 @@ import { normalizePage } from './normalize.js';
 import { createRemoteBudget } from './remote-images/index.js';
 import type { RemoteImageFetcher } from './remote-images/index.js';
 import { buildLinkIndex } from './link-index.js';
+import { readCsv } from './notion/table.js';
 import type { ImportProfile, IndexedItem } from './profile.js';
 import { stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
+import { EntryAbort } from './zip-reader.js';
 import type { ZipEntry, ZipReader } from './zip-reader.js';
 
 /** What pass one reads of an entry of the archive: its place in the central directory, its name, and whether it is a directory. */
@@ -82,9 +84,9 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
     if (duplicates.has(at)) { rows.push({ path: free(e.path, e.index), kind: 'other', status: 'skipped', message: 'duplicate_path' }); return; }
     if (isIgnoredEntry(e.path, e.isDirectory)) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'ignored' }); return; }
     if (/\.zip$/i.test(e.path) && !options.allowNestedZips) { rows.push({ path: e.path, kind: 'other', status: 'skipped', message: 'nested_archive' }); return; }
-    const kind = profile.classify({ path: e.path });
+    const kind = profile.classify({ path: e.path }, lowerPaths);
     rows.push({ path: e.path, kind });
-    if (kind === 'page') pagePaths.push(e.path);
+    if (kind === 'page' || kind === 'database_csv') pagePaths.push(e.path);
   });
 
   // What pass one kept, not the raw entries: a zip it set apart (macOS litter, a bad name, a duplicate) says nothing about the archive.
@@ -94,7 +96,9 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
   // The folders that have a page of their own, and the folders above pages that have none: those get a container. Folders are the same folder by the key duplicate detection uses (NFC,
   // lower case, `.` and empty segments dropped), so `Dir` and `dir` are one; a container keeps the spelling it was first seen under.
   const key = (folder: string): string => canonical(folder).normalize('NFC').toLowerCase();
-  const hasPage = new Set(pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key));
+  // A folder that a page and a database of its name share has owners too: its pages go under one or the other (pass two, decision 167).
+  const shared = profile.sharedFoldersOf?.(pagePaths, lowerPaths)?.keys() ?? [];
+  const hasPage = new Set([...pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key), ...shared]);
   const containers = new Map<string, string>();
   for (const path of pagePaths) {
     for (let folder = profile.parentPathOf(path, lowerPaths); folder !== null && !hasPage.has(key(folder)) && !containers.has(key(folder)); ) {
@@ -136,7 +140,8 @@ export interface PassTwoDeps {
   readonly remote?: { readonly fetcher: RemoteImageFetcher | undefined; readonly config: ImportConfig['remote'] };
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
-  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number };
+  /** `maxTableBytes`: the largest Markdown table a database becomes (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES`, the contract's default when absent). */
+  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number };
   readonly pageLimits: TenantPageLimits;
   readonly now: () => number;
 }
@@ -161,6 +166,44 @@ const DEFAULT_BATCH_PAGES = 25;
 const DEFAULT_BATCH_BYTES = 8 * 1024 * 1024;
 const MAX_TITLE = 255;
 const decoder = new TextDecoder('utf-8', { fatal: true });
+
+/** The contract's largest table (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES` default) and most rows of a database's table (M7 contracts section 4). */
+const MAX_TABLE_BYTES = 262_144;
+const MAX_TABLE_ROWS = 1000;
+/** The largest record of a database's CSV (contracts section 4: `max_record_size` 1 MiB). */
+const MAX_CSV_RECORD_BYTES = 1_048_576;
+
+/**
+ * A database's CSV as the Markdown table its page holds (decision 112: a source database is a plain table on a page), or why it cannot be: the CSV cannot be read (`csv_malformed`,
+ * `csv_field_too_large`, `invalid_encoding`), or the table is over the caps (`table_too_large`: more than 1,000 rows, or more Markdown than `maxTableBytes` or the seed cap, the lower).
+ */
+function databaseTable(bytes: Buffer, profile: ImportProfile, maxTableBytes: number): { readonly ok: true; readonly markdown: string } | { readonly ok: false; readonly reason: string } {
+  if (profile.csvToMarkdown === undefined) return { ok: false, reason: 'internal' };
+  const csv = readCsv(bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES });
+  if (!csv.ok) return { ok: false, reason: csv.reason };
+  if (csv.rows.length - 1 > MAX_TABLE_ROWS) return { ok: false, reason: 'table_too_large' };
+  const markdown = profile.csvToMarkdown(csv.rows, maxTableBytes);
+  return markdown === undefined ? { ok: false, reason: 'table_too_large' } : { ok: true, markdown };
+}
+
+/** A page's text by its archive path, read up to the seed cap from the first entry of that path; undefined when it cannot be read or is not UTF-8. */
+export function pageText(reader: Pick<ZipReader, 'openEntry'>, limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number }, entries: readonly ZipEntry[]): (path: string) => Promise<string | undefined> {
+  const byPath = new Map<string, ZipEntry>();
+  for (const e of entries) if (!byPath.has(e.path)) byPath.set(e.path, e);
+  return async (path) => {
+    const entry = byPath.get(path);
+    if (entry === undefined) return undefined;
+    const read = await readEntry(reader, limits, entry, limits.seedMaxMarkdownBytes);
+    if (read.kind !== 'ok') return undefined;
+    try { return decoder.decode(read.bytes); } catch { return undefined; }
+  };
+}
+
+/** A row page that only repeats its row (decision 167): past a `# ` title line, nothing but blank lines and `Column: value` lines of its table's columns. */
+function onlyRepeatsRow(text: string, columns: ReadonlySet<string>): boolean {
+  const names = [...columns];
+  return text.split('\n').every((line, n) => (n === 0 && /^#[ \t]/.test(line)) || line.trim() === '' || names.some((c) => line.startsWith(`${c}:`)));
+}
 const segmentsOf = (path: string): string[] => path.split('/').filter((s) => s !== '' && s !== '.');
 const folderKey = (folder: string): string => segmentsOf(folder).join('/').normalize('NFC').toLowerCase();
 
@@ -198,12 +241,13 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     after = batch.at(-1)?.id;
   }
   const status = new Map(all.map((i) => [i.id, i.status]));
-  const pageItems = all.filter((i) => i.kind === 'page');
+  // A database becomes a page (its table): it is written in the tree like one.
+  const pageItems = all.filter((i) => i.kind === 'page' || i.kind === 'database_csv');
   const isContainer = (i: ImportItem): boolean => i.path.endsWith('/');
 
   // The link index: files of the archive by their canonical path (NFC, `.` and empty segments dropped), as `resolveLinkPath` makes its targets.
   const index = buildLinkIndex(
-    all.filter((i) => (i.kind === 'page' || i.kind === 'attachment') && !isContainer(i)).map((i): IndexedItem => ({ itemId: i.id, path: i.path, kind: i.kind === 'page' ? 'page' : 'attachment' })),
+    all.filter((i) => (i.kind === 'page' || i.kind === 'database_csv' || i.kind === 'attachment') && !isContainer(i)).map((i): IndexedItem => ({ itemId: i.id, path: i.path, kind: i.kind === 'attachment' ? 'attachment' : 'page' })),
     profile.idOf?.bind(profile),
   );
   const itemById = new Map(all.map((i) => [i.id, i]));
@@ -216,7 +260,61 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const folderPage = new Map<string, ImportItem>();
   for (const i of pageItems) if (!isContainer(i)) { const f = profile.folderPathOf(i.path, lowerPaths); if (f !== undefined && !folderPage.has(folderKey(f))) folderPage.set(folderKey(f), i); }
   for (const i of pageItems) if (isContainer(i) && !folderPage.has(folderKey(i.path))) folderPage.set(folderKey(i.path), i);
+  // The most Markdown a database's table may be: the table cap, or the seed cap when that is lower, as the table is seeded like any page (decision 10: the engine checks the cap,
+  // the converter never refuses it).
+  const tableCap = Math.min(deps.limits.maxTableBytes ?? MAX_TABLE_BYTES, deps.limits.seedMaxMarkdownBytes);
+  // A database's table, read once: its columns (the header) and the titles of its rows (the first column).
+  const tables = new Map<string, Promise<{ readonly columns: ReadonlySet<string>; readonly titles: ReadonlySet<string> } | undefined>>();
+  const tableOf = (db: ImportItem): Promise<{ readonly columns: ReadonlySet<string>; readonly titles: ReadonlySet<string> } | undefined> => {
+    let known = tables.get(db.id);
+    if (known === undefined) {
+      const entry = entryByPath.get(db.path);
+      // A CSV too big for any table (below) is not read for its titles either: its database fails, and its rows go under the page beside it.
+      known = entry === undefined || entry.size > 4 * tableCap ? Promise.resolve(undefined) : readEntry(deps.reader, deps.limits, entry, deps.limits.maxEntryBytes).then((read) => {
+        const csv = read.kind === 'ok' ? readCsv(read.bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES }) : undefined;
+        const [header, ...rows] = csv?.ok === true ? csv.rows : [];
+        // In one Unicode form: an export made on one system can spell a title decomposed in a file and composed in its table.
+        return header === undefined ? undefined : { columns: new Set(header.map((c) => c.trim().normalize('NFC')).filter((c) => c !== '')), titles: new Set(rows.map((r) => (r[0] ?? '').trim().normalize('NFC'))) };
+      });
+      tables.set(db.id, known);
+    }
+    return known;
+  };
+  const rowText = pageText(deps.reader, deps.limits, deps.entries);
+  // Decision 167: a folder that a page and a database of one name share holds the database's rows and the page's own pages: a page of it goes under the database when its title
+  // is a row of the table, else under the page. It is read from the archive the same way at every start, so the tree agrees with itself.
+  const rowOf = new Map<string, ImportItem>();
+  const sharedFolders = profile.sharedFoldersOf?.(pageItems.filter((i) => !isContainer(i)).map((i) => i.path), lowerPaths);
+  if (sharedFolders !== undefined && sharedFolders.size > 0) {
+    const byPath = new Map(pageItems.map((i) => [i.path, i]));
+    // The pages of each shared folder, found once.
+    const byFolder = new Map<string, ImportItem[]>();
+    for (const i of pageItems) {
+      if (isContainer(i) || i.kind !== 'page') continue;
+      const folder = folderKey(profile.parentPathOf(i.path, lowerPaths) ?? '');
+      if (!sharedFolders.has(folder)) continue;
+      const list = byFolder.get(folder);
+      if (list === undefined) byFolder.set(folder, [i]); else list.push(i);
+    }
+    for (const [folder, owners] of sharedFolders) {
+      const page = byPath.get(owners.page);
+      const db = byPath.get(owners.database);
+      if (page === undefined || db === undefined) continue;
+      folderPage.set(folder, page);
+      const titles = (await tableOf(db))?.titles;
+      if (titles === undefined) continue;
+      for (const i of byFolder.get(folder) ?? []) {
+        const text = await rowText(i.path);
+        if (text !== undefined && titles.has(profile.titleOf(i.path, text).trim().normalize('NFC'))) rowOf.set(i.id, db);
+      }
+    }
+  }
+  const tableShown = (db: ImportItem): boolean => status.get(db.id) === 'ok' || status.get(db.id) === 'pending';
   const parentOf = (i: ImportItem): ImportItem | undefined => {
+    const row = rowOf.get(i.id);
+    // A row goes under its database while the table is, or is still to be, written; a database that failed shows no table, so its rows go under the page that shares the
+    // folder, as the folder's other pages do (decision 167). The database comes before its rows, so it has settled when a row is written.
+    if (row !== undefined && tableShown(row)) return row;
     const folder = isContainer(i) ? segmentsOf(i.path).slice(0, -1).join('/') : profile.parentPathOf(i.path, lowerPaths);
     if (folder === null || folder === '') return undefined;
     const parent = folderPage.get(folderKey(folder));
@@ -233,6 +331,32 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     return depth;
   };
 
+  // Decision 167: a database's row page that only repeats its row (its title, then `Column: value` lines of the table's columns, and no page under it) is no page of its own: it is
+  // skipped `database_row`, and a link to it opens the database's page. That is read from the archive, the same whenever it is asked, so a page written before the row is dealt
+  // with links to the right page; and it holds only while the database's page is, or is still to be, written: a database that failed shows no table, so its rows are kept as pages.
+  const hasChildren = new Set<string>();
+  for (const i of pageItems) { const p = parentOf(i); if (p !== undefined) hasChildren.add(p.id); }
+  const databaseOf = (i: ImportItem): ImportItem | undefined => {
+    if (i.kind !== 'page' || isContainer(i) || hasChildren.has(i.id)) return undefined;
+    const parent = parentOf(i);
+    return parent?.kind === 'database_csv' ? parent : undefined;
+  };
+  const repeatsRow = new Map<string, boolean>();
+  for (const i of all) if (i.status === 'skipped' && i.message === 'database_row') repeatsRow.set(i.id, true);
+  const rowIsBare = async (i: ImportItem, text?: string): Promise<boolean> => {
+    const db = databaseOf(i);
+    if (db === undefined || !tableShown(db)) return false;
+    let known = repeatsRow.get(i.id);
+    if (known === undefined) {
+      const source = text ?? (await rowText(i.path));
+      const names = (await tableOf(db))?.columns;
+      known = source !== undefined && names !== undefined && onlyRepeatsRow(source.normalize('NFC'), names);
+      repeatsRow.set(i.id, known);
+    }
+    return known;
+  };
+  const hasDatabases = pageItems.some((i) => i.kind === 'database_csv');
+
   // The import's budget of remote images: the copies made so far are kept in the counts, so a resumed run goes on from them (the time starts again with each run).
   const budget = deps.remote === undefined ? undefined : { ...createRemoteBudget({ remote: deps.remote.config }), taken: record.counts.remote ?? 0 };
   const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -242,7 +366,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     let pagesDone = 0, attachments = 0, skipped = 0, failed = 0;
     for (const i of all) {
       const s = status.get(i.id);
-      if (s === 'ok' && i.kind === 'page') pagesDone++;
+      if (s === 'ok' && (i.kind === 'page' || i.kind === 'database_csv')) pagesDone++;
       else if (s === 'ok' && i.kind === 'attachment') attachments++;
       else if (s === 'skipped') skipped++;
       else if (s === 'failed') failed++;
@@ -288,12 +412,40 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     } else {
       const entry = entryByPath.get(item.path);
       if (entry === undefined) { await settle(item, 'failed', 'missing_entry'); return { bytes: 0 }; }
-      const read = await readEntry(deps.reader, deps.limits, entry, deps.limits.seedMaxMarkdownBytes);
-      if (read.kind === 'too_large') { await settle(item, 'skipped', 'too_large', { markdownBytes: entry.size }); return { bytes: 0 }; }
+      const database = item.kind === 'database_csv';
+      // A table has at least half the bytes of its CSV (a quoted `""` is the one character it stands for; any other byte of a CSV is a byte of the table, or more), so a CSV over four
+      // times the cap makes no table under it: it is refused before it is read as a table, and kept as it is, streamed (decision 168). An entry that lies about its size, or expands
+      // too far, is not kept: its reason is the item's, as for any entry.
+      if (database && entry.size > 4 * tableCap) {
+        try {
+          await deps.files.put(importFailedKey(tenantId, importId, item.id), await deps.reader.openEntry(entry, deps.limits), { size: entry.size, contentType: 'text/csv' });
+        } catch (e) {
+          if (!(e instanceof EntryAbort)) throw e;
+          await settle(item, 'failed', e.reason === 'entry_too_large' ? 'table_too_large' : e.reason);
+          return { bytes: 0 };
+        }
+        await settle(item, 'failed', 'table_too_large');
+        return { bytes: 0 };
+      }
+      // A database's CSV is read whole (its rows decide the table); a page's Markdown up to the seed cap.
+      const read = await readEntry(deps.reader, deps.limits, entry, database ? 4 * tableCap : deps.limits.seedMaxMarkdownBytes);
+      if (read.kind === 'too_large') { await settle(item, database ? 'failed' : 'skipped', database ? 'table_too_large' : 'too_large', { markdownBytes: entry.size }); return { bytes: 0 }; }
       if (read.kind === 'failed') { await settle(item, 'failed', read.reason); return { bytes: 0 }; }
       original = read.bytes;
-      try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
-      markdown = profile.preprocess(titleSource, { path: item.path });
+      if (database) {
+        const table = databaseTable(read.bytes, profile, tableCap);
+        if (!table.ok) {
+          // Decision 168: the CSV is kept, as a failed page's Markdown is, for the person to download from the report.
+          await deps.files.put(importFailedKey(tenantId, importId, item.id), read.bytes, { size: read.bytes.length, contentType: 'text/csv' });
+          await settle(item, 'failed', table.reason);
+          return { bytes: read.bytes.length };
+        }
+        markdown = table.markdown;
+      } else {
+        try { titleSource = decoder.decode(read.bytes); } catch { await settle(item, 'failed', 'invalid_encoding', { markdownBytes: read.bytes.length }); return { bytes: read.bytes.length }; }
+        if (await rowIsBare(item, titleSource)) { await settle(item, 'skipped', 'database_row'); return { bytes: read.bytes.length }; }
+        markdown = profile.preprocess(titleSource, { path: item.path });
+      }
       name = profile.titleOf(item.path, titleSource);
     }
     const { title, cut } = cutTitle(name);
@@ -330,12 +482,26 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
         }
       }
     }
+    // The rows this page links to are known before the rewrite, which cannot wait: a link to a row that only repeats its row opens its database's page (decision 167).
+    if (hasDatabases) {
+      const rows: ImportItem[] = [];
+      rewriteMarkdown(markdown, (target) => {
+        const found = profile.resolveLink(target, item.path, index);
+        const linked = found?.kind === 'page' ? itemById.get(found.itemId) : undefined;
+        if (linked !== undefined && databaseOf(linked) !== undefined) rows.push(linked);
+        return undefined;
+      });
+      for (const row of rows) await rowIsBare(row);
+    }
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
       const found = profile.resolveLink(target, item.path, index);
       if (found === undefined) return undefined;
       if (found.kind === 'attachment') { const file = staged.get(found.itemId); return file === undefined ? undefined : { kind: 'file', url: file.url }; }
       if (kind === 'image') return undefined; // an image that is a page is nothing to point at
-      const targetItem = itemById.get(found.itemId);
+      const linked = itemById.get(found.itemId);
+      // A link to a row that only repeats its row opens its database's page, while that page is, or is still to be, written (decision 167).
+      const db = linked === undefined || repeatsRow.get(linked.id) !== true ? undefined : databaseOf(linked);
+      const targetItem = db !== undefined && tableShown(db) ? db : linked;
       return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
     }, (url) => copied.get(url)?.url);
     own += rewritten.unresolved.length;
