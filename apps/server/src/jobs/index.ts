@@ -87,6 +87,10 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
       throw e;
     }
   };
+  // Without a file store there is no multipart upload to end.
+  const abortUpload = async (key: string, uploadId: string): Promise<void> => {
+    await deps.files?.abortMultipart(key, uploadId);
+  };
   const sweep = createMarkdownSweep({ pages: deps.pages, converter: deps.converter, now: () => clock.now(), onConvertFailure: (pageId, reason) => log.warn('markdown_sweep.convert_failed', { pageId, reason }) });
   return [
     // The import job (M7-T04) reads its zip from the file store: without one no import can be created, and the stub refuses a stray job rather than dropping it.
@@ -114,12 +118,12 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
           );
           if ('count' in sources) log.info('import.sources_cleaned', { count: sources.count });
           // The safety net: a cleanup that was never enqueued or never ran is made up for here.
-          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent, now: () => clock.now() }, ctx.signal));
+          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, abortUpload, zipPresent, now: () => clock.now() }, ctx.signal));
           if ('error' in sources) throw sources.error;
           return;
         }
         if (!isImportPayload(payload)) return; // an id of the wrong shape names no import
-        const done = await runImportCleanup({ imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent }, payload);
+        const done = await runImportCleanup({ imports: deps.imports, deleteFiles: deps.deleteFiles, abortUpload, zipPresent }, payload);
         if (done !== undefined) log.info('import.cleaned', { importId: payload.importId, pages: done.pages, zip: done.zip });
       },
     },

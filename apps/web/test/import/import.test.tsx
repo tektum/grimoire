@@ -85,7 +85,7 @@ function fake(options: Options = {}) {
         const c = nth(options.create, creates++, { status: 201 });
         return answer(
           c.status,
-          { id: 'imp1', upload: { method: 'PUT', url: 'https://files.test/imports/imp1.zip?sig=x', headers: { 'content-type': 'application/zip', 'if-none-match': '*' }, expiresAt: '2026-11-20T11:00:00Z' } },
+          { id: 'imp1', uploads: [{ index: 0, upload: { kind: 'single', method: 'PUT', url: 'https://files.test/imports/imp1.zip?sig=x', headers: { 'content-type': 'application/zip', 'if-none-match': '*' }, expiresAt: '2026-11-20T11:00:00Z' } }] },
           c.code,
         );
       }
@@ -185,7 +185,7 @@ describe('the import screen', () => {
     await userEvent.selectOptions(screen.getByLabelText('Into the collection'), 'c3');
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
-    expect(t.bodies).toEqual([{ collectionId: 'c3', fileName: 'export.zip', size: 1234, profile: 'markdown_zip' }]);
+    expect(t.bodies).toEqual([{ collectionId: 'c3', files: [{ fileName: 'export.zip', size: 1234 }], profile: 'markdown_zip' }]);
     expect(put).toHaveBeenCalledTimes(1);
     const [url, init] = put.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://files.test/imports/imp1.zip?sig=x');
@@ -219,7 +219,7 @@ describe('the import screen', () => {
     await choose(NOTION);
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
-    expect(t.bodies).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: 1234, profile: 'notion_md_csv' }]);
+    expect(t.bodies).toEqual([{ collectionId: 'c1', files: [{ fileName: 'export.zip', size: 1234 }], profile: 'notion_md_csv' }]);
   });
 
   it('does not go on with the import it made for the other choice: a changed choice makes a new import, with the new profile', async () => {
@@ -300,7 +300,7 @@ describe('the import screen', () => {
         if (path !== '/v1/imports') return create(path, init);
         made += 1;
         return {
-          data: { id: `imp${String(made)}`, upload: { method: 'PUT', url: `https://files.test/imports/imp${String(made)}.zip`, headers: {}, expiresAt: '2026-11-20T11:00:00Z' } },
+          data: { id: `imp${String(made)}`, uploads: [{ index: 0, upload: { kind: 'single', method: 'PUT', url: `https://files.test/imports/imp${String(made)}.zip`, headers: {}, expiresAt: '2026-11-20T11:00:00Z' } }] },
           response: new Response(null, { status: 201 }),
         };
       };
@@ -766,7 +766,7 @@ describe('one message for a refusal', () => {
         if (request.method === 'PUT') return new Response(null, { status: 200 });
         if (pathname === '/v1/me') return json(200, { id: 'u', name: 'Alice', email: 'a@x', role: 'member' });
         if (pathname === '/v1/collections') return json(200, { items: COLLECTIONS });
-        if (pathname === '/v1/imports') return json(201, { id: 'imp1', upload: { method: 'PUT', url: 'https://files.test/z', headers: {}, expiresAt: 'x' } });
+        if (pathname === '/v1/imports') return json(201, { id: 'imp1', uploads: [{ index: 0, upload: { kind: 'single', method: 'PUT', url: 'https://files.test/z', headers: {}, expiresAt: 'x' } }] });
         if (pathname.endsWith('/start')) return json(422, { error: { code: 'not_a_zip', message: 'No' } });
         return json(404, {});
       }),

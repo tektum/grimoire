@@ -24,14 +24,17 @@ const codeOf = async (res: Response): Promise<string> => {
 };
 
 describe('the routes of milestone 7 are walked', () => {
-  it('names the search and import operations of the document, seven of them (search, create, get, items, source, cancel, start)', () => {
+  it('names the search and import operations of the document, ten of them (search, create, get, items, source, cancel, start, abort, the parts of a file and the addresses of its parts)', () => {
     expect(ops.filter(OF_THE_WALK).map((o) => o.key)).toEqual([
       'GET /v1/imports/{id}',
       'GET /v1/imports/{id}/items',
       'GET /v1/imports/{id}/items/{itemId}/source',
+      'GET /v1/imports/{id}/parts/{index}',
       'GET /v1/search',
       'POST /v1/imports',
+      'POST /v1/imports/{id}/abort',
       'POST /v1/imports/{id}/cancel',
+      'POST /v1/imports/{id}/parts/{index}/urls',
       'POST /v1/imports/{id}/start',
     ]);
   });

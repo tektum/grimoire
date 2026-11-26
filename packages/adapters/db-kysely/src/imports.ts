@@ -171,14 +171,19 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
 
     // What the routes use.
     async create(tenantId, row) {
-      // The first zip is part 0, in the same statement as the import.
+      const first = row.parts[0];
+      if (first === undefined) throw new Error('an import has at least one zip');
+      // The zips are parts 0 to n-1, in the same statement as the import: the import holds their total and the first one's key.
       const rows = await scoped(db, tenantId).query<ImportRow>(
         `with i as (
            insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
            returning ${IMPORT_COLUMNS}
-         ), p as (insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes) select $2, $1, 0, $6, $7 returning 1)
+         ), p as (
+           insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
+           select $2, $1, t.n - 1, t.s3_key, t.bytes, t.upload_id from unnest($8::text[], $9::bigint[], $10::text[]) with ordinality as t(s3_key, bytes, upload_id, n) returning 1
+         )
          select * from i`,
-        [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, row.s3Key, row.bytes],
+        [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, first.s3Key, row.parts.reduce((sum, p) => sum + p.bytes, 0), row.parts.map((p) => p.s3Key), row.parts.map((p) => p.bytes), row.parts.map((p) => p.uploadId)],
       );
       return record(rows[0] as ImportRow);
     },
@@ -274,6 +279,14 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       const rows = await scoped(db, tenantId).query(
         `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
          where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`,
+        [tenantId, id, now],
+      );
+      return rows.length === 1;
+    },
+    async abort(tenantId, id, now) {
+      const rows = await scoped(db, tenantId).query(
+        `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
+         where tenant_id = $1 and id = $2 and status = 'created' returning 1`,
         [tenantId, id, now],
       );
       return rows.length === 1;

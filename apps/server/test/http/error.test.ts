@@ -13,7 +13,7 @@ const table: [ErrorCode, number][] = [
   ['forbidden', 403], ['account_suspended', 403], ['not_allowed', 403],
   ['not_found', 404],
   ['conflict', 409], ['would_create_cycle', 409], ['too_deep', 409], ['collection_full', 409], ['collection_deleted', 409],
-  ['last_admin', 409], ['name_taken', 409], ['save_failed', 409], ['markdown_stale', 409], ['upload_missing', 409], ['size_mismatch', 409], ['already_started', 409], ['not_running', 409], ['tenant_pages_full', 409],
+  ['last_admin', 409], ['name_taken', 409], ['save_failed', 409], ['markdown_stale', 409], ['upload_missing', 409], ['size_mismatch', 409], ['part_missing', 409], ['already_started', 409], ['not_running', 409], ['tenant_pages_full', 409],
   ['too_large', 413],
   ['invalid', 422], ['type_not_allowed', 422], ['type_mismatch', 422], ['not_a_zip', 422],
   ['client_too_old', 426],

@@ -24,6 +24,7 @@ function world() {
         deleted.push(...keys);
         return Promise.resolve();
       },
+      abortUpload: () => Promise.resolve(),
       zipPresent: (key: string) => Promise.resolve(!deleted.includes(key)),
       now: () => NOW,
     },

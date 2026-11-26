@@ -18,6 +18,7 @@ GET /v1/groups/{id}/members | op:listGroupMembers | policy:admin | path:id:strin
 GET /v1/imports/{id} | op:getImport | policy:import:id:creator-or-admin | path:id:string<uuid> | query:- | req:- | res:200:ImportState | rate:- | idem:no
 GET /v1/imports/{id}/items | op:listImportItems | policy:import:id:creator-or-admin | path:id:string<uuid> | query:cursor?:string(..1024),limit?:integer(1..100)=50 | req:- | res:200:ImportItems | rate:- | idem:no
 GET /v1/imports/{id}/items/{itemId}/source | op:getImportItemSource | policy:import:id:creator-or-admin | path:id:string<uuid>,itemId:string/^[0-9]{1,18}$/ | query:- | req:- | res:200:ImportSource | rate:- | idem:no
+GET /v1/imports/{id}/parts/{index} | op:listImportParts | policy:import:id:creator | path:id:string<uuid>,index:string/^[0-9]{1,3}$/ | query:- | req:- | res:200:ImportPartList,409:{error:{code:string,message:string}} | rate:- | idem:no
 GET /v1/me | op:getMe | policy:authenticated:true | path:- | query:- | req:- | res:200:Me | rate:- | idem:no
 GET /v1/pages/by-url-id/{urlId} | op:getPageByUrlId | policy:page:read:urlId | path:urlId:string(1..64) | query:- | req:- | res:200:Page | rate:- | idem:no
 GET /v1/pages/{id} | op:getPage | policy:page:read:id | path:id:string<uuid> | query:- | req:- | res:200:Page | rate:- | idem:no
@@ -37,7 +38,9 @@ POST /v1/attachments/{id}/complete | op:completeAttachment | policy:uploader:id 
 POST /v1/collections | op:createCollection | policy:admin | path:- | query:- | req:CreateCollection | res:201:Collection | rate:- | idem:yes
 POST /v1/groups | op:createGroup | policy:admin | path:- | query:- | req:GroupName | res:201:Group,409:{error:{code:string,message:string}} | rate:- | idem:yes
 POST /v1/imports | op:createImport | policy:collection-body:collectionId:write | path:- | query:- | req:CreateImport | res:201:ImportCreated,413:{error:{code:string,message:string}} | rate:10/3600s | idem:no
+POST /v1/imports/{id}/abort | op:abortImport | policy:import:id:creator | path:id:string<uuid> | query:- | req:- | res:200:ImportState,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/imports/{id}/cancel | op:cancelImport | policy:import:id:creator-or-admin | path:id:string<uuid> | query:- | req:- | res:200:ImportState,409:{error:{code:string,message:string}} | rate:- | idem:no
+POST /v1/imports/{id}/parts/{index}/urls | op:createImportPartUrls | policy:import:id:creator | path:id:string<uuid>,index:string/^[0-9]{1,3}$/ | query:- | req:ImportPartUrlsRequest | res:200:ImportPartUrls,409:{error:{code:string,message:string}} | rate:120/3600s | idem:no
 POST /v1/imports/{id}/start | op:startImport | policy:import:id:creator | path:id:string<uuid> | query:- | req:- | res:202:ImportStarted,409:{error:{code:string,message:string}} | rate:- | idem:no
 POST /v1/pages | op:createPage | policy:collection-body:collectionId:write | path:- | query:- | req:CreatePage | res:201:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:yes
 POST /v1/pages/{id}/move | op:movePage | policy:page:write:id | path:id:string<uuid> | query:- | req:MovePage | res:200:PageMeta,409:{error:{code:string,message:string}} | rate:- | idem:no
@@ -62,7 +65,7 @@ schema CollectionAccessEntry = {id:string<uuid>,name:string,permission:read|read
 schema CollectionTreePage = {icon:string|null,id:string<uuid>,parentId:string<uuid>|null,position:string,title:string,urlId:string}
 schema CreateAttachment = {contentType:string(1..255),fileName:string(1..1024),pageId:string<uuid>,size:number}!
 schema CreateCollection = {color?:string(..64),defaultPermission?:read|read_write,description?:string(..2000),icon?:string(..64),name:string(1..100)}!
-schema CreateImport = {collectionId:string<uuid>,fileName:string(1..1024),profile?:markdown_zip|notion_md_csv,size:integer(0..)(exclusive min)}!
+schema CreateImport = {collectionId:string<uuid>,files:{fileName:string(1..1024),size:integer(0..)(exclusive min)}![](1..1),profile?:markdown_zip|notion_md_csv}!
 schema CreatePage = {afterId?:string<uuid>,beforeId?:string<uuid>,collectionId:string<uuid>,markdown?:string,parentId?:string<uuid>|null,title?:string(1..255)}!
 schema Error = {error:{code:string,message:string}}
 schema GrantCollectionAccess = {permission:read|read_write,principalId:string<uuid>,principalType:user|group}!
@@ -71,13 +74,16 @@ schema GroupList = {items:Group[]}
 schema GroupMembers = {items:AdminUser[]}
 schema GroupName = {name:string(1..100)}!
 schema ImportConstructReport = {constructs:{capped:boolean,count:integer,fate:converted|dropped|kept,kind:callout|toggle|front_matter|icon_cover|page_mention|unresolved_link|raw_html|database_table|database_row,pages:{itemId:string,path:string,urlId:string|null}[](..100)}[],rawHtmlCapped:boolean,rawHtmlPages:{fragments:integer,itemId:string,path:string,urlId:string|null}[](..100)}
-schema ImportCreated = {id:string<uuid>,upload:ImportUpload}
+schema ImportCreated = {id:string<uuid>,uploads:{index:integer,upload:ImportUpload}[]}
 schema ImportItem = {hasSource:boolean,id:string,kind:page|attachment|database_csv|other,markdownBytes:integer|null,message:string|null,pageId:string<uuid>|null,path:string,remoteImageFailures:{*:integer},stateBytes:integer|null,status:ok|skipped|failed}
 schema ImportItems = {items:ImportItem[],nextCursor:string|null}
+schema ImportPartList = {partCount:integer,partSize:integer,parts:{partNumber:integer,size:integer}[]}
+schema ImportPartUrls = {urls:{expiresAt:string,headers:{*:string},method:PUT,partNumber:integer,url:string}[]}
+schema ImportPartUrlsRequest = {partNumbers:integer(1..10000)[](1..50)}!
 schema ImportSource = {expiresAt:string,url:string}
 schema ImportStarted = {status:uploaded}
 schema ImportState = {counts:{attachments:integer,failed:integer,pagesDone:integer,pagesTotal:integer,skipped:integer},error:string|null,finishedAt:string|null,report:ImportConstructReport,startedAt:string|null,status:created|uploaded|running|done|failed|cancelled}
-schema ImportUpload = {expiresAt:string,headers:{*:string},method:PUT,url:string}
+schema ImportUpload = {expiresAt:string,headers:{*:string},kind:single,method:PUT,url:string}|{kind:multipart,partCount:integer,partSize:integer}
 schema Me = {email:string,id:string,name:string,role:admin|member|viewer}
 schema MovePage = {afterId?:string<uuid>|null,beforeId?:string<uuid>|null,collectionId?:string<uuid>,parentId:string<uuid>|null}!
 schema Page = PageMeta&{breadcrumb:{id:string<uuid>,title:string}[],markdownStale:boolean,markdownStaleSince:number|null,myPermission:read-write|read-only}

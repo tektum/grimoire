@@ -122,6 +122,8 @@ export interface ImportConfig {
   readonly remote: { readonly maxImages: number; readonly maxBytes: number; readonly timeoutSeconds: number; readonly totalSeconds: number };
   /** Workers of the `import` queue. */
   readonly concurrency: number;
+  /** From which size a zip goes up in parts, and how big a part is. No setting fills it: the server's own sizes apply (4 GiB, 64 MiB) unless a test or a later setting gives others. */
+  readonly uploadSizing?: { readonly singleMaxBytes: number; readonly partBytes: number };
 }
 
 /** The job queue's expiries and schedules (cron is UTC, five fields). */

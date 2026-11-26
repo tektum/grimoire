@@ -21,10 +21,11 @@ function watchStore(page: Page): { readonly seen: string[] } {
     const url = new URL(response.url());
     if (response.request().method() === 'POST' && url.pathname === '/v1/imports') {
       void response.json().then(
-        (body: { upload?: { url?: string; method?: string; headers?: Record<string, string> } }) => {
-          const target = body.upload?.url === undefined ? undefined : new URL(body.upload.url);
+        (body: { uploads?: { upload?: { url?: string; method?: string; headers?: Record<string, string> } }[] }) => {
+          const upload = body.uploads?.[0]?.upload;
+          const target = upload?.url === undefined ? undefined : new URL(upload.url);
           seen.push(
-            `create -> ${String(response.status())} upload ${body.upload?.method ?? '?'} ${target === undefined ? '?' : target.origin + target.pathname.replace(/[0-9a-f-]{36}/g, '<id>')} headers ${Object.keys(body.upload?.headers ?? {}).join(',')}`,
+            `create -> ${String(response.status())} upload ${upload?.method ?? '?'} ${target === undefined ? '?' : target.origin + target.pathname.replace(/[0-9a-f-]{36}/g, '<id>')} headers ${Object.keys(upload?.headers ?? {}).join(',')}`,
           );
         },
         () => seen.push('create -> not JSON'),

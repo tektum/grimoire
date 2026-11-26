@@ -40,7 +40,15 @@ const okOr = (step: ImportError['step'], { data, error, response }: Reply): unkn
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const STATUSES: readonly unknown[] = ['created', 'uploaded', 'running', 'done', 'failed', 'cancelled'];
-const isCreated = (v: unknown): v is CreatedImport => isObject(v) && typeof v.id === 'string' && isObject(v.upload) && v.upload.method === 'PUT' && typeof v.upload.url === 'string' && isObject(v.upload.headers);
+/** The answer of the create: the import and, for each file, where to send it. This screen sends one file under the size that goes up in parts, so it reads one signed PUT; the upload in parts has its own screen work. */
+type CreatedAnswer = { id: string; uploads: [{ upload: CreatedImport['upload'] }] };
+const isCreated = (v: unknown): v is CreatedAnswer => {
+  if (!isObject(v) || typeof v.id !== 'string' || !Array.isArray(v.uploads) || v.uploads.length !== 1) return false;
+  const first: unknown = v.uploads[0];
+  if (!isObject(first) || !isObject(first.upload)) return false;
+  const { upload } = first;
+  return upload.kind === 'single' && upload.method === 'PUT' && typeof upload.url === 'string' && isObject(upload.headers);
+};
 const isState = (v: unknown): v is ImportState =>
   isObject(v) && STATUSES.includes(v.status) && isObject(v.counts) && ['pagesTotal', 'pagesDone', 'skipped', 'failed'].every((k) => typeof (v.counts as Record<string, unknown>)[k] === 'number');
 const isItems = (v: unknown): v is ImportItems =>
@@ -66,9 +74,23 @@ function shaped<T>(step: ImportError['step'], value: unknown, is: (v: unknown) =
 /** What is in the zip, which says how it is read (R6.39): an export of Notion, or Markdown files. The person says which; nothing is guessed from the file. */
 export type ImportProfile = 'notion_md_csv' | 'markdown_zip';
 
-/** Makes the import (R6.39): the zip is not sent yet. */
+/**
+ * Makes the import (R6.39): the zip is not sent yet. An answer for a file that goes up in parts is one this screen cannot send yet: the import the API made for it is given up (R6.58), so that
+ * nothing stays open to be cleaned up a day later, and the create fails.
+ */
 export async function createImport(api: ApiLike, body: { collectionId: string; fileName: string; size: number; profile: ImportProfile }): Promise<CreatedImport> {
-  return shaped('create', okOr('create', await api.POST('/v1/imports' as never, { body } as never)), isCreated);
+  const { fileName, size, ...rest } = body;
+  const made = okOr('create', await api.POST('/v1/imports' as never, { body: { ...rest, files: [{ fileName, size }] } } as never));
+  if (!isCreated(made)) {
+    if (isObject(made) && typeof made.id === 'string') await abortImport(api, made.id).catch(() => undefined);
+    throw new ImportError('create', 200, undefined);
+  }
+  return { id: made.id, upload: made.uploads[0].upload };
+}
+
+/** Gives up an import whose zip was not started (R6.58): the cleanup deletes what was made for it. */
+async function abortImport(api: ApiLike, id: string): Promise<void> {
+  okOr('cancel', await api.POST('/v1/imports/{id}/abort' as never, { params: { path: { id } } } as never));
 }
 
 /** PUTs the zip where the API said, with the headers it said (they are part of what the signature covers). A network failure is a status 0. */

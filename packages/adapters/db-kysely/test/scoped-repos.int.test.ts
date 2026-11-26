@@ -202,7 +202,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     search: (tn) => embeddings().search(tn, vector, { model: 'guard', collectionIds: [s.collection], limit: 10, minSimilarity: 0 }),
   },
   imports: {
-    create: (tn) => imports().create(tn, { id: s.importId, targetCollectionId: s.collection, createdBy: s.boss, source: 'markdown_zip', bytes: 1, s3Key: `tenants/${tn}/imports/${s.importId}` }),
+    create: (tn) => imports().create(tn, { id: s.importId, targetCollectionId: s.collection, createdBy: s.boss, source: 'markdown_zip', parts: [{ s3Key: `tenants/${tn}/imports/${s.importId}`, bytes: 1, uploadId: null }] }),
     markUploaded: (tn) => imports().markUploaded(tn, s.importId),
     parts: (tn) => imports().parts(tn, s.importId),
     addPart: (tn) => imports().addPart(tn, s.importId, { ordinal: 5, s3Key: `tenants/${tn}/imports/${s.importId}/5`, bytes: 1, uploadId: null }),
@@ -224,6 +224,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     running: (tn) => imports().running(tn),
     stale: (tn) => imports().stale(tn, Date.now(), 10),
     abandon: (tn) => imports().abandon(tn, s.importId, Date.now()),
+    abort: (tn) => imports().abort(tn, s.importId, Date.now()),
     trashImported: (tn) => imports().trashImported(tn, s.importId),
   },
   search: {

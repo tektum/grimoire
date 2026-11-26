@@ -126,15 +126,20 @@ export async function buildWorld(options: { outsider?: boolean } = {}) {
     await files.put(importFailedKey('legacy', id, pending!.id), new Uint8Array([35, 32]), { size: 2, contentType: 'text/markdown' });
     items[id] = pending!.id;
   }
-  /** The state an import must be in for an operation to be able to succeed: a start needs one that waits (and no other running), a cancel one that runs, the rest one that has ended. */
+  /** The state an import must be in for an operation to be able to succeed: a start, an abort or the routes of a file's parts need one that was not started (the last also a file that goes up in parts, its upload open), a cancel one that runs, the rest one that has ended. */
   const prepareImport = async (op: Operation, hidden: boolean): Promise<void> => {
     if (!op.path.startsWith('/v1/imports/')) return;
     const id = hidden ? importRows.hiddenImport : importRows.import;
-    const status = op.path.endsWith('/start') ? 'created' : op.path.endsWith('/cancel') ? 'running' : 'done';
+    const inParts = op.path.includes('/parts/');
+    const status = op.path.endsWith('/start') || op.path.endsWith('/abort') || inParts ? 'created' : op.path.endsWith('/cancel') ? 'running' : 'done';
     const row = await imports.get('legacy', id);
     imports.seed({ ...(row as NonNullable<typeof row>), status });
+    if (inParts) {
+      const key = importZipKey('legacy', id);
+      await imports.addPart('legacy', id, { ordinal: 0, s3Key: key, bytes: ZIP_BYTES.length, uploadId: (await files.createMultipart(key, { contentType: 'application/zip' })).uploadId });
+    }
   };
-  const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 } });
+  const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 }, import: { uploadSizing: { singleMaxBytes: 1, partBytes: 5 * 1024 * 1024 } } });
   // Search: a hit in each tenant, so that a search of the wrong tenant, or of a collection that is not the caller's, returns something to be refused.
   const search = new FakeSearchRepo();
   const hit = { urlId: 'u', title: 'x', snippet: { text: '', ranges: [] as [number, number][] }, partial: false, updatedAt: 1, rank: 1 };
@@ -204,6 +209,7 @@ function pathWithoutQuery(op: Operation, w: WorldBuilt, hidden: boolean): string
       case 'urlId': return hidden ? i.hiddenUrlId : i.urlId;
       case 'rid': return i.revision;
       case 'itemId': return hidden ? i.hiddenItem : i.item;
+      case 'index': return '0';
       case 'entryId': return i.entry;
       case 'userId': return USER_ID.member;
       default: throw new Error(`no value for the path parameter ${name} of ${op.key}`);
