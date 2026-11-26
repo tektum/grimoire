@@ -168,11 +168,11 @@ export const CONSTRUCT_NAME: Record<ConstructKind, string> = {
   toggle: 'Toggles',
   page_mention: 'Mentions of other pages',
   database_table: 'Database tables',
-  front_matter: 'Properties at the top of a file',
+  front_matter: 'Front matter (properties at the top of a file)',
   icon_cover: 'Icons and cover images',
-  database_row: 'Rows of a database',
+  database_row: 'Rows that only repeat their table',
   unresolved_link: 'Links to pages that are not in the zip',
-  raw_html: 'HTML',
+  raw_html: 'HTML left in pages',
 };
 
 /** What became of each kind, with the word that says it first (Converted, Left out, Kept as written): the fate is never told by a colour alone. */
@@ -180,11 +180,11 @@ export const CONSTRUCT_EFFECT: Record<ConstructKind, string> = {
   callout: 'Converted.',
   toggle: 'Converted.',
   page_mention: 'Converted: each now links to the imported page.',
-  database_table: 'Converted: each is now a table in a page.',
+  database_table: 'Converted: each is now a table, and its rows with text of their own are pages under it.',
   front_matter: 'Left out: the properties at the top of a file are not imported.',
   icon_cover: 'Left out: icons and cover images are not imported.',
-  database_row: 'Left out: the rows of a database are not imported as pages.',
-  unresolved_link: 'Kept as written: nothing in the zip matched, so the link points nowhere.',
+  database_row: 'Left out: the table already shows what these pages said. A link to one opens the page of the table.',
+  unresolved_link: "Kept as written: no file in the zip matched the link's target.",
   raw_html: 'Kept as written: the page still holds the HTML.',
 };
 

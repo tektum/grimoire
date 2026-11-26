@@ -54,12 +54,14 @@ describe('the construct report of an ended import', () => {
     expect(text('Callouts')).toContain('1204');
     expect(text('Toggles')).toContain('Converted');
     expect(text('Mentions of other pages')).toContain('now links to the imported page');
-    expect(text('Database tables')).toContain('now a table in a page');
-    expect(text('Properties at the top of a file')).toContain('Left out');
+    expect(text('Database tables')).toContain('is now a table');
+    expect(text('Database tables')).toContain('rows with text of their own are pages under it');
+    expect(text('Front matter (properties at the top of a file)')).toContain('Left out');
     expect(text('Icons and cover images')).toContain('Left out');
-    expect(text('Rows of a database')).toContain('Left out');
+    expect(text('Rows that only repeat their table')).toContain('Left out: the table already shows what these pages said');
+    expect(text('Rows that only repeat their table')).toContain('A link to one opens the page of the table');
     expect(text('Links to pages that are not in the zip')).toContain('Kept as written');
-    expect(text('HTML')).toContain('Kept as written');
+    expect(text('HTML left in pages')).toContain('Kept as written');
   });
 
   it('says what happened in words, not by colour: the fate of a row is its own text and a data attribute for the style', () => {

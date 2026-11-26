@@ -45,3 +45,8 @@
 .import-constructs summary { cursor: pointer; }
 .import-constructs details ul, .import-raw-html ul { margin: var(--space-2) 0 0; padding-inline-start: var(--space-5); display: grid; gap: var(--space-1); }
 .import-raw-html { margin-block-start: var(--space-5); }
+/* At 400% zoom (320 CSS pixels) the three columns are as narrow as their longest word: less room between them, and the heading of the count may wrap. */
+@media (max-width: 30rem) {
+  .import-constructs th, .import-constructs td { padding-inline-end: var(--space-1); }
+  .import-constructs th:nth-child(3) { white-space: normal; }
+}
