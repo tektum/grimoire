@@ -7,19 +7,23 @@ export interface Stall {
 }
 
 /**
- * What the probe process runs: a 10 ms timer that notes every gap of more than 100 ms, and prints the list as JSON when its input ends. It does nothing else, so a gap in it is not its own work:
- * the machine did not run it (a pause of the virtual machine, or no CPU for a moment).
+ * What the probe process runs: a 10 ms timer that notes every gap of more than 100 ms, on the same monotonic clock as the parent's own stalls (a step of the wall clock is not a gap), and prints `ready`
+ * once the timer runs and the list as JSON when its input ends. It does nothing else, so a gap in it is not its own work: the machine did not run it (a pause of the virtual machine, or no CPU for a moment).
  */
 const PROBE = `
-let last = Date.now();
+const clock = () => performance.timeOrigin + performance.now();
+let last = clock();
 const gaps = [];
-setInterval(() => { const now = Date.now(); if (now - last > 110) gaps.push({ at: last, ms: now - last - 10 }); last = now; }, 10);
+setInterval(() => { const now = clock(); if (now - last > 110) gaps.push({ at: last, ms: now - last - 10 }); last = now; }, 10);
 process.stdin.on('end', () => { process.stdout.write(JSON.stringify(gaps)); process.exit(0); });
 process.stdin.resume();
+process.stdout.write('ready\\n');
 `;
 
 export interface MachineProbe {
   readonly pid: number | undefined;
+  /** Settles when the probe's timer runs (or the probe could not start): what to wait for before a test stops it. */
+  readonly ready: Promise<void>;
   /** Ends the probe and gives its stalls; `undefined` when it did not start or did not answer (nothing is then excused). */
   stop(): Promise<readonly Stall[] | undefined>;
 }
@@ -28,12 +32,18 @@ export interface MachineProbe {
 export function startMachineProbe(): MachineProbe {
   const child = spawn(process.execPath, ['-e', PROBE], { stdio: ['pipe', 'pipe', 'ignore'] });
   let out = '';
-  child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
+  let announce = (): void => undefined;
+  const ready = new Promise<void>((resolve) => { announce = resolve; });
+  child.stdout.on('data', (chunk: Buffer) => {
+    out += chunk.toString();
+    if (out.includes('\n')) announce();
+  });
   const settled = new Promise<readonly Stall[] | undefined>((resolve) => {
-    child.on('error', () => { resolve(undefined); });
+    child.on('error', () => { announce(); resolve(undefined); });
     child.on('close', () => {
+      announce();
       try {
-        const parsed: unknown = JSON.parse(out);
+        const parsed: unknown = JSON.parse(out.slice(out.indexOf('\n') + 1));
         resolve(Array.isArray(parsed) ? (parsed as Stall[]) : undefined);
       } catch {
         resolve(undefined);
@@ -42,6 +52,7 @@ export function startMachineProbe(): MachineProbe {
   });
   return {
     pid: child.pid,
+    ready,
     // The probe exits as soon as its input ends, so there is nothing to wait out: a probe that is stuck is a test that times out, which says so.
     stop() {
       child.stdin.end();
