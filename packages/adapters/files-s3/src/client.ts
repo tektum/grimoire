@@ -6,11 +6,11 @@ type CredentialProvider = ReturnType<typeof defaultProvider>;
 type Credentials = Awaited<ReturnType<CredentialProvider>>;
 
 /**
- * How long temporary credentials must still be valid when a URL is signed with them: the longest signed URL (an upload, 10 minutes) and a minute more. The SDK
+ * How long temporary credentials must still be valid when a URL is signed with them: the longest signed URL (an upload part, 15 minutes) and a minute more. The SDK
  * serves cached credentials until about 5 minutes before they expire, so a URL signed then could outlive them and S3 would refuse the upload with `ExpiredToken`
  * while the API still reports the URL as valid.
  */
-export const MIN_CREDENTIAL_LIFETIME_MS = 11 * 60_000;
+export const MIN_CREDENTIAL_LIFETIME_MS = 16 * 60_000;
 
 /**
  * The default credential chain (the task role on Fargate), made safe for signing URLs: when the credentials it holds expire within `MIN_CREDENTIAL_LIFETIME_MS` it

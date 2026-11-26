@@ -4,7 +4,7 @@
  */
 
 export type FileStorageErrorKind =
-  'not-found' | 'range-not-satisfiable' | 'unavailable' | 'invalid-key' | 'unsupported' | 'already-exists';
+  'not-found' | 'range-not-satisfiable' | 'unavailable' | 'invalid-key' | 'unsupported' | 'already-exists' | 'invalid-parts';
 
 export class FileStorageError extends Error {
   constructor(
@@ -52,7 +52,26 @@ export interface FileStorage {
     key: string,
     o: { ttlSeconds: number; disposition: 'inline' | 'attachment'; fileName?: string; contentType?: string },
   ): Promise<{ url: string; expiresAt: number }>;
+  /**
+   * A multipart upload: one object written in parts that a client sends straight to the store. `createMultipart` opens it (the object does
+   * not exist until `completeMultipart`); `signPart` signs one part for exactly `size` bytes, so a client can write no more than it was
+   * given; `listParts` is what the store holds (for a client that resumes); `completeMultipart` joins the parts held, numbered 1 to n
+   * with no gap, and refuses (`invalid-parts`) an empty list, a gap, or a part but the last under `MIN_PART_BYTES`; `abortMultipart`
+   * drops the parts, and an unknown upload is a success. An unknown upload is `not-found` everywhere else. The ETags never leave the adapter.
+   */
+  createMultipart(key: string, o: { contentType: string }): Promise<{ uploadId: string }>;
+  signPart(
+    key: string,
+    o: { uploadId: string; partNumber: number; size: number; ttlSeconds: number },
+  ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }>;
+  listParts(key: string, uploadId: string): Promise<{ partNumber: number; size: number }[]>;
+  completeMultipart(key: string, uploadId: string): Promise<{ etag: string; size: number }>;
+  abortMultipart(key: string, uploadId: string): Promise<void>;
 }
+
+/** The smallest part but the last, and the most parts, that S3 takes (and so every store we run on). */
+export const MIN_PART_BYTES = 5 * 1024 * 1024;
+export const MAX_PARTS = 10_000;
 
 export const MAX_KEY_BYTES = 512;
 /** The store we ship cannot hold a longer path segment, so the contract refuses one for every adapter. */
