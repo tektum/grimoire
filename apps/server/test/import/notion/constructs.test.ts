@@ -109,4 +109,15 @@ describe('with the real converter', () => {
       await converter.close();
     }
   }, 30_000);
+
+  it('a first line or summary that starts with a bold link is not bold either: bold across two links would not read back', () => {
+    expect(convertConstructs(lines('<aside>', '**[Alpha](A.md)** and [Beta](B.md)', '</aside>'))).toBe(lines('> **[Alpha](A.md)** and [Beta](B.md)'));
+    expect(convertConstructs(lines('<details>', '<summary>**[Alpha](A.md)** and [Beta](B.md)</summary>', 'Text', '</details>'))).toBe(lines('**[Alpha](A.md)** and [Beta](B.md)', 'Text'));
+  });
+
+  it('a line of unclosed link targets is read in linear time', () => {
+    const started = performance.now();
+    convertConstructs(lines('<aside>', `x${'](a'.repeat(200_000)}`, '</aside>'));
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });

@@ -1,6 +1,6 @@
-// M7 contracts section 4, Notion constructs. The shapes are those a real export writes (M7-T08): each tag on a line of its own, blank lines inside, lists inside, a callout
-// indented inside a list item, a callout nested in another. They are converted before the schema sees them ([F§7]: their survival through the schema is not confirmed), so their
-// text is the page's text and search finds it.
+// Notion constructs: a callout (`<aside>`) is a quote whose first line is bold, a toggle (`<details><summary>`) is its summary as a bold paragraph, then its content. The shapes are
+// those a real export writes: each tag on a line of its own, blank lines inside, lists inside, a callout indented inside a list item, a callout nested in another. They are converted
+// before the schema sees them (their survival through the schema is not confirmed), so their text is the page's text and search finds it.
 
 type Kind = 'aside' | 'details';
 const OPEN: Record<Kind, RegExp> = { aside: /^(\s*)<aside>\s*$/, details: /^(\s*)<details>\s*$/ };
@@ -10,17 +10,33 @@ const FENCE = /^\s*(`{3,}|~{3,})/;
 /** A line the bold of a callout's first line must not wrap: a block of its own (a list item, a heading, a quote, a fence, a table row), or an HTML tag (an icon picture). */
 const NOT_A_FIRST_LINE = /^(\s*([-*+]|\d{1,9}[.)])\s|\s*#{1,6}\s|\s*>|\s*(`{3,}|~{3,})|\s*\||\s*<[a-zA-Z/])/;
 /**
- * A line that starts with a link is not bold either, a callout's first line or a toggle's summary (M7-T08: bold that starts on a link and spans two of them does not read back as
- * the same document, so the converter would refuse the page).
+ * A line that starts with a link, bold or not, is not made bold, a callout's first line or a toggle's summary: bold that starts on a link and spans two of them does not read back as
+ * the same document, so the converter would refuse the page. The bold markers `bold()` takes apart are looked through.
  */
-const STARTS_WITH_LINK = /^\s*\[[^\]]*\]\(/;
+const STARTS_WITH_LINK = /^\s*(?:(?:\*\*|__)\s*)*\[[^\]]*\]\(/;
 
 /**
  * `**text**`, the bold of the text itself taken apart first so that the bold is not broken; not in a code span or a link's target, where `**` and `__` are characters of a name,
  * nor `__` inside a word. Bold around nothing would be a rule (`****`): nothing stays nothing.
  */
 function bold(text: string): string {
-  const inner = text.trim().split(/(`[^`]*`|\]\([^)]*\))/).map((part, i) => (i % 2 === 1 ? part : part.replace(/\*\*|(?<![\p{L}\p{N}])__|__(?![\p{L}\p{N}])/gu, ''))).join('');
+  const t = text.trim();
+  const strip = (part: string): string => part.replace(/\*\*|(?<![\p{L}\p{N}])__|__(?![\p{L}\p{N}])/gu, '');
+  // One pass, indexOf only: a regex for the code span and the link target backtracks over the rest of the line at every unclosed opener (quadratic on a crafted line).
+  let inner = '';
+  let plain = 0;
+  let noTick = false;
+  let noParen = false;
+  for (let i = 0; i < t.length; i++) {
+    let end = -1;
+    if (t[i] === '`' && !noTick) { const j = t.indexOf('`', i + 1); if (j < 0) noTick = true; else end = j + 1; }
+    else if (t[i] === ']' && t[i + 1] === '(' && !noParen) { const j = t.indexOf(')', i + 2); if (j < 0) noParen = true; else end = j + 1; }
+    if (end < 0) continue;
+    inner += strip(t.slice(plain, i)) + t.slice(i, end);
+    plain = end;
+    i = end - 1;
+  }
+  inner += strip(t.slice(plain));
   return inner === '' ? '' : `**${inner}**`;
 }
 
@@ -48,8 +64,8 @@ function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close:
 }
 
 /**
- * A callout (`<aside>`) becomes a quote whose first line of text is bold, the emoji kept inside the bold (Q37 = A); a toggle (`<details><summary>`) becomes its summary as a bold
- * paragraph followed by its content (Q38 = A). A block that is not closed, and anything inside a code fence, is left as it is.
+ * A callout (`<aside>`) becomes a quote whose first line of text is bold, the emoji kept inside the bold; a toggle (`<details><summary>`) becomes its summary as a bold
+ * paragraph followed by its content. A block that is not closed, and anything inside a code fence, is left as it is.
  */
 export function convertConstructs(markdown: string): string {
   const lines = markdown.split('\n');
