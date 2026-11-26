@@ -12,7 +12,11 @@ import type { EmbedPagePayload } from './types.js';
 /** `starting`: not registered yet (trying, or waiting to try again); `up`; `down`: gave up after the last start failed; `stopped`: shut down. */
 export type JobsState = 'starting' | 'up' | 'down' | 'stopped';
 
-/** What the code that is not a job handler's own reaches the queue by: the import's job and its cleanup, whether an import's job is live, and the embedding jobs. All reject with `jobs-unavailable` while the queue is not up (not started, given up, or stopping). */
+/**
+ * How code reaches the queue: the import's job and its cleanup, whether an import's job is live, and the embedding jobs. The runner's own methods reject with `jobs-unavailable` while the
+ * queue is not up (not started, given up, or stopping); the api handed to the jobs (`jobs: (queue) => ...`) also reaches the queue while it is starting, because a run that was due before a
+ * restart is picked up as soon as its handler is registered, and rejects once a stop begins.
+ */
 export interface JobsApi {
   isLive(name: string, singletonKey: string): Promise<boolean>;
   /** Hands the job of an import to the queue (the import start, the sweep): its payload is the ids and nothing else (decision 4). */
@@ -75,18 +79,26 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   let abandoned = false;
   let attempts = 0;
   let state: JobsState = 'starting';
+  /** The queue an attempt has made and is registering handlers on: the jobs' api reaches it before the runner is up. */
+  let starting: JobQueue | undefined;
   const up = (): JobQueue => {
     if (queue === undefined || state !== 'up') throw new Error('jobs-unavailable');
     return queue;
   };
-  const api: JobsApi = {
-    isLive: (name, key) => Promise.resolve().then(() => up().isLive(name, key)),
-    enqueueImport: (payload, enqueueOptions) => Promise.resolve().then(() => up().enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, enqueueOptions)),
-    enqueueImportCleanup: (payload) => Promise.resolve().then(() => up().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId }, { singletonKey: `import-cleanup:${payload.importId}` })),
-    enqueueEmbedPage: (payload) => Promise.resolve().then(() => up().enqueue('embed-page', { tenantId: payload.tenantId, pageId: payload.pageId }, { singletonKey: `embed:${payload.pageId}` })),
-    enqueueEmbedSweep: (delaySeconds) => Promise.resolve().then(() => up().enqueue('embed-sweep', undefined, { singletonKey: scheduleKey('embed-sweep'), delaySeconds })),
+  const forJobs = (): JobQueue => {
+    const q = queue ?? starting;
+    if (stopped || q === undefined) throw new Error('jobs-unavailable');
+    return q;
   };
-  const jobs = typeof options.jobs === 'function' ? options.jobs(api) : (options.jobs ?? importJobs());
+  const apiOn = (reach: () => JobQueue): JobsApi => ({
+    isLive: (name, key) => Promise.resolve().then(() => reach().isLive(name, key)),
+    enqueueImport: (payload, enqueueOptions) => Promise.resolve().then(() => reach().enqueue('import', { importId: payload.importId, tenantId: payload.tenantId }, enqueueOptions)),
+    enqueueImportCleanup: (payload) => Promise.resolve().then(() => reach().enqueue('import-cleanup', { importId: payload.importId, tenantId: payload.tenantId }, { singletonKey: `import-cleanup:${payload.importId}` })),
+    enqueueEmbedPage: (payload) => Promise.resolve().then(() => reach().enqueue('embed-page', { tenantId: payload.tenantId, pageId: payload.pageId }, { singletonKey: `embed:${payload.pageId}` })),
+    enqueueEmbedSweep: (delaySeconds) => Promise.resolve().then(() => reach().enqueue('embed-sweep', undefined, { singletonKey: scheduleKey('embed-sweep'), delaySeconds })),
+  });
+  const api = apiOn(up);
+  const jobs = typeof options.jobs === 'function' ? options.jobs(apiOn(forJobs)) : (options.jobs ?? importJobs());
   let timer: NodeJS.Timeout | undefined;
   let inFlight: Promise<void> | undefined;
   /** True while an attempt is running (the stop then waits for it, and that wait is taken out of the grace). */
@@ -101,6 +113,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       const url = config.database.url;
       if (url === undefined) throw new Error('the job queue needs the database url');
       made = await options.make({ connectionString: url, stopGraceMs: config.jobs.stopGraceMs, onError: options.onError ?? (() => undefined) });
+      starting = made;
       if (!stopped) {
         for (const job of jobs) {
           if (stopped) break; // a stop that comes in the middle: no handler is registered after it, so no job starts during the drain
@@ -126,6 +139,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       log.error('jobs.failed', { name: 'queue-start', jobId: '-', attempt: attempts, ms: 0, ...reasonOf(error) });
       if (!stopped) { timer = setTimeout(() => { inFlight = attempt(); }, START_RETRY_MS); timer.unref(); }
     } finally {
+      starting = undefined; // set up (`queue`) or stopped by now
       attempting = false;
     }
   };
