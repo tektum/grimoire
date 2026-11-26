@@ -55,6 +55,15 @@ describe('the constructs counted for a page', () => {
     expect(t.constructsOf('Alpha')).toEqual({ unresolved_link: 1 });
   });
 
+  it('reads TOML front matter by its keys the same way, and a block of comments only holds none', async () => {
+    const t = await CASE([
+      file(`Alpha ${A}.md`, '+++\nicon = "x"\ntitle = "y"\n+++\n\nText.\n'),
+      file(`Beta ${B}.md`, '---\n# only a comment\n---\n\nText.\n'),
+    ]);
+    expect(t.constructsOf('Alpha')).toEqual({ icon_cover: 1, front_matter: 1 });
+    expect(t.constructsOf('Beta')).toEqual({});
+  });
+
   it('reads a list under the icon key as part of the icon, not as a key of its own', async () => {
     const t = await CASE([file(`Alpha ${A}.md`, '---\nicon:\n- src: image.png\n- alt: x\ncover: y\n---\n\nText.\n')]);
     expect(t.constructsOf('Alpha')).toEqual({ icon_cover: 1 });
