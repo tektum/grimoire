@@ -132,9 +132,13 @@ function show(api: ApiLike, at = '/import') {
     </SessionContext.Provider>,
   );
 }
-const zip = () => new File([new Uint8Array(1234)], 'export.zip', { type: 'application/zip' });
-const choose = async () => {
-  await userEvent.upload(await screen.findByLabelText('Choose a .zip file'), zip());
+const zip = (name = 'export.zip') => new File([new Uint8Array(1234)], name, { type: 'application/zip' });
+const NOTION = 'An export of Notion (Markdown and CSV files)';
+const MARKDOWN = 'Markdown files';
+/** Chooses the file and says what is in it (the import cannot start before both). */
+const choose = async (profile: string | null = MARKDOWN, name?: string) => {
+  await userEvent.upload(await screen.findByLabelText('Choose a .zip file'), zip(name));
+  if (profile !== null) await userEvent.click(screen.getByRole('radio', { name: profile }));
 };
 
 describe('the import screen', () => {
@@ -181,13 +185,70 @@ describe('the import screen', () => {
     await userEvent.selectOptions(screen.getByLabelText('Into the collection'), 'c3');
     await userEvent.click(screen.getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
-    expect(t.bodies).toEqual([{ collectionId: 'c3', fileName: 'export.zip', size: 1234 }]);
+    expect(t.bodies).toEqual([{ collectionId: 'c3', fileName: 'export.zip', size: 1234, profile: 'markdown_zip' }]);
     expect(put).toHaveBeenCalledTimes(1);
     const [url, init] = put.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://files.test/imports/imp1.zip?sig=x');
     expect(init).toMatchObject({ method: 'PUT', credentials: 'omit', headers: { 'content-type': 'application/zip', 'if-none-match': '*' } });
     expect(t.calls.filter((c) => c.startsWith('POST'))).toEqual(['POST /v1/imports', 'POST /v1/imports/{id}/start']); // create, then (after the PUT) start
     expect(await screen.findByRole('progressbar')).toBeTruthy();
+  });
+
+  it('asks what is in the zip, with nothing chosen for the person, and keeps Import disabled, with the reason beside it, until one is', async () => {
+    show(fake().api);
+    await choose(null);
+    const group = screen.getByRole('group', { name: 'What is in the zip?' });
+    const radios = within(group).getAllByRole('radio') as HTMLInputElement[];
+    expect(radios.map((r) => [r.labels?.[0]?.textContent, r.checked])).toEqual([
+      [NOTION, false],
+      [MARKDOWN, false],
+    ]);
+    const button = screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    const reason = screen.getByText('Choose what is in the zip to start the import.');
+    expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+    await userEvent.click(screen.getByRole('radio', { name: NOTION }));
+    expect(button.disabled).toBe(false);
+    expect(screen.queryByText('Choose what is in the zip to start the import.')).toBeNull();
+  });
+
+  it('sends the profile of the choice: notion_md_csv for an export of Notion, markdown_zip for Markdown files', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+    const t = fake({ states: [state({ done: 0 })] });
+    show(t.api);
+    await choose(NOTION);
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(t.bodies).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: 1234, profile: 'notion_md_csv' }]);
+  });
+
+  it('does not go on with the import it made for the other choice: a changed choice makes a new import, with the new profile', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+    const t = fake({ start: [{ status: 500 }, { status: 202 }] });
+    show(t.api);
+    await choose(MARKDOWN);
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The import could not be started. Try again.');
+    await userEvent.click(screen.getByRole('radio', { name: NOTION }));
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe('/import?import=imp1'));
+    expect(t.bodies.map((b) => (b as { profile: string }).profile)).toEqual(['markdown_zip', 'notion_md_csv']);
+  });
+
+  it.each(['Export-3f2a-Part-1.zip', 'export-part-12.ZIP'])('says, for %s (the name of a part of an export in parts), what to do, and still lets the person go on', async (name) => {
+    show(fake().api);
+    await choose(NOTION, name);
+    const note = screen.getByRole('status');
+    expect(note.textContent).toBe(
+      'This looks like one part of an export split into parts. An import takes the whole export in one zip: unzip the parts into one folder, zip that folder without its big files (such as videos), and import that.',
+    );
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it.each(['export.zip', 'Export-Part-1-final.zip', 'my-party-1.zip', 'Part-1.zip'])('says nothing of parts for %s', async (name) => {
+    show(fake().api);
+    await choose(NOTION, name);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('goes on with the import it made when the start was refused and the person tries again: one import, one PUT, a second start', async () => {

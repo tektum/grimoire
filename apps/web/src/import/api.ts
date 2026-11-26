@@ -63,8 +63,11 @@ function shaped<T>(step: ImportError['step'], value: unknown, is: (v: unknown) =
   return value;
 }
 
+/** What is in the zip, which says how it is read (R6.39): an export of Notion, or Markdown files. The person says which; nothing is guessed from the file. */
+export type ImportProfile = 'notion_md_csv' | 'markdown_zip';
+
 /** Makes the import (R6.39): the zip is not sent yet. */
-export async function createImport(api: ApiLike, body: { collectionId: string; fileName: string; size: number }): Promise<CreatedImport> {
+export async function createImport(api: ApiLike, body: { collectionId: string; fileName: string; size: number; profile: ImportProfile }): Promise<CreatedImport> {
   return shaped('create', okOr('create', await api.POST('/v1/imports' as never, { body } as never)), isCreated);
 }
 

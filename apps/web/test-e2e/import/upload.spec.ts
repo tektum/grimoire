@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
 import { signInAs } from '../support/sign-in';
-import { scriptedImports, smallZip, type ScriptedState } from './support';
+import { chooseMarkdown, scriptedImports, smallZip, type ScriptedState } from './support';
 
 // Choosing a zip, uploading it and watching the import (R6.39 to R6.41), in a browser. Against the stand-in of the API and a scripted import (the routes are M7-T05's; the same specification points at the
 // stack when they are there). Needs a development build of the client (`bunx vite build --mode e2e`).
@@ -35,9 +35,10 @@ test('a small zip is created, PUT with the headers the API gave, started, and it
     { status: 'done', total: 10, done: 10, skipped: 1 },
   ]);
   await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
+  await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page).toHaveURL(/\/import\?import=imp1$/);
-  expect(sent.creates).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: smallZip().buffer.length }]);
+  expect(sent.creates).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: smallZip().buffer.length, profile: 'markdown_zip' }]);
   expect(sent.puts).toHaveLength(1);
   expect(sent.puts[0]!.headers['content-type']).toBe('application/zip');
   // The size of what was sent is checked where the engine shows it to the route (WebKit shows neither the body of a file nor its length).
@@ -60,6 +61,7 @@ test('a reload goes on watching the import (it is in the address)', async ({ pag
 test('a zip over the limit is refused with a message, and the screen is ready for another file', async ({ page, context }) => {
   await open(page, context, [], { createStatus: 413 });
   await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
+  await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('alert')).toHaveText('That file is larger than an import can take. Zip the export again without its big files, such as videos, and import that.');
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
@@ -68,6 +70,7 @@ test('a zip over the limit is refused with a message, and the screen is ready fo
 test('a file that is not a zip is refused when the import starts', async ({ page, context }) => {
   await open(page, context, [], { startStatus: 422, startCode: 'not_a_zip' });
   await page.getByLabel('Choose a .zip file').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a zip') });
+  await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('alert')).toHaveText('That is not a zip file.');
 });
@@ -91,6 +94,7 @@ test('the file button is reached with the keyboard, shows the chosen name after 
 test('after a refused start the same file is tried again: the import already made is gone on with, the file is sent again, and the progress is watched', async ({ page, context }) => {
   const sent = await open(page, context, [{ status: 'running', total: 10, done: 2 }], { startRefusals: 1 });
   await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
+  await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('alert')).toHaveText('The file did not arrive. Try again.');
   await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
