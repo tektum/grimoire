@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ImportBusyError } from '@tektum/grimoire-core/ports/import-repo';
-import type { ImportStatus } from '@tektum/grimoire-core/ports/import-repo';
+import type { ImportSource, ImportStatus } from '@tektum/grimoire-core/ports/import-repo';
 import type { EnqueueOptions, JobContext } from '@tektum/grimoire-core/ports/job-queue';
 import type { ConvertResult, MarkdownConverter, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
@@ -33,9 +33,9 @@ class EchoConverter implements MarkdownConverter {
 
 const ctx = (over: Partial<JobContext> = {}): JobContext => ({ jobId: 'job-1', attempt: 1, retryLimit: 3, signal: new AbortController().signal, ...over });
 
-async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
+async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; source?: ImportSource; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
   const repo = over.repo ?? new FakeImportRepo();
-  repo.seed({ id: IMPORT, tenantId: TENANT, status: over.status ?? 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey(TENANT, IMPORT) });
+  repo.seed({ id: IMPORT, tenantId: TENANT, status: over.status ?? 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey(TENANT, IMPORT), ...(over.source === undefined ? {} : { source: over.source }) });
   const files = new FakeFileStorage();
   const zip = entries === undefined ? undefined : Buffer.isBuffer(entries) ? entries : buildZip(entries as BuilderEntry[]);
   if (zip !== undefined) await files.put(importZipKey(TENANT, IMPORT), zip, { size: zip.length, contentType: 'application/zip' });
@@ -140,6 +140,33 @@ describe('an import that runs to its end', () => {
     await Promise.all([t.run(), t.run()]);
     expect([...t.repo.written.map((w) => w.page.title)].sort()).toEqual(['A', 'B', 'C']);
     expect(await t.record()).toMatchObject({ status: 'done', counts: { pagesDone: 3 } });
+  });
+});
+
+describe('the profile an import is read with is the one of its source', () => {
+  const ID1 = '0123456789abcdef0123456789abcdef';
+  const ID2 = 'fedcba9876543210fedcba9876543210';
+  // A page of a Notion export, its file name with an id and a different first heading, and a page in the folder of the same name beside it.
+  const exported = [md(`Plan ${ID1}.md\u0000# Another heading\n\nbody\n`), md(`Plan ${ID1}/Step ${ID2}.md\u0000# Step heading\n`)];
+  const pages = async (t: Awaited<ReturnType<typeof setup>>) => {
+    const byTitle = new Map<string, { pageId: string | null; parentId: string | null }>();
+    for (const w of t.repo.written) byTitle.set(w.page.title, { pageId: (await t.repo.getItem(TENANT, IMPORT, w.page.itemId))?.pageId ?? null, parentId: w.page.parentId });
+    return byTitle;
+  };
+
+  it('an export of Notion (notion_md_csv): the title is the file name without its id, and the pages of the folder beside a page are its children, with no empty page for the folder', async () => {
+    const t = await setup(exported, { source: 'notion_md_csv' });
+    await t.run();
+    const byTitle = await pages(t);
+    expect([...byTitle.keys()].sort()).toEqual(['Plan', 'Step']);
+    expect(byTitle.get('Step')?.parentId).toBe(byTitle.get('Plan')?.pageId);
+    expect(byTitle.get('Plan')?.parentId).toBeNull();
+  });
+
+  it('the same archive as a plain Markdown zip (markdown_zip, the default): titles from the first heading, and the folder is an empty page of its own', async () => {
+    const t = await setup(exported);
+    await t.run();
+    expect([...(await pages(t)).keys()].sort()).toEqual(['Another heading', `Plan ${ID1}`, 'Step heading']);
   });
 });
 

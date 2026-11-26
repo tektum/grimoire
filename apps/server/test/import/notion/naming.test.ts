@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parentPathOf, splitName, titleOf } from '../../../src/import/notion/names.js';
+import { splitName, titleOf } from '../../../src/import/notion/names.js';
 
 // M7-T06 (contracts section 4, Notion rules): constructed from the documented format, not observed. The id suffix regular expression is `^(.*?)[ -]?([a-f0-9]{32})(\.\w+)?$`.
 const ID = '88ac0cea4cb245efb44d63ace0a37d1e';
@@ -32,8 +32,11 @@ describe('titleOf', () => {
     expect(titleOf(`Same title ${ID}.md`, '')).toBe(titleOf(`Same title ${ID2}.md`, ''));
   });
 
-  it('is the first heading when the name has none (R10.5), else the base name', () => {
-    expect(titleOf(`${ID}.md`, '\n\n## Heading two\n\nbody\n# H1\n')).toBe('Heading two');
+  it('is the title a plain Markdown zip gives when the name has none (R10.17: the first level-one heading outside code, else the first heading), else the base name', () => {
+    expect(titleOf(`${ID}.md`, '```sh\n# install deps\n```\n\n# Real title\n')).toBe('Real title'); // a comment in code is no heading
+    expect(titleOf(`${ID}.md`, 'Real title\n==========\n\nbody\n')).toBe('Real title'); // a setext heading
+    expect(titleOf(`${ID}.md`, '\n\n## Heading two\n\nbody\n# H1\n')).toBe('H1');
+    expect(titleOf(`${ID}.md`, '\n\n## Heading two\n\nbody\n')).toBe('Heading two');
     expect(titleOf(`${ID}.md`, 'no heading here')).toBe(ID);
     expect(titleOf('dir/Notes.md', '')).toBe('Notes');
   });
@@ -52,17 +55,5 @@ describe('titleOf', () => {
 
   it('uses the last path segment and ignores the folders', () => {
     expect(titleOf(`Home ${ID2}/Child ${ID}.md`, '')).toBe('Child');
-  });
-});
-
-describe('parentPathOf', () => {
-  it('is the page file of the folder a page sits in (X <id>.md for X <id>/), and null at the top', () => {
-    expect(parentPathOf(`Home ${ID2}/Child ${ID}.md`)).toBe(`Home ${ID2}.md`);
-    expect(parentPathOf(`Home ${ID2}/Child ${ID}/Grand ${ID}.md`)).toBe(`Home ${ID2}/Child ${ID}.md`);
-    expect(parentPathOf(`Home ${ID2}.md`)).toBeNull();
-  });
-
-  it('a folder with no id has no page file of its own: the parent is the folder itself', () => {
-    expect(parentPathOf('Plain/Inside.md')).toBe('Plain/');
   });
 });

@@ -3,6 +3,7 @@ import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Config } from '@tektum/grimoire-core/ports/config';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import { ImportBusyError, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import type { ImportSource } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportRepo } from '@tektum/grimoire-core/ports/import-repo';
 import type { EnqueueOptions, JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
@@ -11,6 +12,8 @@ import type { EventLog } from '../events.js';
 import { passOne, passTwo } from '../import/engine.js';
 import { importZipKey } from '../import/keys.js';
 import { markdownProfile } from '../import/markdown-profile.js';
+import { notionProfile } from '../import/notion/profile.js';
+import type { ImportProfile } from '../import/profile.js';
 import type { RemoteImageFetcher } from '../import/remote-images/index.js';
 import { openArchive } from '../import/zip-reader.js';
 import { isImportPayload, notImplemented } from './types.js';
@@ -42,6 +45,8 @@ export interface ImportJobDeps {
 }
 
 const DEFAULT_CHUNK_MS = 300_000;
+/** The rules an archive is read with, by the source the person named when the import was made. */
+const PROFILES: Record<ImportSource, ImportProfile> = { markdown_zip: markdownProfile, notion_md_csv: notionProfile };
 /** How long a continuation waits when the converter is busy. */
 const BUSY_DELAY_SECONDS = 30;
 
@@ -100,7 +105,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         return;
       }
       try {
-        const one = await passOne(imports, tenantId, importId, opened.entries, { profile: markdownProfile, allowNestedZips: config.import.allowNestedZips, maxPages: deps.maxPages ?? 10_000 });
+        const one = await passOne(imports, tenantId, importId, opened.entries, { profile: PROFILES[record.source], allowNestedZips: config.import.allowNestedZips, maxPages: deps.maxPages ?? 10_000 });
         if (!one.ok) {
           await imports.setCounts(tenantId, importId, { ...NO_IMPORT_COUNTS, pagesTotal: one.pagesTotal });
           await fail(one.reason);
@@ -109,7 +114,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         const signal = AbortSignal.any([ctx.signal, (deps.chunkSignal ?? AbortSignal.timeout.bind(AbortSignal))(deps.chunkMs ?? DEFAULT_CHUNK_MS)]);
         const current = (await imports.get(tenantId, importId)) ?? record;
         const result = await passTwo({
-          repo: imports, files, converter: deps.converter, profile: markdownProfile, ordering: deps.ordering, reader: opened.reader, entries: opened.entries,
+          repo: imports, files, converter: deps.converter, profile: PROFILES[record.source], ordering: deps.ordering, reader: opened.reader, entries: opened.entries,
           limits: { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes },
           pageLimits: { maxDepth: 32, maxPages: deps.maxPages ?? 10_000, maxTenantPages: config.tenantLimits.maxPages }, now,
           ...(config.files === undefined ? {} : { attachments: { maxBytes: config.files.maxBytes, allowedTypes: config.files.allowedTypes, sniff: deps.sniff } }),
