@@ -36,14 +36,19 @@ test('it runs check:build on a production build (an e2e build has the developmen
   assert.match(up, /COMPOSE_FILE=compose\.yaml:compose\.m6\.yaml/);
 });
 
-test('it renders the headers once, in a line of its own that stops the run when it fails, and serves both runs with that folder', () => {
+test('it renders the headers once, in a line of its own that stops the run when it fails, and serves the handshake run and the run of the scenarios with that folder, the scripted run without it', () => {
   const render = steps.findIndex((l) => /^bun run apps\/web\/test-e2e\/m6\/headers\.ts$/.test(l));
   const runs = steps.filter((l) => /bunx playwright test/.test(l));
   assert.ok(render > at(/files-setup/), 'after the stack is up, which the headers are rendered for');
   assert.equal(steps.filter((l) => /m6\/headers\.ts/.test(l)).length, 1, 'once');
   assert.ok(render < steps.findIndex((l) => /bunx playwright test/.test(l)), 'before the first run');
-  assert.equal(runs.length, 2);
-  for (const run of runs) assert.match(run, /GRIMOIRE_WEB_HEADERS_DIR="\/[^"]*\/test-results\/m6-headers"/, 'an absolute folder: the server of the run starts in apps/web');
+  assert.equal(runs.length, 3);
+  const [handshake, scenarios, scripted] = runs;
+  for (const run of [handshake, scenarios]) assert.match(run, /GRIMOIRE_WEB_HEADERS_DIR="\/[^"]*\/test-results\/m6-headers"/, 'an absolute folder: the server of the run starts in apps/web');
+  assert.doesNotMatch(scripted ?? '', /GRIMOIRE_WEB_HEADERS_DIR/, 'the scripted servers sit on ports the production policy does not allow');
+  assert.match(scripted ?? '', /scenarios\.ts files scripted/, 'the files are the scripted ones of the list');
+  assert.doesNotMatch(scenarios ?? '', /files scripted/);
+  assert.match(scripted ?? '', /M6_REQUIRE_HANDSHAKE=1/);
 });
 
 test('it runs the handshake check on its own first, then the scenarios in the three browsers', () => {

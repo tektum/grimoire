@@ -8,7 +8,7 @@ What proves each behaviour of the web client, and how the exit test runs. `make 
 bun install --frozen-lockfile && make down && make up && make test-m6 && make down && bun run licence
 ```
 
-`make test-m6` installs the browsers if they are missing (and stops with `playwright browsers missing` if it cannot), builds the client in `e2e` mode, runs `check:build`, starts the stack with `M6_REQUIRE_HANDSHAKE=1`, serves the client on 4173 (a different origin from the API on 8080), checks the list of scenarios, and runs the files of the scenarios that are not pending, once in each browser. The list and the report are `apps/web/test-e2e/m6/scenarios.ts` and this file. A real sign-in with the identity provider is not part of it.
+`make test-m6` installs the browsers if they are missing (and stops with `playwright browsers missing` if it cannot), builds the client in `e2e` mode, runs `check:build`, starts the stack with `M6_REQUIRE_HANDSHAKE=1`, serves the client on 4173 (a different origin from the API on 8080), checks the list of scenarios, and runs the files of the scenarios that are not pending, once in each browser. The client is served with its rendered production headers (the content security policy among them) for the handshake check and for every file except those in `SCRIPTED_SPECS` of `apps/web/test-e2e/m6/scenarios.ts` (`status/messages.spec.ts` and `editor/signal-rows.spec.ts`). Those start a scripted server or API on a port of their own, which the policy rightly refuses (it allows the origins of the stack and no others), so they run in a second run without the headers. The list and the report are `apps/web/test-e2e/m6/scenarios.ts` and this file. A real sign-in with the identity provider is not part of it.
 
 ## The scenarios
 

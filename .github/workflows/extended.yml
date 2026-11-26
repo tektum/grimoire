@@ -300,10 +300,10 @@ jobs:
       # The last step of the exit test command: the licence report (no violation).
       - run: bun run licence
       - name: Collect Compose logs
-        if: failure()
+        if: failure() || cancelled()
         run: docker compose -p grimoire logs --no-color > compose.log
       - name: Upload m6-exit-results
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: m6-exit-results
