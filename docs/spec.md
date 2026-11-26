@@ -997,7 +997,7 @@ These are open. The build uses the stated default until they are answered.
 - **Pending uploads.** How many uploads may one user have pending at once (R9.13, decision 99)? Default: 10 per user, a setting; a further request is refused with 429 until one completes or expires.
 - **Who may create collections and run imports?** Default: collections, admin only; imports, anyone with write access to the target collection.
 
-Settled and recorded in decisions.md: the first deployment host (decision 141), acceptable downtime (decision 116), backup and retention (decisions 114 and 119), who receives alerts (decision 136), the collaboration server (decision 80), the live-state cap (decision 162, which supersedes 95), licence rules (decisions 93, 98 and 102), attachment handling (decisions 99 to 101).
+Settled and recorded in decisions.md: the first deployment host (decision 174, which supersedes 141), acceptable downtime (decision 116), backup and retention (decisions 114 and 119), who receives alerts (decision 136), the collaboration server (decision 80), the live-state cap (decision 162, which supersedes 95), licence rules (decisions 93, 98 and 102), attachment handling (decisions 99 to 101).
 
 ### 15.2 Defaults chosen
 
