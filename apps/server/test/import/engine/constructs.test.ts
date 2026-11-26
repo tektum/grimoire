@@ -44,7 +44,22 @@ async function run(entries: readonly BuilderEntry[]) {
   return { repo, constructsOf: (title: string) => repo.written.find((w) => w.page.title === title)?.page.constructs };
 }
 
+const CASE = (entries: readonly BuilderEntry[]) => run(entries);
 describe('the constructs counted for a page', () => {
+  it('counts as unresolved only a link that matched nothing: a file or a page that is in the export but was not turned into a link is not one', async () => {
+    const t = await CASE([
+      file(`Alpha ${A}.md`, `A [file](Alpha/pic%20${'d'.repeat(32)}.png), an image ![pic](Alpha/pic%20${'d'.repeat(32)}.png), a page as an image ![page](Beta%20${B}.md) and [gone](Gone%20${'c'.repeat(32)}.md).\n`),
+      file(`Beta ${B}.md`, 'Text.\n'),
+      file(`Alpha/pic ${'d'.repeat(32)}.png`, 'not really a picture'),
+    ]);
+    expect(t.constructsOf('Alpha')).toEqual({ unresolved_link: 1 });
+  });
+
+  it('reads a list under the icon key as part of the icon, not as a key of its own', async () => {
+    const t = await CASE([file(`Alpha ${A}.md`, '---\nicon:\n- src: image.png\n- alt: x\ncover: y\n---\n\nText.\n')]);
+    expect(t.constructsOf('Alpha')).toEqual({ icon_cover: 1 });
+  });
+
   it('counts what was dropped, converted and kept on the page, once each time it happened', async () => {
     const t = await run([
       file(`Alpha ${A}.md`, [

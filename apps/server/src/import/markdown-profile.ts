@@ -19,7 +19,8 @@ const TOML_LINE = /^(?:\s*|#.*|[ \t]+.*|[\]}].*|\[[^\]\n]*\]|[A-Za-z0-9_"'.-]+[ 
 /** What a front matter block held, for the construct report: the page's icon or cover (the keys `icon` and `cover`), and any other key. A block of comments and blanks holds neither. */
 function frontMatterKinds(block: string, toml: boolean): readonly ('front_matter' | 'icon_cover')[] {
   const keys = lines(block).flatMap((line) => {
-    const match = (toml ? /^([A-Za-z0-9_"'.-]+)[ \t]*=/ : /^([A-Za-z0-9_"'.-][^:\n]*):(?:[ \t]|$)/).exec(line.replace(/\r$/, ''));
+    // A list item (`- src: x`) under a key is part of that key's value, not a key.
+    const match = (toml ? /^([A-Za-z0-9_"'.-]+)[ \t]*=/ : /^(?!-(?:[ \t]|$))([A-Za-z0-9_"'.-][^:\n]*):(?:[ \t]|$)/).exec(line.replace(/\r$/, ''));
     return match?.[1] === undefined ? [] : [match[1].replace(/^["']|["']$/g, '').trim().toLowerCase()];
   });
   const kinds: ('front_matter' | 'icon_cover')[] = [];

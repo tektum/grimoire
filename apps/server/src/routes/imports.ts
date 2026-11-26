@@ -259,13 +259,18 @@ router.openapi(startImport, async (c) => {
 
 /** What the report is when the import is gone between the guard and the read (a purge): nothing was converted, dropped or kept. */
 const NO_REPORT: ConstructReport = { constructs: [], rawHtmlPages: [], rawHtmlCapped: false };
+/** The state of an import with its construct report, as `getImport` and `cancelImport` both answer it. */
+async function stateOf(c: Context<AppEnv>, record: ImportRecord) {
+  const report = (await c.get('deps').imports.constructReport(record.tenantId, record.id)) ?? NO_REPORT;
+  const page = (p: ReportPage): ReportPage => ({ itemId: p.itemId, path: cleanItemText(p.path), urlId: p.urlId });
+  return { ...present(record), report: { constructs: report.constructs.map((l) => ({ ...l, pages: l.pages.map(page) })), rawHtmlPages: report.rawHtmlPages.map((p) => ({ ...page(p), fragments: p.fragments })), rawHtmlCapped: report.rawHtmlCapped } };
+}
 router.openapi(getImport, async (c) => {
   const { id } = c.req.valid('param');
   const record = await guardImport(c, id, 'creator-or-admin');
-  const report = (await c.get('deps').imports.constructReport(record.tenantId, id)) ?? NO_REPORT;
+  const state = await stateOf(c, record);
   noStore(c);
-  const page = (p: ReportPage): ReportPage => ({ itemId: p.itemId, path: cleanItemText(p.path), urlId: p.urlId });
-  return c.json({ ...present(record), report: { constructs: report.constructs.map((l) => ({ ...l, pages: l.pages.map(page) })), rawHtmlPages: report.rawHtmlPages.map((p) => ({ ...page(p), fragments: p.fragments })), rawHtmlCapped: report.rawHtmlCapped } }, 200);
+  return c.json(state, 200);
 });
 
 /** A reason code is lower-case words with underscores and a count is a whole number from 1: anything else (a key that could carry an address) is not passed on. */
@@ -338,7 +343,7 @@ router.openapi(cancelImport, async (c) => {
   // The pages it created go to the trash and its zip is deleted by the cleanup job. The cancel is done whatever the queue says: a job that stops on the cancel hands over the same cleanup.
   await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
   noStore(c);
-  return c.json(present(cancelled), 200);
+  return c.json(await stateOf(c, cancelled), 200);
 });
 
 export default router;

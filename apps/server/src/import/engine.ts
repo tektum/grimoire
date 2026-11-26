@@ -529,19 +529,25 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       });
       for (const row of rows) await rowIsBare(row);
     }
+    // Targets the archive holds but that were not turned into a link (a file that was refused, a page that is not written): left as written, and not "unresolved" for the report.
+    let heldButKept = 0;
     const rewritten = rewriteMarkdown(markdown, (target, kind): Resolved | undefined => {
       const found = profile.resolveLink(target, item.path, index);
       if (found === undefined) return undefined;
-      if (found.kind === 'attachment') { const file = staged.get(found.itemId); return file === undefined ? undefined : { kind: 'file', url: file.url }; }
-      if (kind === 'image') return undefined; // an image that is a page is nothing to point at
-      const linked = itemById.get(found.itemId);
-      // A link to a row that only repeats its row opens its database's page, while that page is, or is still to be, written (decision 167).
-      const db = linked === undefined || repeatsRow.get(linked.id) !== true ? undefined : databaseOf(linked);
-      const targetItem = db !== undefined && tableShown(db) ? db : linked;
-      return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
+      const resolved = ((): Resolved | undefined => {
+        if (found.kind === 'attachment') { const file = staged.get(found.itemId); return file === undefined ? undefined : { kind: 'file', url: file.url }; }
+        if (kind === 'image') return undefined; // an image that is a page is nothing to point at
+        const linked = itemById.get(found.itemId);
+        // A link to a row that only repeats its row opens its database's page, while that page is, or is still to be, written (decision 167).
+        const db = linked === undefined || repeatsRow.get(linked.id) !== true ? undefined : databaseOf(linked);
+        const targetItem = db !== undefined && tableShown(db) ? db : linked;
+        return targetItem?.urlId == null || (status.get(targetItem.id) !== 'ok' && status.get(targetItem.id) !== 'pending') ? undefined : { kind: 'page', url: `/p/${targetItem.urlId}` };
+      })();
+      if (resolved === undefined) heldButKept += 1;
+      return resolved;
     }, (url) => copied.get(url)?.url);
     own += rewritten.unresolved.length;
-    for (const [kind, n] of [['page_mention', rewritten.pageLinks], ['unresolved_link', rewritten.unresolved.length], ['raw_html', rewritten.htmlFragments]] as const) if (n > 0) constructs[kind] = n;
+    for (const [kind, n] of [['page_mention', rewritten.pageLinks], ['unresolved_link', rewritten.unresolved.length - heldButKept], ['raw_html', rewritten.htmlFragments]] as const) if (n > 0) constructs[kind] = n;
 
     const bytes = original?.length ?? 0;
     const outcome = await normalizePage(deps.converter, record.createdBy ?? importId, title, rewritten.markdown, deps.limits.maxStateBytes);

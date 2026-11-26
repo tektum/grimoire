@@ -606,7 +606,7 @@ describe('POST /v1/imports/{id}/cancel', () => {
     const id = await t.running();
     const res = await t.call('root', 'POST', `/v1/imports/${id}/cancel`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString() });
+    expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString(), report: { constructs: [], rawHtmlPages: [], rawHtmlCapped: false } });
     expect(t.audit.events.map((e) => e.action)).toEqual(['import.cancelled']);
     expect(t.audit.events[0]).toMatchObject({ actorId: t.uid('root'), targetId: id, tenantId: 'T-a' });
   });
