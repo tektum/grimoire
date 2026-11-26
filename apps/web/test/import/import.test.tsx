@@ -353,6 +353,7 @@ describe('the import screen', () => {
     ['a collection that cannot be written', { create: { status: 403 } }, 'You can’t import into that collection.'],
     ['a file that cannot be imported', { create: { status: 422 } }, 'That file can’t be imported.'],
     ['too many imports started', { create: { status: 429 } }, 'Too many imports were started. Try again in a while.'],
+    ['the room for unfinished uploads used up', { create: { status: 429, code: 'staging_quota' } }, 'The unfinished imports take all the room there is. Finish or cancel an import, then try again.'],
     ['an answer that is none of those', { create: { status: 500 } }, 'The import could not be started. Try again.'],
     ['a refusal to start that is none of those', { start: { status: 500 } }, 'The import could not be started. Try again.'],
   ] as const)('says so, in an alert, for %s, and lets the person try again', async (_name, options, text) => {
@@ -661,6 +662,11 @@ describe('what a person is told about a file: the reason is a code, and the scre
     expect(none.join(' ')).not.toMatch(/\d/);
   });
 
+  it('takes the limit of a file of an import from maxImportFileBytes, not from the editor\'s maxAttachmentBytes, and from that one only when the server does not send the first', async () => {
+    show(reasons(['entry_too_large'], 'skipped', { maxImportFileBytes: 2147483648, maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
+    expect((await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 1))[0]).toBe('The file is larger than the limit of 2 GB.');
+  });
+
   it('says the same words for the spelling the Markdown seed uses (too-large, too-deep), and names no number for the page whose converted state is over its own cap', async () => {
     show(reasons(['too-large', 'too-deep', 'state_too_large'], 'skipped', { maxMarkdownBytes: 131072 }).api, '/import?import=imp1');
     const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 3);
@@ -956,6 +962,15 @@ describe('the progress of an import', () => {
   it('says in plain words what to do for an export in parts and for a zip over the limits, and creates no page for either', async () => {
     show(fake({ states: [state({ status: 'failed', error: 'nested_or_split_export' })] }).api, '/import?import=imp1');
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('The import failed: this zip holds other zips, the way an export in parts does. Unzip the parts into one folder, zip that folder, and import it.'));
+  });
+
+  it('says in plain words what to do for an import whose pages use files that were copied more often than an import may hold', async () => {
+    show(fake({ states: [state({ status: 'failed', error: 'attachments_too_large' })] }).api, '/import?import=imp1');
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'The import failed: the files that its pages use were copied more often than an import may hold. Link a large file from fewer pages, or import it in smaller parts. The pages it created were moved to the trash.',
+      ),
+    );
   });
 
   it('says in plain words what to do for a zip that holds more than an import can take', async () => {
