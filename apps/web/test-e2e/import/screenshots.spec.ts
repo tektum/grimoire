@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openShots, p, settledScreen } from '../page/shot-support';
 import { shots } from '../support/shots';
-import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
+import { CONSTRUCT_REPORT, scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
 
 // The import screen, light and dark, 1280 by 800 (test-results/shots/M6-T12a/): idle with the duplicate-run warning, and progress at 40 percent. Against the stand-in of the API and a scripted import (see
 // `page/shot-support.ts` for the font and the person). Run by the same command as the other browser tests.
@@ -110,4 +110,28 @@ test('the report with the pictures from the web that were not copied', async ({ 
   await expect(list).not.toContainText('blocked_address');
   await settledScreen(page);
   await shots(page, TASK, 'report-pictures');
+});
+
+// What the import did to the content (the construct report), light and dark (test-results/shots/M7-construct-report/): the table of the kinds, a list of pages opened, and a narrow view.
+const CONSTRUCTS = 'M7-construct-report';
+const CONSTRUCT_FILES: readonly ScriptedItem[] = [
+  { id: 'i1', path: 'handbook/welcome.md', status: 'ok' },
+  { id: 'i2', path: 'handbook/guides/setup.md', status: 'ok' },
+];
+
+test('the report of what happened to the content of an import of a Notion export', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await openShots(page, context, [p('a', null, 'p0000', 'Welcome')]);
+  await scriptedImports(page, [{ status: 'done', total: 5, done: 5, report: CONSTRUCT_REPORT }], { items: CONSTRUCT_FILES });
+  await page.goto('/import?import=imp1');
+  await expect(page.getByRole('rowheader')).toHaveCount(9);
+  await expect(page.getByRole('heading', { name: 'Pages that still hold HTML' })).toBeVisible();
+  await settledScreen(page);
+  await shots(page, CONSTRUCTS, 'constructs');
+  await page.getByText('First 3 pages').first().click();
+  await page.getByText('2 pages').nth(1).click();
+  await expect(page.getByRole('link', { name: 'projects/Q3 plan.md' }).first()).toBeVisible();
+  await settledScreen(page);
+  await shots(page, CONSTRUCTS, 'constructs-open');
+  await shots(page, CONSTRUCTS, 'constructs-narrow', { width: 360 });
 });

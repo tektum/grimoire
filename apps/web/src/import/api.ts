@@ -5,7 +5,7 @@ import { quietApiOf } from '../editor/attachments/quiet-api';
 import type { ApiLike } from '../api/query';
 import { queryKey } from '../api/query';
 import { storeFetch } from '../api/store';
-import { ENDED, type CreatedImport, type ImportItem, type ImportItems, type ImportState } from './types';
+import { ENDED, type CreatedImport, type ImportConstructReport, type ImportItem, type ImportItems, type ImportState } from './types';
 
 /**
  * The API client of the import screens: the session's own, with its notices turned off. The screens tell every refusal and failure once, in their own words (a file that is not a zip, a collection that is
@@ -49,8 +49,22 @@ const isCreated = (v: unknown): v is CreatedAnswer => {
   const { upload } = first;
   return upload.kind === 'single' && upload.method === 'PUT' && typeof upload.url === 'string' && isObject(upload.headers);
 };
+const KINDS: readonly unknown[] = ['callout', 'toggle', 'page_mention', 'database_table', 'front_matter', 'icon_cover', 'database_row', 'unresolved_link', 'raw_html'];
+const FATES: readonly unknown[] = ['converted', 'dropped', 'kept'];
+const isReportPage = (v: unknown): boolean => isObject(v) && typeof v.itemId === 'string' && typeof v.path === 'string' && (v.urlId === null || typeof v.urlId === 'string');
+const isReport = (v: unknown): v is ImportConstructReport =>
+  isObject(v) &&
+  typeof v.rawHtmlCapped === 'boolean' &&
+  Array.isArray(v.rawHtmlPages) &&
+  v.rawHtmlPages.every((p: unknown) => isReportPage(p) && typeof (p as { fragments?: unknown }).fragments === 'number') &&
+  Array.isArray(v.constructs) &&
+  v.constructs.every((c: unknown) => isObject(c) && KINDS.includes(c.kind) && FATES.includes(c.fate) && typeof c.count === 'number' && typeof c.capped === 'boolean' && Array.isArray(c.pages) && c.pages.every(isReportPage));
 const isState = (v: unknown): v is ImportState =>
-  isObject(v) && STATUSES.includes(v.status) && isObject(v.counts) && ['pagesTotal', 'pagesDone', 'skipped', 'failed'].every((k) => typeof (v.counts as Record<string, unknown>)[k] === 'number');
+  isObject(v) &&
+  STATUSES.includes(v.status) &&
+  isObject(v.counts) &&
+  ['pagesTotal', 'pagesDone', 'skipped', 'failed'].every((k) => typeof (v.counts as Record<string, unknown>)[k] === 'number') &&
+  (v.report === undefined || isReport(v.report)); // a server that does not say has no report; one that says it says it whole
 const isItems = (v: unknown): v is ImportItems =>
   isObject(v) &&
   Array.isArray(v.items) &&

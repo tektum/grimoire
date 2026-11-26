@@ -9,6 +9,8 @@ export interface ScriptedState {
   readonly skipped?: number;
   readonly failed?: number;
   readonly error?: string | null;
+  /** The construct report of `GET /v1/imports/{id}`; the key is left out when the stand-in plays a server that does not say. */
+  readonly report?: unknown;
 }
 
 /** One file of the report as `GET /v1/imports/{id}/items` says it. */
@@ -27,6 +29,7 @@ export const stateOf = (s: ScriptedState) => ({
   startedAt: '2026-11-20T10:00:00.000Z',
   finishedAt: s.status === 'done' || s.status === 'failed' || s.status === 'cancelled' ? '2026-11-20T10:05:00.000Z' : null,
   error: s.error ?? null,
+  ...(s.report === undefined ? {} : { report: s.report }),
 });
 
 const cors = (origin: string | undefined) => ({
@@ -108,3 +111,24 @@ export const smallZip = (name = 'export.zip') => ({ name, mimeType: 'application
 
 /** Says the zip holds Markdown files: the import cannot start before the person has said what is in it. */
 export const chooseMarkdown = (page: Page): Promise<void> => page.getByRole('radio', { name: 'Markdown files' }).check();
+
+const page = (itemId: string, path: string, urlId: string | null) => ({ itemId, path, urlId });
+/** The construct report of an import of a Notion export: every kind, pages behind most of them, a line whose list is cut, rows that were left out (no address) and pages that still hold HTML. */
+export const CONSTRUCT_REPORT = {
+  constructs: [
+    { kind: 'callout', fate: 'converted', count: 12, pages: [page('i1', 'handbook/welcome.md', 'abc123'), page('i2', 'handbook/guides/setup.md', 'def456')], capped: false },
+    { kind: 'toggle', fate: 'converted', count: 7, pages: [page('i2', 'handbook/guides/setup.md', 'def456')], capped: false },
+    { kind: 'page_mention', fate: 'converted', count: 1204, pages: [page('i1', 'handbook/welcome.md', 'abc123'), page('i3', 'projects/roadmap.md', 'ghi789'), page('i4', 'projects/Q3 plan.md', 'jkl012')], capped: true },
+    { kind: 'database_table', fate: 'converted', count: 3, pages: [page('i3', 'projects/roadmap.md', 'ghi789')], capped: false },
+    { kind: 'front_matter', fate: 'dropped', count: 120, pages: [page('i1', 'handbook/welcome.md', 'abc123')], capped: true },
+    { kind: 'icon_cover', fate: 'dropped', count: 96, pages: [page('i4', 'projects/Q3 plan.md', 'jkl012')], capped: false },
+    { kind: 'database_row', fate: 'dropped', count: 85, pages: [page('r1', 'tasks/Row one.md', null), page('r2', 'tasks/Row two.md', null)], capped: true },
+    { kind: 'unresolved_link', fate: 'kept', count: 5, pages: [page('i3', 'projects/roadmap.md', 'ghi789')], capped: false },
+    { kind: 'raw_html', fate: 'kept', count: 4, pages: [page('i2', 'handbook/guides/setup.md', 'def456'), page('i5', 'handbook/embeds.md', 'mno345')], capped: false },
+  ],
+  rawHtmlPages: [
+    { ...page('i2', 'handbook/guides/setup.md', 'def456'), fragments: 3 },
+    { ...page('i5', 'handbook/embeds.md', 'mno345'), fragments: 1 },
+  ],
+  rawHtmlCapped: false,
+} as const;

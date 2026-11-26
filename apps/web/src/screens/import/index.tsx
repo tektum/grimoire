@@ -6,6 +6,7 @@ import { cancelImport, ImportError, useImportState, useQuietApi } from '../../im
 import { ENDED } from '../../import/types';
 import { Button } from '../../ui/primitives';
 import NotFoundScreen from '../notfound';
+import { ConstructReport } from './ConstructReport';
 import { ImportForm } from './ImportForm';
 import { Progress } from './Progress';
 import { Report } from './Report';
@@ -78,6 +79,7 @@ function Importing() {
             </Button>
           ) : null}
           {cancelFailed && (state.data.status === 'running' || state.data.status === 'uploaded') ? <p role="alert">The import could not be cancelled. Try again.</p> : null}
+          {ENDED.includes(state.data.status) ? <ConstructReport report={state.data.report} /> : null}
           {ENDED.includes(state.data.status) && id !== null ? <Report key={id} api={api} id={id} /> : null}
           {state.data.status === 'running' || state.data.status === 'created' || state.data.status === 'uploaded' ? null : (
             <Button
