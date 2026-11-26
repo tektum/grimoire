@@ -5,6 +5,11 @@ import type { ImportItem, ImportState } from '../../import/types';
 /** What to do with an export that is larger than an import can take: what makes an export large is its big files, and the largest of them could not be imported anyway. */
 const SMALLER = 'Zip the export again without its big files, such as videos, and import that.';
 
+/** Notion names each file of an export that it splits `<name>-Part-<n>.zip`; one part alone is not an export. Said before the upload, from the name only: the person can still go on. */
+export const isPartOfSplitExport = (fileName: string): boolean => /-part-\d+\.zip$/i.test(fileName);
+export const SPLIT_EXPORT_NOTE =
+  'This looks like one part of an export split into parts. An import takes the whole export in one zip: unzip the parts into one folder, zip that folder without its big files (such as videos), and import that.';
+
 /** The plain words, with what to do, for an import that failed on the shape or the size of its zip; every other code is shown as a code. */
 const FAILED_WORDS: Readonly<Record<string, string>> = {
   nested_or_split_export: 'The import failed: this zip holds other zips, the way an export in parts does. Unzip the parts into one folder, zip that folder, and import it.',

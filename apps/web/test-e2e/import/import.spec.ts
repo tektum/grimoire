@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
 import { signInAs } from '../support/sign-in';
-import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
+import { chooseMarkdown, scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
 
 // A small zip is imported and its report has one row for each file; a second import is cancelled while running (R6.39 to R6.41, R11.3). Against the stand-in of the API and a scripted import (the routes
 // are M7-T05's); written for the stack too, where the tree and the trash are asked as well. Needs a development build of the client (`bunx vite build --mode e2e`).
@@ -32,6 +32,7 @@ test('a small zip imports, and the report has one row for each file, with the re
     FILES,
   );
   await page.getByLabel('Choose a .zip file').setInputFiles(smallZip());
+  await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page.getByRole('status').first()).toHaveText('Done: 2 pages imported, 1 skipped, 1 failed.');
   const rows = page.getByRole('list', { name: 'Files of the import' }).getByRole('listitem');

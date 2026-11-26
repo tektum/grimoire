@@ -4,6 +4,7 @@ import { makePage } from '../editor/pages';
 import { apiUrl, devSecret } from '../support/env';
 import { signInAs } from '../support/sign-in';
 import { storedZip } from '../support/zip';
+import { chooseMarkdown } from './support';
 
 // The import screen against the stack: the real import routes (M7-T05) and the real file store, signed in as development users. The engine that runs an accepted import (M7-T04) is not in the stack yet,
 // so an import is accepted and WAITS (`uploaded`); what an import does once it runs (the progress to done, the report, the source of a failed page, cancelling while it runs) is in the scripted
@@ -72,6 +73,7 @@ test('a zip is created, sent to the file store and started through the real rout
       { name: 'docs/guide.md', text: '# Guide\n\nAnother one.\n' },
     ]),
   });
+  await chooseMarkdown(page);
   const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await explained(store, () => expect(page).toHaveURL(/\/import\?import=[0-9a-f-]{36}/));
@@ -92,6 +94,7 @@ test('a file that is not a zip is refused by the start with its own words, and t
   await page.goto('/import');
   await page.getByLabel('Into the collection').selectOption({ label: made.collectionName });
   await page.getByLabel('Choose a .zip file').setInputFiles({ name: 'notes.zip', mimeType: 'application/zip', buffer: Buffer.from('this is text, not an archive, and long enough to be a file') });
+  await chooseMarkdown(page);
   const store = watchStore(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await explained(store, () => expect(page.getByRole('alert')).toHaveText('That is not a zip file.'));

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openShots, p, settledScreen } from '../page/shot-support';
 import { shots } from '../support/shots';
-import { scriptedImports, type ScriptedItem, type ScriptedState } from './support';
+import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
 
 // The import screen, light and dark, 1280 by 800 (test-results/shots/M6-T12a/): idle with the duplicate-run warning, and progress at 40 percent. Against the stand-in of the API and a scripted import (see
 // `page/shot-support.ts` for the font and the person). Run by the same command as the other browser tests.
@@ -16,6 +16,24 @@ test('the import screen idle, with the duplicate-run warning', async ({ page, co
   await expect(page.getByLabel('Into the collection').getByRole('option')).toHaveText(['Dev']);
   await settledScreen(page);
   await shots(page, TASK, 'idle');
+});
+
+test('the import screen with a file chosen and nothing said of what is in it, and with a part of an export in parts and Notion chosen', async ({ page, context, browserName }) => {
+  test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
+  await openShots(page, context, [p('a', null, 'p0000', 'Welcome')]);
+  await scriptedImports(page, []);
+  await page.goto('/import');
+  await expect(page.getByLabel('Into the collection').getByRole('option')).toHaveText(['Dev']);
+  await page.getByLabel('Choose a .zip file').setInputFiles(smallZip('Export-3f2a91c4-Part-1.zip'));
+  await expect(page.getByText('Choose what is in the zip to start the import.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Import' })).toBeDisabled();
+  await settledScreen(page);
+  await shots(page, TASK, 'profile-unchosen');
+  await page.getByRole('radio', { name: 'An export of Notion (Markdown and CSV files)' }).check();
+  await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled();
+  await expect(page.getByRole('status')).toContainText('This looks like one part of an export split into parts.');
+  await settledScreen(page);
+  await shots(page, TASK, 'profile-notion-part');
 });
 
 test('the import screen at 40 percent', async ({ page, context, browserName }) => {

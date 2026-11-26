@@ -105,3 +105,6 @@ export async function scriptedImports(
 
 /** A small zip-shaped file: the four bytes every zip starts with, and some filler (the client only sends it; the server is stood in for). */
 export const smallZip = (name = 'export.zip') => ({ name, mimeType: 'application/zip', buffer: Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(2048, 7)]) });
+
+/** Says the zip holds Markdown files: the import cannot start before the person has said what is in it. */
+export const chooseMarkdown = (page: Page): Promise<void> => page.getByRole('radio', { name: 'Markdown files' }).check();

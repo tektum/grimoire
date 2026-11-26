@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
 import { expectNoAxeViolations } from '../support/axe';
 import { signInAs } from '../support/sign-in';
-import { scriptedImports, type ScriptedItem, type ScriptedState } from './support';
+import { scriptedImports, smallZip, type ScriptedItem, type ScriptedState } from './support';
 
 // Axe on the import screen in each state, in both schemes. Against the stand-in of the API and a scripted import.
 const STATES: readonly [string, ScriptedState][] = [
@@ -30,6 +30,16 @@ for (const scheme of ['light', 'dark'] as const) {
       await scriptedImports(page, []);
       await page.goto('/import');
       await expect(page.getByRole('note')).toBeVisible();
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+    });
+
+    test('idle, with a part of an export in parts chosen and its note, has none', async ({ page }) => {
+      await scriptedImports(page, []);
+      await page.goto('/import');
+      await page.getByLabel('Choose a .zip file').setInputFiles(smallZip('Export-3f2a91c4-Part-1.zip'));
+      await expect(page.getByRole('status')).toContainText('This looks like one part of an export split into parts.');
+      await expectNoAxeViolations(page, { minImpact: 'serious' });
+      await page.getByRole('radio', { name: 'Markdown files' }).check();
       await expectNoAxeViolations(page, { minImpact: 'serious' });
     });
 
