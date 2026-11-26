@@ -393,12 +393,14 @@ jobs:
         if: always()
         run: make down-volumes
 
-  e2e-m1:
-    name: Exit test M1
+  # The exit tests of milestones 1, 2 and 3 on ONE machine, one after the other (they were three jobs of 4m45, 4m40 and 6m10): about 15.5 minutes, under the longest job of the run (the WebKit browser job, about 18).
+  # A step per former job with its artifact (e2e-m1-results, e2e-m2-results, e2e-m3-results), a stack taken down between them, and every exit test runs even when an earlier one failed (`!cancelled()`), so one run still shows every failing one.
+  e2e-m1-m3:
+    name: Exit tests M1, M2 and M3
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
     env:
       GRIMOIRE_IMAGE_MODELS: skip
@@ -417,14 +419,19 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - run: make up
-      - run: make test-m1
-      - name: Collect Compose logs
-        if: failure()
+      - id: install
+        run: bun install --frozen-lockfile
+      - name: Exit test M1
+        id: m1
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          make up
+          make test-m1
+      - name: Collect Compose logs (M1)
+        if: ${{ !cancelled() && steps.m1.outcome == 'failure' }}
         run: docker compose -p grimoire logs --no-color > compose.log
       - name: Upload e2e-m1-results
-        if: failure()
+        if: ${{ !cancelled() && steps.m1.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-m1-results
@@ -433,42 +440,20 @@ jobs:
             compose.log
           retention-days: 7
           if-no-files-found: ignore
-      - name: Tear down
-        if: always()
+      - name: Tear down (M1)
+        if: ${{ always() && steps.m1.outcome != 'skipped' }}
         run: make down-volumes
-
-  e2e-m2:
-    name: Exit test M2
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
-    env:
-      GRIMOIRE_IMAGE_MODELS: skip
-      GRIMOIRE_SEMANTIC_SEARCH: 'off'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
-        with:
-          version: 2026.11.9
-          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: node bun
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
-          restore-keys: bun-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - run: make up
-      - run: make test-m2
-      - name: Collect Compose logs
-        if: failure()
+      - name: Exit test M2
+        id: m2
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          make up
+          make test-m2
+      - name: Collect Compose logs (M2)
+        if: ${{ !cancelled() && steps.m2.outcome == 'failure' }}
         run: docker compose -p grimoire logs --no-color > compose.log
       - name: Upload e2e-m2-results
-        if: failure()
+        if: ${{ !cancelled() && steps.m2.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-m2-results
@@ -477,41 +462,19 @@ jobs:
             compose.log
           retention-days: 7
           if-no-files-found: ignore
-      - name: Tear down
-        if: always()
+      - name: Tear down (M2)
+        if: ${{ always() && steps.m2.outcome != 'skipped' }}
         run: make down-volumes
-
-  e2e-m3:
-    name: Exit test M3
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job builds and checks the full one).
-    env:
-      GRIMOIRE_IMAGE_MODELS: skip
-      GRIMOIRE_SEMANTIC_SEARCH: 'off'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
-        with:
-          version: 2026.11.9
-          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
-          install_args: node bun
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
-          restore-keys: bun-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - run: make test-m3
-      - name: Collect Compose logs
-        if: failure()
+      - name: Exit test M3
+        id: m3
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          make test-m3
+      - name: Collect Compose logs (M3)
+        if: ${{ !cancelled() && steps.m3.outcome == 'failure' }}
         run: docker compose -p grimoire logs --no-color > compose.log
       - name: Upload e2e-m3-results
-        if: failure()
+        if: ${{ !cancelled() && steps.m3.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-m3-results
@@ -520,9 +483,15 @@ jobs:
             compose.log
           retention-days: 7
           if-no-files-found: ignore
-      - name: Tear down
-        if: always()
+      - name: Tear down (M3)
+        if: ${{ always() && steps.m3.outcome != 'skipped' }}
         run: make down-volumes
+      - name: Result of every exit test
+        if: ${{ always() }}
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          jq -r '"| exit test | result |", "|---|---|", (to_entries[] | select(.value.outcome != null) | "| \(.key) | \(.value.outcome) |")' <<< "$STEPS_JSON" >> "$GITHUB_STEP_SUMMARY"
 
   e2e-m4:
     name: Exit test M4
@@ -840,9 +809,7 @@ jobs:
       - integration
       - coverage
       - image
-      - e2e-m1
-      - e2e-m2
-      - e2e-m3
+      - e2e-m1-m3
       - e2e-m4
       - e2e-m5
     steps:
