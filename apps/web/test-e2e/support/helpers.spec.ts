@@ -130,6 +130,30 @@ test.describe('waitForSynced', () => {
     await page.goto('/never.html');
     await expect(waitForSynced(page, { timeout: 500 })).rejects.toThrow(/Timeout/);
   });
+
+  test('when the editor is not synced after a while it says what the page shows (attached to the report) and goes on waiting, to the same end as before', async ({ page }) => {
+    await page.route('**/late.html', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: `${STUB}<h1>Page not found</h1><div data-collab-state="connecting"></div><script>setTimeout(()=>document.querySelector('[data-collab-state]').setAttribute('data-collab-state','synced'),900)</script>`,
+      }),
+    );
+    await page.goto('/late.html');
+    await waitForSynced(page, { diagnoseAfter: 300 });
+    const note = test.info().attachments.find((a) => a.name === 'not-synced-yet.txt');
+    expect(note, 'a note was attached when the wait passed the first look').toBeDefined();
+    const text = note!.body!.toString();
+    expect(text).toContain('/late.html');
+    expect(text).toContain('connecting');
+    expect(text).toContain('Page not found');
+  });
+
+  test('says nothing when the editor syncs within the first look', async ({ page }) => {
+    await page.route('**/quick.html', (route) => route.fulfill({ contentType: 'text/html', body: `${STUB}<div data-collab-state="synced"></div>` }));
+    await page.goto('/quick.html');
+    await waitForSynced(page, { diagnoseAfter: 300 });
+    expect(test.info().attachments.some((a) => a.name === 'not-synced-yet.txt')).toBe(false);
+  });
 });
 
 test.describe('shots', () => {
