@@ -65,6 +65,8 @@ services:
       GRIMOIRE_SEMANTIC_SEARCH: "${GRIMOIRE_SEMANTIC_SEARCH:-on}"
       # A setting a test target may change and the stack otherwise leaves to the default of the server: empty counts as unset (the restart test of M7 sets 20 so that a run a killed container left is taken back in seconds, not 15 minutes).
       GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: "${GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS:-}"
+      # How often the `import-sweep` job looks for a running import without a live job (R10.16); empty is the default, a test of the restart sets it to every minute.
+      GRIMOIRE_JOBS_SWEEP_CRON: "${GRIMOIRE_JOBS_SWEEP_CRON:-}"
       # The server refuses local mode on a non-loopback bind unless told this is fine. It is fine here: inside the container the app must listen
       # on 0.0.0.0 (GRIMOIRE_HOST in the image), but this file publishes the port on 127.0.0.1 only (`ports` below), so only this machine reaches it.
       # Do not widen the published address while local mode is on: development tokens are the only sign-in.

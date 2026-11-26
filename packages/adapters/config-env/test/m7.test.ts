@@ -61,6 +61,10 @@ describe('the refusals name the variable', () => {
     expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967296' })).toEqual([]);
   });
 
+  it('an empty value of the sweep schedule (what the Compose pass-through gives when nothing is set) is the default of every 5 minutes', () => {
+    expect(load({ GRIMOIRE_JOBS_SWEEP_CRON: '' }).jobs.sweepCron).toBe('*/5 * * * *');
+  });
+
   it('a remote image larger than an upload is refused, on the variable of the remote limit', () => {
     expect(issuesOf({ GRIMOIRE_FILES_MAX_BYTES: '1000', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1001' }).some((i) => i.includes('GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'))).toBe(true);
     expect(issuesOf({ GRIMOIRE_FILES_MAX_BYTES: '1000', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1000' })).toEqual([]);

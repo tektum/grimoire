@@ -49,7 +49,6 @@ const NOT_PASSED: Readonly<Record<string, string>> = {
   GRIMOIRE_JOBS_PURGE_CRON: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_UPLOAD_CLEANUP_CRON: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_JOBS_REVISION_CRON: 'M7-T00 declares it; the task that uses it passes it',
-  GRIMOIRE_JOBS_SWEEP_CRON: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_SEARCH_STATEMENT_TIMEOUT_MS: 'M7-T00 declares it; the task that uses it passes it',
   GRIMOIRE_SEMANTIC_MODEL: 'M7-T11 declares it; the task that uses it passes it',
   GRIMOIRE_SEMANTIC_MODEL_DIR: 'M7-T11 declares it; the task that uses it passes it',
