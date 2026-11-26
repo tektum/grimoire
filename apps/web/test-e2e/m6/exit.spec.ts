@@ -69,6 +69,13 @@ test('removing a scenario from the list, or from the report, or naming a file th
   ).toContain('the scenario "import" is pending on "later", which is not a task id');
 });
 
+test('a scenario that is still pending is a problem for the exit test, unless it is allowed while its screen is being built', () => {
+  const pending = SCENARIOS.map((s) => (s.id === 'import' ? { id: s.id, title: s.title, specs: [], pending: 'M6-T99' } : s));
+  expect(listProblems(pending, report, undefined, false)).toContain('the scenario "import" is still pending on M6-T99: the exit test is not complete (M6_ALLOW_PENDING=1 allows it while the screen is built)');
+  expect(listProblems(pending, report, undefined, true).some((p) => p.includes('still pending'))).toBe(false);
+  expect(listProblems(SCENARIOS, report, undefined, false), 'nothing is pending now').toEqual([]);
+});
+
 test('a report with a proved row of a missing file, a pending row of files that are there, or a row with no state is found', () => {
   const row = (state: string, file = 'apps/web/test-e2e/m6/exit.spec.ts') => `| Shell (M6-T99) | A behaviour. | \`${file}\` | ${state} |`;
   const doc = (...rows: string[]) =>

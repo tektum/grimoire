@@ -77,8 +77,13 @@ export function scenarioIdsOfReport(markdown: string): string[] {
     .filter((id): id is string => id !== undefined);
 }
 
-/** What is wrong with the list: a scenario the report has and the list lacks (or the other way), a scenario twice, a specification that is not there. Empty when it is sound. */
-export function listProblems(scenarios: readonly Scenario[], report: string, exists: (file: string) => boolean = (file) => existsSync(path.join(repoRoot, file))): string[] {
+/** What is wrong with the list: a scenario the report has and the list lacks (or the other way), a scenario twice, a specification that is not there, and (unless `allowPending`) a scenario that is still pending: a test that is not written must not read as a pass. Empty when it is sound. */
+export function listProblems(
+  scenarios: readonly Scenario[],
+  report: string,
+  exists: (file: string) => boolean = (file) => existsSync(path.join(repoRoot, file)),
+  allowPending = true,
+): string[] {
   const problems: string[] = [];
   const ids = scenarios.map((s) => s.id);
   const inReport = scenarioIdsOfReport(report);
@@ -87,6 +92,7 @@ export function listProblems(scenarios: readonly Scenario[], report: string, exi
   for (const id of new Set(ids)) if (ids.filter((x) => x === id).length > 1) problems.push(`the scenario "${id}" is in the list twice`);
   for (const s of scenarios) {
     if (s.pending !== undefined) {
+      if (!allowPending) problems.push(`the scenario "${s.id}" is still pending on ${s.pending}: the exit test is not complete (M6_ALLOW_PENDING=1 allows it while the screen is built)`);
       if (!/^M\d+-T\d+[a-z]?$/.test(s.pending)) problems.push(`the scenario "${s.id}" is pending on "${s.pending}", which is not a task id`);
       if (s.specs.length > 0) problems.push(`the scenario "${s.id}" is pending and has specifications: take the mark off`);
     } else if (s.specs.length === 0) problems.push(`the scenario "${s.id}" has no specification and is not marked pending`);
@@ -115,7 +121,7 @@ if (import.meta.main) {
   const command = process.argv[2];
   const report = readFileSync(process.env['M6_EXIT_REPORT'] ?? path.join(repoRoot, 'docs/proof/m6-exit.md'), 'utf8'); // the variable is for the test of this list: another report
   if (command === 'check') {
-    const problems = [...listProblems(SCENARIOS, report), ...fileDisagreements(SCENARIOS, report), ...reportProblems(report)]; // the list, the files it names against the report's, and the report itself
+    const problems = [...listProblems(SCENARIOS, report, undefined, process.env['M6_ALLOW_PENDING'] === '1'), ...fileDisagreements(SCENARIOS, report), ...reportProblems(report)]; // the list, the files it names against the report's, and the report itself
     if (problems.length > 0) {
       process.stderr.write(`${problems.join('\n')}\nthe list of scenarios is not sound\n`);
       process.exit(1);

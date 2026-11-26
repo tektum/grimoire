@@ -185,7 +185,7 @@ The build step `bun run --filter apps/web check:build` is part of the run, befor
 | Browsers and exit (M6-T13) | Live-workflow.test.mjs is the model; live-workflow.test.mjs (run by test:tools) parses .github/workflows/descope-live-web.yml and. | `tools/m3-live/test/live-workflow.test.mjs`<br>`tools/m6-live/test/live-workflow.test.mjs` | pending M6-T13 |
 | Browsers and exit (M6-T13) | The web origin (4173) differs from the API origin (8080) in every request log of the suite, and no request carries a cookie header. | `apps/web/test-e2e/m6/origins.spec.ts` | proved |
 | Browsers and exit (M6-T13) | A mutation test (committed) that breaks one row of mapSignal and one rule of isSafeHref makes the suite fail in both places. | `apps/web/test-e2e/m6/mutation.spec.ts` | proved |
-| Browsers and exit (M6-T13) | The `e2e-m6` job of the merge gate runs `make test-m6` with the browsers installed and cached and the pictures uploaded, and is listed in `ci-required`; a test reads it against the job of the third milestone. | `tools/ci/test/e2e-m6-job.test.mjs` | pending M6-T13 |
+| Browsers and exit (M6-T13) | The merge gate runs the exit test in pieces, not as one job named for it. Job `checks` runs `make test-m6-static`: the list of scenarios against this report (a scenario that is still pending fails it, unless `M6_ALLOW_PENDING=1` is set while a screen is built), and `check:build` on a production build of the client. Job `e2e-web` runs the browser specifications in Chromium and then `make test-m6-handshake`: the stack with the handshake required, the production response headers served on 4173, and the handshake check, in Chromium. Job `e2e-web-browsers` runs the specifications in Firefox and WebKit. All three are in `ci-required`. The whole `make test-m6`, the three browsers in one run, is not part of the merge gate. | `tools/ci/test/e2e-m6-job.test.mjs`, `tools/ci/test/test-m6-target.test.mjs` | proved |
 | Browsers and exit (M6-T13) | The web origin differs from the API origin in every request, and no request carries a cookie. | `apps/web/test-e2e/m6/origins.spec.ts` | proved |
 | Browsers and exit (M6-T13) | A broken `mapSignal` row and a broken `isSafeHref` rule make the checks fail. | `apps/web/test-e2e/m6/mutation.spec.ts` | proved |
 | Browsers and exit (M6-T13) | The server of the run requires the handshake: a run with `M6_REQUIRE_HANDSHAKE` unset fails with a plain line. | `apps/web/test-e2e/m6/handshake.spec.ts` | proved |
@@ -203,8 +203,10 @@ Each of these is checked by a job of the merge gate, on every pull request:
 | `bun run lint` | step `Static checks` of job `checks` |
 | `bun run test:coverage` (unit and web projects, coverage floors) | jobs `unit` and `coverage` |
 | `bun run licence` | step `Licence check` of job `checks` |
+| the list of scenarios of this exit test (a pending scenario fails), and `check:build` on a production build | step `Static checks (the list of scenarios of the M6 exit test and check:build)` of job `checks` (`make test-m6-static`) |
 | secrets scan | step `Secret Scan` of job `checks` |
 | workflows | step `Workflow Policy` of job `checks` (actionlint, zizmor) |
 | the browser specifications against the stack, in Chromium | job `e2e-web` (in the list of `ci-required`) |
+| the handshake required by the server and the production headers served, with the handshake check, in Chromium | step `make test-m6-handshake` of job `e2e-web` |
 | the same, in Firefox and WebKit | job `e2e-web-browsers` (one runner per browser; in the list of `ci-required`, so the merge gate waits for it). Firefox leaves out the accessibility folder and every `axe.spec` by one rule (`FIREFOX_ARIA_CRASH_SPECS`, a Firefox crash on the ARIA tree; `tools/ci/test/firefox-exclusion.test.mjs` fails once Playwright's Firefox is 163 or later); those run in Chromium and WebKit |
 

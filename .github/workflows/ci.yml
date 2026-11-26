@@ -146,6 +146,12 @@ jobs:
         id: static-build
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: bun run build
+      # The two checks of the M6 exit test that need no stack (docs/proof/m6-exit.md): the list of scenarios against its report (a scenario still pending fails), and `check:build` on a production
+      # build of the client. After the build above: the client imports the built workspace.
+      - name: Static checks (the list of scenarios of the M6 exit test and check:build)
+        id: static-m6
+        if: ${{ !cancelled() && steps.static-build.outcome == 'success' }}
+        run: make test-m6-static
       - name: Static checks (lint)
         id: static-lint
         if: ${{ !cancelled() && steps.static-build.outcome == 'success' }}
@@ -617,6 +623,9 @@ jobs:
       # The specs of apps/web/test-e2e run in a real browser against the stack. This job is not in `CI Required` yet: its first runs say what fails and who owns it.
       - run: tools/ci/playwright-install.sh chromium
       - run: make test-web-e2e
+      # The M6 exit test's handshake, in Chromium alone (the nightly `make test-m6` runs it with the rest in three browsers): the stack again with the handshake required, the production response
+      # headers served for it, and a bare token refused as coming from a client that is too old.
+      - run: make test-m6-handshake
       - name: Collect Compose logs
         if: failure()
         run: docker compose -p grimoire logs --no-color > compose.log
