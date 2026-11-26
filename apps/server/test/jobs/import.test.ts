@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { ImportBusyError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportSource, ImportStatus } from '@tektum/grimoire-core/ports/import-repo';
-import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
+import type { FilesConfig, ImportConfig } from '@tektum/grimoire-core/ports/config';
 import type { EnqueueOptions, JobContext } from '@tektum/grimoire-core/ports/job-queue';
 import type { ConvertResult, MarkdownConverter, SeedResult } from '@tektum/grimoire-core/ports/markdown-converter';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
@@ -38,7 +39,7 @@ const FILES_CONFIG: FilesConfig = { endpoint: 'http://store.test', publicEndpoin
 
 const ctx = (over: Partial<JobContext> = {}): JobContext => ({ jobId: 'job-1', attempt: 1, retryLimit: 3, signal: new AbortController().signal, ...over });
 
-async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; source?: ImportSource; files?: boolean; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number } = {}) {
+async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over: { status?: ImportStatus; source?: ImportSource; files?: boolean; repo?: FakeImportRepo; chunkSignal?: (ms: number) => AbortSignal; batchPages?: number; maxPages?: number; importConfig?: Partial<ImportConfig> } = {}) {
   const repo = over.repo ?? new FakeImportRepo();
   repo.seed({ id: IMPORT, tenantId: TENANT, status: over.status ?? 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: importZipKey(TENANT, IMPORT), ...(over.source === undefined ? {} : { source: over.source }) });
   const files = new FakeFileStorage();
@@ -49,7 +50,7 @@ async function setup(entries: readonly BuilderEntry[] | Buffer | undefined, over
   const logger = new FakeLogger();
   const handle: { queueOverride?: (() => Promise<string | null>) | undefined } = {};
   const handler = createImportHandler({
-    config: makeFakeConfig(over.files === true ? { files: FILES_CONFIG } : {}), log: createEventLog(logger), clock: { now: () => 1_700_000_000_000 }, imports: repo, files, converter, ordering: { between: (b: string | null) => `${b ?? ''}a` },
+    config: makeFakeConfig({ ...(over.files === true ? { files: FILES_CONFIG } : {}), ...(over.importConfig === undefined ? {} : { import: over.importConfig }) }), log: createEventLog(logger), clock: { now: () => 1_700_000_000_000 }, imports: repo, files, converter, ordering: { between: (b: string | null) => `${b ?? ''}a` },
     fetcher: undefined, sniff: () => Promise.resolve(undefined), queue: {
       enqueueImport: (payload, options) => { enqueued.push({ name: 'import', payload, options }); return handle.queueOverride?.() ?? Promise.resolve('id'); },
       enqueueImportCleanup: (payload) => { enqueued.push({ name: 'import-cleanup', payload, options: undefined }); return Promise.resolve('id'); },
@@ -488,6 +489,63 @@ describe('the profile an import is read with is the one of its source', () => {
   });
 });
 
+describe('an import of several zips (an export in parts)', () => {
+  const PART_1 = `tenants/${TENANT}/imports/${IMPORT}/source-1.zip`;
+  /** An import whose zips are `parts` (the first at the import's own key), started as a person would after sending them. */
+  async function parts(zips: readonly (readonly BuilderEntry[] | Buffer | undefined)[], over: Parameters<typeof setup>[1] = {}) {
+    const t = await setup(undefined, { ...over, status: 'created' });
+    for (const [ordinal, entries] of zips.entries()) {
+      const key = ordinal === 0 ? importZipKey(TENANT, IMPORT) : PART_1.replace('-1.zip', `-${String(ordinal)}.zip`);
+      const zip = entries === undefined ? undefined : Buffer.isBuffer(entries) ? entries : buildZip(entries as BuilderEntry[]);
+      if (zip !== undefined) await t.files.put(key, zip, { size: zip.length, contentType: 'application/zip' });
+      expect(await t.repo.addPart(TENANT, IMPORT, { ordinal, s3Key: key, bytes: zip?.length ?? 100, uploadId: null })).toBe(true);
+    }
+    expect(await t.repo.markUploaded(TENANT, IMPORT)).toBe(true);
+    return t;
+  }
+  const dir = (name: string): BuilderEntry => ({ name });
+
+  it('reads them as one archive: a link and a file across the zips resolve, a folder in both is one folder, and a file in both is kept once (the later one is skipped as duplicate_path)', async () => {
+    const t = await parts([
+      [md('A.md\u0000# A\n\n[B](dir/B.md) and [data](dir/data.csv)\n'), dir('dir/'), md('dir/C.md\u0000# C\n')],
+      [dir('dir/'), md('dir/B.md\u0000# B\n'), { name: 'dir/data.csv', data: Buffer.from('a,b\n1,2\n') }, md('A.md\u0000# A again\n')],
+    ], { files: true });
+    await t.run();
+    expect((await t.record())?.status).toBe('done');
+    const items = await t.items();
+    const by = (path: string) => items.find((i) => i.path === path);
+    expect(['A.md', 'dir/B.md', 'dir/C.md', 'dir/data.csv'].map((p) => [p, by(p)?.status])).toEqual([['A.md', 'ok'], ['dir/B.md', 'ok'], ['dir/C.md', 'ok'], ['dir/data.csv', 'ok']]);
+    expect(items.filter((i) => i.message === 'duplicate_path').map((i) => i.path.replace(/ \[entry .*\]$/, ''))).toEqual(['A.md']);
+    expect(items.filter((i) => i.path.startsWith('dir/') && i.path !== 'dir/' && !i.path.includes('.')).length, 'no second item for the folder that is in both zips').toBe(0);
+    const a = t.repo.written.find((w) => w.page.title === 'A')?.page;
+    expect(a?.content.markdown).toContain(`/p/${by('dir/B.md')?.urlId ?? 'none'}`);
+    expect(a?.content.markdown).toMatch(/attachments\/[0-9a-f-]{36}\/data\.csv/);
+    expect(t.repo.written.map((w) => w.page.title)).not.toContain('A again');
+  });
+
+  it('counts the limits over the whole import: entries and bytes of all its zips together', async () => {
+    const files = (prefix: string): BuilderEntry[] => [md(`${prefix}1.md\u0000# 1\n`), md(`${prefix}2.md\u0000# 2\n`)];
+    const many = await parts([files('a'), files('b')], { importConfig: { maxEntries: 3 } });
+    await many.run();
+    expect(await many.record()).toMatchObject({ status: 'failed', error: 'too_many_entries' });
+    expect(many.converter.seeds).toBe(0);
+    const big = await parts([[md(`a.md\u0000${'x'.repeat(600)}\n`)], [md(`b.md\u0000${'y'.repeat(600)}\n`)]], { importConfig: { maxUncompressedBytes: 1000 } });
+    await big.run();
+    expect(await big.record()).toMatchObject({ status: 'failed', error: 'too_large' });
+  });
+
+  it('a zip of the import that is not in the store ends it as failed (upload_missing), and so does one that is not a zip (not_a_zip), before any page', async () => {
+    const missing = await parts([[md('a.md\u0000# A\n')], undefined]);
+    await missing.run();
+    expect(await missing.record()).toMatchObject({ status: 'failed', error: 'upload_missing' });
+    expect(missing.converter.seeds).toBe(0);
+    const notZip = await parts([[md('a.md\u0000# A\n')], Buffer.from('not a zip at all, but long enough to be read as one')]);
+    await notZip.run();
+    expect(await notZip.record()).toMatchObject({ status: 'failed', error: 'not_a_zip' });
+    expect(notZip.converter.seeds).toBe(0);
+  });
+});
+
 describe('an archive that cannot be imported ends the import as failed, with the reason as its error', () => {
   it('a name that would write outside the import is refused as a whole', async () => {
     const t = await setup([md('a.md\u0000# A\n'), { name: '../evil.md', data: Buffer.from('x') }]);
@@ -605,6 +663,21 @@ describe('endings that are not the end of the run', () => {
 });
 
 describe('a failure of the job', () => {
+  it('a store that does not answer while the zips are sized is a failure of the job, not a missing upload: the error goes up for the queue to retry', async () => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    vi.spyOn(t.files, 'head').mockRejectedValueOnce(new FileStorageError('unavailable', 'the store is down'));
+    await expect(t.run(ctx({ attempt: 2, retryLimit: 3 }))).rejects.toThrow('the store is down');
+    expect((await t.record())?.status).toBe('running');
+  });
+
+  it('an import with no part rows and no key on the row reads its one zip at the conventional key', async () => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    t.repo.seed({ id: IMPORT, tenantId: TENANT, status: 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: null });
+    await t.run();
+    expect((await t.record())?.status).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['A']);
+  });
+
   it('while retries remain: the error goes up for the queue to retry, the import stays running', async () => {
     const t = await setup([md('a.md\u0000# A\n')]);
     t.converter.seedHook = () => { throw new Error('boom'); };

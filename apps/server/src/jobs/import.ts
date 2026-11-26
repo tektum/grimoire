@@ -15,7 +15,7 @@ import { markdownProfile } from '../import/markdown-profile.js';
 import { notionProfile } from '../import/notion/profile.js';
 import type { ImportProfile } from '../import/profile.js';
 import type { RemoteImageFetcher } from '../import/remote-images/index.js';
-import { openArchive } from '../import/zip-reader.js';
+import { openParts } from '../import/zip-reader.js';
 import { importSingletonKey, isImportPayload, notImplemented } from './types.js';
 
 export interface ImportJobDeps {
@@ -102,13 +102,17 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
     };
 
     try {
-      const zipKey = record.s3Key ?? importZipKey(tenantId, importId);
-      let size: number;
-      try { size = (await files.head(zipKey)).size; } catch (e) {
-        if (e instanceof FileStorageError && e.kind === 'not-found') { await fail('upload_missing'); return; }
-        throw e;
+      // The zips of the import, in order (an export in parts is several); a row from before the parts were kept has its one zip on the import itself.
+      const keys = (await imports.parts(tenantId, importId)).map((p) => p.s3Key);
+      if (keys.length === 0) keys.push(record.s3Key ?? importZipKey(tenantId, importId));
+      const parts: { key: string; size: number }[] = [];
+      for (const key of keys) {
+        try { parts.push({ key, size: (await files.head(key)).size }); } catch (e) {
+          if (e instanceof FileStorageError && e.kind === 'not-found') { await fail('upload_missing'); return; }
+          throw e;
+        }
       }
-      const opened = await openArchive(files, zipKey, size, config.import);
+      const opened = await openParts(files, parts, config.import);
       if (opened.kind === 'refused') {
         log.warn('import.archive_refused', { importId, reason: opened.reason });
         await fail(opened.reason);

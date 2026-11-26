@@ -27,9 +27,18 @@ export class EntryAbort extends Error {
   }
 }
 
+/** What the import reads entries through: one zip, or the zips of an export in parts. */
+export interface ArchiveReader {
+  openEntry(entry: ZipEntry, limits: Pick<ImportConfig, 'maxEntryBytes' | 'maxRatio'>): Promise<Readable>;
+  close(): void;
+}
 export type OpenResult =
   | { readonly kind: 'ok'; readonly reader: ZipReader; readonly entries: readonly ZipEntry[] }
   | { readonly kind: 'refused'; readonly reason: HeaderRefusal | 'not_a_zip'; readonly index?: number };
+/** The result of `openParts`: the entries of all the zips and a reader that opens each from its own zip. */
+export type OpenPartsResult =
+  | { readonly kind: 'ok'; readonly reader: ArchiveReader; readonly entries: readonly ZipEntry[] }
+  | { readonly kind: 'refused'; readonly reason: HeaderRefusal | 'not_a_zip' };
 
 /** A yauzl random-access reader over ranged `get` calls of the file store: no temporary file, a read-ahead window for the small reads. */
 /** Resolves when `out` has drained or closed, and leaves neither listener behind (one per chunk would pile up over a long read). */
@@ -99,7 +108,7 @@ function describe(raw: yauzl.Entry, index: number): ZipEntry {
   };
 }
 
-export class ZipReader {
+export class ZipReader implements ArchiveReader {
   constructor(private readonly zip: yauzl.ZipFile, private readonly storage: StorageReader, readonly entryCount: number) {}
 
   /** The ranged `get` calls made so far. */
@@ -179,4 +188,54 @@ async function collect(body: AsyncIterable<Uint8Array>): Promise<Buffer[]> {
   const out: Buffer[] = [];
   for await (const chunk of body) out.push(Buffer.from(chunk));
   return out;
+}
+
+/**
+ * The zips of one import (an export in parts) read as one archive: each is opened and checked as a zip of its own, then the limits are judged again over all of them together
+ * (the count of entries and their bytes), and their entries follow one another in the order of the parts, numbered across them. A folder that several parts name is the folder of the first; a
+ * file that two parts hold is the first part's, and pass one reports the later one as `duplicate_path`. A single zip is read exactly as before.
+ */
+export async function openParts(files: FileStorage, parts: readonly { readonly key: string; readonly size: number }[], limits: Pick<ImportConfig, 'maxEntries' | 'maxUncompressedBytes' | 'maxRatio'>): Promise<OpenPartsResult> {
+  const [first] = parts;
+  if (first === undefined) return { kind: 'refused', reason: 'not_a_zip' };
+  if (parts.length === 1) return openArchive(files, first.key, first.size, limits);
+  const opened: { reader: ArchiveReader; entries: readonly ZipEntry[] }[] = [];
+  const closeAll = (): void => { for (const o of opened) o.reader.close(); };
+  try {
+    for (const part of parts) {
+      const one = await openArchive(files, part.key, part.size, limits);
+      if (one.kind === 'refused') { closeAll(); return { kind: 'refused', reason: one.reason }; }
+      opened.push(one);
+    }
+  } catch (error) {
+    // A zip that cannot be read at all (the store answers with an error): the readers of the zips opened before it are closed, and the error goes up for the job's retry.
+    closeAll();
+    throw error;
+  }
+  const owner = new Map<ZipEntry, { reader: ArchiveReader; entry: ZipEntry }>();
+  const folders = new Set<string>();
+  const entries: ZipEntry[] = [];
+  for (const { reader, entries: own } of opened) {
+    for (const entry of own) {
+      if (entry.isDirectory) {
+        const folder = entry.path.split('/').filter((s) => s !== '' && s !== '.').join('/').normalize('NFC').toLowerCase();
+        if (folders.has(folder)) continue;
+        folders.add(folder);
+      }
+      const numbered: ZipEntry = { ...entry, index: entries.length };
+      owner.set(numbered, { reader, entry });
+      entries.push(numbered);
+    }
+  }
+  const checked = checkHeader(entries, parts.reduce((sum, p) => sum + p.size, 0), limits);
+  // Each entry passed its own zip's check, so what can fail here is a total: the count or the bytes of all of them (a ratio cannot: the parts' ratios bound their sum's), which names no entry.
+  if (!checked.ok) { closeAll(); return { kind: 'refused', reason: checked.reason }; }
+  const reader: ArchiveReader = {
+    openEntry: (entry, entryLimits) => {
+      const at = owner.get(entry);
+      return at === undefined ? Promise.reject(new Error('the entry is not one of these zips')) : at.reader.openEntry(at.entry, entryLimits);
+    },
+    close: closeAll,
+  };
+  return { kind: 'ok', reader, entries };
 }
