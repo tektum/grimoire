@@ -160,21 +160,31 @@ describe('a word only on a page the asker may not read is never found (tenant mo
     expect(found.semantic).toBe(true); // the semantic list was on and still gave nothing of the other tenant, though its chunk is the query vector
   });
 
+  // The title search is fuzzy (trigrams), so a word is also found "nearly" on pages with similar titles: the readers below find THEIR page among others, and the isolation checks look at whose pages the answer holds.
   it('the same words are found by the people who may read them: an administrator in the administrator-only and the restricted collections, the grantee in the restricted one, and the other tenant on its own page', async () => {
     const adminTerm = TERMS.find((t) => t.kind === 'admin-only') as (typeof TERMS)[number];
     const restrictedTerm = TERMS.find((t) => t.kind === 'restricted') as (typeof TERMS)[number];
     const otherTerm = TERMS.find((t) => t.kind === 'other-tenant') as (typeof TERMS)[number];
-    expect((await answer(adminTerm.term, 'a-admin')).ids).toEqual([pageOf.get(adminTerm.term)]);
-    expect((await answer(restrictedTerm.term, 'a-admin')).ids).toEqual([pageOf.get(restrictedTerm.term)]);
-    expect((await answer(restrictedTerm.term, 'a-other')).ids).toEqual([pageOf.get(restrictedTerm.term)]);
-    expect((await answer(otherTerm.term, 'b-m0')).ids).toEqual([pageOf.get(otherTerm.term)]);
+    expect((await answer(adminTerm.term, 'a-admin')).ids).toContain(pageOf.get(adminTerm.term));
+    expect((await answer(restrictedTerm.term, 'a-admin')).ids).toContain(pageOf.get(restrictedTerm.term));
+    expect((await answer(restrictedTerm.term, 'a-other')).ids).toContain(pageOf.get(restrictedTerm.term));
+    expect((await answer(otherTerm.term, 'b-m0')).ids).toContain(pageOf.get(otherTerm.term));
   });
 
-  it('an administrator of one tenant does not find the other tenant, and the other tenant does not find the first, for a word only the other uses', async () => {
-    const otherTerm = TERMS.find((t) => t.kind === 'other-tenant') as (typeof TERMS)[number];
-    expect((await answer(otherTerm.term, 'a-admin')).ids).toEqual([]);
-    const adminTerm = TERMS.find((t) => t.kind === 'admin-only') as (typeof TERMS)[number];
-    expect((await answer(adminTerm.term, 'b-m0')).ids).toEqual([]);
+  it("no answer holds a page of the other tenant: the first tenant's administrator and the other tenant never see each other's pages, whatever the word", async () => {
+    const ofB = new Set([...TERMS.filter((t) => t.kind === 'other-tenant').map((t) => pageOf.get(t.term) as string), pageOf.get('nearest') as string]);
+    const ofA = new Set(TERMS.filter((t) => t.kind !== 'other-tenant').map((t) => pageOf.get(t.term) as string));
+    for (const { term } of TERMS.slice(0, 3)) {
+      // few words: one person is allowed 30 requests a minute and an answer follows its cursors
+      expect(
+        (await answer(term, 'a-admin')).ids.filter((id) => ofB.has(id)),
+        `${term} for the first tenant's administrator`,
+      ).toEqual([]);
+      expect(
+        (await answer(term, 'b-m0')).ids.filter((id) => ofA.has(id)),
+        `${term} for the other tenant`,
+      ).toEqual([]);
+    }
   });
 
   it('an administrator-only collection is invisible to a member even when asked for by id: an empty 200 with no cursor', async () => {
