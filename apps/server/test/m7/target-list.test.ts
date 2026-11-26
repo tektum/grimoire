@@ -65,7 +65,7 @@ describe('the test list of the M7 exit test', () => {
     writeFileSync(runner, 'process.exit(0);\n');
     const groups = real();
     groups['restart'] = { pending: ['apps/server/test/m7/not-written-yet.container.test.ts'], projects: ['container'] };
-    const env = { M7_GROUPS_FILE: withList(groups), M7_RUNNER: runner };
+    const env = { M7_GROUPS_FILE: withList(groups), M7_RUNNER: runner, M7_ALLOW_PENDING: '0' }; // off, whatever the caller's shell has
     const refused = node(['run'], env);
     expect(refused.status, 'a test that is not written must not read as a pass').toBe(1);
     expect(refused.stdout).toContain('PENDING restart: apps/server/test/m7/not-written-yet.container.test.ts');
