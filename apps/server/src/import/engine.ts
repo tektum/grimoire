@@ -12,7 +12,8 @@ import type { Resolved } from './markdown-rewrite.js';
 import { normalizePage } from './normalize.js';
 import { createRemoteBudget } from './remote-images/index.js';
 import type { RemoteImageFetcher } from './remote-images/index.js';
-import type { ImportProfile, IndexedItem, LinkIndex } from './profile.js';
+import { buildLinkIndex } from './link-index.js';
+import type { ImportProfile, IndexedItem } from './profile.js';
 import { stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
@@ -201,9 +202,10 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const isContainer = (i: ImportItem): boolean => i.path.endsWith('/');
 
   // The link index: files of the archive by their canonical path (NFC, `.` and empty segments dropped), as `resolveLinkPath` makes its targets.
-  const byPath = new Map<string, IndexedItem>();
-  for (const i of all) if ((i.kind === 'page' || i.kind === 'attachment') && !isContainer(i)) byPath.set(segmentsOf(i.path).join('/').normalize('NFC'), { itemId: i.id, path: i.path, kind: i.kind === 'page' ? 'page' : 'attachment' });
-  const index: LinkIndex = { byPath, byId: new Map() };
+  const index = buildLinkIndex(
+    all.filter((i) => (i.kind === 'page' || i.kind === 'attachment') && !isContainer(i)).map((i): IndexedItem => ({ itemId: i.id, path: i.path, kind: i.kind === 'page' ? 'page' : 'attachment' })),
+    profile.idOf?.bind(profile),
+  );
   const itemById = new Map(all.map((i) => [i.id, i]));
   const lowerPaths: ReadonlySet<string> = new Set(all.filter((i) => !isContainer(i) && i.kind !== 'other').map((i) => segmentsOf(i.path).join('/').normalize('NFC').toLowerCase()));
   // The first entry of a path is the one pass one kept; a later copy was skipped as a duplicate and must not be read in its place.

@@ -1,7 +1,7 @@
 import { markdownProfile } from '../markdown-profile.js';
 import type { ImportProfile } from '../profile.js';
 import { resolveNotionLink } from './links.js';
-import { splitName, titleOf } from './names.js';
+import { idOf, splitName, titleOf } from './names.js';
 
 /** A path without `.` and empty segments, as the engine and `resolveLinkPath` read it. */
 const segmentsOf = (path: string): string[] => path.split('/').filter((segment) => segment !== '' && segment !== '.');
@@ -73,4 +73,5 @@ export const notionProfile: ImportProfile = {
   },
   preprocess: markdownProfile.preprocess,
   resolveLink: resolveNotionLink,
+  idOf,
 };

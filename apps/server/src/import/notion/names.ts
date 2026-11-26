@@ -23,3 +23,6 @@ export function titleOf(path: string, markdown: string): string {
   const { base } = splitName(path.split('/').at(-1) ?? path);
   return base !== '' ? base : markdownProfile.titleOf(path, markdown);
 }
+
+/** constructed: [F§6] the id of the last segment of a path; a database exported as `X <id>_all.csv` carries its id too (M7-T08: a real export names its databases so). */
+export const idOf = (path: string): string | undefined => splitName((path.split('/').at(-1) ?? '').replace(/_all(\.\w+)$/i, '$1')).id;

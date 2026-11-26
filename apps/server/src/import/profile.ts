@@ -35,6 +35,8 @@ export interface ImportProfile {
    * container page), or undefined when the file is an ordinary page. `lowerPaths` as for `parentPathOf`: a folder with two candidates has one winner.
    */
   folderPathOf(path: string, lowerPaths?: ReadonlySet<string>): string | undefined;
+  /** The id a name carries, for an export that names its pages by an id (the link index then finds an item by it); a profile without such names has none. */
+  idOf?(path: string): string | undefined;
   /** A database export (a CSV) as a Markdown table; only a profile that has such exports provides it. */
   csvToMarkdown?(rows: readonly (readonly string[])[]): string;
 }
