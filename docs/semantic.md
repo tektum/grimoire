@@ -2,7 +2,7 @@
 
 Semantic search finds pages by meaning as well as by words. A model that runs inside the server turns each page into vectors (one per chunk of about 200 tokens), and a query is turned into a vector the same way. What the search does with them is in [search.md](search.md); this page is for the person who runs the server. Everything here is local: no page text leaves the process and nothing is downloaded at run time.
 
-Nothing about it is in the path of a save. A page is saved and shown as before; a background sweep notices that its Markdown changed and embeds it a little later. If semantic search is off or its model is not ready, search is full-text search alone.
+Nothing about it is in the path of a save. A page is saved and shown as before; a background sweep notices that its Markdown changed and embeds it a little later. If semantic search is off or its model is not ready, search is full-text search alone (one exception, under "When the model is missing or cannot load").
 
 ## Settings
 
@@ -41,7 +41,7 @@ Set `GRIMOIRE_SEMANTIC_MODEL` and restart. A new version of the same weights cou
 
 ## Memory and sizing
 
-The model's memory counts toward the process memory guard. Measured ([research](research/13-semantic-search.md)): the peak resident memory of `multilingual-e5-base` int8 is about 0.87 GB and that of `multilingual-e5-small` int8 about 0.70 GB. The sizing in the spec for semantic search on is 1 vCPU and 3 GiB for `multilingual-e5-base`, and 2 GiB for `multilingual-e5-small`; with it off, the old size (half a CPU and 1 GB) is enough. Resize before you turn it on.
+The model adds to the memory of the process, and the memory guard of the collaboration server does not see it: that guard counts the V8 heap only, and the model runs in a worker thread with native memory. So nothing refuses work before the container runs out of memory; the size of the container is what protects it. Measured ([research](research/13-semantic-search.md)): the peak resident memory of `multilingual-e5-base` int8 is about 0.87 GB and that of `multilingual-e5-small` int8 about 0.70 GB. The sizing in the spec for semantic search on is 1 vCPU and 3 GiB for `multilingual-e5-base`, and 2 GiB for `multilingual-e5-small`; with it off, the old size (half a CPU and 1 GB) is enough. Resize before you turn it on.
 
 The database holds one vector per chunk (768 numbers for `multilingual-e5-base`, 384 for `multilingual-e5-small`), kept in the row. Past a certain size the exact scan wants the vectors in the database server's cache, so the size of the database is part of the limit. See "When to change the index" in [search.md](search.md): the point is 200,000 chunks (about 14,000 pages) or a 95th percentile of the semantic statement over 400 ms.
 
@@ -51,7 +51,7 @@ The server does not depend on the model to run, and `/readyz` does not mention i
 
 While it is not ready:
 
-- Search answers with full-text search alone (`semantic` is false in the answer).
+- Search answers with full-text search alone (`semantic` is false in the answer). The one exception is a request that continues a hybrid answer with its cursor: it cannot be answered from another order, so it is 503 `unavailable` ("try again") until the model is back, not a page that skips or repeats rows. A client paging through results when the model goes away will see this (a search that ran into its statement timeout is also 503, with its own `search.timeout` event).
 - The sweep queues no page (it cannot know the model's key before the model has loaded); the next run looks again.
 - An `embed-page` job that was already queued fails without recording anything against the page, and is retried.
 
