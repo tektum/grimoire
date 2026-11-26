@@ -30,7 +30,18 @@ describe('GET /v1/config', () => {
       maxAttachmentBytes: null,
       pendingUploadsMax: null,
       maxMarkdownBytes: 131_072,
+      maxImportZips: 8,
+      maxImportZipBytes: 524_288_000,
+      maxImportBytes: 1_073_741_824,
+      maxImportFileBytes: 104_857_600,
     });
+  });
+
+  it('tells the client what one import takes, from the import settings, so that the import screen can say it before a byte is sent and word a file that was left out for its size', async () => {
+    const base = makeFakeConfig();
+    const { app } = build({ publicCollabUrl: 'wss://docs.example.test/collab', import: { ...base.import, maxZips: 3, maxZipBytes: 30, maxTotalBytes: 60, maxEntryBytes: 7 } });
+    const body = (await (await app.request('/v1/config')).json()) as Record<string, unknown>;
+    expect([body['maxImportZips'], body['maxImportZipBytes'], body['maxImportBytes'], body['maxImportFileBytes']]).toEqual([3, 30, 60, 7]);
   });
 
   it('tells the client the largest Markdown of one page, the configured seed cap, so that the import report can name it', async () => {

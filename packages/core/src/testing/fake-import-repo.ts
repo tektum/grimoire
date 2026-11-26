@@ -1,4 +1,4 @@
-import { cleanItemText as clean, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
+import { cleanItemText as clean, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS, StagingQuotaError } from '../ports/import-repo.js';
 import type { ConstructKind, ConstructReport, ImportCounts, ImportItem, ImportItemKind, ImportPart, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
@@ -132,6 +132,9 @@ export class FakeImportRepo implements ImportRepo {
   create(tenantId: string, row: NewImport): Promise<ImportRecord> {
     const first = row.parts[0];
     if (first === undefined) return Promise.reject(new Error('an import has at least one zip'));
+    const total = row.parts.reduce((sum, p) => sum + p.bytes, 0);
+    const held = this.rows.filter((r) => r.tenantId === tenantId && (r.status === 'created' || r.status === 'uploaded' || r.status === 'running')).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
+    if (row.stagedQuotaBytes !== undefined && held + total > row.stagedQuotaBytes) return Promise.reject(new StagingQuotaError());
     const made: ImportRecord = { id: row.id, tenantId, status: 'created', source: row.source, targetCollectionId: row.targetCollectionId, createdBy: row.createdBy, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, bytes: row.parts.reduce((sum, p) => sum + p.bytes, 0), s3Key: first.s3Key };
     this.rows.push(made);
     row.parts.forEach((part, ordinal) => this.partRows.push({ tenantId, importId: row.id, part: { ordinal, ...part } }));

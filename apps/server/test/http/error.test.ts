@@ -18,6 +18,7 @@ const table: [ErrorCode, number][] = [
   ['invalid', 422], ['type_not_allowed', 422], ['type_mismatch', 422], ['not_a_zip', 422],
   ['client_too_old', 426],
   ['rate_limited', 429],
+  ['staging_quota', 429],
   ['unavailable', 503],
 ];
 

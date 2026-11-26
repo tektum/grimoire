@@ -1,6 +1,7 @@
 import { eventually } from '@tektum/grimoire-test-support/harness';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { importRepoConformance } from '@tektum/grimoire-core/testing/import-repo-conformance';
+import { StagingQuotaError } from '@tektum/grimoire-core/ports/import-repo';
 import { FakeOrdering } from '@tektum/grimoire-core/testing/fake-position';
 import { createCollections } from '../../src/collections.js';
 import { createImportRepo } from '../../src/imports.js';
@@ -127,4 +128,13 @@ describe('what only the database does', () => {
     }
     expect(await repo.parts('legacy', made.id)).toHaveLength(1);
   }, 30_000);
+  it('imports created at the same moment cannot together go over the staging quota: the workspace\'s creates are judged one at a time', async () => {
+    const repo = createImportRepo(t.app);
+    const make = (n: number) => repo.create('legacy', { id: `00000000-0000-4000-8000-00000000a${String(n).padStart(3, '0')}`, targetCollectionId: collectionId, createdBy: userId, source: 'markdown_zip', parts: [{ s3Key: `k/r${String(n)}`, bytes: 30, uploadId: null }], stagedQuotaBytes: 100 });
+    const results = await Promise.allSettled(Array.from({ length: 8 }, (_, n) => make(n)));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+    for (const r of results) if (r.status === 'rejected') expect(r.reason).toBeInstanceOf(StagingQuotaError);
+    const held = await t.admin.query<{ n: string }>(`select coalesce(sum(bytes), 0)::text as n from imports where tenant_id = 'legacy' and status = 'created'`);
+    expect(held[0]?.n).toBe('90');
+  });
 });

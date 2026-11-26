@@ -1,4 +1,4 @@
-import { cleanItemText, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS, StagingQuotaError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ConstructCounts, ConstructKind, ConstructLine, ImportCounts, ImportItem, ImportRecord, ImportRepo, RawHtmlPage, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
 import type { WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import { createAttachments } from './attachments.js';
@@ -173,19 +173,29 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     async create(tenantId, row) {
       const first = row.parts[0];
       if (first === undefined) throw new Error('an import has at least one zip');
-      // The zips are parts 0 to n-1, in the same statement as the import: the import holds their total and the first one's key.
-      const rows = await scoped(db, tenantId).query<ImportRow>(
-        `with i as (
-           insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
-           returning ${IMPORT_COLUMNS}
-         ), p as (
-           insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
-           select $2, $1, t.n - 1, t.s3_key, t.bytes, t.upload_id from unnest($8::text[], $9::bigint[], $10::text[]) with ordinality as t(s3_key, bytes, upload_id, n) returning 1
-         )
-         select * from i`,
-        [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, first.s3Key, row.parts.reduce((sum, p) => sum + p.bytes, 0), row.parts.map((p) => p.s3Key), row.parts.map((p) => p.bytes), row.parts.map((p) => p.uploadId)],
-      );
-      return record(rows[0] as ImportRow);
+      const total = row.parts.reduce((sum, p) => sum + p.bytes, 0);
+      return scoped(db, tenantId).transaction(async (tx) => {
+        if (row.stagedQuotaBytes !== undefined) {
+          // The workspace's creates go one at a time while the quota is judged (a lock that ends with the transaction), and the sum is read after it is held: two imports that fit one by
+          // one cannot both be accepted.
+          await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [`import-staging:${tenantId}`]);
+          const [held] = await tx.query<{ n: string }>(`select coalesce(sum(bytes), 0)::text as n from imports where tenant_id = $1 and status in ('created', 'uploaded', 'running')`, [tenantId]);
+          if (Number(held?.n ?? 0) + total > row.stagedQuotaBytes) throw new StagingQuotaError();
+        }
+        // The zips are parts 0 to n-1, in the same statement as the import: the import holds their total and the first one's key.
+        const rows = await tx.query<ImportRow>(
+          `with i as (
+             insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
+             returning ${IMPORT_COLUMNS}
+           ), p as (
+             insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
+             select $2, $1, t.n - 1, t.s3_key, t.bytes, t.upload_id from unnest($8::text[], $9::bigint[], $10::text[]) with ordinality as t(s3_key, bytes, upload_id, n) returning 1
+           )
+           select * from i`,
+          [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, first.s3Key, total, row.parts.map((p) => p.s3Key), row.parts.map((p) => p.bytes), row.parts.map((p) => p.uploadId)],
+        );
+        return record(rows[0] as ImportRow);
+      });
     },
     async parts(tenantId, importId) {
       const rows = await scoped(db, tenantId).query<PartRow>(`select ordinal::int as ordinal, s3_key, bytes::text as bytes, upload_id from import_parts where tenant_id = $1 and import_id = $2 order by ordinal`, [tenantId, importId]);

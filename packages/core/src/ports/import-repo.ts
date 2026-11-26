@@ -66,6 +66,19 @@ export interface NewImport {
   readonly createdBy: string;
   readonly source: ImportSource;
   readonly parts: readonly NewImportPart[];
+  /**
+   * The most bytes of zips the workspace may hold in imports that are not over (`created`, `uploaded`, `running`: their zips are still in the store), this one's included. Over it `create`
+   * throws `StagingQuotaError` and makes nothing. Absent: no quota is judged. Judged with the workspace's creates one at a time, so two that fit separately cannot both be accepted.
+   */
+  readonly stagedQuotaBytes?: number;
+}
+
+/** Thrown by `create` when the zips of the workspace's imports that are not over and the new one's together are over the quota of staged bytes. */
+export class StagingQuotaError extends Error {
+  constructor() {
+    super('the workspace holds more bytes of uploads than it may');
+    this.name = 'StagingQuotaError';
+  }
 }
 
 /** One zip of an import: where it is kept, its declared size, and the id of its multipart upload while that is open (null for a single PUT and once the upload is completed). */
