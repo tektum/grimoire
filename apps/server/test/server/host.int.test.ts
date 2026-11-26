@@ -28,7 +28,7 @@ afterAll(async () => { await dropTestDatabase(DB); });
 describe('GRIMOIRE_HOST', () => {
   it('unset binds loopback only: loopback answers, and the process listens on the loopback address alone', async () => {
     const s = await start({ GRIMOIRE_HOST: '' }); // empty counts as unset: the default applies
-    expect(s.events.find((e) => e['event'] === 'http.listening')).toMatchObject({ host: '127.0.0.1' });
+    expect(s.events.find((e) => e['event'] === 'http.listening')).toMatchObject({ bindHost: '127.0.0.1', service: 'grimoire', env: 'local' });
     expect(await get(`http://127.0.0.1:${s.port}/healthz`)).toEqual({ status: 200, body: 'ok' });
     // What the process itself listens on (it reports it on SIGUSR2): loopback only, one address. No probe of the machine's other address, which another test may have bound.
     s.signal('SIGUSR2');
@@ -45,12 +45,14 @@ describe('GRIMOIRE_HOST', () => {
 
   it('server.local_mode_exposed appears only for local mode plus a non-loopback host', async () => {
     const exposed = await start({ GRIMOIRE_HOST: '0.0.0.0', GRIMOIRE_LOCAL: '1', GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK: '1' });
-    expect(exposed.events.find((e) => e['event'] === 'server.local_mode_exposed')).toMatchObject({ level: 'warn', host: '0.0.0.0' });
+    expect(exposed.events.find((e) => e['event'] === 'server.local_mode_exposed')).toMatchObject({ level: 'warn', bindHost: '0.0.0.0' });
     const loopback = await start({ GRIMOIRE_HOST: '127.0.0.1', GRIMOIRE_LOCAL: '1' });
     expect(names(loopback)).not.toContain('server.local_mode_exposed');
-    const nonLocal = await start({ GRIMOIRE_HOST: '0.0.0.0', GRIMOIRE_LOCAL: '0', GRIMOIRE_ROLE: 'api', GRIMOIRE_DESCOPE_PROJECT_ID: 'P2abc', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test' });
+    const nonLocal = await start({ GRIMOIRE_HOST: '0.0.0.0', GRIMOIRE_LOCAL: '0', GRIMOIRE_ROLE: 'api', GRIMOIRE_DESCOPE_PROJECT_ID: 'P2abc', GRIMOIRE_ALLOWED_EMAIL_DOMAINS: 'example.test', GRIMOIRE_ENV: 'staging' });
     expect(names(nonLocal)).not.toContain('server.local_mode_exposed');
-    expect(nonLocal.events.find((e) => e['event'] === 'http.listening')).toMatchObject({ host: '0.0.0.0' });
+    const listening = nonLocal.events.find((e) => e['event'] === 'http.listening');
+    expect(listening).toMatchObject({ bindHost: '0.0.0.0', service: 'grimoire', env: 'staging' });
+    expect(listening).not.toHaveProperty('host'); // `host` is the log pipeline's own attribute (where the line comes from)
   });
 
   it('local mode on a non-loopback host refuses to start (exit 2, one fixed line, no listening) unless GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK=1', async () => {
@@ -81,7 +83,8 @@ describe('GRIMOIRE_HOST', () => {
     const exit = await runToEnd([mainJs], { ...dbEnv, GRIMOIRE_PORT: String(port), GRIMOIRE_LOCAL: '1', GRIMOIRE_HOST: '192.0.2.1', GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK: '1' }); // TEST-NET-1: never assigned locally
     expect(exit.code).toBe(1);
     expect(exit.output).toContain('"event":"server.start_failed"');
-    expect(exit.output).toContain('"host":"192.0.2.1"');
+    expect(exit.output).toContain('"bindHost":"192.0.2.1"');
+    expect(exit.output).not.toContain('"host":'); // `host` is a log pipeline's own attribute, so the logger drops it from fields
     expect(exit.output).toContain(`"port":${String(port)}`);
     expect(exit.output).not.toContain('server.local_mode_exposed');
   });

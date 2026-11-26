@@ -120,7 +120,7 @@ export async function startCollab(deps: StartCollabDeps): Promise<readonly Shutd
     try { await new Promise<void>((resolve, reject) => { s.once('error', reject); s.listen(config.collabPort, config.host, () => { s.off('error', reject); resolve(); }); }); }
     catch (e) { second = s; await abort(); throw e; }
     second = s;
-    log.info('collab.listening', { host: config.host, port: config.collabPort });
+    log.info('collab.listening', { bindHost: config.host, port: config.collabPort });
   }
   if (shutdown.isDraining()) {
     if (config.collabPort === undefined) server.off('upgrade', handler);

@@ -56,6 +56,7 @@ export function makeFakeConfig(
     host: '127.0.0.1',
     port: 8080,
     logLevel: 'info',
+    env: 'local',
     database: {},
     firstAdminEmails: [],
     allowedEmailDomains: [],

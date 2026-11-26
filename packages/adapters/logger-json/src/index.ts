@@ -12,6 +12,10 @@ export interface JsonLoggerOptions {
   readonly destination?: { write(line: string): unknown };
   readonly clock?: Clock;
   readonly fields?: Record<string, unknown>;
+  /** The service the lines belong to (a log pipeline shows it as the line's service). Defaults to `grimoire`. */
+  readonly service?: string;
+  /** The environment the lines come from (the stage). Left out of the line when absent. */
+  readonly env?: string;
 }
 
 // First layer: pino's own path redaction for the known secret names (one level deep).
@@ -27,7 +31,7 @@ function wrap(p: PinoLogger, ts: TsState, now: () => string | undefined): Logger
       ts.value = t ?? new Date().toISOString();
       const clean = scrubFields(fields);
       if (t === undefined) clean['clockFallback'] = true;
-      // The event text is written twice: as `event` (the key the tests and the operators' searches use) and as `message`, the attribute a log pipeline such as Datadog's shows as the line.
+      // The event text is written twice: as `event` (the key the tests and the operators' searches use) and as `message`, the attribute a log pipeline shows as the line.
       const text = redactString(String(event));
       clean['message'] = text;
       p[level](clean, text);
@@ -70,6 +74,8 @@ export function createJsonLogger(opts: JsonLoggerOptions = {}): Logger {
     formatters: { level: (label: string) => ({ level: label }) },
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },
   };
-  const root = opts.destination ? pino(options, opts.destination) : pino(options);
+  // `service` and `env` are bindings of the logger, so every line carries them once; no caller can set them (scrubFields drops them).
+  const base = { service: opts.service ?? 'grimoire', ...(opts.env === undefined ? {} : { env: opts.env }) };
+  const root = (opts.destination ? pino(options, opts.destination) : pino(options)).child(base);
   return wrap(opts.fields ? root.child(scrubFields(opts.fields)) : root, ts, now);
 }

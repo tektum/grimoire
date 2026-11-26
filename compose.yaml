@@ -77,6 +77,7 @@ services:
       GRIMOIRE_DATABASE_OPS_URL: postgresql://grimoire_ops:${GRIMOIRE_DEV_DB_PASSWORD}@postgres:5432/grimoire
       # Empty means "use the default" (the settings loader treats an empty value as unset).
       GRIMOIRE_LOG_LEVEL: "${GRIMOIRE_LOG_LEVEL:-}"
+      GRIMOIRE_ENV: "${GRIMOIRE_ENV:-}"
       GRIMOIRE_TRUSTED_PROXY: "${GRIMOIRE_TRUSTED_PROXY:-}"
       GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS: "${GRIMOIRE_SHUTDOWN_SAVE_DEADLINE_MS:-}"
       GRIMOIRE_DESCOPE_PROJECT_ID: "${GRIMOIRE_DESCOPE_PROJECT_ID:-}"

@@ -23,7 +23,7 @@ describe('logger-json', () => {
       expect(['info', 'warn']).toContain(o['level']);
       expect(typeof o['event']).toBe('string');
     }
-    expect(JSON.parse(lines[0] ?? '')).toEqual({ page: 'p1', bytes: 5, ts: '2026-11-20T00:00:00.000Z', level: 'info', event: 'connect', message: 'connect' });
+    expect(JSON.parse(lines[0] ?? '')).toEqual({ page: 'p1', bytes: 5, ts: '2026-11-20T00:00:00.000Z', level: 'info', event: 'connect', message: 'connect', service: 'grimoire' });
   });
 
   it('never writes a token field or a URL query string', () => {
@@ -63,7 +63,7 @@ describe('logger-json', () => {
     expect(o['ts']).not.toBe('x');
   });
 
-  it('writes the event text as `message` as well, so a log pipeline that shows `message` (Datadog) shows the line, with the same redaction', () => {
+  it('writes the event text as `message` as well, so a log pipeline that shows `message` shows the line, with the same redaction', () => {
     const { lines, log } = capture();
     log.info('connect', { page: 'p1' });
     log.error('GET /p?token=zzz-leak failed');
@@ -81,5 +81,36 @@ describe('logger-json', () => {
     const [a, b] = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(a).toMatchObject({ event: 'real', message: 'real' });
     expect(b).toMatchObject({ event: 'real-child', message: 'real-child' });
+  });
+
+  it('puts service and env on every line, from the logger and not from a caller (service defaults to grimoire, env is left out when there is none)', () => {
+    const lines: string[] = [];
+    const clock = new FakeClock(Date.UTC(2026, 10, 20));
+    const make = (extra: { service?: string; env?: string } = {}) => createJsonLogger({ destination: { write: (l) => lines.push(l.trimEnd()) }, clock, ...extra });
+    make({ env: 'staging' }).info('a');
+    make().info('b');
+    make({ service: 'other', env: 'dev' }).child({ role: 'api' }).info('c');
+    const [a, b, c] = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(a).toMatchObject({ service: 'grimoire', env: 'staging' });
+    expect(b).toMatchObject({ service: 'grimoire' });
+    expect(b).not.toHaveProperty('env');
+    expect(c).toMatchObject({ service: 'other', env: 'dev', role: 'api' });
+  });
+
+  it('does not let fields, a child logger or the fields option set host, service, env or version, and never writes a key twice', () => {
+    const lines: string[] = [];
+    const clock = new FakeClock(Date.UTC(2026, 10, 20));
+    const log = createJsonLogger({ destination: { write: (l) => lines.push(l.trimEnd()) }, clock, env: 'dev', fields: { host: 'h0', service: 's0', env: 'e0', version: 'v0', kept: 1 } });
+    log.info('x', { host: 'h1', service: 's1', env: 'e1', version: 'v1', ok: 2 });
+    log.child({ host: 'h2', service: 's2', env: 'e2', version: 'v2' }).info('y');
+    expect(lines).toHaveLength(2);
+    for (const l of lines) {
+      const o = JSON.parse(l) as Record<string, unknown>;
+      expect(o).toMatchObject({ service: 'grimoire', env: 'dev' });
+      expect(o).not.toHaveProperty('host');
+      expect(o).not.toHaveProperty('version');
+      for (const key of ['service', 'env', 'message', 'event', 'level', 'ts']) expect(l.match(new RegExp(`"${key}":`, 'g'))).toHaveLength(1);
+    }
+    expect(JSON.parse(lines[0] ?? '')).toMatchObject({ kept: 1, ok: 2 });
   });
 });

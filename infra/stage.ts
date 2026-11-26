@@ -102,6 +102,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
           ...trust,
           GRIMOIRE_HOST: '0.0.0.0',
           GRIMOIRE_PORT: String(PORT),
+          GRIMOIRE_ENV: config.env, // written on every log line as `env`
           GRIMOIRE_ALLOWED_ORIGINS: url,
           GRIMOIRE_TRUSTED_PROXY: VPC_CIDR,
           GRIMOIRE_DESCOPE_PROJECT_ID: identity.projectId,

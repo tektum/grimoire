@@ -17,6 +17,8 @@ export interface StageConfig {
   readonly vpcFrom?: string;
   /** One task on purpose, whatever the stage: the migrations run under a database lock, so a second task would only wait. */
   readonly service: { readonly cpu: '0.25 vCPU' | '0.5 vCPU' | '1 vCPU'; readonly memory: '2 GB' | '4 GB' };
+  /** The stage's key in `stages.json`, which the app puts on every log line as `env` (`GRIMOIRE_ENV`). Set by the table reader, not written in the rows. */
+  readonly env: string;
 }
 
 /**
@@ -34,7 +36,8 @@ const row = (name: string, value: unknown): StageConfig => {
   if (v.vpcFrom !== undefined && (typeof v.vpcFrom !== 'string' || v.vpcFrom === '')) bad('vpcFrom must name the stage whose VPC this one lives in');
   if (v.service?.cpu !== '0.25 vCPU' && v.service?.cpu !== '0.5 vCPU' && v.service?.cpu !== '1 vCPU') bad('service.cpu must be a Fargate size this stack uses');
   if (v.service?.memory !== '2 GB' && v.service?.memory !== '4 GB') bad('service.memory must be at least the collaboration guard\'s share (2 GB)');
-  return v as StageConfig;
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) bad('the stage name is the app\'s GRIMOIRE_ENV: lowercase letters, digits and hyphens, starting with a letter, at most 32 characters');
+  return { ...(v as Omit<StageConfig, 'env'>), env: name };
 };
 
 /**
