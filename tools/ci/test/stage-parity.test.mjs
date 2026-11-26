@@ -75,7 +75,7 @@ test('the staging stack declares what its fixture holds: every resource it had b
   const before = ["Project", "Settings", "Otp", "UserToken", "Session", "Password", "Magiclink", "Enchantedlink", "Embeddedlink", "Totp", "Passkey", "Oauth", "Styles", "Flow-sign-up-or-in", "Vpc", "Db", "DbAppPassword", "DbMigratorPassword", "DbOpsPassword", "Files", "Cluster", "AdminUrl", "AppPassword", "MigratorPassword", "OpsPassword", "MigratorUrl", "AppUrl", "OpsUrl", "Server"];
   assert.ok(before.every((n) => golden.some((c) => c.name === n)), 'every resource of before is still declared, under the same name');
   const added = golden.map((c) => c.name).filter((n) => !before.includes(n));
-  assert.ok(added.every((n) => /^(LoadBalancerLogs|Service|Db|VpcFlow|VpcDefault)/.test(n)), `what is new belongs to the network and the edge: ${added}`);
+  assert.ok(added.every((n) => /^(LoadBalancerLogs|Service|Db|VpcFlow|VpcDefault|FilesLifecycle$)/.test(n)), `what is new belongs to the network, the edge and the files bucket's abort rule: ${added}`);
 });
 
 test('the operator role (docs/tenancy.md section 3.2) has a password of its own: db-setup alone receives it, and the server alone its connection', () => {
@@ -166,7 +166,9 @@ test('the load balancer of every stage takes TLS 1.2 and newer only, drops inval
       { sid: 'LoadBalancerServiceWritesItsLogs', effect: 'Allow', principals: [{ type: 'AWS', identifiers: ['<aws.elb.getServiceAccountOutput({}).arn>'] }], actions: ['s3:PutObject'], resources: ['<interpolate:{<LoadBalancerLogs.arn>}/alb/AWSLogs/{<aws.getCallerIdentityOutput({}).accountId>}/*>'] },
       { sid: 'OnlyOverTls', effect: 'Deny', principals: [{ type: '*', identifiers: ['*'] }], actions: ['s3:*'], resources: ['<LoadBalancerLogs.arn>', '<interpolate:{<LoadBalancerLogs.arn>}/*>'], conditions: [{ test: 'Bool', variable: 'aws:SecureTransport', values: ['false'] }] },
     ] }, 'exactly: the load balancer service writes below its own prefix, and every request that is not TLS is refused');
-    assert.deepEqual(one('aws.s3:BucketLifecycleConfiguration').args.rules, [{ id: 'expire', status: 'Enabled', filter: {}, expiration: { days: 90 }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }]);
+    const logsLifecycle = calls.filter((c) => c.type === 'aws.s3:BucketLifecycleConfiguration' && c.name === 'LoadBalancerLogsLifecycle');
+    assert.equal(logsLifecycle.length, 1, `${name}: one lifecycle configuration for the log bucket`);
+    assert.deepEqual(logsLifecycle[0].args.rules, [{ id: 'expire', status: 'Enabled', filter: {}, expiration: { days: 90 }, abortIncompleteMultipartUpload: { daysAfterInitiation: 1 } }]);
   }
 });
 
@@ -275,5 +277,22 @@ test('the service runs in the stage\'s own service group, with the subnets and t
       transform(args);
       assert.deepEqual(JSON.parse(JSON.stringify(args.networkConfiguration)), { assignPublicIp: true, subnets: ['subnet-a'], securityGroups: ['<ServiceSecurityGroup.id>'] });
     } finally { g.$output = saved; }
+  }
+});
+
+test('big uploads go to the files bucket in parts: the task role may list and abort the multipart uploads of the bucket (and nothing more than the object actions it had), and the bucket aborts an upload nobody finished after 2 days, in every stage', () => {
+  for (const name of NAMES) {
+    const { calls, raw } = recordProgram(() => stage(stageConfig(name), { domain: 'any.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [] }));
+    const permissions = raw.find((c) => c.type === 'sst.aws:Service').args.permissions.map((p) => ({ actions: [...p.actions].sort(), resources: p.resources.map(String) }));
+    assert.deepEqual(permissions, [
+      { actions: ['s3:AbortMultipartUpload', 's3:DeleteObject', 's3:GetObject', 's3:ListMultipartUploadParts', 's3:PutObject'], resources: ['<interpolate:{<Files.arn>}/*>'] },
+      { actions: ['s3:ListBucket'], resources: ['<Files.arn>'] },
+    ], `${name}: object actions on the objects, ListBucket on the bucket, no wildcard`);
+    const lifecycles = calls.filter((c) => c.type === 'aws.s3:BucketLifecycleConfiguration' && c.name !== 'LoadBalancerLogsLifecycle');
+    assert.equal(lifecycles.length, 1, `${name}: one lifecycle configuration for the files bucket`);
+    assert.equal(lifecycles[0].args.bucket, '<Files.nodes.bucket.bucket>', `${name}: on the files bucket`);
+    assert.deepEqual(lifecycles[0].args.rules, [{ id: 'abort-incomplete-multipart', status: 'Enabled', filter: {}, abortIncompleteMultipartUpload: { daysAfterInitiation: 2 } }], `${name}: aborts unfinished uploads after 2 days and expires no object`);
+    const bucket = raw.find((c) => c.type === 'sst.aws:Bucket');
+    assert.equal(bucket.args.lifecycle, undefined, `${name}: the bucket takes no lifecycle option, which would make the component write a configuration of its own for the same bucket`);
   }
 });
