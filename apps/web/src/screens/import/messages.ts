@@ -14,6 +14,8 @@ export const SPLIT_EXPORT_NOTE =
 const FAILED_WORDS: Readonly<Record<string, string>> = {
   nested_or_split_export: 'The import failed: this zip holds other zips, the way an export in parts does. Unzip the parts into one folder, zip that folder, and import it.',
   too_large: `The import failed: the zip holds more than an import can take. ${SMALLER}`,
+  attachments_too_large:
+    'The import failed: the files that its pages use were copied more often than an import may hold. Link a large file from fewer pages, or import it in smaller parts. The pages it created were moved to the trash.',
 };
 
 /** What the person is told when a step of starting an import is refused. */
@@ -24,6 +26,7 @@ export function refusal(error: unknown): string {
     if (error.status === 404) return 'That collection can’t be found.';
     if (error.status === 403) return 'You can’t import into that collection.';
     if (error.status === 422) return 'That file can’t be imported.';
+    if (error.status === 429 && error.code === 'staging_quota') return 'The unfinished imports take all the room there is. Finish or cancel an import, then try again.';
     if (error.status === 429) return 'Too many imports were started. Try again in a while.';
   }
   if (error.step === 'upload') return 'The file could not be sent. Try again.';
@@ -54,11 +57,11 @@ export interface ImportLimits {
 
 const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
 
-/** The limits of a client configuration: the largest page's Markdown (`maxMarkdownBytes`) and the largest file (`maxAttachmentBytes`). */
+/** The limits of a client configuration: the largest page's Markdown (`maxMarkdownBytes`) and the largest file an import takes (`maxImportFileBytes`; the editor's `maxAttachmentBytes` is not the limit of an import). */
 export function importLimitsOf(config: unknown): ImportLimits {
   const c = (typeof config === 'object' && config !== null ? config : {}) as Record<string, unknown>;
   const markdownBytes = positive(c['maxMarkdownBytes']);
-  const entryBytes = positive(c['maxAttachmentBytes']);
+  const entryBytes = positive(c['maxImportFileBytes']);
   return { ...(markdownBytes === undefined ? {} : { markdownBytes }), ...(entryBytes === undefined ? {} : { entryBytes }) };
 }
 
