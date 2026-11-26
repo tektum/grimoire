@@ -28,6 +28,7 @@ describe('loadConfig defaults', () => {
     expect(c.port).toBe(8080);
     expect(c.collabPort).toBeUndefined();
     expect(c.logLevel).toBe('info');
+    expect(c.env).toBe('local');
     expect(c.trustedProxies).toEqual([]);
     expect(c.shutdownSaveDeadlineMs).toBe(45000);
     expect(c.descopeProjectId).toBeUndefined();
@@ -53,10 +54,10 @@ describe('loadConfig defaults', () => {
   it('parses explicit values', () => {
     const c = loadConfig({
       ...base, GRIMOIRE_ROLE: 'collab', GRIMOIRE_PORT: '9000', GRIMOIRE_COLLAB_PORT: '9001',
-      GRIMOIRE_LOG_LEVEL: 'debug', GRIMOIRE_TRUSTED_PROXY: '10.0.0.0/8, ::1',
+      GRIMOIRE_LOG_LEVEL: 'debug', GRIMOIRE_ENV: 'staging', GRIMOIRE_TRUSTED_PROXY: '10.0.0.0/8, ::1',
       GRIMOIRE_ALLOWED_ORIGINS: 'http://a.test,https://b.test:8443', GRIMOIRE_COLLAB_DEBOUNCE_MS: '500',
     });
-    expect(c).toMatchObject({ role: 'collab', port: 9000, collabPort: 9001, logLevel: 'debug' });
+    expect(c).toMatchObject({ role: 'collab', port: 9000, collabPort: 9001, logLevel: 'debug', env: 'staging' });
     expect(c.trustedProxies).toEqual(['10.0.0.0/8', '::1']);
     expect(c.allowedOrigins).toEqual(['http://a.test', 'https://b.test:8443']);
     expect(c.collab.debounceMs).toBe(500);
@@ -73,6 +74,7 @@ const cases: readonly (readonly [string, string, string])[] = [
   ['GRIMOIRE_COLLAB_PORT', 'abc', '9001'],
   ['GRIMOIRE_COLLAB_PORT', '8080', '9001'],
   ['GRIMOIRE_LOG_LEVEL', 'trace', 'error'],
+  ['GRIMOIRE_ENV', 'Staging!', 'staging'],
   ['GRIMOIRE_DATABASE_URL', 'mysql://x/y', 'postgres://u@h/db'],
   ['GRIMOIRE_DATABASE_MIGRATION_URL', 'http://x', 'postgres://m@h/db'],
   ['GRIMOIRE_ALLOWED_ORIGINS', '*', 'https://x.test'],

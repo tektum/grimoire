@@ -156,6 +156,8 @@ export interface SemanticConfig {
 
 export interface Config { readonly local: boolean; readonly role: 'all'|'api'|'collab';
   readonly host: string; readonly port: number; readonly collabPort?: number; readonly logLevel: LogLevel;
+  /** The environment (the stage) the process runs in, written on every log line as `env`; `local` for a local run. */
+  readonly env: string;
   /** `opsUrl`: the operator role's connection (docs/tenancy.md section 3.2), absent unless configured. */
   readonly database: { readonly url?: string; readonly migrationUrl?: string; readonly opsUrl?: string };
   /** Present only for the `db-setup` purpose. */

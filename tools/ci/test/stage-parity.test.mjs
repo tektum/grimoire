@@ -96,10 +96,10 @@ test('no two stages share a project name: Descope refuses a second project of a 
 });
 
 test('the dev stack declares the same resources as the staging one: they differ in the address, the project\'s name and tag, and the size of the task, and in nothing else', () => {
-  const normal = (calls, domain, cpu, name, tag) => JSON.stringify(calls).replaceAll(domain, 'DOMAIN').replaceAll(cpu, 'CPU').replaceAll(name, 'NAME').replaceAll(`"${tag}"`, '"TAG"').replaceAll('"127.0.0.1","localhost"', '').replace(/,\]/g, ']').replace(/\[,/g, '[').replace(/,,/g, ',');
+  const normal = (calls, domain, cpu, name, tag, env) => JSON.stringify(calls).replaceAll(`"GRIMOIRE_ENV":"${env}"`, '"GRIMOIRE_ENV":"ENV"').replaceAll(domain, 'DOMAIN').replaceAll(cpu, 'CPU').replaceAll(name, 'NAME').replaceAll(`"${tag}"`, '"TAG"').replaceAll('"127.0.0.1","localhost"', '').replace(/,\]/g, ']').replace(/\[,/g, '[').replace(/,,/g, ',');
   const sameNetwork = (calls) => calls.filter((c) => !/^Vpc/.test(c.name)); // the one allowed difference: the stage that owns the VPC makes it, the others read it
-  const dev = normal(sameNetwork(record('dev', 'dev.example.test')), 'dev.example.test', '0.25 vCPU', 'Grimoire dev stage', 'development');
-  const staging = normal(sameNetwork(record('staging', 'dev.example.test')), 'dev.example.test', '0.5 vCPU', 'Grimoire staging', 'staging');
+  const dev = normal(sameNetwork(record('dev', 'dev.example.test')), 'dev.example.test', '0.25 vCPU', 'Grimoire dev stage', 'development', 'dev');
+  const staging = normal(sameNetwork(record('staging', 'dev.example.test')), 'dev.example.test', '0.5 vCPU', 'Grimoire staging', 'staging', 'staging');
   assert.equal(dev, staging);
 });
 
@@ -294,5 +294,16 @@ test('big uploads go to the files bucket in parts: the task role may list and ab
     assert.deepEqual(lifecycles[0].args.rules, [{ id: 'abort-incomplete-multipart', status: 'Enabled', filter: {}, abortIncompleteMultipartUpload: { daysAfterInitiation: 2 } }], `${name}: aborts unfinished uploads after 2 days and expires no object`);
     const bucket = raw.find((c) => c.type === 'sst.aws:Bucket');
     assert.equal(bucket.args.lifecycle, undefined, `${name}: the bucket takes no lifecycle option, which would make the component write a configuration of its own for the same bucket`);
+  }
+});
+
+test('the app of every stage is told which stage it is, from the stage\'s key in stages.json: GRIMOIRE_ENV on the app container alone, a value the app accepts', () => {
+  const accepted = /^[a-z][a-z0-9-]{0,31}$/; // the rule of GRIMOIRE_ENV in packages/adapters/config-env/src/schema.ts
+  for (const name of NAMES) {
+    assert.match(name, accepted, `${name}: a stage name the app would refuse as GRIMOIRE_ENV`);
+    const { raw } = recordProgram(() => stage(stageConfig(name), { domain: 'any.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [] }));
+    const containers = raw.find((c) => c.type === 'sst.aws:Service').args.containers;
+    assert.equal(containers.find((c) => c.name === 'app').environment.GRIMOIRE_ENV, name, `${name}: the app container`);
+    for (const other of containers.filter((c) => c.name !== 'app')) assert.equal(other.environment?.GRIMOIRE_ENV, undefined, `${name}: ${other.name} does not log through the app's logger`);
   }
 });

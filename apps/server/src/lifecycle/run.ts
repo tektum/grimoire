@@ -42,7 +42,7 @@ export function createRun(options: RunOptions = {}, collabStarter: CollabStarter
     if (!composed.ok) {
       if (composed.refused) {
         // Valid settings, but a test double was wired outside local mode: refuse to start.
-        composed.log.error('server.start_failed', { errorName: 'CompositionRefused', errorCode: composed.refused.reason, host: composed.refused.host, port: composed.refused.port });
+        composed.log.error('server.start_failed', { errorName: 'CompositionRefused', errorCode: composed.refused.reason, bindHost: composed.refused.host, port: composed.refused.port });
         (options.exit ?? process.exit)(EXIT.failure);
         return;
       }
@@ -83,7 +83,7 @@ export function createRun(options: RunOptions = {}, collabStarter: CollabStarter
         server.once('error', reject);
         server.listen(config.port, config.host, () => { server.off('error', reject); resolve(); });
       });
-      if (config.local && !isLoopback(config.host)) log.warn('server.local_mode_exposed', { host: config.host });
+      if (config.local && !isLoopback(config.host)) log.warn('server.local_mode_exposed', { bindHost: config.host });
       if (ctx.collab) for (const hook of await collabStarter({ config, log, host: ctx.collab.host, hostDeps: ctx.collab.deps, server, shutdown: ctx.shutdown })) ctx.shutdown.register(hook);
       else rejectUpgrades(server, log);
       // Not awaited: a database that does not answer must not hold the server's start (the runner logs and retries; it never rejects).
@@ -91,13 +91,13 @@ export function createRun(options: RunOptions = {}, collabStarter: CollabStarter
     } catch (e) {
       if (ctx.shutdown.isDraining()) return;
       const code = e instanceof Error && 'code' in e && typeof e.code === 'string' ? e.code : 'none';
-      log.error('server.start_failed', { errorName: errorName(e), errorCode: code, host: config.host, port: config.port });
+      log.error('server.start_failed', { errorName: errorName(e), errorCode: code, bindHost: config.host, port: config.port });
       await ctx.shutdown.runStartupFailure(log);
       exitAfterStartFailure(options);
       return;
     }
     if (ctx.shutdown.isDraining()) return;
-    log.info('http.listening', { host: config.host, port: config.port });
+    log.info('http.listening', { bindHost: config.host, port: config.port });
   };
   Object.defineProperty(call, 'logger', { get: (): EventLog => { if (!runningLogger) throw new Error('logger requested before composition'); return runningLogger; } });
   return call as RunHarness;

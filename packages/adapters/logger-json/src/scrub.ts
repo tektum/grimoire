@@ -252,11 +252,14 @@ function scrubObject(value: object, depth: number, b: Budget): unknown {
   return out;
 }
 
+/** Keys the logger writes itself on every line: a caller (or a child logger's bindings) cannot set them, which would also write a key twice. `host`, `service`, `env` and `version` are the attributes a log pipeline such as Datadog's reads as the line's own. */
+const RESERVED_KEYS: Readonly<Record<string, true>> = { ts: true, level: true, event: true, message: true, host: true, service: true, env: true, version: true };
+
 /** Scrub a field bag; reserved output keys are dropped. Never throws. */
 export function scrubFields(fields: Record<string, unknown> | undefined): Record<string, unknown> {
   const out = scrub(fields ?? {}, 0, { nodes: 0, seen: new WeakSet() });
   if (typeof out !== 'object' || out === null || Array.isArray(out)) return { fields: UNSERIALISABLE };
   const clean: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(out)) if (k !== 'ts' && k !== 'level' && k !== 'event' && k !== 'message') clean[k] = v;
+  for (const [k, v] of Object.entries(out)) if (!Object.hasOwn(RESERVED_KEYS, k)) clean[k] = v;
   return clean;
 }

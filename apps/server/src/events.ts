@@ -73,9 +73,9 @@ export interface InfoEvents {
   'admin.user_changed': { userId: string };
   'admin.group_changed': { groupId: string };
   'server.starting': { role: string; local: boolean };
-  'http.listening': { host: string; port: number };
+  'http.listening': { bindHost: string; port: number };
   'collab.attached': { role: string };
-  'collab.listening': { host: string; port: number };
+  'collab.listening': { bindHost: string; port: number };
   'shutdown.started': { reason: ShutdownReason };
   'shutdown.phase_started': { phase: ShutdownPhaseName; hooks: number };
   'shutdown.hook_done': { hook: string; phase: ShutdownPhaseName; ms: number };
@@ -120,7 +120,7 @@ export interface WarnEvents {
   /** An upload that was refused at completion and removed. The id of the attachment, never its key or name. */
   'attachments.refused': { attachmentId: string; reason: 'size_mismatch' | 'type_mismatch' | 'upload_missing' };
   'config.collab_url_missing': Record<string, never>;
-  'server.local_mode_exposed': { host: string };
+  'server.local_mode_exposed': { bindHost: string };
   /** Local mode only (refused otherwise): a test-only facility is switched on, so behaviour is deliberately not production's. */
   'server.test_facilities_active': { facilities: readonly ('slow-convert' | 'breaker-disabled' | 'slow-load')[] };
   'http.handler_rejected': { errorName: string; method: RequestMethod; route: string; status: number };
@@ -142,7 +142,7 @@ export interface ErrorEvents {
   'http.request_failed': { errorName: string };
   'http.handler_error': { errorName: string; method: RequestMethod; route: string; status: number; origin?: string };
   'server.config_invalid': { settings: readonly ConfigProblem[] };
-  'server.start_failed': { errorName: string; errorCode: string; host: string; port: number };
+  'server.start_failed': { errorName: string; errorCode: string; bindHost: string; port: number };
   'shutdown.hook_failed': { hook: string; phase: ShutdownPhaseName; errorName: string };
   'shutdown.forced': { reason: 'second-signal' | 'overall-deadline'; deadlineMs: number };
   'process.fault': { kind: 'uncaughtException' | 'unhandledRejection'; errorName: string };

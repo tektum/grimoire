@@ -53,6 +53,7 @@ const unit = z.string(msg(UNIT_RULE)).regex(/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)
 
 const PORT_MAX = 65535;
 const HOST_RULE = 'must be an IPv4 or IPv6 address literal (no hostname, no port)';
+const ENV_RULE = 'must be 1 to 32 characters: lowercase letters, digits and hyphens, starting with a letter';
 /** Whether an operand already satisfies its own field rule (integer within its range). */
 const valid = (x: unknown, min: number, max: number): x is number =>
   typeof x === 'number' && Number.isSafeInteger(x) && x >= min && x <= max;
@@ -124,6 +125,8 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_PORT: field(int(1, PORT_MAX)).default(8080),
   GRIMOIRE_COLLAB_PORT: field(int(1, PORT_MAX)),
   GRIMOIRE_LOG_LEVEL: field(z.enum(['debug', 'info', 'warn', 'error'], msg('must be one of: debug, info, warn, error'))).default('info'),
+  // The environment (the stage) the process runs in: written on every log line as `env`. The infrastructure sets it; a local run is `local`.
+  GRIMOIRE_ENV: field(z.string(msg(ENV_RULE)).regex(/^[a-z][a-z0-9-]{0,31}$/, msg(ENV_RULE))).default('local'),
   GRIMOIRE_DATABASE_URL: field(dbUrl, purpose === 'server' ? SERVER_ONLY : undefined),
   GRIMOIRE_DATABASE_MIGRATION_URL: field(dbUrl, purpose === 'migrate' ? 'is required to run migrations' : undefined),
   // The operator role's connection (docs/tenancy.md section 3.2): the server's composition requires it (the commands do not), and nothing replaces it with the runtime connection.
@@ -437,6 +440,7 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
   port: v.GRIMOIRE_PORT,
   ...(v.GRIMOIRE_COLLAB_PORT !== undefined ? { collabPort: v.GRIMOIRE_COLLAB_PORT } : {}),
   logLevel: v.GRIMOIRE_LOG_LEVEL,
+  env: v.GRIMOIRE_ENV,
   database: {
     ...(v.GRIMOIRE_DATABASE_URL !== undefined ? { url: v.GRIMOIRE_DATABASE_URL } : {}),
     ...(v.GRIMOIRE_DATABASE_MIGRATION_URL !== undefined ? { migrationUrl: v.GRIMOIRE_DATABASE_MIGRATION_URL } : {}),

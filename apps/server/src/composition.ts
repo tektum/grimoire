@@ -105,9 +105,9 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   if (url === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ clock: systemClock })) };
   // The operator connection (docs/tenancy.md section 3.2): every role signs people in, so every role needs it, and nothing falls back to the runtime pool.
   const opsUrl = config.database.opsUrl;
-  if (opsUrl === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_OPS_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_OPS_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ clock: systemClock })) };
-  const log = createEventLog(createJsonLogger({ level: config.logLevel, clock: systemClock }));
-  const logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
+  if (opsUrl === undefined) return { ok: false, issues: ['GRIMOIRE_DATABASE_OPS_URL: is required'], problems: [{ setting: 'GRIMOIRE_DATABASE_OPS_URL', rule: 'is required' }], log: createEventLog(createJsonLogger({ env: config.env, clock: systemClock })) };
+  const log = createEventLog(createJsonLogger({ level: config.logLevel, env: config.env, clock: systemClock }));
+  const logger = createJsonLogger({ level: config.logLevel, env: config.env, clock: systemClock });
   if (!config.local && (overrides.access !== undefined || overrides.verifier !== undefined)) {
     const reason = overrides.access !== undefined ? 'authorizer-stub' : 'verifier-stub';
     return { ok: false, issues: [`${reason}: refused outside local mode`], problems: [], log, refused: { reason, host: config.host, port: config.port } };

@@ -12,6 +12,10 @@ export interface JsonLoggerOptions {
   readonly destination?: { write(line: string): unknown };
   readonly clock?: Clock;
   readonly fields?: Record<string, unknown>;
+  /** The service the lines belong to (a log pipeline shows it as the line's service). Defaults to `grimoire`. */
+  readonly service?: string;
+  /** The environment the lines come from (the stage). Left out of the line when absent. */
+  readonly env?: string;
 }
 
 // First layer: pino's own path redaction for the known secret names (one level deep).
@@ -70,6 +74,8 @@ export function createJsonLogger(opts: JsonLoggerOptions = {}): Logger {
     formatters: { level: (label: string) => ({ level: label }) },
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },
   };
-  const root = opts.destination ? pino(options, opts.destination) : pino(options);
+  // `service` and `env` are bindings of the logger, so every line carries them once; no caller can set them (scrubFields drops them).
+  const base = { service: opts.service ?? 'grimoire', ...(opts.env === undefined ? {} : { env: opts.env }) };
+  const root = (opts.destination ? pino(options, opts.destination) : pino(options)).child(base);
   return wrap(opts.fields ? root.child(scrubFields(opts.fields)) : root, ts, now);
 }
