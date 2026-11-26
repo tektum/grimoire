@@ -76,7 +76,7 @@ describe('the embed sweep, a chain of runs', () => {
     await stopAll();
   }, 120_000);
 
-  it('ten saves of one page in a row make one embed-page job and one embed: the debounce keeps the sweep off while the saves go on, and the page is embedded once, after it has settled', async () => {
+  it('ten saves of one page in a row make one embed, and no embed-page job while the saves go on: the debounce keeps the sweep off, and the page is embedded once, after it has settled', async () => {
     const tenant = await seedTenant(db.sql, 'T-saves');
     const id = randomUUID();
     await insertPage(db.sql, {
@@ -101,8 +101,11 @@ describe('the embed sweep, a chain of runs', () => {
       expect(await db.sql(`select status from page_embedding_state where page_id = '${id}'`)).toEqual([{ status: 'ready' }]);
     }, { timeout: 60_000, interval: 500 });
     expect(embedder.calls).toHaveLength(1); // one embed, of the one chunk
-    const [jobs] = (await db.sql(`select count(*)::int as n from pgboss.job where name = 'embed-page' and data->>'pageId' = '${id}'`)) as { n: number }[];
-    expect(jobs?.n).toBe(1);
+    // The queue is `stately`: one waiting job and one running job may share a key, so a sweep that picks the page up while its job runs sends one more, which finds every chunk stored and embeds nothing.
+    // The claim is one embed (above) and no pile-up: at most one job running and one waiting. CI saw 2 jobs for one embed; their timings are in the message if this fails.
+    const jobRows = (await db.sql(`select state::text as state, to_char(created_on, 'SS.MS') as created, to_char(started_on, 'SS.MS') as started, to_char(completed_on, 'SS.MS') as done from pgboss.job where name = 'embed-page' and data->>'pageId' = '${id}' order by created_on`)) as { state: string }[];
+    expect(jobRows.length, JSON.stringify(jobRows)).toBeLessThanOrEqual(2);
+    expect(jobRows.length, JSON.stringify(jobRows)).toBeGreaterThanOrEqual(1);
     await stopAll();
   }, 120_000);
 });

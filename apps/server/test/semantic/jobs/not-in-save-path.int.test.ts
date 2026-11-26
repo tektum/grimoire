@@ -63,13 +63,14 @@ describe('a save, while the embedder is busy', () => {
         const [row] = (await db.sql(`select count(*) filter (where status = 'ready')::int as ready from page_embedding_state`)) as { ready: number }[];
         expect(row?.ready).toBe(6); // the busy page, and the five saved ones, found by the sweep after the debounce
       }, { timeout: 90_000, interval: 500 });
-      const [chunks] = (await db.sql(`select count(distinct page_id)::int as pages from page_chunks where page_id in (${others.map((id) => `'${id}'`).join(',')})`)) as { pages: number }[];
-      expect(chunks?.pages).toBe(others.length); // each saved page has its chunk rows
-      // And the text asked for is the saved body, one text per saved page. On a failure the message shows what the embedder was given and what the pages hold.
+      // Evidence first, so that a failure of either check below says what happened: each page's state with its chunk rows and text length, and what the embedder was given.
+      const states = await db.sql(`select left(s.page_id::text, 8) as page, s.status, s.chunk_count, s.error, s.attempts, (select count(*)::int from page_chunks c where c.page_id = s.page_id) as chunks,
+                                          (select length(p.text_content) from pages p where p.id = s.page_id) as text_len, (select left(p.text_content, 40) from pages p where p.id = s.page_id) as text from page_embedding_state s order by s.page_id`);
       const asked = embedder.calls.flatMap((c) => c.texts);
-      const held = (await db.sql(`select left(text_content, 80) as text from pages where id in (${others.map((id) => `'${id}'`).join(',')})`)) as { text: string | null }[];
-      const diagnosis = JSON.stringify({ asked: asked.map((t) => t.slice(0, 80)), held: held.map((h) => h.text) });
-      expect(asked.filter((t) => t.includes(SAVED)), diagnosis).toHaveLength(others.length);
+      const diagnosis = JSON.stringify({ states, asked: asked.map((t) => t.slice(0, 80)), busy: busy.slice(0, 8) });
+      const [chunks] = (await db.sql(`select count(distinct page_id)::int as pages from page_chunks where page_id in (${others.map((id) => `'${id}'`).join(',')})`)) as { pages: number }[];
+      expect(chunks?.pages, diagnosis).toBe(others.length); // each saved page has its chunk rows
+      expect(asked.filter((t) => t.includes(SAVED)), diagnosis).toHaveLength(others.length); // and the text asked for is the saved body, one text per saved page
     } finally {
       embedder.gate.resolve();
       await runner.hook.run();
