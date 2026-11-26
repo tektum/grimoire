@@ -63,7 +63,7 @@ describe('the test list of the M7 exit test', () => {
     const runner = path.join(dir, 'runner.mjs');
     writeFileSync(runner, `import { appendFileSync } from 'node:fs'; const a = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, a.join(' ') + '\\n'); process.exit(a.some((x) => x.includes('/jobs')) ? 3 : 0);\n`);
     const groups = real();
-    groups['restart'] = { pending: ['apps/server/test/m7/restart.container.test.ts'], projects: ['container'] };
+    groups['restart'] = { pending: ['apps/server/test/m7/not-written-yet.container.test.ts'], projects: ['container'] };
     const r = node(['run'], { M7_GROUPS_FILE: withList(groups), M7_RUNNER: runner });
     expect(r.status).toBe(1);
     const calls = readFileSync(log, 'utf8').trim().split('\n');
@@ -72,7 +72,7 @@ describe('the test list of the M7 exit test', () => {
     expect(r.stdout).toMatch(/PASS search/);
     expect(r.stdout).toMatch(/FAIL jobs \(exit 3\)/);
     expect(r.stdout).toMatch(/PASS hostile/); // after the failure
-    expect(r.stdout).toContain('PENDING restart: apps/server/test/m7/restart.container.test.ts');
+    expect(r.stdout).toContain('PENDING restart: apps/server/test/m7/not-written-yet.container.test.ts');
   });
 
   it('runs a group with the projects it names (a container test is run by the container project only)', () => {

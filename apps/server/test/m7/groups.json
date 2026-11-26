@@ -31,7 +31,7 @@
     ]
   },
   "restart": {
-    "pending": [
+    "files": [
       "apps/server/test/m7/restart.container.test.ts"
     ],
     "projects": [
