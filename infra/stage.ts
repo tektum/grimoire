@@ -67,6 +67,12 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   const files = new sst.aws.Bucket('Files', {
     cors: { allowOrigins: [url], allowMethods: ['GET', 'PUT', 'HEAD'], allowHeaders: ['content-type', 'content-disposition', 'if-none-match', 'x-amz-*'], exposeHeaders: ['ETag'], maxAge: '10 minutes' },
   });
+  // The backstop for a multipart upload the application never aborts (the part bytes of an unfinished upload are billed and invisible). A resource of its own and not the component's `lifecycle`
+  // option: that one only expires objects, and two configurations of one bucket would overwrite each other.
+  new aws.s3.BucketLifecycleConfiguration('FilesLifecycle', {
+    bucket: files.nodes.bucket.bucket,
+    rules: [{ id: 'abort-incomplete-multipart', status: 'Enabled', filter: {}, abortIncompleteMultipartUpload: { daysAfterInitiation: 2 } }],
+  });
 
   const albLogs = loadBalancerLogs();
   const cluster = new sst.aws.Cluster('Cluster', { vpc });
@@ -119,9 +125,10 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
         },
       },
     ],
-    // No access keys: the task role is the identity of the file store client, with the least a bucket client needs (`ListBucket` so that a missing object is a 404 and not a 403).
+    // No access keys: the task role is the identity of the file store client, with the least a bucket client needs (`ListBucket` so that a missing object is a 404 and not a 403; the two
+    // multipart actions because a big upload goes to the store in parts: `PutObject` covers creating, uploading and completing one, the application lists its parts and aborts it itself).
     permissions: [
-      { actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'], resources: [$interpolate`${files.arn}/*`] },
+      { actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:AbortMultipartUpload', 's3:ListMultipartUploadParts'], resources: [$interpolate`${files.arn}/*`] },
       { actions: ['s3:ListBucket'], resources: [files.arn] },
     ],
     loadBalancer: {
