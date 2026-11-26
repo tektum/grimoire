@@ -447,6 +447,7 @@ jobs:
         id: m2
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
+          rm -rf test-results compose.log # the results of the exit tests before this one are not this one's: its artifact holds its own
           make up
           make test-m2
       - name: Collect Compose logs (M2)
@@ -469,6 +470,7 @@ jobs:
         id: m3
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
+          rm -rf test-results compose.log # as for M2
           make test-m3
       - name: Collect Compose logs (M3)
         if: ${{ !cancelled() && steps.m3.outcome == 'failure' }}
