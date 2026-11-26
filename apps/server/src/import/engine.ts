@@ -36,6 +36,8 @@ export interface PassOneOptions {
   readonly allowNestedZips: boolean;
   /** The most pages a collection holds (R10.15). */
   readonly maxPages: number;
+  /** A page's text by its path (`pageText`), for the few pages that claim one folder (decision 171); without it such a folder stays a container. */
+  readonly read?: (path: string) => Promise<string | undefined>;
 }
 
 export type PassOneResult =
@@ -98,7 +100,8 @@ export async function passOne(repo: ImportRepo, tenantId: string, importId: stri
   const key = (folder: string): string => canonical(folder).normalize('NFC').toLowerCase();
   // A folder that a page and a database of its name share has owners too: its pages go under one or the other (pass two, decision 167).
   const shared = profile.sharedFoldersOf?.(pagePaths, lowerPaths)?.keys() ?? [];
-  const hasPage = new Set([...pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key), ...shared]);
+  const owners = options.read === undefined ? new Map<string, string>() : await folderOwners(profile, rows, pagePaths, lowerPaths, options.read);
+  const hasPage = new Set([...pagePaths.map((p) => profile.folderPathOf(p, lowerPaths)).filter((f): f is string => f !== undefined).map(key), ...shared, ...owners.keys()]);
   const containers = new Map<string, string>();
   for (const path of pagePaths) {
     for (let folder = profile.parentPathOf(path, lowerPaths); folder !== null && !hasPage.has(key(folder)) && !containers.has(key(folder)); ) {
@@ -165,6 +168,34 @@ export type PassTwoResult =
 const DEFAULT_BATCH_PAGES = 25;
 const DEFAULT_BATCH_BYTES = 8 * 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });
+
+/**
+ * The page of each folder that several pages could stand for (`profile.claimantsOf`), by the folder's key: the one of them whose text, as the profile cleans it, links to
+ * something in the folder (decision 171). With none, or several, the folder has no page of its own and stays a container. Both passes read it the same way, so they agree.
+ */
+async function folderOwners(profile: ImportProfile, files: readonly { readonly path: string; readonly kind: string }[], pagePaths: readonly string[], lowerPaths: ReadonlySet<string>, read: (path: string) => Promise<string | undefined>): Promise<ReadonlyMap<string, string>> {
+  const owners = new Map<string, string>();
+  const claimants = profile.claimantsOf?.(pagePaths, lowerPaths);
+  if (claimants === undefined || claimants.size === 0) return owners;
+  // The archive's files by path: a link found here names the path it points at.
+  const index = buildLinkIndex(files.filter((f) => f.kind === 'page' || f.kind === 'database_csv' || f.kind === 'attachment').map((f): IndexedItem => ({ itemId: f.path, path: f.path, kind: f.kind === 'attachment' ? 'attachment' : 'page' })), profile.idOf?.bind(profile));
+  for (const [folder, paths] of claimants) {
+    const linking: string[] = [];
+    for (const path of paths) {
+      const text = await read(path);
+      if (text === undefined) continue;
+      let into = false;
+      rewriteMarkdown(profile.preprocess(text, { path }), (target) => {
+        const found = profile.resolveLink(target, path, index);
+        if (found !== undefined && folderKey(found.itemId).startsWith(`${folder}/`)) into = true;
+        return undefined;
+      });
+      if (into) linking.push(path);
+    }
+    if (linking.length === 1) owners.set(folder, linking[0] as string);
+  }
+  return owners;
+}
 
 /** The contract's largest table (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES` default) and most rows of a database's table (M7 contracts section 4). */
 const MAX_TABLE_BYTES = 262_144;
@@ -257,6 +288,9 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
 
   // Which page stands for which folder: a folder's own page file, else its container.
   const folderPage = new Map<string, ImportItem>();
+  const owners = await folderOwners(profile, all.filter((i) => !isContainer(i)), pageItems.filter((i) => !isContainer(i)).map((i) => i.path), lowerPaths, pageText(deps.reader, deps.limits, deps.entries));
+  const pageByPath = new Map(pageItems.map((i) => [i.path, i]));
+  for (const [folder, path] of owners) { const owner = pageByPath.get(path); if (owner !== undefined) folderPage.set(folder, owner); }
   for (const i of pageItems) if (!isContainer(i)) { const f = profile.folderPathOf(i.path, lowerPaths); if (f !== undefined && !folderPage.has(folderKey(f))) folderPage.set(folderKey(f), i); }
   for (const i of pageItems) if (isContainer(i) && !folderPage.has(folderKey(i.path))) folderPage.set(folderKey(i.path), i);
   // The most Markdown a database's table may be: the table cap, or the seed cap when that is lower, as the table is seeded like any page (decision 10: the engine checks the cap,

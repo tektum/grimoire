@@ -196,6 +196,28 @@ describe('the profile an import is read with is the one of its source', () => {
     expect(t.repo.written).toHaveLength(2); // no empty page for the folder
   });
 
+  it('an export of Notion with two pages of one name beside one folder of that name: the one whose text links into the folder owns it, whatever the order of the entries (decision 171)', async () => {
+    const ID3 = '00112233445566778899aabbccddeeff';
+    for (const order of [[0, 1], [1, 0]]) {
+      const owners = [md(`Plan ${ID1}.md\u0000# Plan\n\nSee [Step](Plan/Step%20${ID2}.md).\n`), md(`Plan ${ID3}.md\u0000# Plan\n\nAn older plan.\n`)];
+      const t = await setup([...order.map((i) => owners[i]!), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });
+      await t.run();
+      const linking = (await t.items()).find((i) => i.path === `Plan ${ID1}.md`);
+      expect(t.repo.written.find((w) => w.page.title === 'Step')?.page.parentId).toBe(linking?.pageId);
+      expect(t.repo.written).toHaveLength(3); // no empty page for the folder
+    }
+  });
+
+  it('an export of Notion with two pages of one name that both link into the folder of that name: a tie, the folder stays an empty page of its own', async () => {
+    const ID3 = '00112233445566778899aabbccddeeff';
+    const link = `See [Step](Plan/Step%20${ID2}.md).`;
+    const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n\n${link}\n`), md(`Plan ${ID3}.md\u0000# Plan\n\n${link}\n`), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });
+    await t.run();
+    expect(t.repo.written).toHaveLength(4); // two pages, the folder's empty page, and Step under it
+    const folder = t.repo.written.find((w) => w.page.title === 'Plan' && w.page.content.markdown === '');
+    expect(folder).toBeDefined();
+  });
+
   it('an export of Notion with two pages of one name beside one folder of that name: the folder stays an empty page of its own (which page owns it is not known)', async () => {
     const ID3 = '00112233445566778899aabbccddeeff';
     const t = await setup([md(`Plan ${ID1}.md\u0000# Plan\n`), md(`Plan ${ID3}.md\u0000# Plan\n`), md(`Plan/Step ${ID2}.md\u0000# Step\n`)], { source: 'notion_md_csv' });

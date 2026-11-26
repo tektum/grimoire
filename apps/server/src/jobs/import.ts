@@ -9,7 +9,7 @@ import type { EnqueueOptions, JobHandler } from '@tektum/grimoire-core/ports/job
 import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-converter';
 import type { Ordering } from '@tektum/grimoire-core/tree/position';
 import type { EventLog } from '../events.js';
-import { passOne, passTwo } from '../import/engine.js';
+import { pageText, passOne, passTwo } from '../import/engine.js';
 import { importZipKey } from '../import/keys.js';
 import { markdownProfile } from '../import/markdown-profile.js';
 import { notionProfile } from '../import/notion/profile.js';
@@ -115,7 +115,8 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         return;
       }
       try {
-        const one = await passOne(imports, tenantId, importId, opened.entries, { profile: PROFILES[record.source], allowNestedZips: config.import.allowNestedZips, maxPages: deps.maxPages ?? 10_000 });
+        const limits = { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes, maxTableBytes: config.import.maxTableBytes };
+        const one = await passOne(imports, tenantId, importId, opened.entries, { profile: PROFILES[record.source], allowNestedZips: config.import.allowNestedZips, maxPages: deps.maxPages ?? 10_000, read: pageText(opened.reader, limits, opened.entries) });
         if (!one.ok) {
           await imports.setCounts(tenantId, importId, { ...NO_IMPORT_COUNTS, pagesTotal: one.pagesTotal });
           await fail(one.reason);
@@ -125,7 +126,7 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         const current = (await imports.get(tenantId, importId)) ?? record;
         const result = await passTwo({
           repo: imports, files, converter: deps.converter, profile: PROFILES[record.source], ordering: deps.ordering, reader: opened.reader, entries: opened.entries,
-          limits: { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes, maxTableBytes: config.import.maxTableBytes },
+          limits,
           pageLimits: { maxDepth: 32, maxPages: deps.maxPages ?? 10_000, maxTenantPages: config.tenantLimits.maxPages }, now,
           ...(config.files === undefined ? {} : { attachments: { maxBytes: config.files.maxBytes, allowedTypes: config.files.allowedTypes, sniff: deps.sniff } }),
           remote: { fetcher: deps.fetcher, config: config.import.remote },
