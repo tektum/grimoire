@@ -52,7 +52,7 @@ export interface AppContext {
   /** First sign-in rules; `allowDevRole` is `config.local`. The `GET /v1/me` route provisions with it. */
   readonly signInPolicy: SignInPolicy;
   readonly shutdown: Shutdown;
-  /** The semantic search: built in the roles `api` and `all` when `GRIMOIRE_SEMANTIC_SEARCH` is on. The store and the routes that use it come with M7-T13 and M7-T14. */
+  /** The semantic search: built in the roles `api` and `all` when `GRIMOIRE_SEMANTIC_SEARCH` is on; the search route has the same embedder and store as `http.hybrid`. */
   readonly semantic?: { readonly embedder: Embedder; readonly store: EmbeddingStore };
   /** The collaboration host and what it needs; absent when the role has none (`api`). */
   readonly collab?: { readonly host: CollaborationHost; readonly deps: CollabDeps; readonly pageDb: Database };
@@ -136,6 +136,9 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
   const converter = createMarkdownConverter({ maxStateBytes: config.collab.maxStateBytes, maxSeedMarkdownBytes: config.collab.seedMaxMarkdownBytes, seedTimeoutMs: config.collab.seedTimeoutMs, reseedTimeoutMs: config.collab.reseedTimeoutMs, poolSize: config.collab.convertPoolSize, closeDeadlineMs: DERIVED_BUDGETS_MS.poolClose, timeoutMs: config.collab.saveTimeoutMs, ...(facilities.slowConvert ? { testSlow: facilities.slowConvert } : {}) });
   const httpUsers = createUserStore(db, ops, config.tenantLimits.maxUsers);
   const files = config.files === undefined ? undefined : createFileStorage(config.files);
+  // The semantic search (roles `api` and `all`, when it is on): one embedder and one store, for the search route and the embedding jobs alike.
+  const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
+  const embeddings = createEmbeddingStore(db, ops);
   const http: HttpDeps = {
     config, log, clock: systemClock, users: httpUsers,
     providerBaseUrl: config.descopeProjectId === undefined ? null : descopeBaseUrl(config.descopeProjectId, config.descopeBaseUrl),
@@ -151,6 +154,7 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     ...(files === undefined ? {} : { files }),
     // A purge removes the objects of the attachments it deletes before it deletes any row; without a store there is nothing to remove.
     deleteFiles: deleteObjects(files),
+    ...(embedder === undefined ? {} : { hybrid: { embedder, store: embeddings, settings: config.semantic } }),
   };
   let collab: AppContext['collab'];
   if (pageDb && pageOps && authDb && authOps) {
@@ -172,8 +176,6 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     };
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
-  const embedder = config.role === 'collab' || !config.semantic.enabled ? undefined : createOnnxEmbedder(config.semantic, { log: logger });
-  const embeddings = createEmbeddingStore(db, ops);
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: (queue) => registerJobs({

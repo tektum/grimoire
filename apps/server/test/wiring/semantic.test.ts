@@ -38,6 +38,14 @@ describe('the composition and the semantic search', () => {
     expect(await ctx.semantic?.embedder.embedQuery('x')).toEqual({ ok: false, reason: 'unavailable' });
   });
 
+  it('gives the search route the hybrid search when it is on: the same embedder and store as the jobs, with the settings of the configuration; none when it is off', () => {
+    const ctx = ctxOf({ GRIMOIRE_ROLE: 'api', GRIMOIRE_SEMANTIC_MODEL_DIR: resolve(import.meta.dirname, 'no-such-models') });
+    expect(ctx.http.hybrid?.embedder).toBe(ctx.semantic?.embedder);
+    expect(ctx.http.hybrid?.store).toBe(ctx.semantic?.store);
+    expect(ctx.http.hybrid?.settings).toMatchObject({ enabled: true, queryTimeoutMs: ctx.config.semantic.queryTimeoutMs, minSimilarity: ctx.config.semantic.minSimilarity, candidates: ctx.config.semantic.candidates });
+    expect(ctxOf({ GRIMOIRE_SEMANTIC_SEARCH: 'off' }).http.hybrid).toBeUndefined();
+  });
+
   it('role collab builds nothing of it', () => {
     const ctx = ctxOf({ GRIMOIRE_ROLE: 'collab', GRIMOIRE_COLLAB_PORT: '8081' });
     expect(ctx.semantic).toBeUndefined();

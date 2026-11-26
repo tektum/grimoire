@@ -46,8 +46,10 @@ describe('application context wiring', () => {
 
   it.each(['all', 'api', 'collab'])('role %s: ctx.http has every dependency and the collaboration host has a revision repository of its own', (role) => {
     const ctx = ctxOf({ GRIMOIRE_ROLE: role });
-    expect(Object.keys(ctx.http).sort()).toEqual([...HTTP_KEYS].sort());
-    for (const k of HTTP_KEYS) expect(ctx.http[k], k).toBeDefined();
+    // The semantic search is on by default, and built in the roles that serve HTTP: those have the hybrid search too.
+    const keys = role === 'collab' ? HTTP_KEYS : [...HTTP_KEYS, 'hybrid' as const];
+    expect(Object.keys(ctx.http).sort()).toEqual([...keys].sort());
+    for (const k of keys) expect(ctx.http[k], k).toBeDefined();
     expect(ctx.http.config).toBe(ctx.config);
     expect(ctx.http.revisions).toBeDefined();
     // The host's revision work runs on the collab role's own pool: a database that hangs must not leave an idle connection on the main pool to wait out at shutdown.
