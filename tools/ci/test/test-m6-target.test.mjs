@@ -60,3 +60,35 @@ test('with the browsers absent, the check of the run stops it with the plain lin
   assert.equal(run.status, 1);
   assert.match(run.stderr, /^playwright browsers missing: run bunx playwright install --with-deps chromium firefox webkit$/m);
 });
+
+// The two targets the merge gate runs (`ci.yml`): what they do, in the order they do it. They are not part of `test-m6` itself (its recipe is pinned above), so the exit test and the gate cannot drift in silence.
+const dryOf = (target) => spawnSync('make', ['-n', '-C', root, target], { encoding: 'utf8' });
+const stepsOf = (run) => run.stdout.split('\n').filter((l) => l.trim() !== '' && !/^make(\[\d+\])?: /.test(l));
+
+test('`test-m6-static` checks the list of scenarios, then builds the client for production and checks that build, and starts nothing', () => {
+  const run = dryOf('test-m6-static');
+  assert.equal(run.status, 0, run.stderr);
+  const lines = stepsOf(run);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0] ?? '', /m6\/scenarios\.ts check$/);
+  assert.match(lines[1] ?? '', /vite build && bun run check:build$/);
+  assert.doesNotMatch(run.stdout, /--mode e2e|docker|playwright| up$/);
+});
+
+test('`test-m6-handshake` starts the stack with the handshake required, renders the headers once, and runs the handshake check and the check of the served headers in Chromium alone, with the exit test settings', () => {
+  const run = dryOf('test-m6-handshake');
+  assert.equal(run.status, 0, run.stderr);
+  const lines = stepsOf(run);
+  const up = lines.findIndex((l) => / up$/.test(l));
+  const files = lines.findIndex((l) => /files-setup/.test(l));
+  const headers = lines.findIndex((l) => /^bun run apps\/web\/test-e2e\/m6\/headers\.ts$/.test(l));
+  const spec = lines.findIndex((l) => /bunx playwright test/.test(l));
+  assert.ok(up >= 0 && files > up && headers > files && spec > headers, 'the stack, its bucket, the headers, then the check');
+  assert.match(lines[up] ?? '', /M6_REQUIRE_HANDSHAKE=1/);
+  assert.match(lines[up] ?? '', /COMPOSE_FILE=compose\.yaml:compose\.m6\.yaml/);
+  assert.match(lines[spec] ?? '', /M6_EXIT=1/);
+  assert.match(lines[spec] ?? '', /M6_REQUIRE_HANDSHAKE=1/);
+  assert.match(lines[spec] ?? '', /GRIMOIRE_WEB_HEADERS_DIR="\/[^"]*\/test-results\/m6-headers"/);
+  assert.match(lines[spec] ?? '', /--project=chromium apps\/web\/test-e2e\/m6\/handshake\.spec\.ts apps\/web\/test-e2e\/m6\/origins\.spec\.ts$/, 'the handshake check and the one that asserts the page served with its headers');
+  assert.equal(lines.filter((l) => /bunx playwright test/.test(l)).length, 1, 'one run, one browser');
+});
