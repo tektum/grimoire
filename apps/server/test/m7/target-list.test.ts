@@ -59,6 +59,22 @@ describe('the test list of the M7 exit test', () => {
     expect(r.stderr).toContain('group "mystery" is not a group of the exit test');
   });
 
+  it('fails the run for a group with a test that is not written yet, though every group that has files passes, unless M7_ALLOW_PENDING=1 is set', () => {
+    const dir = tmp();
+    const runner = path.join(dir, 'runner.mjs');
+    writeFileSync(runner, 'process.exit(0);\n');
+    const groups = real();
+    groups['restart'] = { pending: ['apps/server/test/m7/not-written-yet.container.test.ts'], projects: ['container'] };
+    const env = { M7_GROUPS_FILE: withList(groups), M7_RUNNER: runner };
+    const refused = node(['run'], env);
+    expect(refused.status, 'a test that is not written must not read as a pass').toBe(1);
+    expect(refused.stdout).toContain('PENDING restart: apps/server/test/m7/not-written-yet.container.test.ts');
+    expect(refused.stdout).toMatch(/FAIL restart: .*not-written-yet.*M7_ALLOW_PENDING=1/);
+    const allowed = node(['run'], { ...env, M7_ALLOW_PENDING: '1' });
+    expect(allowed.status, allowed.stdout).toBe(0);
+    expect(allowed.stdout).toContain('PENDING restart: apps/server/test/m7/not-written-yet.container.test.ts');
+  });
+
   it('runs every group in order, one runner call each with its projects and files, goes on after a group that fails, says PENDING for what is not written, and exits 1 for the failure', () => {
     const dir = tmp();
     const log = path.join(dir, 'calls.log');

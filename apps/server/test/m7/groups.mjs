@@ -2,7 +2,8 @@
 // The test list of the M7 exit test (`make test-m7`): the groups it is made of and the files of each, in groups.json.
 //   node apps/server/test/m7/groups.mjs check   exits 1 unless the list has every group of the exit test and every file it names exists
 //   node apps/server/test/m7/groups.mjs list    prints the list
-//   node apps/server/test/m7/groups.mjs run     checks, then runs the groups one after another (vitest, with the projects of each group), goes on after a group that fails, and exits 1 if one did
+//   node apps/server/test/m7/groups.mjs run     checks, then runs the groups one after another (vitest, with the projects of each group), goes on after a group that fails, and exits 1 if one did;
+//                                               a `pending` file counts as a failure (a test that is not written must not read as a pass) unless M7_ALLOW_PENDING=1 is set, for the time a test is being written
 // A group has `files` (files or folders, relative to the repository), the vitest `projects` they run in (default unit and integration), and `pending`: files that are not written yet, which the run
 // says so about and which `check` refuses once they exist (they must move to `files`, or nothing runs them). M7_GROUPS_FILE names another list and M7_RUNNER another runner (a script given the
 // arguments vitest would get): both are for the test of this script.
@@ -52,9 +53,16 @@ function run() {
   }
   const groups = load();
   let failed = 0;
+  const allowPending = process.env['M7_ALLOW_PENDING'] === '1';
   for (const name of REQUIRED) {
     const group = groups[name];
-    for (const f of group.pending ?? []) console.log(`PENDING ${name}: ${f}`);
+    for (const f of group.pending ?? []) {
+      console.log(`PENDING ${name}: ${f}`);
+      if (!allowPending) {
+        console.log(`FAIL ${name}: ${f} is not written yet (M7_ALLOW_PENDING=1 allows it while it is being written)`);
+        failed += 1;
+      }
+    }
     if ((group.files ?? []).length === 0) continue;
     const projects = (group.projects ?? DEFAULT_PROJECTS).flatMap((p) => ['--project', p]);
     const runner = process.env['M7_RUNNER'];
