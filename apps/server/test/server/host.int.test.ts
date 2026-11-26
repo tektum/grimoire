@@ -83,7 +83,8 @@ describe('GRIMOIRE_HOST', () => {
     const exit = await runToEnd([mainJs], { ...dbEnv, GRIMOIRE_PORT: String(port), GRIMOIRE_LOCAL: '1', GRIMOIRE_HOST: '192.0.2.1', GRIMOIRE_LOCAL_ALLOW_NON_LOOPBACK: '1' }); // TEST-NET-1: never assigned locally
     expect(exit.code).toBe(1);
     expect(exit.output).toContain('"event":"server.start_failed"');
-    expect(exit.output).toContain('"host":"192.0.2.1"');
+    expect(exit.output).toContain('"bindHost":"192.0.2.1"');
+    expect(exit.output).not.toContain('"host":'); // `host` is a log pipeline's own attribute, so the logger drops it from fields
     expect(exit.output).toContain(`"port":${String(port)}`);
     expect(exit.output).not.toContain('server.local_mode_exposed');
   });

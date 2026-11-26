@@ -31,7 +31,7 @@ function wrap(p: PinoLogger, ts: TsState, now: () => string | undefined): Logger
       ts.value = t ?? new Date().toISOString();
       const clean = scrubFields(fields);
       if (t === undefined) clean['clockFallback'] = true;
-      // The event text is written twice: as `event` (the key the tests and the operators' searches use) and as `message`, the attribute a log pipeline such as Datadog's shows as the line.
+      // The event text is written twice: as `event` (the key the tests and the operators' searches use) and as `message`, the attribute a log pipeline shows as the line.
       const text = redactString(String(event));
       clean['message'] = text;
       p[level](clean, text);

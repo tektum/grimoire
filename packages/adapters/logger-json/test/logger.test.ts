@@ -63,7 +63,7 @@ describe('logger-json', () => {
     expect(o['ts']).not.toBe('x');
   });
 
-  it('writes the event text as `message` as well, so a log pipeline that shows `message` (Datadog) shows the line, with the same redaction', () => {
+  it('writes the event text as `message` as well, so a log pipeline that shows `message` shows the line, with the same redaction', () => {
     const { lines, log } = capture();
     log.info('connect', { page: 'p1' });
     log.error('GET /p?token=zzz-leak failed');
