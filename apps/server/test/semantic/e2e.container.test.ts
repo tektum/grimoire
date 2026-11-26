@@ -28,7 +28,7 @@ let off: ServerProcess | undefined;
 const start = (semantic: 'on' | 'off'): Promise<ServerProcess> => startServer({
   env: {
     GRIMOIRE_DATABASE_URL: appUrl(DB), GRIMOIRE_DEV_TOKEN_SECRET: SECRET, GRIMOIRE_SEMANTIC_SEARCH: semantic, GRIMOIRE_SEMANTIC_MODEL_DIR: modelDir,
-    GRIMOIRE_SEMANTIC_DEBOUNCE_SECONDS: '3', GRIMOIRE_SEMANTIC_SWEEP_SECONDS: '5', // the shortest the settings allow
+    GRIMOIRE_SEMANTIC_DEBOUNCE_SECONDS: '5', GRIMOIRE_SEMANTIC_SWEEP_SECONDS: '5', // 5 s is the least either setting accepts (the schema refuses less, and the server then does not start)
   },
 });
 
