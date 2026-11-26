@@ -43,6 +43,6 @@ export interface ImportProfile {
   sharedFoldersOf?(pagePaths: readonly string[], lowerPaths: ReadonlySet<string>): ReadonlyMap<string, { readonly page: string; readonly database: string }>;
   /** The id a name carries, for an export that names its pages by an id (the link index then finds an item by it); a profile without such names has none. */
   idOf?(path: string): string | undefined;
-  /** A database export (a CSV) as a Markdown table; only a profile that has such exports provides it. */
-  csvToMarkdown?(rows: readonly (readonly string[])[]): string;
+  /** A database export (a CSV) as a Markdown table, or undefined when the table would be over `maxBytes`; only a profile that has such exports provides it. */
+  csvToMarkdown?(rows: readonly (readonly string[])[], maxBytes: number): string | undefined;
 }

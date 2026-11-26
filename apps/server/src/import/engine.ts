@@ -182,8 +182,8 @@ function databaseTable(bytes: Buffer, profile: ImportProfile, maxTableBytes: num
   const csv = readCsv(bytes, { maxFieldBytes: MAX_CSV_RECORD_BYTES });
   if (!csv.ok) return { ok: false, reason: csv.reason };
   if (csv.rows.length - 1 > MAX_TABLE_ROWS) return { ok: false, reason: 'table_too_large' };
-  const markdown = profile.csvToMarkdown(csv.rows);
-  return Buffer.byteLength(markdown) > maxTableBytes ? { ok: false, reason: 'table_too_large' } : { ok: true, markdown };
+  const markdown = profile.csvToMarkdown(csv.rows, maxTableBytes);
+  return markdown === undefined ? { ok: false, reason: 'table_too_large' } : { ok: true, markdown };
 }
 
 /** A page's text by its archive path, read up to the seed cap from the first entry of that path; undefined when it cannot be read or is not UTF-8. */
