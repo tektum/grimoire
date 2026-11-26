@@ -3,7 +3,8 @@
     "files": [
       "apps/server/test/search",
       "packages/core/test/search",
-      "packages/adapters/db-kysely/test/search"
+      "packages/adapters/db-kysely/test/search",
+      "apps/server/test/m7/search-permissions.int.test.ts"
     ]
   },
   "jobs": {
