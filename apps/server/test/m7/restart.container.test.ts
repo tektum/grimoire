@@ -155,9 +155,14 @@ async function startImport(zip: Buffer): Promise<{ importId: string; collectionI
   const made = await api('POST', '/v1/collections', { name: `Restart ${String(Date.now())}`, defaultPermission: 'read_write' });
   expect(made.status, await made.clone().text()).toBe(201);
   const collectionId = ((await made.json()) as { id: string }).id;
-  const created = await api('POST', '/v1/imports', { collectionId, fileName: 'restart.zip', size: zip.length, profile: 'markdown_zip' });
+  const created = await api('POST', '/v1/imports', { collectionId, profile: 'markdown_zip', files: [{ fileName: 'restart.zip', size: zip.length }] });
   expect(created.status, await created.clone().text()).toBe(201);
-  const { id: importId, upload } = (await created.json()) as { id: string; upload: { url: string; headers: Record<string, string> } };
+  // One file under the size that goes up in parts: one signed PUT (`kind: 'single'`).
+  const answer = (await created.json()) as { id: string; uploads: { upload: { kind: string; url: string; headers: Record<string, string> } }[] };
+  const { id: importId } = answer;
+  const upload = answer.uploads[0]?.upload;
+  expect(upload?.kind, `the upload of the one small file: ${JSON.stringify(answer)}`).toBe('single');
+  if (upload === undefined) throw new Error('no upload in the answer');
   lastImport = importId;
   const put = await fetch(upload.url, { method: 'PUT', headers: upload.headers, body: zip });
   expect(put.ok, `the PUT of the archive to the file store: ${String(put.status)}`).toBe(true);
