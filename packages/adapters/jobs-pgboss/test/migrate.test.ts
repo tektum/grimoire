@@ -251,3 +251,27 @@ describe('requireSchemaAccess', () => {
     await expect(requireSchemaAccess(empty)).rejects.toThrow(/authorization the migration role;/);
   });
 });
+
+describe('migratePgBoss, the expiry of a queue that exists', () => {
+  const def = (expireInSeconds: number) => ({ name: 'import', policy: 'standard', retryLimit: 1, retryDelaySeconds: 1, retryBackoff: false, expireInSeconds, retentionSeconds: 60 }) as const;
+  function run(existing: { policy?: string; expireInSeconds?: number }) {
+    const b = {
+      start: vi.fn(async () => b), stop: vi.fn(async () => {}), on: vi.fn(() => b),
+      getQueue: vi.fn(async () => existing), createQueue: vi.fn(async () => {}), updateQueue: vi.fn(async () => {}),
+    };
+    return { b, go: (expireInSeconds: number) => migratePgBoss({ connectionString: 'postgresql://example/db', database: recorder(['job']).db, runtimeRole: 'grimoire_app', make: (() => b) as never, queues: [def(expireInSeconds)] }) };
+  }
+
+  it('is changed in place when the definition says another one, and the queue is not recreated', async () => {
+    const { b, go } = run({ policy: 'standard', expireInSeconds: 900 });
+    await go(20);
+    expect(b.updateQueue).toHaveBeenCalledExactlyOnceWith('import', { expireInSeconds: 20 });
+    expect(b.createQueue).not.toHaveBeenCalled();
+  });
+
+  it('is left alone when it is the one the definition says', async () => {
+    const { b, go } = run({ policy: 'standard', expireInSeconds: 20 });
+    await go(20);
+    expect(b.updateQueue).not.toHaveBeenCalled();
+  });
+});
