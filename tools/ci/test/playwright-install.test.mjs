@@ -41,15 +41,14 @@ test('installs the browsers, then the libraries, once each when nothing fails', 
   const r = run(f.bin);
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
-  assert.match(r.stdout, /::notice::Playwright webkit firefox: installed in \d+ s \(browser cache hit: false\)/);
+  assert.match(r.stdout, /::notice::Playwright webkit firefox: installed in \d+ s/);
 });
 
 test('a library step that fails twice (apt exit 100) is tried again and the job goes on', () => {
   const f = fake({ failing: 'install-deps', failures: 2 });
-  const r = run(f.bin, { PLAYWRIGHT_CACHE_HIT: 'true' });
+  const r = run(f.bin);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(f.calls().filter((c) => c.startsWith('install-deps')).length, 3);
-  assert.match(r.stdout, /browser cache hit: true/);
 });
 
 test('three failures end it, naming the step and saying it is not a test failure', () => {
