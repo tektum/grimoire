@@ -13,7 +13,9 @@ const GROUPS = path.join(root, 'apps/server/test/m7/groups.json');
 const REQUIRED = ['search', 'jobs', 'hostile', 'synthetic', 'remote-images', 'restart', 'semantic', 'security'];
 
 const scratch: string[] = [];
-afterEach(() => { for (const d of scratch.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const d of scratch.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 const tmp = (): string => {
   const d = mkdtempSync(path.join(tmpdir(), 'm7-list-'));
   scratch.push(d);
@@ -61,7 +63,10 @@ describe('the test list of the M7 exit test', () => {
     const dir = tmp();
     const log = path.join(dir, 'calls.log');
     const runner = path.join(dir, 'runner.mjs');
-    writeFileSync(runner, `import { appendFileSync } from 'node:fs'; const a = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, a.join(' ') + '\\n'); process.exit(a.some((x) => x.includes('/jobs')) ? 3 : 0);\n`);
+    writeFileSync(
+      runner,
+      `import { appendFileSync } from 'node:fs'; const a = process.argv.slice(2); appendFileSync(${JSON.stringify(log)}, a.join(' ') + '\\n'); process.exit(a.some((x) => x.includes('/jobs')) ? 3 : 0);\n`,
+    );
     const groups = real();
     groups['restart'] = { pending: ['apps/server/test/m7/not-written-yet.container.test.ts'], projects: ['container'] };
     const r = node(['run'], { M7_GROUPS_FILE: withList(groups), M7_RUNNER: runner });
