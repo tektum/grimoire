@@ -839,6 +839,8 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # PostgreSQL for the event-loop test (the real embed-page job on the real store, with saves going through the real page store): the same `make db-up` and `make down` as the Integration job.
+      - run: make db-up
       - run: bun run build
       # The model files, kept by the hash of the lock: a new revision in the lock is a new key. A hit is still checked below (`--verify`: size and SHA-256 of every file).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -852,9 +854,13 @@ jobs:
       - run: node scripts/fetch-models.mjs --verify
       # The Embedder conformance suite on the real models (e5-base and e5-small): the proof of the embedder's worker thread and tokenizer, which the unit run's coverage leaves out. Not in `CI Required` yet.
       # The recall at 5 (at least 0.8 for the default model), the similarity of searches that match nothing, the memory and the chunks a second: printed, and recorded in docs/proof/m7-semantic-quality.md.
+      # The event-loop test: a page of 20,000 words embedded with the real model while saves go on, p99 of the loop delay at most 50 ms, its maximum at most 200 ms, every save under 500 ms (printed as `eventLoop`).
       - run: GRIMOIRE_MODEL_DIR="$PWD/models" bunx vitest run --project container packages/adapters/embedder-onnx apps/server/test/semantic
       # The script the image job runs inside the image, here on the checkout with the same models: it fails here, on its own, if the script is wrong.
       - run: GRIMOIRE_MODEL_DIR="$PWD/models" EMBEDDER_MODULE="$PWD/packages/adapters/embedder-onnx/dist/index.js" node tools/ci/semantic-image-smoke.mjs
+      - name: Tear down
+        if: always()
+        run: make down
 
   ci-required:
     name: CI Required

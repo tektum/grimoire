@@ -235,4 +235,20 @@ describe('the embed-page job', () => {
     const vector = (s.store.stored(PAGE, s.model).chunks[0]?.embedding ?? new Float32Array()).values().next().value as number;
     expect(text).not.toContain(String(vector));
   });
+
+  it('gives the event loop a turn while it cuts a long page into chunks: the cut is main-thread work, and a page of 20,000 words took 600 ms of it in one piece on a hosted runner', async () => {
+    const s = setup(paragraphs(200)); // 200 paragraphs, 200 chunks
+    let turns = 0;
+    let running = true;
+    const turn = (): void => {
+      if (!running) return;
+      turns += 1;
+      setImmediate(turn);
+    };
+    setImmediate(turn);
+    await s.handler(s.payload, ctxOf()); // the fakes answer at once, so every turn counted here was given by the job itself
+    running = false;
+    expect(s.store.stored(PAGE, s.model).chunks).toHaveLength(200);
+    expect(turns).toBeGreaterThanOrEqual(100);
+  });
 });
