@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { defaultImportConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
-import { openParts } from '../../../src/import/zip-reader.js';
+import { openParts, ZipReader } from '../../../src/import/zip-reader.js';
 import { buildZip } from '../hostile/zip-builder.js';
 import type { BuilderEntry } from '../hostile/zip-builder.js';
 
@@ -38,5 +38,15 @@ describe('openParts', () => {
     const { files: two, parts } = await store([file('a.md')], [file('b.md')]);
     await two.put('imports/bad.zip', Buffer.alloc(40, 1), { size: 40, contentType: 'application/zip' });
     expect(await openParts(two, [...parts, { key: 'imports/bad.zip', size: 40 }], defaultImportConfig)).toEqual({ kind: 'refused', reason: 'not_a_zip' });
+  });
+  it('closes the readers of the zips already opened when a later one cannot be opened at all (the store answers with an error), and rethrows', async () => {
+    const { files, parts } = await store([file('a.md')], [file('b.md')]);
+    const close = vi.spyOn(ZipReader.prototype, 'close');
+    try {
+      await expect(openParts(files, [...parts, { key: 'imports/not-there.zip', size: 500 }], defaultImportConfig)).rejects.toThrow();
+      expect(close).toHaveBeenCalledTimes(2);
+    } finally {
+      close.mockRestore();
+    }
   });
 });

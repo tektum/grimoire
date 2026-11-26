@@ -201,10 +201,16 @@ export async function openParts(files: FileStorage, parts: readonly { readonly k
   if (parts.length === 1) return openArchive(files, first.key, first.size, limits);
   const opened: { reader: ArchiveReader; entries: readonly ZipEntry[] }[] = [];
   const closeAll = (): void => { for (const o of opened) o.reader.close(); };
-  for (const part of parts) {
-    const one = await openArchive(files, part.key, part.size, limits);
-    if (one.kind === 'refused') { closeAll(); return { kind: 'refused', reason: one.reason }; }
-    opened.push(one);
+  try {
+    for (const part of parts) {
+      const one = await openArchive(files, part.key, part.size, limits);
+      if (one.kind === 'refused') { closeAll(); return { kind: 'refused', reason: one.reason }; }
+      opened.push(one);
+    }
+  } catch (error) {
+    // A zip that cannot be read at all (the store answers with an error): the readers of the zips opened before it are closed, and the error goes up for the job's retry.
+    closeAll();
+    throw error;
   }
   const owner = new Map<ZipEntry, { reader: ArchiveReader; entry: ZipEntry }>();
   const folders = new Set<string>();
