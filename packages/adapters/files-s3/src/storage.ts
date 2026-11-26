@@ -1,10 +1,15 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  ListPartsCommand,
   PutObjectCommand,
   type S3Client,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { create as contentDisposition } from 'content-disposition';
@@ -13,6 +18,8 @@ import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
 import {
   FileStorageError,
   LIST_LIMIT_MAX,
+  MAX_PARTS,
+  MIN_PART_BYTES,
   assertValidKey,
   type ByteStream,
   type FileStorage,
@@ -204,6 +211,91 @@ export class S3FileStorage implements FileStorage {
       getSignedUrl(this.signer, command, { expiresIn: o.ttlSeconds, signableHeaders: signable }),
     );
     return { method: 'PUT', url, headers, expiresAt: this.now() + o.ttlSeconds * 1000 };
+  }
+
+  async createMultipart(key: string, o: { contentType: string }): Promise<{ uploadId: string }> {
+    assertValidKey(key);
+    const out = await this.send(() =>
+      this.client.send(new CreateMultipartUploadCommand({ Bucket: this.bucket, Key: key, ContentType: o.contentType })),
+    );
+    if (!out.UploadId) throw new FileStorageError('unavailable', 'the file store opened no upload');
+    return { uploadId: out.UploadId };
+  }
+
+  /** The length is signed with the part, so the store takes exactly `size` bytes for exactly this part number and upload. */
+  async signPart(
+    key: string,
+    o: { uploadId: string; partNumber: number; size: number; ttlSeconds: number },
+  ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }> {
+    assertValidKey(key);
+    if (!Number.isInteger(o.partNumber) || o.partNumber < 1 || o.partNumber > MAX_PARTS) {
+      throw new FileStorageError('invalid-parts', 'the part number is outside 1 to 10000');
+    }
+    const command = new UploadPartCommand({
+      Bucket: this.bucket,
+      Key: key,
+      UploadId: o.uploadId,
+      PartNumber: o.partNumber,
+      ContentLength: o.size,
+    });
+    const url = await this.send(() =>
+      getSignedUrl(this.signer, command, { expiresIn: o.ttlSeconds, signableHeaders: new Set(['content-length']) }),
+    );
+    return { method: 'PUT', url, headers: {}, expiresAt: this.now() + o.ttlSeconds * 1000 };
+  }
+
+  /** Every part the store holds, in order (a page is at most 1000 parts). */
+  private async parts(key: string, uploadId: string): Promise<{ partNumber: number; size: number; etag: string }[]> {
+    assertValidKey(key);
+    // One entry per part number: S3 lists a part sent twice once, the development store (SeaweedFS) lists both, in no order that tells which is newer. A part sent again carries the same bytes (the port's rule), so any copy will do.
+    const all = new Map<number, { partNumber: number; size: number; etag: string }>();
+    let marker: string | undefined;
+    do {
+      const out = await this.send(() =>
+        this.client.send(
+          new ListPartsCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId, MaxParts: 1000, ...(marker === undefined ? {} : { PartNumberMarker: marker }) }),
+        ),
+      );
+      for (const part of out.Parts ?? []) all.set(part.PartNumber ?? 0, { partNumber: part.PartNumber ?? 0, size: part.Size ?? 0, etag: part.ETag ?? '' });
+      marker = out.IsTruncated ? out.NextPartNumberMarker : undefined;
+    } while (marker !== undefined);
+    return [...all.values()].sort((a, b) => a.partNumber - b.partNumber);
+  }
+
+  async listParts(key: string, uploadId: string): Promise<{ partNumber: number; size: number }[]> {
+    return (await this.parts(key, uploadId)).map(({ partNumber, size }) => ({ partNumber, size }));
+  }
+
+  /** The parts are read from the store, never taken from the caller, so the ETags stay here and the object is what was uploaded. */
+  async completeMultipart(key: string, uploadId: string): Promise<{ etag: string; size: number }> {
+    const parts = await this.parts(key, uploadId);
+    if (parts.length === 0 || parts.some((p, i) => p.partNumber !== i + 1)) {
+      throw new FileStorageError('invalid-parts', 'the parts are not numbered 1 to n without a gap');
+    }
+    if (parts.slice(0, -1).some((p) => p.size < MIN_PART_BYTES)) {
+      throw new FileStorageError('invalid-parts', 'a part but the last is under the minimum size');
+    }
+    const out = await this.send(() =>
+      this.client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+        }),
+      ),
+    );
+    return { etag: out.ETag ?? '', size: parts.reduce((sum, p) => sum + p.size, 0) };
+  }
+
+  async abortMultipart(key: string, uploadId: string): Promise<void> {
+    assertValidKey(key);
+    try {
+      await this.client.send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId }));
+    } catch (error) {
+      const mapped = mapError(error);
+      if (mapped.kind !== 'not-found') throw mapped;
+    }
   }
 
   async signDownload(

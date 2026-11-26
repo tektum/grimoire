@@ -2,6 +2,8 @@ import type { Clock } from '../ports/clock.js';
 import {
   FileStorageError,
   LIST_LIMIT_MAX,
+  MAX_PARTS,
+  MIN_PART_BYTES,
   assertValidKey,
   type ByteStream,
   type FileStorage,
@@ -32,6 +34,7 @@ export type SignedRequest =
       createOnlyHeader: CreateOnlyHeader;
       expiresAt: number;
     }
+  | { kind: 'part'; url: string; key: string; uploadId: string; partNumber: number; size: number; expiresAt: number }
   | {
       kind: 'download';
       url: string;
@@ -48,6 +51,8 @@ interface StoredObject {
   etag: string;
   modifiedAt: number;
 }
+
+interface MultipartUpload { key: string; contentType: string; parts: Map<number, Uint8Array> }
 
 const ORIGIN = 'https://fake.invalid/';
 
@@ -70,6 +75,7 @@ export class FakeFileStorage implements FileStorage {
   private readonly objects = new Map<string, StoredObject>();
   private readonly clock: Clock;
   private readonly createOnlyHeader: CreateOnlyHeader;
+  private readonly uploads = new Map<string, MultipartUpload>();
   private counter = 0;
 
   constructor(options: FakeFileStorageOptions = {}) {
@@ -208,6 +214,72 @@ export class FakeFileStorage implements FileStorage {
     return { method: 'PUT', url, headers, expiresAt };
   }
 
+  private upload(key: string, uploadId: string): MultipartUpload {
+    assertValidKey(key);
+    const found = this.uploads.get(uploadId);
+    if (!found || found.key !== key) throw new FileStorageError('not-found', 'no such upload');
+    return found;
+  }
+
+  async createMultipart(key: string, o: { contentType: string }): Promise<{ uploadId: string }> {
+    assertValidKey(key);
+    this.counter += 1;
+    const uploadId = `fake-upload-${this.counter}`;
+    this.uploads.set(uploadId, { key, contentType: o.contentType, parts: new Map() });
+    return { uploadId };
+  }
+
+  async signPart(
+    key: string,
+    o: { uploadId: string; partNumber: number; size: number; ttlSeconds: number },
+  ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }> {
+    assertValidKey(key);
+    if (!Number.isInteger(o.partNumber) || o.partNumber < 1 || o.partNumber > MAX_PARTS) {
+      throw new FileStorageError('invalid-parts', 'the part number is outside 1 to 10000');
+    }
+    const expiresAt = this.clock.now() + o.ttlSeconds * 1000;
+    const url = `${ORIGIN}${key}?${new URLSearchParams({
+      op: 'part',
+      uploadId: o.uploadId,
+      partNumber: String(o.partNumber),
+      size: String(o.size),
+      expires: String(expiresAt),
+      sig: String((this.counter += 1)),
+    }).toString()}`;
+    this.signed.push({ kind: 'part', url, key, uploadId: o.uploadId, partNumber: o.partNumber, size: o.size, expiresAt });
+    return { method: 'PUT', url, headers: {}, expiresAt };
+  }
+
+  async listParts(key: string, uploadId: string): Promise<{ partNumber: number; size: number }[]> {
+    const { parts } = this.upload(key, uploadId);
+    return [...parts.entries()].sort(([a], [b]) => a - b).map(([partNumber, bytes]) => ({ partNumber, size: bytes.length }));
+  }
+
+  async completeMultipart(key: string, uploadId: string): Promise<{ etag: string; size: number }> {
+    const upload = this.upload(key, uploadId);
+    const numbers = [...upload.parts.keys()].sort((a, b) => a - b);
+    if (numbers.length === 0 || numbers.some((n, i) => n !== i + 1)) {
+      throw new FileStorageError('invalid-parts', 'the parts are not numbered 1 to n without a gap');
+    }
+    const list = numbers.map((n) => upload.parts.get(n) as Uint8Array);
+    if (list.slice(0, -1).some((part) => part.length < MIN_PART_BYTES)) {
+      throw new FileStorageError('invalid-parts', 'a part but the last is under the minimum size');
+    }
+    const bytes = new Uint8Array(list.reduce((sum, part) => sum + part.length, 0));
+    let at = 0;
+    for (const part of list) { bytes.set(part, at); at += part.length; }
+    this.counter += 1;
+    const etag = `"fake-${this.counter}-${list.length}"`;
+    this.objects.set(key, { bytes, contentType: upload.contentType, etag, modifiedAt: this.clock.now() });
+    this.uploads.delete(uploadId);
+    return { etag, size: bytes.length };
+  }
+
+  async abortMultipart(key: string, uploadId: string): Promise<void> {
+    assertValidKey(key);
+    if (this.uploads.get(uploadId)?.key === key) this.uploads.delete(uploadId);
+  }
+
   async signDownload(
     key: string,
     o: {
@@ -241,15 +313,20 @@ export class FakeFileStorage implements FileStorage {
   }
 
   /**
-   * What the browser does with a signed upload: sends `body` with `headers` to `url`. Refused once the clock has
+   * What the browser does with a signed upload or a signed part: sends `body` with `headers` to `url`. Refused once the clock has
    * passed the expiry, when the size or type differ from what was signed, and, for a create-only signature,
    * when the store's create-only header is missing, and with `already-exists` when the key exists. A create-only header
    * the signature did not ask for, or the store's other header, has no effect.
    */
   async receiveSignedUpload(url: string, headers: Record<string, string>, body: Uint8Array): Promise<void> {
-    const request = this.signed.find((entry) => entry.kind === 'upload' && entry.url === url);
-    if (request?.kind !== 'upload') throw new FileStorageError('unavailable', 'the signature is unknown');
+    const request = this.signed.find((entry) => (entry.kind === 'upload' || entry.kind === 'part') && entry.url === url);
+    if (request === undefined || request.kind === 'download') throw new FileStorageError('unavailable', 'the signature is unknown');
     if (this.clock.now() >= request.expiresAt) throw new FileStorageError('unavailable', 'the signature has expired');
+    if (request.kind === 'part') {
+      if (body.length !== request.size) throw new FileStorageError('unavailable', 'the size is not the signed size');
+      this.upload(request.key, request.uploadId).parts.set(request.partNumber, body.slice());
+      return;
+    }
     const sent = Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
     if (body.length !== request.size) throw new FileStorageError('unavailable', 'the size is not the signed size');
     if (sent['content-type'] !== request.contentType) {

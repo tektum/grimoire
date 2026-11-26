@@ -54,4 +54,9 @@ export class SegmentStore implements FileStorage {
   list(): Promise<{ items: { key: string; size: number; modifiedAt: number }[]; nextCursor: string | null }> { return Promise.reject(new Error('read-only')); }
   signUpload(): never { throw new Error('read-only'); }
   signDownload(): never { throw new Error('read-only'); }
+  createMultipart(): never { throw new Error('read-only'); }
+  signPart(): never { throw new Error('read-only'); }
+  listParts(): never { throw new Error('read-only'); }
+  completeMultipart(): never { throw new Error('read-only'); }
+  abortMultipart(): never { throw new Error('read-only'); }
 }

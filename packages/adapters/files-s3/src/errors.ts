@@ -18,7 +18,10 @@ export function mapError(error: unknown): FileStorageError {
   if (name === 'NoSuchBucket') {
     return new FileStorageError('unavailable', `the file store has no such bucket (${String(status ?? 404)})`);
   }
-  if (name === 'NoSuchKey' || name === 'NotFound' || status === 404) {
+  if (name === 'EntityTooSmall' || name === 'InvalidPart' || name === 'InvalidPartOrder') {
+    return new FileStorageError('invalid-parts', 'the store refused the part list');
+  }
+  if (name === 'NoSuchKey' || name === 'NoSuchUpload' || name === 'NotFound' || status === 404) {
     return new FileStorageError('not-found', 'the object does not exist');
   }
   if (name === 'InvalidRange' || status === 416) {

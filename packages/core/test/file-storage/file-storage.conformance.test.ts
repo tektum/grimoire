@@ -15,7 +15,9 @@ const titles =
   `put-head-get range-first-512 range-middle range-past-end get-absent delete-absent list-paging key-validation
   put-conditional-412 sign-upload-exact sign-upload-wrong-size sign-upload-wrong-type sign-upload-no-overwrite
   create-only-header-stripped sign-upload-expired sign-download-overrides signed-urls-use-public-endpoint
-  anonymous-denied cors-preflight stream-200mb-flat-memory`.split(/\s+/);
+  anonymous-denied cors-preflight stream-200mb-flat-memory multipart-roundtrip
+  multipart-part-size-and-number-signed multipart-resume-and-resend multipart-abort-and-unknown
+  multipart-complete-refuses-bad-part-lists multipart-part-expired multipart-list-spans-pages`.split(/\s+/);
 
 const capabilitiesFor = (createOnlyHeader: CreateOnlyHeader): FileStorageCapabilities => ({
   cors: false,
