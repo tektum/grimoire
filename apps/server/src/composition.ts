@@ -27,6 +27,7 @@ import { seedLocal } from './seed/index.js';
 import { adoptTenant, createAccessStore, createAttachments, createAdmin, createAudit, createCollections, createEmbeddingStore, createDatabase, createImportRepo, createOpsDatabase, createSearchRepo, setupDatabase, createIdempotency, createPageState, createPages, createPageStore, createRevisions, createTenants, createTrash, createUserStore, scoped, withMigrationLock, runMigrations as migrateDatabase } from '@tektum/grimoire-adapter-db-kysely';
 import type { DatabasePasswords, KyselyDatabase, TenantAdoptRequest, TenantAdoptResult } from '@tektum/grimoire-adapter-db-kysely';
 import { createMarkdownConverter } from '@tektum/grimoire-adapter-markdown-milkdown';
+import { createRemoteImageFetcher } from './import/remote-images/index.js';
 import { registerJobs } from './jobs/index.js';
 import { reasonOf } from './jobs/instrument.js';
 import { createJobRunner } from './jobs/runner.js';
@@ -176,11 +177,14 @@ export function compose(env?: Env, overrides: CompositionOverrides = {}): Compos
     };
   }
   // Jobs run in the roles `api` and `all`, on the one converter pool of the process (decision 8: GRIMOIRE_CONVERT_POOL_SIZE sizes it for the editor and the import together).
+  // The import copies pictures from the web through one request-filtering agent (M7-T09); absent when that is switched off.
+  const fetcher = config.role === 'collab' ? undefined : createRemoteImageFetcher(config);
   const jobs = config.role === 'collab' ? undefined : createJobRunner({
     config, log, make: createJobQueue, clock: systemClock,
     jobs: (queue) => registerJobs({
       config, log, clock: systemClock, tenants: createTenants(ops), trash: http.trash, deleteFiles: http.deleteFiles, attachments: http.attachments, ...(files === undefined ? {} : { files }),
       revisions: createRevisions(db, ops), pages: createPageStore(db, ops, systemClock), converter, ...(embedder === undefined ? {} : { embedder, embeddings }), imports: http.imports, queue,
+      ...(fetcher === undefined ? {} : { fetcher }),
     }),
     onError: (error) => { log.error('jobs.failed', { name: 'queue', jobId: '-', attempt: 0, ms: 0, ...reasonOf(error) }); } });
   const shutdownHooks: ShutdownHook[] = [

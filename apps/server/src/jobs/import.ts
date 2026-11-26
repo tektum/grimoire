@@ -16,7 +16,7 @@ import { notionProfile } from '../import/notion/profile.js';
 import type { ImportProfile } from '../import/profile.js';
 import type { RemoteImageFetcher } from '../import/remote-images/index.js';
 import { openArchive } from '../import/zip-reader.js';
-import { isImportPayload, notImplemented } from './types.js';
+import { importSingletonKey, isImportPayload, notImplemented } from './types.js';
 
 export interface ImportJobDeps {
   readonly config: Config;
@@ -65,15 +65,25 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
   return async (payload, ctx) => {
     if (!isImportPayload(payload)) { log.warn('import.failed', { importId: 'unknown', reason: 'bad_payload' }); return; }
     const { tenantId, importId } = payload;
-    const key = `import:${importId}`;
-    const continueLater = async (delaySeconds?: number): Promise<void> => {
+    const key = importSingletonKey(importId);
+    // `running`: the import has started. Then a continuation that a stopping process refuses (a deploy: the queue takes no job, `jobs-unavailable`) is left to the sweep
+    // (R10.16), which gives a running import with no live job one again within minutes: the chunk ends without failing the job, so a deploy never spends a retry or, on the
+    // last attempt, fails the import. The sweep gives no job to an import that still waits for its turn (`uploaded`), so that one's job fails and the queue retries it.
+    const continueLater = async (delaySeconds: number | undefined, running: boolean): Promise<void> => {
+      let queued: string | null;
+      try {
+        queued = await deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) });
+      } catch (e) {
+        if (running && e instanceof Error && e.message === 'jobs-unavailable') return;
+        throw e;
+      }
       // `null` is a queue that added no job: returning then would leave the import running (or waiting) with no job to go on, so the job fails and is retried instead.
-      if ((await deps.queue.enqueueImport({ importId, tenantId }, { singletonKey: key, ...(delaySeconds === undefined ? {} : { delaySeconds }) })) === null) throw new Error('the continuation of the import was not enqueued');
+      if (queued === null) throw new Error('the continuation of the import was not enqueued');
     };
     let record;
     try { record = await imports.start(tenantId, importId, now()); } catch (e) {
       // Another import of the tenant is running (its chunks can last longer than the queue's retries): wait under the import's own key, without spending a retry. The import stays `uploaded`; the sweep ends one that waits past its age limit.
-      if (e instanceof ImportBusyError) { await continueLater(BUSY_DELAY_SECONDS); return; }
+      if (e instanceof ImportBusyError) { await continueLater(BUSY_DELAY_SECONDS, false); return; }
       throw e;
     }
     if (record === undefined) {
@@ -127,9 +137,9 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
             await deps.queue.enqueueImportCleanup({ importId, tenantId });
           }
         } else if (result.kind === 'busy') {
-          await continueLater(BUSY_DELAY_SECONDS);
+          await continueLater(BUSY_DELAY_SECONDS, true);
         } else if (result.reason === 'aborted') {
-          await continueLater();
+          await continueLater(undefined, true);
         } else if (result.reason === 'collection_deleted') {
           await fail('collection_deleted');
         } // `not_running`: cancelled (or ended) by someone else; whoever did it asks for the clean-up

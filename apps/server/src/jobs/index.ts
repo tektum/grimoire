@@ -11,10 +11,13 @@ import type { MarkdownConverter } from '@tektum/grimoire-core/ports/markdown-con
 import type { RevisionRepo } from '@tektum/grimoire-core/ports/revision-repo';
 import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import type { TrashRepo } from '@tektum/grimoire-core/ports/trash-repo';
+import { sniffType } from '../attachments/deps.js';
 import type { EventLog } from '../events.js';
+import type { RemoteImageFetcher } from '../import/remote-images/index.js';
+import { createOrdering } from '../tree/position.js';
 import { createEmbedPage, embedBatchSize } from './embed-page.js';
 import { createEmbedSweep } from './embed-sweep.js';
-import { handleImport } from './import.js';
+import { createImportHandler, handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
 import { runFailedSourceCleanup } from './failed-sources.js';
 import { reconcileEndedImports } from './import-reconcile.js';
@@ -54,8 +57,10 @@ export interface JobDeps {
   readonly embedder?: Embedder;
   readonly embeddings?: EmbeddingStore;
   readonly imports: ImportRepo;
-  /** The queue, for the jobs that ask about or add another job (the import sweep and the cleanups). */
+  /** The queue, for the jobs that ask about or add another job (the import, its sweep and the cleanups). */
   readonly queue: JobsApi;
+  /** Copies pictures from the web into an import; absent when that is switched off (`GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES`). */
+  readonly fetcher?: RemoteImageFetcher;
 }
 
 /** The stale-Markdown sweep runs every minute (the finest a cron can say). */
@@ -84,7 +89,10 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
   };
   const sweep = createMarkdownSweep({ pages: deps.pages, converter: deps.converter, now: () => clock.now(), onConvertFailure: (pageId, reason) => log.warn('markdown_sweep.convert_failed', { pageId, reason }) });
   return [
-    ...importJobs(),
+    // The import job (M7-T04) reads its zip from the file store: without one no import can be created, and the stub refuses a stray job rather than dropping it.
+    ...(deps.files === undefined ? importJobs() : [{ name: 'import', handler: createImportHandler({
+      config, log, clock, imports: deps.imports, files: deps.files, converter: deps.converter, ordering: createOrdering(), fetcher: deps.fetcher, sniff: sniffType, queue: deps.queue,
+    }) }]),
     {
       name: 'import-sweep',
       schedule: config.jobs.sweepCron,
