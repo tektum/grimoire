@@ -138,7 +138,7 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
       {
         name: 'embed-sweep',
         chainSeconds: config.semantic.sweepSeconds,
-        handler: createEmbedSweep({ tenants: deps.tenants, store: deps.embeddings, embedder: deps.embedder, queue: deps.queue, sweepSeconds: config.semantic.sweepSeconds, debounceSeconds: config.semantic.debounceSeconds }),
+        handler: createEmbedSweep({ tenants: deps.tenants, store: deps.embeddings, embedder: deps.embedder, queue: deps.queue, log, sweepSeconds: config.semantic.sweepSeconds, debounceSeconds: config.semantic.debounceSeconds }),
       },
       { name: 'embed-page', handler: createEmbedPage({ embedder: deps.embedder, store: deps.embeddings, log, clock, limiter: createRateLimiter({ perMinute: config.semantic.maxChunksPerMinute, now: Date.now, sleep: sleepUnlessAborted }), batchSize: embedBatchSize(config.semantic.maxChunksPerMinute) }) }, // real time: the cap and its wait must use the same clock, whatever clock the run log was given
     ]),

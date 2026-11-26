@@ -124,15 +124,16 @@ export function createEmbeddingStore(db: KyselyDatabase, ops: OperatorDatabase):
     },
 
     async counts(model) {
-      const [row] = await ops.transaction((tx) => tx.query<{ chunks: number; ready: number; failed: number; pending: number }>(
+      const [row] = await ops.transaction((tx) => tx.query<{ chunks: number; ready: number; failed: number; pending: number; other: number }>(
         `select (select count(*)::int from page_chunks where model = $1) as chunks,
                 count(*) filter (where s.model = $1 and s.markdown_hash = p.markdown_hash and s.status = 'ready')::int as ready,
                 count(*) filter (where s.model = $1 and s.markdown_hash = p.markdown_hash and s.status = 'failed')::int as failed,
-                count(*) filter (where s.page_id is null or s.model <> $1 or s.markdown_hash <> p.markdown_hash)::int as pending
+                count(*) filter (where s.page_id is null or s.model <> $1 or s.markdown_hash <> p.markdown_hash)::int as pending,
+                count(*) filter (where s.model <> $1)::int as other
            from pages p left join page_embedding_state s on s.page_id = p.id
           where p.deleted_at is null and p.markdown_hash is not null`, [model]));
-      const counts = row as { chunks: number; ready: number; failed: number; pending: number }; // an aggregate without a group always gives one row
-      return { chunks: counts.chunks, pagesReady: counts.ready, pagesFailed: counts.failed, pagesPending: counts.pending };
+      const counts = row as { chunks: number; ready: number; failed: number; pending: number; other: number }; // an aggregate without a group always gives one row
+      return { chunks: counts.chunks, pagesReady: counts.ready, pagesFailed: counts.failed, pagesPending: counts.pending, pagesOtherModel: counts.other };
     },
   };
 }
