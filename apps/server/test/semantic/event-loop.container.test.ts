@@ -7,7 +7,7 @@ import { createOnnxEmbedder } from '@tektum/grimoire-adapter-embedder-onnx';
 import type { SemanticConfig } from '@tektum/grimoire-core/ports/config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { insertPage, raw } from '@tektum/grimoire-test-support/database';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createEventLog } from '../../src/events.js';
 import { createEmbedPage } from '../../src/jobs/embed-page.js';
 import { createRateLimiter } from '../../src/jobs/rate-limit.js';
@@ -49,12 +49,10 @@ describe('the real model, embedding a page of 20,000 words', () => {
   it('leaves the event loop free while saves go on: p99 of its delay within 50 ms, its maximum within 200 ms, every save under 500 ms', { timeout: 600_000 }, async () => {
     const config: SemanticConfig = { enabled: true, model: 'multilingual-e5-base', modelDir, threads: 2, debounceSeconds: 30, sweepSeconds: 15, maxChunksPerMinute: 600, queryTimeoutMs: 1500, minSimilarity: 0, candidates: 100 };
     const embedder = createOnnxEmbedder(config, { lockFile: path.join(modelDir, 'models.lock.json') });
+    const delay = monitorEventLoopDelay({ resolution: RESOLUTION_MS });
+    let embedded: Promise<void> = Promise.resolve();
     try {
-      const deadline = Date.now() + 120_000;
-      while (embedder.status() !== 'ready') {
-        if (Date.now() > deadline) throw new Error(`the model did not load: ${embedder.status()}`);
-        await sleep(50);
-      }
+      await vi.waitFor(() => { expect(embedder.status(), 'the model did not load').toBe('ready'); }, { timeout: 120_000, interval: 50 });
       const tenant = await seedTenant(db.sql, 'T-event-loop');
       const pageId = randomUUID();
       const text = pageText(WORDS);
@@ -71,11 +69,11 @@ describe('the real model, embedding a page of 20,000 words', () => {
       });
       const saves = createPageStore(db.app, db.ops, { now: () => Date.now() });
 
-      const delay = monitorEventLoopDelay({ resolution: RESOLUTION_MS });
       delay.enable();
       let embedding = true;
       const began = performance.now();
-      const embedded = embedPage({ tenantId: tenant.tenantId, pageId }, { jobId: 'event-loop', attempt: 1, retryLimit: 0, signal: new AbortController().signal }).finally(() => { embedding = false; });
+      embedded = embedPage({ tenantId: tenant.tenantId, pageId }, { jobId: 'event-loop', attempt: 1, retryLimit: 0, signal: new AbortController().signal }).finally(() => { embedding = false; });
+      embedded.catch(() => undefined); // an embedding that fails while the saves are still going is not an unhandled rejection: `await embedded` below (or the finally) is where it is seen
       const saved: number[] = [];
       let savedWhileEmbedding = 0;
       for (const id of others) {
@@ -105,6 +103,8 @@ describe('the real model, embedding a page of 20,000 words', () => {
       expect(delay.percentile(99) / 1e6, why).toBeLessThanOrEqual(P99_MS);
       expect(delay.max / 1e6, why).toBeLessThanOrEqual(MAX_MS);
     } finally {
+      delay.disable();
+      await embedded.catch(() => undefined); // the embedding has settled before the embedder is closed and the database dropped, whatever stopped the test
       await embedder.close();
     }
   });
