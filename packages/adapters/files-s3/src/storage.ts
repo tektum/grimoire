@@ -247,7 +247,7 @@ export class S3FileStorage implements FileStorage {
   /** Every part the store holds, in order (a page is at most 1000 parts). */
   private async parts(key: string, uploadId: string): Promise<{ partNumber: number; size: number; etag: string }[]> {
     assertValidKey(key);
-    // One entry per part number, the last listed: S3 lists a part sent twice once, the development store (SeaweedFS) lists both, the older first.
+    // One entry per part number: S3 lists a part sent twice once, the development store (SeaweedFS) lists both, in no order that tells which is newer. A part sent again carries the same bytes (the port's rule), so any copy will do.
     const all = new Map<number, { partNumber: number; size: number; etag: string }>();
     let marker: string | undefined;
     do {

@@ -17,7 +17,7 @@ const titles =
   create-only-header-stripped sign-upload-expired sign-download-overrides signed-urls-use-public-endpoint
   anonymous-denied cors-preflight stream-200mb-flat-memory multipart-roundtrip
   multipart-part-size-and-number-signed multipart-resume-and-resend multipart-abort-and-unknown
-  multipart-complete-refuses-bad-part-lists multipart-part-expired`.split(/\s+/);
+  multipart-complete-refuses-bad-part-lists multipart-part-expired multipart-list-spans-pages`.split(/\s+/);
 
 const capabilitiesFor = (createOnlyHeader: CreateOnlyHeader): FileStorageCapabilities => ({
   cors: false,

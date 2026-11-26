@@ -631,14 +631,14 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         const sent = await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: bytes });
         assert.ok(isSuccess(sent.status), `part ${partNumber} is accepted, got ${sent.status}`);
       };
-      const second = patternBytes(9);
+      const second = patternBytes(7);
       await put(2, patternBytes(7));
       await put(1, patternBytes(MIN_PART_BYTES));
       assert.deepEqual((await store.listParts(key, uploadId)).map((p) => p.partNumber), [1, 2], 'the parts are listed in order, whatever order they came in');
       await put(2, second);
-      assert.deepEqual(await store.listParts(key, uploadId), [{ partNumber: 1, size: MIN_PART_BYTES }, { partNumber: 2, size: 9 }], 'a part sent again replaces the first');
+      assert.deepEqual(await store.listParts(key, uploadId), [{ partNumber: 1, size: MIN_PART_BYTES }, { partNumber: 2, size: 7 }], 'a part sent again (a retry, with the same bytes) is listed once');
       await store.completeMultipart(key, uploadId);
-      assert.deepEqual(await readAll((await store.get(key, { range: { start: MIN_PART_BYTES, end: MIN_PART_BYTES + 8 } })).body), second, 'the object holds the part as sent last');
+      assert.deepEqual(await readAll((await store.get(key, { range: { start: MIN_PART_BYTES, end: MIN_PART_BYTES + 6 } })).body), second, 'the object holds the part');
       await store.delete(key);
     },
   },
@@ -651,6 +651,8 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
       assert.ok(isSuccess((await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: patternBytes(5) })).status));
       await store.abortMultipart(key, uploadId);
       await store.abortMultipart(key, uploadId);
+      const stale = await store.signPart(key, { uploadId, partNumber: 2, size: 5, ttlSeconds: 600 });
+      assert.ok(!isSuccess((await send({ method: 'PUT', url: stale.url, headers: stale.headers, body: patternBytes(5) })).status), 'a part sent to an aborted upload is refused by the store');
       await expectKind('not-found', store.listParts(key, uploadId), 'an aborted upload is unknown');
       await expectKind('not-found', store.completeMultipart(key, uploadId), 'an aborted upload cannot be completed');
       await expectKind('not-found', store.head(key), 'no object was made');
@@ -690,6 +692,26 @@ export const fileStorageConformance: readonly FileStorageCase[] = [
         const sent = await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: patternBytes(10) });
         assert.ok(!isSuccess(sent.status), `an expired part signature is refused, got ${sent.status}`);
         assert.deepEqual(await store.listParts(key, uploadId), []);
+      } finally {
+        await store.abortMultipart(key, uploadId);
+      }
+    },
+  },
+  {
+    name: 'multipart-list-spans-pages',
+    async run({ store, send }) {
+      const key = `${freshPrefix()}/m`;
+      const { uploadId } = await store.createMultipart(key, { contentType: binary });
+      try {
+        const put = async (partNumber: number, bytes: Uint8Array): Promise<void> => {
+          const signed = await store.signPart(key, { uploadId, partNumber, size: bytes.length, ttlSeconds: 600 });
+          assert.ok(isSuccess((await send({ method: 'PUT', url: signed.url, headers: signed.headers, body: bytes })).status));
+        };
+        for (let n = 1; n <= 1001; n++) await put(n, patternBytes(1));
+        await put(1000, patternBytes(1));
+        const parts = await store.listParts(key, uploadId);
+        assert.equal(parts.length, 1001, 'one entry for each of the 1001 parts, across the store\'s pages');
+        assert.deepEqual(parts[999], { partNumber: 1000, size: 1 }, 'the part sent again is listed once');
       } finally {
         await store.abortMultipart(key, uploadId);
       }

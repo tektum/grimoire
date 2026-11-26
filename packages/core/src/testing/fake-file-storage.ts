@@ -233,7 +233,7 @@ export class FakeFileStorage implements FileStorage {
     key: string,
     o: { uploadId: string; partNumber: number; size: number; ttlSeconds: number },
   ): Promise<{ method: 'PUT'; url: string; headers: Record<string, string>; expiresAt: number }> {
-    this.upload(key, o.uploadId);
+    assertValidKey(key);
     if (!Number.isInteger(o.partNumber) || o.partNumber < 1 || o.partNumber > MAX_PARTS) {
       throw new FileStorageError('invalid-parts', 'the part number is outside 1 to 10000');
     }

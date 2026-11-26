@@ -57,7 +57,7 @@ export interface FileStorage {
    * not exist until `completeMultipart`); `signPart` signs one part for exactly `size` bytes, so a client can write no more than it was
    * given; `listParts` is what the store holds (for a client that resumes); `completeMultipart` joins the parts held, numbered 1 to n
    * with no gap, and refuses (`invalid-parts`) an empty list, a gap, or a part but the last under `MIN_PART_BYTES`; `abortMultipart`
-   * drops the parts, and an unknown upload is a success. An unknown upload is `not-found` everywhere else. The ETags never leave the adapter.
+   * drops the parts, and an unknown upload is a success. A part sent again (a retry whose answer was lost) must carry the same bytes: which copy a store keeps is its own business. `signPart` asks the store nothing (a batch of URLs costs no request), so a part for an unknown upload is refused by the store when it is sent; `listParts` and `completeMultipart` answer `not-found` for one. The ETags never leave the adapter.
    */
   createMultipart(key: string, o: { contentType: string }): Promise<{ uploadId: string }>;
   signPart(
