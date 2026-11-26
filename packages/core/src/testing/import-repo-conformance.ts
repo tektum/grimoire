@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ImportBusyError, MAX_ITEM_TEXT, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
+import { ImportBusyError, MAX_ITEM_TEXT, NO_IMPORT_COUNTS, StagingQuotaError } from '../ports/import-repo.js';
 import type { ImportRecord, ImportRepo, ImportStatus, NewImportedPage } from '../ports/import-repo.js';
 
 /** What a case needs besides the repository: a way to make an import row (the routes of M7-T05 own creation) and a tenant that is not the one used. */
@@ -62,7 +62,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'attachment', 10), [], 'the second a.md did not replace the first');
       const first = items[0];
       assert.ok(typeof first?.pageId === 'string' && first.pageId !== '' && typeof first.urlId === 'string' && first.urlId !== '', 'a pending page item has both ids');
-      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} });
+      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, attachmentBytes: 0, remoteImageFailures: {} });
     },
   },
   {
@@ -724,6 +724,55 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.constructReport(h.tenantId, made.id), { constructs: [], rawHtmlPages: [], rawHtmlCapped: false });
       assert.equal(await h.repo.constructReport(h.otherTenantId, made.id), undefined);
       assert.equal(await h.repo.constructReport(h.tenantId, '00000000-0000-4000-8000-0000000000ff'), undefined);
+    },
+  },
+  {
+    name: 'create-refuses-an-import-that-would-put-the-workspace-over-its-staging-quota',
+    async run(h) {
+      const make = (n: number, bytes: number, quota: number | undefined) => h.repo.create(h.tenantId, {
+        id: `00000000-0000-4000-8000-00000000e${String(n).padStart(3, '0')}`, targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip',
+        parts: [{ s3Key: `k/q${String(n)}`, bytes, uploadId: null }], ...(quota === undefined ? {} : { stagedQuotaBytes: quota }),
+      });
+      const a = await make(1, 60, 100);
+      await make(2, 40, 100);
+      await assert.rejects(() => make(3, 1, 100), StagingQuotaError, 'one byte over');
+      assert.equal(await h.repo.get(h.tenantId, '00000000-0000-4000-8000-00000000e003'), undefined, 'a refused import leaves no row');
+      assert.deepEqual(await h.repo.parts(h.tenantId, '00000000-0000-4000-8000-00000000e003'), [], 'and no part');
+      await make(4, 1_000, undefined);
+      await h.seedStatus(a.id, 'uploaded');
+      await assert.rejects(() => make(5, 1, 100), StagingQuotaError, 'an upload that waits for its turn still holds its zip');
+    },
+  },
+  {
+    name: 'staging-quota-counts-the-imports-whose-zip-is-still-held-and-no-others',
+    async run(h) {
+      const make = (n: number, bytes: number) => h.repo.create(h.tenantId, {
+        id: `00000000-0000-4000-8000-00000000f${String(n).padStart(3, '0')}`, targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip',
+        parts: [{ s3Key: `k/s${String(n)}`, bytes, uploadId: null }], stagedQuotaBytes: 100,
+      });
+      const ended = [await make(1, 50), await make(2, 50)];
+      await assert.rejects(() => make(3, 1), StagingQuotaError);
+      await h.seedStatus(ended[0]?.id ?? '', 'done');
+      await h.seedStatus(ended[1]?.id ?? '', 'cancelled');
+      const next = await make(3, 100);
+      await h.seedStatus(next.id, 'running');
+      await assert.rejects(() => make(4, 1), StagingQuotaError, 'a running import still holds its zip');
+      await h.seedStatus(next.id, 'failed');
+      await make(4, 100);
+    },
+  },
+  {
+    name: 'a-written-page-item-keeps-the-bytes-of-the-copies-it-made',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'b.md'));
+      const [a, b] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(a && b);
+      const copy = (n: number) => ({ id: `00000000-0000-4000-8000-0000000000${String(n)}0`, uploaderId: h.userId, fileName: `f${String(n)}.png`, contentType: 'image/png', size: 100 * n, key: `attachments/k${String(n)}`, readyAt: h.now });
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, a.id, { collectionId: made.targetCollectionId, attachments: [copy(1), copy(2)] }), limits, h.now)).kind, 'ok');
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, b.id, { collectionId: made.targetCollectionId }), limits, h.now)).kind, 'ok');
+      const rows = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(rows.map((r) => [r.path, r.attachmentBytes]), [['a.md', 300], ['b.md', 0]]);
     },
   },
 ];

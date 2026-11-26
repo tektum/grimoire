@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { v7 } from 'uuid';
 import { cleanFileName } from '@tektum/grimoire-core/attachments/file-name';
 import { importFailedKey, importPartKey, importZipKey } from '../import/keys.js';
-import { cleanItemText, CONSTRUCT_FATES, MAX_REPORT_PAGES } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, CONSTRUCT_FATES, MAX_REPORT_PAGES, StagingQuotaError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ConstructKind, ConstructReport, ImportItem, ImportRecord, NewImportPart, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
 import { FileStorageError, MAX_PARTS } from '@tektum/grimoire-core/ports/file-storage';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
@@ -32,8 +32,8 @@ const SOURCE_TTL_SECONDS = 300;
 const PART_TTL_SECONDS = 900;
 /** The most addresses one request gives. */
 const MAX_PART_URLS = 50;
-/** One file for now: the job reads the first zip only until it reads them all, so a second file would be sent and silently left out. */
-const MAX_FILES = 1;
+/** The most zips a request may list whatever the settings say (the schema is fixed): the number of an import is `maxZips`, checked on the request. */
+const MAX_FILES_CEILING = 64;
 
 const CreateBody = z
   .object({
@@ -48,7 +48,7 @@ const CreateBody = z
           .strict(),
       )
       .min(1)
-      .max(MAX_FILES)
+      .max(MAX_FILES_CEILING)
       .describe('The zips of the import, in the order they are read'),
     profile: z.enum(['markdown_zip', 'notion_md_csv']).optional().describe('How the archive is read: `notion_md_csv` for an export of Notion (Markdown and CSV files), `markdown_zip` (the default) for any other zip of Markdown files'),
   })
@@ -138,7 +138,7 @@ export const createImport = defineRoute({
     404: json(ErrorBody, 'No such collection, or not one the caller can see'),
     413: json(ErrorBody, 'Larger than the largest zip an import takes'),
     422: json(ErrorBody, 'Not a valid request'),
-    429: json(ErrorBody, 'Too many imports were made'),
+    429: json(ErrorBody, 'Too many imports were made (`rate_limited`), or the workspace holds as many bytes of unfinished uploads as it may (`staging_quota`)'),
     503: json(ErrorBody, 'The file store is not configured or does not answer'),
   },
 });
@@ -284,7 +284,8 @@ router.openapi(createImport, async (c) => {
   const body = c.req.valid('json');
   await guardCollection(c, body.collectionId, 'write');
   const { config, imports, log } = c.get('deps');
-  if (body.files.some((file) => file.size > config.import.maxZipBytes)) return fail('too_large');
+  // What one import takes: how many zips, the size of each and of all of them (a person who is over any of these is told before a byte is sent).
+  if (body.files.length > config.import.maxZips || body.files.some((file) => file.size > config.import.maxZipBytes) || body.files.reduce((sum, file) => sum + file.size, 0) > config.import.maxTotalBytes) return fail('too_large');
   const files = store(c, 'import-create');
   const sizing = sizingOf(config.import);
   const id = v7();
@@ -307,13 +308,15 @@ router.openapi(createImport, async (c) => {
       }
       return made;
     });
-    await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: body.profile ?? 'markdown_zip', parts: uploads.map((u) => u.part) });
+    await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: body.profile ?? 'markdown_zip', parts: uploads.map((u) => u.part), stagedQuotaBytes: config.import.stagedQuotaBytes });
     log.info('import.created', { importId: id });
     noStore(c);
     return c.json({ id, uploads: uploads.map((u, index) => ({ index, upload: u.upload })) }, 201);
   } catch (error) {
     // Nothing was made: end the uploads that were opened (when the store does not answer, its own lifecycle rule ends them).
     await Promise.allSettled(opened.map((o) => files.abortMultipart(o.key, o.uploadId)));
+    // The workspace holds as many bytes of unfinished uploads as it may: the import is not made (its signed addresses were not used; the sessions are ended above).
+    if (error instanceof StagingQuotaError) return fail('staging_quota');
     throw error;
   }
 });

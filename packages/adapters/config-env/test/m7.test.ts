@@ -17,7 +17,8 @@ describe('the defaults', () => {
   it('are the ones of the contracts', () => {
     const c = load();
     expect(c.import).toEqual({
-      maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
+      maxZipBytes: 34_359_738_368, maxZips: 8, maxTotalBytes: 68_719_476_736, stagedQuotaBytes: 161_061_273_600, maxEntries: 100_000, maxUncompressedBytes: 103_079_215_104, maxRatio: 100,
+      maxEntryBytes: 2_147_483_648, maxTableBytes: 262_144, allowNestedZips: false,
       fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2,
     });
     expect(c.jobs).toEqual({ importExpireSeconds: 900, stopGraceMs: 1500, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' });
@@ -32,7 +33,8 @@ describe('the defaults', () => {
 
 describe('the refusals name the variable', () => {
   it.each([
-    ['GRIMOIRE_IMPORT_MAX_RATIO', '0'], ['GRIMOIRE_IMPORT_MAX_ZIP_BYTES', '0'], ['GRIMOIRE_IMPORT_MAX_ENTRIES', '-1'], ['GRIMOIRE_IMPORT_MAX_ENTRY_BYTES', '1.5'],
+    ['GRIMOIRE_IMPORT_MAX_RATIO', '0'], ['GRIMOIRE_IMPORT_MAX_ZIP_BYTES', '0'], ['GRIMOIRE_IMPORT_MAX_ZIPS', '0'], ['GRIMOIRE_IMPORT_MAX_ZIPS', '65'],
+    ['GRIMOIRE_IMPORT_MAX_TOTAL_BYTES', '0'], ['GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES', '0'], ['GRIMOIRE_IMPORT_MAX_ENTRIES', '-1'], ['GRIMOIRE_IMPORT_MAX_ENTRY_BYTES', '1.5'],
     ['GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS', 'yes'], ['GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES', '2'],
     ['GRIMOIRE_IMPORT_REMOTE_MAX_IMAGES', '0'], ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '0'], ['GRIMOIRE_IMPORT_REMOTE_TIMEOUT_SECONDS', '61'],
     ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '9'], ['GRIMOIRE_IMPORT_REMOTE_TOTAL_SECONDS', '3601'], ['GRIMOIRE_IMPORT_CONCURRENCY', '0'],
@@ -46,6 +48,17 @@ describe('the refusals name the variable', () => {
   it('the import expiry is at most the 24 hours the job queue accepts, and an empty value (what the Compose pass-through gives when nothing is set) is the default', () => {
     expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '86400' }).jobs.importExpireSeconds).toBe(86_400);
     expect(load({ GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS: '' }).jobs.importExpireSeconds).toBe(900);
+  });
+
+  it('a zip larger than the import as a whole is refused, on the variable of the zip, and so is a quota of staged bytes smaller than one whole import (it could never be made)', () => {
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ZIP_BYTES: '1001', GRIMOIRE_IMPORT_MAX_TOTAL_BYTES: '1000', GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES: '5000' }).some((i) => i.includes('GRIMOIRE_IMPORT_MAX_ZIP_BYTES'))).toBe(true);
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ZIP_BYTES: '1000', GRIMOIRE_IMPORT_MAX_TOTAL_BYTES: '1000', GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES: '999' }).some((i) => i.includes('GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES'))).toBe(true);
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ZIP_BYTES: '1000', GRIMOIRE_IMPORT_MAX_TOTAL_BYTES: '1000', GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES: '1000' })).toEqual([]);
+  });
+
+  it('a file of a zip is refused above the largest single PUT the store takes (4 GiB): it goes up in one request', () => {
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967297' }).some((i) => i.includes('GRIMOIRE_IMPORT_MAX_ENTRY_BYTES'))).toBe(true);
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967296' })).toEqual([]);
   });
 
   it('a remote image larger than an upload is refused, on the variable of the remote limit', () => {

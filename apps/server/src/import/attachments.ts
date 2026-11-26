@@ -5,7 +5,7 @@ import { isCheckedType, typeFromFileName, validateAttachmentMeta } from '@tektum
 import type { NewReady } from '@tektum/grimoire-core/ports/attachment-repo';
 import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
-import { readEntry } from './read-entry.js';
+import { streamEntry } from './read-entry.js';
 import type { EntryOpener } from './read-entry.js';
 import type { RemoteBudget, RemoteResult } from './remote-images/index.js';
 import type { ZipEntry } from './zip-reader.js';
@@ -14,7 +14,7 @@ import type { ZipEntry } from './zip-reader.js';
 const NAMESPACE = 'b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
 
 export interface AttachmentSettings {
-  /** The largest file an attachment may be (the files setting). */
+  /** The largest remote picture that is copied (the files setting). A file of the zip is held to the import's own `maxEntryBytes`, which is not the editor's upload limit. */
   readonly maxBytes: number;
   readonly allowedTypes: readonly string[];
   /** The media type the first bytes show, or undefined (the `file-type` signatures). */
@@ -47,7 +47,7 @@ export const attachmentIdFor = (importId: string, pagePath: string, filePath: st
  */
 export function judgeFile(ctx: Pick<StageContext, 'limits' | 'settings'>, entry: ZipEntry): { readonly contentType: string } | Rejection {
   const contentType = typeFromFileName(entry.path.split('/').at(-1) ?? '');
-  const meta = validateAttachmentMeta({ size: entry.size, contentType: contentType ?? '' }, { maxBytes: Math.min(ctx.limits.maxEntryBytes, ctx.settings.maxBytes), allowedTypes: ctx.settings.allowedTypes });
+  const meta = validateAttachmentMeta({ size: entry.size, contentType: contentType ?? '' }, { maxBytes: ctx.limits.maxEntryBytes, allowedTypes: ctx.settings.allowedTypes });
   if (contentType === undefined || (!meta.ok && meta.reason === 'type_not_allowed')) return { status: 'skipped', reason: 'type_not_allowed' };
   if (!meta.ok) return { status: 'skipped', reason: 'entry_too_large' };
   // The attachments table needs a size above 0 (an upload treats it as invalid): an empty file is not one.
@@ -56,22 +56,46 @@ export function judgeFile(ctx: Pick<StageContext, 'limits' | 'settings'>, entry:
 }
 
 /**
- * Stores a file as an attachment of one page, before the page's transaction: the bytes are counted as they come (a header that lies is `size_mismatch`), the first 512 bytes of an image
- * or a PDF must show the type the name declares (`type_mismatch`), and the object is put create-only under the tenant's prefix (an object that is there from an earlier attempt must be
- * of the same size). A crash after the put leaves at worst an orphan object, for the clean-up; the row is written with the page.
+ * Stores a file as an attachment of one page, before the page's transaction: the file goes to the store as a stream (a video may be gigabytes, so none of it is held), the bytes are
+ * counted as they come by the reader (a header that lies is `size_mismatch`, and the store keeps nothing of a send that failed), the first 512 bytes of an image or a PDF must show the type
+ * the name declares (`type_mismatch`, judged before any byte is sent), and the object is put create-only under the tenant's prefix. An object that is there from an earlier attempt must be
+ * of the same size and is not sent again. A crash after the put leaves at worst an orphan object, for the clean-up; the row is written with the page.
  */
 export async function stageAttachment(ctx: StageContext, entry: ZipEntry, pagePath: string): Promise<Staged> {
   const judged = judgeFile(ctx, entry);
   if ('status' in judged) return { kind: 'rejected', ...judged };
-  const read = await readEntry(ctx.reader, ctx.limits, entry, Math.min(ctx.limits.maxEntryBytes, ctx.settings.maxBytes));
+  const id = attachmentIdFor(ctx.importId, pagePath, entry.path);
+  const key = attachmentKey(id, ctx.tenantId);
+  const fileName = cleanFileName(entry.path.split('/').at(-1) ?? 'file');
+  const staged: StagedFile = { kind: 'ok', row: { id, uploaderId: ctx.uploaderId, fileName, contentType: judged.contentType, size: entry.size, key, readyAt: ctx.now() }, url: markdownPathFor(id, fileName) };
+  const there = await sizeOf(ctx, key);
+  if (there !== undefined) return there === entry.size ? staged : { kind: 'rejected', status: 'failed', reason: 'size_mismatch', scope: 'page' };
+  const read = await streamEntry(ctx.reader, ctx.limits, entry, 512);
   if (read.kind === 'too_large') return { kind: 'rejected', status: 'skipped', reason: 'entry_too_large' };
   if (read.kind === 'failed') return { kind: 'rejected', status: 'failed', reason: read.reason };
-  if (isCheckedType(judged.contentType) && (await ctx.settings.sniff(read.bytes.subarray(0, 512))) !== judged.contentType) return { kind: 'rejected', status: 'skipped', reason: 'type_mismatch' };
-
-  const fileName = cleanFileName(entry.path.split('/').at(-1) ?? 'file');
-  return putObject(ctx, attachmentIdFor(ctx.importId, pagePath, entry.path), read.bytes, judged.contentType, fileName);
+  try {
+    if (isCheckedType(judged.contentType) && (await ctx.settings.sniff(read.head)) !== judged.contentType) return { kind: 'rejected', status: 'skipped', reason: 'type_mismatch' };
+    await ctx.files.put(key, read.body, { size: entry.size, contentType: judged.contentType, ifNoneMatch: true });
+  } catch (e) {
+    const why = read.aborted();
+    if (why !== undefined) return why === 'entry_too_large' ? { kind: 'rejected', status: 'skipped', reason: 'entry_too_large' } : { kind: 'rejected', status: 'failed', reason: why };
+    if (!(e instanceof FileStorageError) || e.kind !== 'already-exists') throw e;
+    // Another run put it between the look and the put: it is the file when it has the same size.
+    if ((await ctx.files.head(key)).size !== entry.size) return { kind: 'rejected', status: 'failed', reason: 'size_mismatch', scope: 'page' };
+  } finally {
+    read.close();
+  }
+  return staged;
 }
-
+/** The size of the object under `key`, or undefined when there is none. */
+async function sizeOf(ctx: StageContext, key: string): Promise<number | undefined> {
+  try {
+    return (await ctx.files.head(key)).size;
+  } catch (e) {
+    if (e instanceof FileStorageError && e.kind === 'not-found') return undefined;
+    throw e;
+  }
+}
 /** Puts the bytes create-only under the tenant's prefix (an object that is there from an earlier attempt must be of the same size) and answers the row and the address of the attachment. */
 async function putObject(ctx: StageContext, id: string, bytes: Buffer, contentType: string, fileName: string): Promise<Staged> {
   const key = attachmentKey(id, ctx.tenantId);

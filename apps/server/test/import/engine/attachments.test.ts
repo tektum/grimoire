@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { defaultImportConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeFileStorage } from '@tektum/grimoire-core/testing/fake-file-storage';
 import { FakeImportRepo } from '@tektum/grimoire-core/testing/fake-import-repo';
@@ -42,7 +43,7 @@ class EchoConverter implements MarkdownConverter {
 
 const ordering = { between: (before: string | null) => `${before ?? ''}a` };
 
-async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: number; files?: FakeFileStorage; converter?: EchoConverter } = {}) {
+async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: number; entryMaxBytes?: number; copiedMaxBytes?: number; files?: FakeFileStorage; converter?: EchoConverter } = {}) {
   const store = new SegmentStore(buildSegments(entries as BuilderEntry[]));
   const opened = await openArchive(store, 'imports/x.zip', store.size, defaultImportConfig);
   if (opened.kind !== 'ok') throw new Error(`refused: ${opened.reason}`);
@@ -53,7 +54,7 @@ async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: n
   await passOne(repo, TENANT, 'imp', opened.entries, { profile: markdownProfile, allowNestedZips: false, maxPages: 10_000 });
   const deps = {
     repo, files, converter, profile: markdownProfile, ordering, reader: opened.reader, entries: opened.entries, now: () => 1_700_000_000_000,
-    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000 },
+    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000, ...(over.entryMaxBytes === undefined ? {} : { maxEntryBytes: over.entryMaxBytes }), ...(over.copiedMaxBytes === undefined ? {} : { maxCopiedBytes: over.copiedMaxBytes }) },
     pageLimits: { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 },
     attachments: { maxBytes: over.filesMaxBytes ?? 25 * 1024 * 1024, allowedTypes: ALLOWED, sniff: sniffType },
   };
@@ -123,8 +124,8 @@ describe('a file a page uses becomes an attachment of that page', () => {
 });
 
 describe('a file that cannot be an attachment leaves its link as written, with a warning', () => {
-  it('a file over the limit is skipped entry_too_large; the page is still written', async () => {
-    const t = await setup([md('a.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(2000) }], { filesMaxBytes: 1000 });
+  it('a file over the import\'s own per-file limit is skipped entry_too_large; the page is still written', async () => {
+    const t = await setup([md('a.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(2000) }], { entryMaxBytes: 1000 });
     const result = await t.run();
     expect(await t.byPath('big.png')).toMatchObject({ status: 'skipped', message: 'entry_too_large' });
     expect(page(t, 'a')?.content.markdown).toBe('![x](big.png)\n');
@@ -162,6 +163,122 @@ describe('a file that cannot be an attachment leaves its link as written, with a
   });
 });
 
+describe('a file of an import is held to the import\'s limit, and is streamed to the store', () => {
+  /** A zip whose attachment is `extra` bytes over the editor's upload limit of the test. */
+  const withBig = (extra: number) => [md('a.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(extra) }];
+
+  it('is not held to the editor\'s upload limit: a file over it is an attachment while it is under the limit of the import', async () => {
+    const t = await setup(withBig(5000), { filesMaxBytes: 1000, entryMaxBytes: 1_000_000 });
+    await t.run();
+    expect(await t.byPath('big.png')).toMatchObject({ status: 'ok' });
+    expect(page(t, 'a')?.attachments[0]?.size).toBeGreaterThan(5000);
+  });
+
+  it('reaches the store as a stream, never as the bytes of the whole file held in memory', async () => {
+    const files = new FakeFileStorage();
+    const put = vi.spyOn(files, 'put');
+    const t = await setup(withBig(5000), { files });
+    await t.run();
+    expect(put).toHaveBeenCalledTimes(1);
+    const body: unknown = put.mock.calls[0]?.[1];
+    expect(body instanceof Uint8Array).toBe(false);
+    expect(typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]).toBe('function');
+    const key = page(t, 'a')?.attachments[0]?.key as string;
+    expect((await t.bytesOf(key)).equals(png(5000))).toBe(true);
+  });
+
+  it('a file that is not its type is refused before anything is sent to the store', async () => {
+    const files = new FakeFileStorage();
+    const put = vi.spyOn(files, 'put');
+    const t = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: Buffer.from('this is not a picture at all') }], { files });
+    await t.run();
+    expect(await t.byPath('c.png')).toMatchObject({ status: 'skipped', message: 'type_mismatch' });
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it('a file that holds more than it declares fails size_mismatch and leaves no object in the store', async () => {
+    const files = new FakeFileStorage();
+    const t = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: png(300), declaredSize: 40 }], { files });
+    await t.run();
+    expect(await t.byPath('c.png')).toMatchObject({ status: 'failed', message: 'size_mismatch' });
+    expect((await files.list('')).items.filter((i) => i.key.includes('attachments/'))).toEqual([]);
+  });
+
+  it('a file that holds less than it declares fails size_mismatch too, after its first bytes were sent, and leaves no object', async () => {
+    const files = new FakeFileStorage();
+    const t = await setup([md('a.md\u0000![x](c.png)\n'), { name: 'c.png', data: png(300), declaredSize: 5000 }], { files });
+    await t.run();
+    expect(await t.byPath('c.png')).toMatchObject({ status: 'failed', message: 'size_mismatch' });
+    expect((await files.list('')).items.filter((i) => i.key.includes('attachments/'))).toEqual([]);
+  });
+
+  it('a file that is already in the store from an earlier attempt, of its size, is not sent again', async () => {
+    const files = new FakeFileStorage();
+    const first = await setup(withBig(5000), { files });
+    await first.run();
+    const put = vi.spyOn(files, 'put');
+    const again = await setup(withBig(5000), { files });
+    expect((await again.run()).kind).toBe('done');
+    expect(put).not.toHaveBeenCalled();
+    expect(page(again, 'a')?.attachments[0]?.key).toBe(page(first, 'a')?.attachments[0]?.key);
+  });
+
+  it('an object put by another run between the look and the put is the file when it has the size', async () => {
+    const files = new FakeFileStorage();
+    const first = await setup(withBig(5000), { files });
+    await first.run();
+    const key = page(first, 'a')?.attachments[0]?.key as string;
+    const head = vi.spyOn(files, 'head').mockRejectedValueOnce(new FileStorageError('not-found', 'no such object'));
+    const again = await setup(withBig(5000), { files });
+    expect((await again.run()).kind).toBe('done');
+    expect(head).toHaveBeenCalled();
+    expect(page(again, 'a')?.attachments[0]?.key).toBe(key);
+  });
+});
+describe('the copies an import makes are bounded: a page that links a file gets a copy of its own, so one file linked by many pages is many copies', () => {
+  const shared = [md('a.md\u0000![x](big.png)\n'), md('b.md\u0000![x](big.png)\n'), md('c.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(5000) }];
+
+  it('stops the import (attachment_budget) when the next copy would take the copies past the budget; the pages before it stay written', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 11_000 });
+    const result = await t.run();
+    expect(result).toMatchObject({ kind: 'stopped', reason: 'attachment_budget' });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+  });
+
+  it('counts the copies of the runs before it: a second run does not start again from zero (a chunk cannot write the whole budget, so a budget of one run would bound nothing)', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 11_000 });
+    await t.run();
+    const again = await t.run();
+    expect(again).toMatchObject({ kind: 'stopped', reason: 'attachment_budget' });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+  });
+
+  it('charges the budget only for the copies that are kept: a copy deleted because its page was not written is given back, so pages that fail do not use the budget of those that succeed', async () => {
+    const converter = new EchoConverter();
+    converter.fail = (markdown) => markdown.includes('FAILME');
+    const t = await setup([
+      md('a.md\u0000![x](big.png)\nFAILME\n'), md('b.md\u0000![x](big.png)\nFAILME\n'), md('c.md\u0000![x](big.png)\n'), md('d.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(5000) },
+    ], { copiedMaxBytes: 11_000, converter });
+    const result = await t.run();
+    expect(result.kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['c', 'd']);
+    expect((await t.files.list('')).items.filter((i) => i.key.includes('attachments/'))).toHaveLength(2);
+  });
+
+  it('does not charge the budget for a file that would not be copied: a link to a file of a type that is refused costs the import nothing, however near the budget it is', async () => {
+    const t = await setup([md('a.md\u0000![x](big.png)\n'), md('b.md\u0000[tool](tool.bin)\n'), { name: 'big.png', data: png(5000) }, { name: 'tool.bin', data: Buffer.alloc(5000, 1) }], { copiedMaxBytes: 6000 });
+    const result = await t.run();
+    expect(result.kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+    expect(await t.byPath('tool.bin')).toMatchObject({ status: 'skipped', message: 'type_not_allowed' });
+  });
+
+  it('is no limit for an import within it', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 16_000 });
+    expect((await t.run()).kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b', 'c']);
+  });
+});
 describe('resuming', () => {
   it('an object that is there from an earlier attempt, of the right size, is accepted: the put is create-only and a 412 is verified', async () => {
     const files = new FakeFileStorage();

@@ -189,11 +189,18 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_S3_ADMIN_SECRET_KEY: field(text, purpose === 'files-setup' ? SETUP_ONLY : undefined),
   GRIMOIRE_S3_CREATE_ONLY_HEADER: field(z.enum(['if-none-match', 'x-goog-if-generation-match'], msg('must be one of: if-none-match, x-goog-if-generation-match'))).default('if-none-match'),
   GRIMOIRE_S3_CORS_MODE: field(z.enum(['api', 'external'], msg('must be one of: api, external'))).default('api'),
-  GRIMOIRE_IMPORT_MAX_ZIP_BYTES: field(int(1, MAX_INT)).default(524_288_000),
-  GRIMOIRE_IMPORT_MAX_ENTRIES: field(int(1, MAX_INT)).default(20_000),
-  GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES: field(int(1, MAX_INT)).default(2_147_483_648),
+  // The size of what one import takes (an export in parts is several zips): sized from a real export of 94 GB of which 32 GB is video, with room (decision 180). The first four are what a person
+  // may send; the quota is what a workspace may hold in uploads that are not over (their zips are in the store until the import ends).
+  GRIMOIRE_IMPORT_MAX_ZIP_BYTES: field(int(1, MAX_INT)).default(34_359_738_368),
+  GRIMOIRE_IMPORT_MAX_ZIPS: field(int(1, 64)).default(8),
+  GRIMOIRE_IMPORT_MAX_TOTAL_BYTES: field(int(1, MAX_INT)).default(68_719_476_736),
+  GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES: field(int(1, MAX_INT)).default(161_061_273_600),
+  GRIMOIRE_IMPORT_MAX_ENTRIES: field(int(1, MAX_INT)).default(100_000),
+  GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES: field(int(1, MAX_INT)).default(103_079_215_104),
   GRIMOIRE_IMPORT_MAX_RATIO: field(int(1, MAX_INT)).default(100),
-  GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: field(int(1, MAX_INT)).default(104_857_600),
+  // The largest file of a zip, which an attachment of an import may be: not the editor's upload limit (GRIMOIRE_FILES_MAX_BYTES). A file is sent to the store as a stream, so none is held in memory,
+  // and in one request (a store takes a single PUT of up to 5 GiB: the same 4 GiB the upload plan uses to cut a zip into parts).
+  GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: field(int(1, 4_294_967_296)).default(2_147_483_648),
   GRIMOIRE_IMPORT_MAX_TABLE_BYTES: field(int(1, MAX_INT)).default(262_144),
   GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
   GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('1'),
@@ -381,6 +388,17 @@ const envSchema = (purpose: Purpose, raw: Raw) => {
       const f: unknown = v.GRIMOIRE_FILES_MAX_BYTES;
       return !valid(r, 1, MAX_INT) || !valid(f, 1, MAX_INT) || r <= f;
     }, { path: ['GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'], when: always, error: () => `must not be larger than ${P}FILES_MAX_BYTES` })
+    // One zip is no larger than the import as a whole, and a workspace may stage at least one whole import: else a limit could never be reached, or an import could never be made.
+    .refine((v) => {
+      const z: unknown = v.GRIMOIRE_IMPORT_MAX_ZIP_BYTES;
+      const t: unknown = v.GRIMOIRE_IMPORT_MAX_TOTAL_BYTES;
+      return !valid(z, 1, MAX_INT) || !valid(t, 1, MAX_INT) || z <= t;
+    }, { path: ['GRIMOIRE_IMPORT_MAX_ZIP_BYTES'], when: always, error: () => `must not be larger than ${P}IMPORT_MAX_TOTAL_BYTES` })
+    .refine((v) => {
+      const q: unknown = v.GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES;
+      const t: unknown = v.GRIMOIRE_IMPORT_MAX_TOTAL_BYTES;
+      return !valid(q, 1, MAX_INT) || !valid(t, 1, MAX_INT) || q >= t;
+    }, { path: ['GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES'], when: always, error: () => `must not be smaller than ${P}IMPORT_MAX_TOTAL_BYTES` })
     // The running server never holds the database administrator's connection or the role passwords; only the db-setup step does.
     .refine(() => !(server && DB_SETUP_HELD.some(set)), {
       path: [DB_SETUP_HELD.find(set) ?? DB_SETUP_HELD[0]], when: always,
@@ -497,7 +515,8 @@ const toConfig = (v: z.output<ReturnType<typeof fieldSchema>>, purpose: Purpose)
     recheckSeconds: v.GRIMOIRE_COLLAB_RECHECK_SECONDS,
   },
   import: {
-    maxZipBytes: v.GRIMOIRE_IMPORT_MAX_ZIP_BYTES, maxEntries: v.GRIMOIRE_IMPORT_MAX_ENTRIES, maxUncompressedBytes: v.GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES,
+    maxZipBytes: v.GRIMOIRE_IMPORT_MAX_ZIP_BYTES, maxZips: v.GRIMOIRE_IMPORT_MAX_ZIPS, maxTotalBytes: v.GRIMOIRE_IMPORT_MAX_TOTAL_BYTES, stagedQuotaBytes: v.GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES,
+    maxEntries: v.GRIMOIRE_IMPORT_MAX_ENTRIES, maxUncompressedBytes: v.GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES,
     maxRatio: v.GRIMOIRE_IMPORT_MAX_RATIO, maxEntryBytes: v.GRIMOIRE_IMPORT_MAX_ENTRY_BYTES, maxTableBytes: v.GRIMOIRE_IMPORT_MAX_TABLE_BYTES,
     allowNestedZips: v.GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS === '1', fetchRemoteImages: v.GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES === '1',
     remote: {

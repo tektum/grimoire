@@ -33,7 +33,7 @@ export const defaultCollabConfig: CollabConfig = {
 export const defaultHttpConfig: HttpConfig = { userLimitPerMinute: 1000, addressLimitPerMinute: 60, addressCeilingPerMinute: 6000 };
 
 export const defaultImportConfig: ImportConfig = {
-  maxZipBytes: 524_288_000, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
+  maxZipBytes: 524_288_000, maxZips: 8, maxTotalBytes: 1_073_741_824, stagedQuotaBytes: 4_294_967_296, maxEntries: 20_000, maxUncompressedBytes: 2_147_483_648, maxRatio: 100, maxEntryBytes: 104_857_600, maxTableBytes: 262_144, allowNestedZips: false,
   fetchRemoteImages: true, remote: { maxImages: 200, maxBytes: 20_971_520, timeoutSeconds: 10, totalSeconds: 300 }, concurrency: 2,
 };
 export const defaultJobsConfig: JobsConfig = { importExpireSeconds: 900, stopGraceMs: 1500, purgeCron: '17 3 * * *', uploadCleanupCron: '*/15 * * * *', revisionCron: '47 3 * * *', sweepCron: '*/5 * * * *' };

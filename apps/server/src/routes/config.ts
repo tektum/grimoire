@@ -12,6 +12,10 @@ export const ClientConfigSchema = z
     fileStoreOrigin: z.string().nullable().describe('Public origin of the file store; null when no store is configured'),
     maxAttachmentBytes: z.number().int().nullable().describe('The largest upload the server accepts, in bytes; null when no store is configured'),
     pendingUploadsMax: z.number().int().nullable().describe('How many unfinished uploads one person may have at once; null when no store is configured'),
+    maxImportZips: z.number().int().describe('How many zips one import takes (an export in parts is several)'),
+    maxImportZipBytes: z.number().int().describe('The largest zip of an import, in bytes'),
+    maxImportBytes: z.number().int().describe('The most bytes of zips one import takes, all its zips together'),
+    maxImportFileBytes: z.number().int().describe('The largest file inside a zip that an import takes as an attachment, in bytes: not the editor\'s upload limit (`maxAttachmentBytes`), which does not apply to an import'),
     maxMarkdownBytes: z.number().int().describe('The largest Markdown of one page, in bytes (the configured seed cap): a page over it is refused, and the import report names it for a page it skipped'),
   })
   .openapi('ClientConfig');
@@ -54,6 +58,10 @@ router.openapi(getConfig, (c) => {
       maxAttachmentBytes: config.files?.maxBytes ?? null,
       pendingUploadsMax: config.files?.pendingMaxPerUser ?? null,
       maxMarkdownBytes: config.collab.seedMaxMarkdownBytes,
+      maxImportZips: config.import.maxZips,
+      maxImportZipBytes: config.import.maxZipBytes,
+      maxImportBytes: config.import.maxTotalBytes,
+      maxImportFileBytes: config.import.maxEntryBytes,
     },
     200,
   );

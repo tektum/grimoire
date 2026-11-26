@@ -1,4 +1,4 @@
-import { cleanItemText, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '@tektum/grimoire-core/ports/import-repo';
+import { cleanItemText, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS, StagingQuotaError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ConstructCounts, ConstructKind, ConstructLine, ImportCounts, ImportItem, ImportRecord, ImportRepo, RawHtmlPage, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
 import type { WriteImportedPageResult } from '@tektum/grimoire-core/ports/import-repo';
 import { createAttachments } from './attachments.js';
@@ -15,12 +15,12 @@ interface PartRow { ordinal: number; s3_key: string; bytes: string; upload_id: s
 interface ReportRow { kind: string; total: string; id: string; path: string; url_id: string | null; n: string; rn: number }
 interface ItemRow {
   id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
-  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; remote_failures: Record<string, number>;
+  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; attachment_bytes: number; remote_failures: Record<string, number>;
 }
 
 const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error, bytes::text as bytes, s3_key,
   (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
-const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
+const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce((detail->>\'attachmentBytes\')::float8, 0) as attachment_bytes, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
 
 /** The counts a page keeps, as JSON: the kinds the report knows, each a whole number from 1. */
 const constructsJson = (counts: ConstructCounts | undefined): string =>
@@ -35,7 +35,7 @@ const record = (r: ImportRow): ImportRecord => ({
 });
 
 const item = (r: ItemRow): ImportItem => ({
-  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings, remoteImageFailures: r.remote_failures,
+  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings, attachmentBytes: r.attachment_bytes, remoteImageFailures: r.remote_failures,
 });
 
 /** The partial unique index of migration 0012: a tenant has one `running` import. */
@@ -137,8 +137,8 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
           await tx.query(`update import_items set status = 'ok', message = null where tenant_id = $1 and import_id = $2 and id = any($3::bigint[]) and kind = 'attachment' and status = 'pending'`, [tenantId, importId, page.attachmentItemIds]);
         }
         await tx.query(
-          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb or $10::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb, 'constructs', $10::jsonb) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
-          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {}), constructsJson(page.constructs)],
+          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb or $10::jsonb <> '{}'::jsonb or $11::float8 > 0 then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb, 'constructs', $10::jsonb, 'attachmentBytes', $11::float8) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
+          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {}), constructsJson(page.constructs), page.attachments.reduce((sum, a) => sum + a.size, 0)],
         );
         return { kind: 'ok', pageId: row.id, urlId: row.url_id };
       });
@@ -173,19 +173,29 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
     async create(tenantId, row) {
       const first = row.parts[0];
       if (first === undefined) throw new Error('an import has at least one zip');
-      // The zips are parts 0 to n-1, in the same statement as the import: the import holds their total and the first one's key.
-      const rows = await scoped(db, tenantId).query<ImportRow>(
-        `with i as (
-           insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
-           returning ${IMPORT_COLUMNS}
-         ), p as (
-           insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
-           select $2, $1, t.n - 1, t.s3_key, t.bytes, t.upload_id from unnest($8::text[], $9::bigint[], $10::text[]) with ordinality as t(s3_key, bytes, upload_id, n) returning 1
-         )
-         select * from i`,
-        [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, first.s3Key, row.parts.reduce((sum, p) => sum + p.bytes, 0), row.parts.map((p) => p.s3Key), row.parts.map((p) => p.bytes), row.parts.map((p) => p.uploadId)],
-      );
-      return record(rows[0] as ImportRow);
+      const total = row.parts.reduce((sum, p) => sum + p.bytes, 0);
+      return scoped(db, tenantId).transaction(async (tx) => {
+        if (row.stagedQuotaBytes !== undefined) {
+          // The workspace's creates go one at a time while the quota is judged (a lock that ends with the transaction), and the sum is read after it is held: two imports that fit one by
+          // one cannot both be accepted.
+          await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [`import-staging:${tenantId}`]);
+          const [held] = await tx.query<{ n: string }>(`select coalesce(sum(bytes), 0)::text as n from imports where tenant_id = $1 and status in ('created', 'uploaded', 'running')`, [tenantId]);
+          if (Number(held?.n ?? 0) + total > row.stagedQuotaBytes) throw new StagingQuotaError();
+        }
+        // The zips are parts 0 to n-1, in the same statement as the import: the import holds their total and the first one's key.
+        const rows = await tx.query<ImportRow>(
+          `with i as (
+             insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
+             returning ${IMPORT_COLUMNS}
+           ), p as (
+             insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
+             select $2, $1, t.n - 1, t.s3_key, t.bytes, t.upload_id from unnest($8::text[], $9::bigint[], $10::text[]) with ordinality as t(s3_key, bytes, upload_id, n) returning 1
+           )
+           select * from i`,
+          [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, first.s3Key, total, row.parts.map((p) => p.s3Key), row.parts.map((p) => p.bytes), row.parts.map((p) => p.uploadId)],
+        );
+        return record(rows[0] as ImportRow);
+      });
     },
     async parts(tenantId, importId) {
       const rows = await scoped(db, tenantId).query<PartRow>(`select ordinal::int as ordinal, s3_key, bytes::text as bytes, upload_id from import_parts where tenant_id = $1 and import_id = $2 order by ordinal`, [tenantId, importId]);

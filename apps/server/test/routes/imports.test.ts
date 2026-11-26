@@ -3,7 +3,7 @@ import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { createAuthorizer } from '@tektum/grimoire-core/authorize/authorizer';
 import { createPageAccess } from '@tektum/grimoire-core/authorize';
 import type { AuthVerifier } from '@tektum/grimoire-core/ports/auth-verifier';
-import type { FilesConfig } from '@tektum/grimoire-core/ports/config';
+import type { FilesConfig, ImportConfig } from '@tektum/grimoire-core/ports/config';
 import type { Role, UserRecord } from '@tektum/grimoire-core/ports/user-store';
 import { createFakeAccessStore, emptyWorld } from '@tektum/grimoire-core/testing/fake-access-store';
 import { FakeCollectionRepo } from '@tektum/grimoire-core/testing/fake-collection-repo';
@@ -54,7 +54,7 @@ const zipBytes = (size: number): Uint8Array => {
   return bytes;
 };
 
-function build(options: { files?: boolean; enqueueFails?: boolean; cleanupFails?: boolean; sizing?: UploadSizing } = {}) {
+function build(options: { files?: boolean; enqueueFails?: boolean; cleanupFails?: boolean; sizing?: UploadSizing; limits?: Partial<ImportConfig> } = {}) {
   const t = makeContext();
   const world = emptyWorld();
   const rows: UserRecord[] = PEOPLE.map((p, i) => ({
@@ -82,7 +82,7 @@ function build(options: { files?: boolean; enqueueFails?: boolean; cleanupFails?
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const imports = new FakeImportRepo();
   const files = new FakeFileStorage({ clock: t.clock });
-  const config = { ...t.ctx.config, ...(options.files === false ? {} : { files: FILES }), ...(options.sizing === undefined ? {} : { import: { ...t.ctx.config.import, uploadSizing: options.sizing } }) };
+  const config = { ...t.ctx.config, ...(options.files === false ? {} : { files: FILES }), import: { ...t.ctx.config.import, ...(options.sizing === undefined ? {} : { uploadSizing: options.sizing }), ...options.limits } };
   const enqueued: { name: string; payload: unknown; options: unknown }[] = [];
   const app = createApp({
     ...t.ctx,
@@ -176,15 +176,42 @@ describe('POST /v1/imports', () => {
     expect(await code(await t.call('ada', 'POST', '/v1/imports', { collectionId: t.rw.id }))).toBe('invalid');
   });
 
-  it('takes one file for now (no files, or two, is 422): the job reads the first zip only until it reads them all, so a second file would be sent and silently left out', async () => {
-    const t = build();
-    for (const over of [{ files: [] }, { files: [{ fileName: 'a.zip', size: 1 }, { fileName: 'b.zip', size: 1 }] }]) {
-      const { res } = await t.made(over);
-      expect([res.status, await code(res)], JSON.stringify(over)).toEqual([422, 'invalid']);
-    }
-    expect(t.imports.count()).toBe(0);
+  it('takes the zips of an export in parts, up to the number the settings allow: none is 422, more than that is 413, and each zip is a part with its own key', async () => {
+    const t = build({ limits: { maxZips: 3 } });
+    expect([(await t.made({ files: [] })).res.status]).toEqual([422]);
+    const three = await t.made({ files: [{ fileName: 'a.zip', size: 10 }, { fileName: 'b.zip', size: 20 }, { fileName: 'c.zip', size: 30 }] });
+    expect(three.res.status).toBe(201);
+    expect(((await three.res.json()) as { uploads: { index: number }[] }).uploads.map((u) => u.index)).toEqual([0, 1, 2]);
+    expect((await t.imports.parts('T-a', three.id)).map((p) => [p.ordinal, p.s3Key.split('/').at(-1), p.bytes])).toEqual([[0, 'source.zip', 10], [1, 'source-1.zip', 20], [2, 'source-2.zip', 30]]);
+    expect(await t.imports.get('T-a', three.id)).toMatchObject({ bytes: 60 });
+    const four = await t.made({ files: [1, 2, 3, 4].map((n) => ({ fileName: `${String(n)}.zip`, size: 1 })) });
+    expect([four.res.status, await code(four.res)]).toEqual([413, 'too_large']);
+    expect(t.imports.count()).toBe(1);
   });
-
+  it('refuses an import whose zips together are over the size of an import (413), though each is under the size of a zip, and one over the size of a zip alone', async () => {
+    const t = build({ limits: { maxZipBytes: 10, maxTotalBytes: 15, stagedQuotaBytes: 1000 } });
+    const over = await t.made({ files: [{ fileName: 'a.zip', size: 8 }, { fileName: 'b.zip', size: 8 }] });
+    expect([over.res.status, await code(over.res)]).toEqual([413, 'too_large']);
+    const alone = await t.made({ files: [{ fileName: 'a.zip', size: 11 }] });
+    expect([alone.res.status, await code(alone.res)]).toEqual([413, 'too_large']);
+    const fits = await t.made({ files: [{ fileName: 'a.zip', size: 8 }, { fileName: 'b.zip', size: 7 }] });
+    expect(fits.res.status).toBe(201);
+    expect(t.imports.count()).toBe(1);
+  });
+  it('refuses, 429 staging_quota, an import that would put the workspace over what it may hold in uploads that are not over, makes nothing, and ends the multipart upload it had opened', async () => {
+    const t = build({ sizing: SIZING, limits: { maxZipBytes: 40 * MIB, maxTotalBytes: 40 * MIB, stagedQuotaBytes: BIG + 99 } });
+    const abort = vi.spyOn(t.files, 'abortMultipart');
+    const first = await t.made({ files: [{ fileName: 'a.zip', size: 100 }] });
+    expect(first.res.status).toBe(201);
+    const refused = await t.made(BIG_FILE);
+    expect([refused.res.status, await code(refused.res)]).toEqual([429, 'staging_quota']);
+    expect(t.imports.count()).toBe(1);
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(await t.files.listParts(abort.mock.calls[0]?.[0] ?? '', abort.mock.calls[0]?.[1] ?? '').then(() => 'open', (e: unknown) => (e as FileStorageError).kind)).toBe('not-found');
+    // The quota is the staged bytes of the workspace: an import that is over frees its share.
+    expect(await t.imports.abandon('T-a', first.id, t.clock.now())).toBe(true);
+    expect((await t.made(BIG_FILE)).res.status).toBe(201);
+  });
   it('reads the archive with the profile the person names: notion_md_csv for an export of Notion, markdown_zip when none is named; any other is 422', async () => {
     const t = build();
     const notion = await t.made({ profile: 'notion_md_csv' });

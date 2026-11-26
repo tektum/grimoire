@@ -15,7 +15,7 @@ import type { RemoteImageFetcher } from './remote-images/index.js';
 import { buildLinkIndex } from './link-index.js';
 import { readCsv } from './notion/table.js';
 import { MAX_TITLE, type ImportProfile, type IndexedItem } from './profile.js';
-import { stageAttachment, stageRemoteImage } from './attachments.js';
+import { judgeFile, stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
 import { EntryAbort } from './zip-reader.js';
@@ -144,7 +144,14 @@ export interface PassTwoDeps {
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
   /** `maxTableBytes`: the largest Markdown table a database becomes (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES`, the contract's default when absent). */
-  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number };
+  readonly limits: {
+    readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number;
+    /**
+     * The most bytes of copies of files the import may make (a page that links a file gets a copy of its own, so a file that many pages link is many copies): past it the import stops
+     * (`attachment_budget`). Counted from the pages already written, so a resumed run does not start from zero. Absent: no budget.
+     */
+    readonly maxCopiedBytes?: number;
+  };
   readonly pageLimits: TenantPageLimits;
   readonly now: () => number;
 }
@@ -157,7 +164,7 @@ export interface PassTwoOptions {
   readonly signal?: AbortSignal;
 }
 
-export type PassTwoStop = 'not_running' | 'aborted' | 'collection_deleted';
+export type PassTwoStop = 'not_running' | 'aborted' | 'collection_deleted' | 'attachment_budget';
 export type PassTwoResult =
   | { readonly kind: 'done'; readonly counts: ImportCounts }
   /** The run ended before every page was dealt with; what was done is kept, and the counts say so. */
@@ -395,6 +402,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   // Warnings live on the item rows (written with the page or the settle), so the count is worked out from them like the others and survives a resumed or an overlapping run.
   const warned = new Map(all.map((i) => [i.id, i.warnings]));
+  // The bytes of copies the written pages hold (on their rows, so a resumed run counts them), and the ones this run has made for pages not yet written.
+  let copiedBytes = all.reduce((sum, i) => sum + i.attachmentBytes, 0);
   const counts = (): ImportCounts => {
     let pagesDone = 0, attachments = 0, skipped = 0, failed = 0;
     for (const i of all) {
@@ -500,8 +509,11 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       for (const file of wanted) {
         if (rejected.has(file.id)) continue;
         const entry = entryByPath.get(file.path);
+        // A copy that would take the copies of the import past its budget is not made: the import stops, and ends failed (the pages before it are trashed with it, as for any failed import).
+        // Only a file that would be copied is charged: one that is refused for its type, its size or its emptiness costs nothing (`stageAttachment` skips it without a copy).
+        if (entry !== undefined && deps.limits.maxCopiedBytes !== undefined && !('status' in judgeFile(stage, entry)) && copiedBytes + entry.size > deps.limits.maxCopiedBytes) return { stop: 'attachment_budget', bytes: 0 };
         const result: Staged = entry === undefined ? { kind: 'rejected', status: 'failed', reason: 'missing_entry' } : await stageAttachment(stage, entry, item.path);
-        if (result.kind === 'ok') { staged.set(file.id, result); continue; }
+        if (result.kind === 'ok') { staged.set(file.id, result); copiedBytes += result.row.size; continue; }
         if (result.scope === 'page') continue; // this page's object, not the file: this page keeps its link, other pages may still use the file
         rejected.set(file.id, result);
         if (status.get(file.id) === 'pending') await settle(file, result.status, result.reason);
@@ -514,7 +526,7 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
           if (!/^https:/i.test(url)) { why('scheme'); continue; }
           if (deps.remote.fetcher === undefined) { why('not_fetched'); continue; }
           const got = await stageRemoteImage(stage, deps.remote.fetcher, budget, url, item.path);
-          if (got.kind === 'ok') copied.set(url, got); else why(got.reason);
+          if (got.kind === 'ok') { copied.set(url, got); copiedBytes += got.row.size; } else why(got.reason);
         }
       }
     }
@@ -584,6 +596,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
     if (step.wrote !== 'here' && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
       for (const f of [...staged.values(), ...copied.values()]) await deps.files.delete(f.row.key);
+      // The copies are gone: their bytes are given back to the budget, which counts the copies that are kept.
+      copiedBytes -= [...staged.values(), ...copied.values()].reduce((sum, f) => sum + f.row.size, 0);
     }
     return step;
   };

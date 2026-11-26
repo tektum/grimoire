@@ -115,7 +115,11 @@ export interface DatabaseSetupConfig {
 
 /** The import's limits and the remote-image fetcher's (contracts section 6). The size of a Markdown file is the seed cap of `collab`, not a setting of its own. */
 export interface ImportConfig {
-  readonly maxZipBytes: number; readonly maxEntries: number; readonly maxUncompressedBytes: number;
+  /** What one import takes: the size of each zip, how many zips (an export in parts is several), and their size together. */
+  readonly maxZipBytes: number; readonly maxZips: number; readonly maxTotalBytes: number;
+  /** What a workspace may hold in imports that are not over (`created`, `uploaded`, `running`: their zips are in the store), a new import's included. */
+  readonly stagedQuotaBytes: number;
+  readonly maxEntries: number; readonly maxUncompressedBytes: number;
   /** The ratio of uncompressed to compressed bytes, for the archive and for each entry. */
   readonly maxRatio: number; readonly maxEntryBytes: number; readonly maxTableBytes: number;
   readonly allowNestedZips: boolean; readonly fetchRemoteImages: boolean;

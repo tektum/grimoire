@@ -66,6 +66,19 @@ export interface NewImport {
   readonly createdBy: string;
   readonly source: ImportSource;
   readonly parts: readonly NewImportPart[];
+  /**
+   * The most bytes of zips the workspace may hold in imports that are not over (`created`, `uploaded`, `running`: their zips are still in the store), this one's included. Over it `create`
+   * throws `StagingQuotaError` and makes nothing. Absent: no quota is judged. Judged with the workspace's creates one at a time, so two that fit separately cannot both be accepted.
+   */
+  readonly stagedQuotaBytes?: number;
+}
+
+/** Thrown by `create` when the zips of the workspace's imports that are not over and the new one's together are over the quota of staged bytes. */
+export class StagingQuotaError extends Error {
+  constructor() {
+    super('the workspace holds more bytes of uploads than it may');
+    this.name = 'StagingQuotaError';
+  }
 }
 
 /** One zip of an import: where it is kept, its declared size, and the id of its multipart upload while that is open (null for a single PUT and once the upload is completed). */
@@ -105,6 +118,8 @@ export interface ImportItem {
   readonly attempts: number;
   /** Warnings this item raised (a cut title, a link that matched nothing), kept on the row so the import's count is worked out from the rows and survives a resumed or overlapping run. */
   readonly warnings: number;
+  /** The bytes of the copies of files that this page made (a page that links a file gets a copy of its own), once it is written; 0 for any other item. What bounds the copies an import makes. */
+  readonly attachmentBytes: number;
   /** Remote images of this page that were not copied, a count per reason code (`blocked_address`, `timeout`, `scheme`, ...), never an address: where a report reads why a warning was raised. */
   readonly remoteImageFailures: Readonly<Record<string, number>>;
 }

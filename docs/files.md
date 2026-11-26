@@ -34,6 +34,7 @@ These are the limits of the first version, stated so that nobody has to find the
 
 Also:
 
+- An import is held to limits of its own, not to these: a file of its zip may be as large as `GRIMOIRE_IMPORT_MAX_ENTRY_BYTES` (2 GiB by default) and is sent to the store as a stream, and the zips an import holds in the store count against a quota of staged bytes for the workspace (`GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES`, 150 GiB) until the import ends. Spec R6.39, R10.3.
 - A file pasted into a page of another collection keeps the access of its first page; a reader who cannot read that page does not get the file.
 - A page that is purged removes its files from the store first. If the store fails part-way, the attachments whose objects were already removed are marked deleted (`deleted_at`) and are not served, so restoring the page never shows a file that is gone.
 - The address of the file store in the browser's content security policy comes from the headers of the web server that serves the client, not from this server.

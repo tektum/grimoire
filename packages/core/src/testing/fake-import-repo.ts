@@ -1,4 +1,4 @@
-import { cleanItemText as clean, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
+import { cleanItemText as clean, CONSTRUCT_FATES, ImportBusyError, MAX_REPORT_PAGES, NO_IMPORT_COUNTS, StagingQuotaError } from '../ports/import-repo.js';
 import type { ConstructKind, ConstructReport, ImportCounts, ImportItem, ImportItemKind, ImportPart, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
@@ -58,7 +58,7 @@ export class FakeImportRepo implements ImportRepo {
       const pending = item.status === undefined;
       // A page, and a database that becomes one, gets its ids as it is added.
       const ids = pending && (item.kind === 'page' || item.kind === 'database_csv') ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
-      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} } });
+      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, attachmentBytes: 0, remoteImageFailures: {} } });
       added += 1;
     }
     return Promise.resolve(added);
@@ -96,7 +96,7 @@ export class FakeImportRepo implements ImportRepo {
     const position = page.position(lastOfParent, null);
     const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
     const urlId = found.item.urlId ?? `u${pageId}`;
-    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, remoteImageFailures: page.remoteImageFailures ?? {}, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, attachmentBytes: page.attachments.reduce((sum, a) => sum + a.size, 0), remoteImageFailures: page.remoteImageFailures ?? {}, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
     for (const fileId of page.attachmentItemIds ?? []) {
       const f = this.stored.findIndex((x) => x.tenantId === tenantId && x.importId === importId && x.item.id === fileId && x.item.status === 'pending' && x.item.kind === 'attachment');
       const file = this.stored[f];
@@ -132,6 +132,9 @@ export class FakeImportRepo implements ImportRepo {
   create(tenantId: string, row: NewImport): Promise<ImportRecord> {
     const first = row.parts[0];
     if (first === undefined) return Promise.reject(new Error('an import has at least one zip'));
+    const total = row.parts.reduce((sum, p) => sum + p.bytes, 0);
+    const held = this.rows.filter((r) => r.tenantId === tenantId && (r.status === 'created' || r.status === 'uploaded' || r.status === 'running')).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
+    if (row.stagedQuotaBytes !== undefined && held + total > row.stagedQuotaBytes) return Promise.reject(new StagingQuotaError());
     const made: ImportRecord = { id: row.id, tenantId, status: 'created', source: row.source, targetCollectionId: row.targetCollectionId, createdBy: row.createdBy, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, bytes: row.parts.reduce((sum, p) => sum + p.bytes, 0), s3Key: first.s3Key };
     this.rows.push(made);
     row.parts.forEach((part, ordinal) => this.partRows.push({ tenantId, importId: row.id, part: { ordinal, ...part } }));

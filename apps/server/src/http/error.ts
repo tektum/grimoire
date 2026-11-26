@@ -29,6 +29,7 @@ export const ERROR_STATUS = {
   not_a_zip: 422,
   client_too_old: 426,
   rate_limited: 429,
+  staging_quota: 429,
   unavailable: 503,
 } as const;
 
@@ -64,6 +65,7 @@ const MESSAGE: Record<ErrorCode, string> = {
   not_a_zip: 'The file is not a zip archive.',
   client_too_old: 'This client is too old. Update it to continue.',
   rate_limited: 'Too many requests. Try again later.',
+  staging_quota: 'The workspace holds as many bytes of unfinished uploads as it may. Finish or cancel one, then try again.',
   unavailable: 'The service is unavailable. Try again later.',
 };
 
