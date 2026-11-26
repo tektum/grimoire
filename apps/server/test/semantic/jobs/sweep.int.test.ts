@@ -91,7 +91,7 @@ describe('the embed sweep, a chain of runs', () => {
     await vi.waitFor(async () => {
       const [row] = (await db.sql(`select (select count(*)::int from pgboss.job where name = 'embed-sweep' and state = 'completed') as sweeps,
                                           (select count(*)::int from pgboss.job where name = 'embed-page') as jobs,
-                                          (now() - last_edited_at) < interval '4 seconds' as inside from pages where id = '${id}'`)) as { sweeps: number; jobs: number; inside: boolean }[];
+                                          (now() - last_edited_at) < interval '5 seconds' as inside from pages where id = '${id}'`)) as { sweeps: number; jobs: number; inside: boolean }[];
       if (row?.inside === true && row.jobs > 0) early.push(row.jobs);
       expect(row?.sweeps).toBeGreaterThanOrEqual(2);
       expect(row?.inside).toBe(false); // sampled the whole quiet time, with sweeps running through it
