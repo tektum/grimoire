@@ -9,10 +9,12 @@ import { buildZip } from '../import/hostile/zip-builder.js';
 // M7-T07, the restart scenario: an import of 400 generated pages is started on the running stack, the application container is killed in the middle of it (`docker kill`, then `docker stop`, the graceful
 // one) and started again, and the import reaches `done` with every page created exactly once and no attachment row twice. The stack is the one `make up` started (the application with every role, PostgreSQL, the
 // file store, `make files-setup` done); the test recreates the application container with GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS=20 (so that a run the killed container left is taken back after 20 seconds, not
-// 15 minutes) and puts it back as it was afterwards. Written for the stack: it needs Docker and nothing else, and says so when the stack is not there.
+// 15 minutes) and GRIMOIRE_JOBS_SWEEP_CRON every minute (a run that stopped gracefully is not taken back by the restart but by the `import-sweep` job, R10.16, which runs every 5 minutes by default), and puts it back as it was afterwards. Written for the stack: it needs Docker and nothing else, and says so when the stack is not there.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const BASE = 'http://127.0.0.1:8080';
 const PAGES = 400;
+/** What the import counts: the 400 files and the page it makes for their folder, `docs/`. */
+const PAGES_TOTAL = PAGES + 1;
 const IMAGES = 8;
 /** About 12 KB of Markdown a page: 400 of them take the importer long enough to be interrupted in the middle (a smaller page may be done before the test has looked). */
 const PAGE_PARAGRAPHS = 60;
@@ -90,8 +92,13 @@ async function waitReady(timeoutMs = 120_000): Promise<void> {
 /** Recreates the application container with the settings of a run of this test (or, with `expire` false, without them: as the stack was). */
 async function recreateApp(expire: boolean): Promise<void> {
   const env: NodeJS.ProcessEnv = { ...process.env, GRIMOIRE_S3_PUBLIC_ENDPOINT: process.env['GRIMOIRE_S3_PUBLIC_ENDPOINT'] ?? 'http://127.0.0.1:8333' };
-  if (expire) env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'] = '20';
-  else delete env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'];
+  if (expire) {
+    env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'] = '20';
+    env['GRIMOIRE_JOBS_SWEEP_CRON'] = '* * * * *';
+  } else {
+    delete env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'];
+    delete env['GRIMOIRE_JOBS_SWEEP_CRON'];
+  }
   await compose(['up', '-d', '--no-deps', '--wait', '--wait-timeout', '120', 'app'], env);
   await waitReady();
 }
@@ -167,7 +174,7 @@ async function waitMidRun(importId: string): Promise<ImportState> {
     async () => {
       const state = await stateOf(importId);
       if (state.status === 'done' || state.status === 'failed') return { ended: true as const, state };
-      return state.status === 'running' && state.counts.pagesDone >= 40 && state.counts.pagesDone < PAGES - 40 ? { ended: false as const, state } : undefined;
+      return state.status === 'running' && state.counts.pagesDone >= 40 && state.counts.pagesDone < PAGES_TOTAL - 40 ? { ended: false as const, state } : undefined;
     },
     100,
   );
@@ -192,7 +199,7 @@ async function waitDone(importId: string, timeoutMs: number): Promise<ImportStat
 /** The outcome that has to hold after either way of interrupting it: done with all the pages once, and every row once. */
 async function expectExactlyOnce(importId: string, collectionId: string): Promise<void> {
   const done = await waitDone(importId, 300_000);
-  expect(done.counts, JSON.stringify(done)).toMatchObject({ pagesDone: PAGES, attachments: IMAGES, failed: 0, skipped: 0 });
+  expect(done.counts, JSON.stringify(done)).toMatchObject({ pagesDone: PAGES_TOTAL, attachments: IMAGES, failed: 0, skipped: 0 });
   const items: { kind: string; status: string; pageId: string | null; path: string }[] = [];
   let cursor: string | null = null;
   for (let guard = 0; guard < 100; guard += 1) {
@@ -204,11 +211,11 @@ async function expectExactlyOnce(importId: string, collectionId: string): Promis
     if (cursor === null) break;
   }
   const pages = items.filter((i) => i.kind === 'page');
-  expect(pages.length, 'one item for each page').toBe(PAGES);
-  expect(new Set(pages.map((p) => p.path)).size, 'each path once').toBe(PAGES);
-  expect(new Set(pages.map((p) => p.pageId)).size, 'each page once').toBe(PAGES);
-  expect(await psql(`select count(*) from pages where collection_id = '${collectionId}' and deleted_at is null`), 'the pages of the collection').toBe(String(PAGES));
-  expect(await psql(`select count(distinct title) from pages where collection_id = '${collectionId}' and deleted_at is null`), 'a page for each title, none twice').toBe(String(PAGES));
+  expect(pages.length, 'one item for each page').toBe(PAGES_TOTAL);
+  expect(new Set(pages.map((p) => p.path)).size, 'each path once').toBe(PAGES_TOTAL);
+  expect(new Set(pages.map((p) => p.pageId)).size, 'each page once').toBe(PAGES_TOTAL);
+  expect(await psql(`select count(*) from pages where collection_id = '${collectionId}' and deleted_at is null`), 'the pages of the collection').toBe(String(PAGES_TOTAL));
+  expect(await psql(`select count(distinct title) from pages where collection_id = '${collectionId}' and deleted_at is null`), 'a page for each title, none twice').toBe(String(PAGES_TOTAL));
   const rows = await psql(`select count(*) || ' ' || count(distinct (page_id, file_name)) from attachments where page_id in (select id from pages where collection_id = '${collectionId}')`);
   expect(rows, 'attachment rows: all of them, and none twice for the same page and name').toBe(`${String(IMAGES)} ${String(IMAGES)}`);
 }
@@ -258,7 +265,7 @@ describe('an import of 400 pages across a restart of the application', () => {
     await expectExactlyOnce(importId, collectionId);
   }, 600_000);
 
-  it('survives docker stop (graceful): the run continues within 10 seconds of the restart, and every page and attachment exists once', async () => {
+  it('survives docker stop (graceful): the run is taken up again by the sweep after the restart, and every page and attachment exists once', async () => {
     onTestFailed(dump);
     const { importId, collectionId } = await startImport(zip);
     const mid = await waitMidRun(importId);
@@ -266,16 +273,8 @@ describe('an import of 400 pages across a restart of the application', () => {
     await compose(['start', 'app']);
     await waitReady();
     const ready = await stateOf(importId);
-    // The run goes on by itself right after the restart: some progress, or the end, within 10 seconds.
-    const progressed = await poll('progress after the restart', 10_000, async () => {
-      const now = await stateOf(importId);
-      return now.status === 'done' || now.counts.pagesDone > ready.counts.pagesDone ? true : undefined;
-    }).then(
-      () => true,
-      () => false,
-    );
-    console.log(JSON.stringify({ restart: 'stop', pagesDoneWhenStopped: mid.counts.pagesDone, pagesDoneAtReady: ready.counts.pagesDone, progressedWithin10s: progressed }));
-    expect(progressed, `the import made no progress in the 10 seconds after the restart: ${JSON.stringify(ready)}`).toBe(true);
+    // A graceful stop ends the job (the handler returns when it is told to stop); the import stays `running` until the `import-sweep` job finds it without a live job, which is every minute here.
+    console.log(JSON.stringify({ restart: 'stop', pagesDoneWhenStopped: mid.counts.pagesDone, pagesDoneAtReady: ready.counts.pagesDone, statusAtReady: ready.status }));
     await expectExactlyOnce(importId, collectionId);
   }, 600_000);
 });
