@@ -650,21 +650,24 @@ describe('what a person is told about a file: the reason is a code, and the scre
   });
 
   it('takes the limit a code names from the configuration of the server, and says no number when the server does not say one', async () => {
-    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: 131072, maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: 131072, maxImportFileBytes: 26214400 }).api, '/import?import=imp1');
     const texts = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
     expect(texts[0]).toBe('The page is larger than the limit of 128 KB.');
     expect(texts[1]).toBe('The file is larger than the limit of 25 MB.');
     cleanup();
-    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: null, maxAttachmentBytes: null }).api, '/import?import=imp1');
+    show(reasons(['too_large', 'entry_too_large'], 'skipped', { maxMarkdownBytes: null, maxImportFileBytes: null }).api, '/import?import=imp1');
     const none = await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 2);
     expect(none[0]).toBe('The page is larger than the limit for a page.');
     expect(none[1]).toBe('The file is larger than the limit for a file.');
     expect(none.join(' ')).not.toMatch(/\d/);
   });
 
-  it('takes the limit of a file of an import from maxImportFileBytes, not from the editor\'s maxAttachmentBytes, and from that one only when the server does not send the first', async () => {
+  it('takes the limit of a file of an import from maxImportFileBytes, and never from the editor\'s maxAttachmentBytes, which does not apply to an import', async () => {
     show(reasons(['entry_too_large'], 'skipped', { maxImportFileBytes: 2147483648, maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
     expect((await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 1))[0]).toBe('The file is larger than the limit of 2 GB.');
+    cleanup();
+    show(reasons(['entry_too_large'], 'skipped', { maxAttachmentBytes: 26214400 }).api, '/import?import=imp1');
+    expect((await messagesOf(await screen.findByRole('list', { name: 'Files of the import' }), 1))[0]).toBe('The file is larger than the limit for a file.');
   });
 
   it('says the same words for the spelling the Markdown seed uses (too-large, too-deep), and names no number for the page whose converted state is over its own cap', async () => {

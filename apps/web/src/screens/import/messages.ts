@@ -57,11 +57,11 @@ export interface ImportLimits {
 
 const positive = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
 
-/** The limits of a client configuration: the largest page's Markdown (`maxMarkdownBytes`) and the largest file an import takes (`maxImportFileBytes`; the editor's `maxAttachmentBytes` only for a server that does not send it). */
+/** The limits of a client configuration: the largest page's Markdown (`maxMarkdownBytes`) and the largest file an import takes (`maxImportFileBytes`; the editor's `maxAttachmentBytes` is not the limit of an import). */
 export function importLimitsOf(config: unknown): ImportLimits {
   const c = (typeof config === 'object' && config !== null ? config : {}) as Record<string, unknown>;
   const markdownBytes = positive(c['maxMarkdownBytes']);
-  const entryBytes = positive(c['maxImportFileBytes']) ?? positive(c['maxAttachmentBytes']);
+  const entryBytes = positive(c['maxImportFileBytes']);
   return { ...(markdownBytes === undefined ? {} : { markdownBytes }), ...(entryBytes === undefined ? {} : { entryBytes }) };
 }
 
