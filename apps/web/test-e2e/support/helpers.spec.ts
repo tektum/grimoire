@@ -131,21 +131,24 @@ test.describe('waitForSynced', () => {
     await expect(waitForSynced(page, { timeout: 500 })).rejects.toThrow(/Timeout/);
   });
 
-  test('when the editor is not synced after a while it says what the page shows (attached to the report) and goes on waiting, to the same end as before', async ({ page }) => {
+  test('when the editor is not synced after a while it says what the page shows (attached to the report, without the text of the editor) and goes on waiting, to the same end as before', async ({ page }) => {
+    // No timer in the page: the page syncs when this test says so, after the note is there, so a slow load cannot make the order come out the other way.
     await page.route('**/late.html', (route) =>
       route.fulfill({
         contentType: 'text/html',
-        body: `${STUB}<h1>Page not found</h1><div data-collab-state="connecting"></div><script>setTimeout(()=>document.querySelector('[data-collab-state]').setAttribute('data-collab-state','synced'),900)</script>`,
+        body: `${STUB}<h1>Page not found</h1><div data-testid="editor-root" data-collab-state="connecting"><h1>SECRET-HEADING</h1><p>SECRET-BODY</p></div>`,
       }),
     );
     await page.goto('/late.html');
-    await waitForSynced(page, { diagnoseAfter: 300 });
-    const note = test.info().attachments.find((a) => a.name === 'not-synced-yet.txt');
-    expect(note, 'a note was attached when the wait passed the first look').toBeDefined();
-    const text = note!.body!.toString();
+    const waiting = waitForSynced(page, { diagnoseAfter: 300 });
+    await expect.poll(() => test.info().attachments.some((a) => a.name === 'not-synced-yet.txt'), { message: 'a note was attached when the wait passed the first look' }).toBe(true);
+    await page.evaluate(() => document.querySelector('[data-collab-state]')!.setAttribute('data-collab-state', 'synced'));
+    await waiting;
+    const text = test.info().attachments.find((a) => a.name === 'not-synced-yet.txt')!.body!.toString();
     expect(text).toContain('/late.html');
     expect(text).toContain('connecting');
     expect(text).toContain('Page not found');
+    expect(text, 'what a person wrote in the editor is not in the report').not.toMatch(/SECRET/);
   });
 
   test('says nothing when the editor syncs within the first look', async ({ page }) => {
