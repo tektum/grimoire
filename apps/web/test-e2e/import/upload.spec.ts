@@ -38,7 +38,7 @@ test('a small zip is created, PUT with the headers the API gave, started, and it
   await chooseMarkdown(page);
   await page.getByRole('button', { name: 'Import' }).click();
   await expect(page).toHaveURL(/\/import\?import=imp1$/);
-  expect(sent.creates).toEqual([{ collectionId: 'c1', fileName: 'export.zip', size: smallZip().buffer.length, profile: 'markdown_zip' }]);
+  expect(sent.creates).toEqual([{ collectionId: 'c1', files: [{ fileName: 'export.zip', size: smallZip().buffer.length }], profile: 'markdown_zip' }]);
   expect(sent.puts).toHaveLength(1);
   expect(sent.puts[0]!.headers['content-type']).toBe('application/zip');
   // The size of what was sent is checked where the engine shows it to the route (WebKit shows neither the body of a file nor its length).

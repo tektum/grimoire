@@ -63,7 +63,7 @@ export async function scriptedImports(
     if (request.method() === 'POST' && path === '/v1/imports') {
       sent.creates.push(request.postDataJSON());
       if ((options.createStatus ?? 201) >= 400) return json(options.createStatus!, { error: { code: 'too_large', message: 'Too large' } });
-      return json(201, { id: 'imp1', upload: { method: 'PUT', url: `${API}/__store/imports/imp1.zip`, headers: { 'content-type': 'application/zip' }, expiresAt: '2026-11-20T11:00:00.000Z' } });
+      return json(201, { id: 'imp1', uploads: [{ index: 0, upload: { kind: 'single', method: 'PUT', url: `${API}/__store/imports/imp1.zip`, headers: { 'content-type': 'application/zip' }, expiresAt: '2026-11-20T11:00:00.000Z' } }] });
     }
     if (request.method() === 'POST' && path.endsWith('/start')) {
       sent.starts += 1;
