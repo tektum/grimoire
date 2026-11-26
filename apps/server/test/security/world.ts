@@ -25,12 +25,14 @@ import { buildZip } from '../import/hostile/zip-builder.js';
 import type { Operation } from './document.js';
 
 /** Who the walk signs in as. The token is the name; `garbage` and `expired` are tokens the verifier refuses. */
-export type Who = 'admin' | 'member' | 'viewer' | 'suspended' | 'former' | 'garbage' | 'expired';
+export type Who = 'admin' | 'member' | 'viewer' | 'suspended' | 'former' | 'outsider' | 'garbage' | 'expired';
 
 const NAMES = ['admin', 'member', 'viewer', 'suspended', 'former'] as const;
 const ROLE: Record<(typeof NAMES)[number], Role> = { admin: 'admin', member: 'member', viewer: 'viewer', suspended: 'member', former: 'member' };
 const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export const NIL = uuid(0);
+/** The administrator of another tenant (`other`), present when a world is built with `outsider`: every id of this world belongs to `legacy`, so none of them exists for this person. */
+export const OUTSIDER_ID = uuid(199);
 export const USER_ID = Object.fromEntries(NAMES.map((name, i) => [name, uuid(100 + i)])) as Record<(typeof NAMES)[number], string>;
 
 /**
@@ -44,16 +46,20 @@ const FILES = {
 };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
 
-export async function buildWorld() {
+export async function buildWorld(options: { outsider?: boolean } = {}) {
   const t = makeContext();
   const world = emptyWorld();
   const verifier: AuthVerifier = {
-    verify: (token) => Promise.resolve(NAMES.includes(token as never) ? { kind: 'ok', userId: `d-${token}`, expiresAt: 9e12 } : { kind: 'invalid-token' }),
+    verify: (token) => Promise.resolve(NAMES.includes(token as never) || (options.outsider === true && token === 'outsider') ? { kind: 'ok', userId: `d-${token}`, expiresAt: 9e12, ...(token === 'outsider' ? { tenant: { kind: 'one' as const, id: 'other' } } : {}) } : { kind: 'invalid-token' }),
   };
   const rows: UserRecord[] = NAMES.map((name) => ({
     id: USER_ID[name], descopeUserId: `d-${name}`, email: name === 'former' ? 'former@gone.example.org' : `${name}@example.com`, name, role: ROLE[name], suspended: name === 'suspended', tenantId: 'legacy',
   }));
   for (const r of rows) world.users.push({ id: r.id, role: r.role, suspended: r.suspended });
+  if (options.outsider === true) {
+    rows.push({ id: OUTSIDER_ID, descopeUserId: 'd-outsider', email: 'outsider@example.com', name: 'outsider', role: 'admin', suspended: false, tenantId: 'other' });
+    world.users.push({ id: OUTSIDER_ID, role: 'admin', suspended: false, tenantId: 'other' });
+  }
   const users = new FakeUserStore(rows);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
   const collections = new FakeCollectionRepo(world);
@@ -156,7 +162,7 @@ export async function buildWorld() {
     openCollection: open.id, closedCollection: closed.id, page: page.id, hiddenPage: hidden.id, urlId: page.urlId, hiddenUrlId: hidden.urlId,
     ...importRows, item: items[importRows.import] as string, hiddenItem: items[importRows.hiddenImport] as string, readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment, trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
   };
-  return { call, demote, suspend, prepareImport, ids, world, pages, collections, converter, trash, pageState, admin, config };
+  return { call, demote, suspend, prepareImport, imports, ids, world, pages, collections, converter, trash, pageState, admin, config };
 }
 export type WorldBuilt = Awaited<ReturnType<typeof buildWorld>>;
 
