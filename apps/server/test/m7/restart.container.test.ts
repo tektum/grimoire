@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, onTestFailed, vi } from 'vitest';
 import { buildZip } from '../import/hostile/zip-builder.js';
 
 // M7-T07, the restart scenario: an import of 400 generated pages is started on the running stack, the application container is killed in the middle of it (`docker kill`, then `docker stop`, the graceful
@@ -60,10 +60,16 @@ interface ImportState {
   counts: { pagesTotal: number; pagesDone: number; attachments: number; skipped: number; failed: number };
   error: string | null;
 }
+/** What each read of the import said and when (seconds since the test file started): the progress over time, for the dump of a failure. The last 60. */
+const samples: string[] = [];
+const t0 = Date.now();
 const stateOf = async (id: string): Promise<ImportState> => {
   const res = await api('GET', `/v1/imports/${id}`);
   if (res.status !== 200) throw new Error(`GET /v1/imports/${id}: ${String(res.status)} ${await res.text()}`);
-  return (await res.json()) as ImportState;
+  const state = (await res.json()) as ImportState;
+  samples.push(`${String(Math.round((Date.now() - t0) / 1000))}s ${state.status} ${String(state.counts.pagesDone)}/${String(state.counts.pagesTotal)}`);
+  if (samples.length > 60) samples.shift();
+  return state;
 };
 
 async function waitReady(timeoutMs = 120_000): Promise<void> {
@@ -94,6 +100,49 @@ async function psql(sql: string): Promise<string> {
   return (await compose(['exec', '-T', 'postgres', 'psql', '-U', 'grimoire_admin', '-d', 'grimoire', '-v', 'ON_ERROR_STOP=1', '-Atc', sql])).stdout.trim();
 }
 
+async function psqlExpanded(sql: string): Promise<string> {
+  return (await compose(['exec', '-T', 'postgres', 'psql', '-U', 'grimoire_admin', '-d', 'grimoire', '-x', '-c', sql])).stdout.trim();
+}
+
+/** The queues are defined by `migrate` (not by the application as it starts): the expiry of a queue is the one the migration was given, so the migration runs again with the setting of this test (or without it). */
+async function runMigrate(expire: boolean): Promise<void> {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (expire) env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'] = '20';
+  else delete env['GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS'];
+  await compose(['--profile', 'tools', 'run', '--rm', 'migrate'], env);
+}
+
+/** What a failure needs to be understood without a second run: the container and its settings, the queue and the job of the import, the import row, how far it got over time, and the log of the application. Nothing here can fail the test. */
+let lastImport: string | undefined;
+async function dump(): Promise<void> {
+  const show = async (what: string, read: () => Promise<string>): Promise<void> => {
+    try {
+      console.log(`[restart-dump] ${what}:\n${(await read()).slice(0, 6000)}`);
+    } catch (error) {
+      console.log(`[restart-dump] ${what}: could not be read: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}`);
+    }
+  };
+  await show('the application container', async () => (await compose(['ps', '-a', 'app'])).stdout);
+  await show('its settings of the jobs, the semantic search and the store address', async () => {
+    const id = (await compose(['ps', '-aq', 'app'])).stdout.trim();
+    const env = (await run('docker', ['inspect', '-f', '{{range .Config.Env}}{{println .}}{{end}}', id])).stdout;
+    return env
+      .split('\n')
+      .filter((l) => /^GRIMOIRE_(JOBS|SEMANTIC|S3_PUBLIC)/.test(l))
+      .join('\n');
+  });
+  await show('the queues import and import-sweep', () => psqlExpanded("select name, policy, retry_limit, expire_seconds from pgboss.queue where name in ('import', 'import-sweep')"));
+  if (lastImport !== undefined) {
+    await show('the import row', () => psqlExpanded(`select * from imports where id = '${lastImport}'`));
+    await show('the job of the import', async () => {
+      const table = await psql("select table_name from pgboss.queue where name = 'import'");
+      return psqlExpanded(`select * from pgboss.${table.replace(/[^a-z0-9_]/gi, '')} where name = 'import' and data->>'importId' = '${lastImport}'`);
+    });
+  }
+  await show('the reads of the import over time', async () => samples.join('\n'));
+  await show('the last 200 lines of the application log', async () => (await compose(['logs', '--no-log-prefix', '--tail', '200', 'app'])).stdout);
+}
+
 /** Starts the import of the archive into a new collection and returns its ids. */
 async function startImport(zip: Buffer): Promise<{ importId: string; collectionId: string }> {
   const made = await api('POST', '/v1/collections', { name: `Restart ${String(Date.now())}`, defaultPermission: 'read_write' });
@@ -102,6 +151,7 @@ async function startImport(zip: Buffer): Promise<{ importId: string; collectionI
   const created = await api('POST', '/v1/imports', { collectionId, fileName: 'restart.zip', size: zip.length, profile: 'markdown_zip' });
   expect(created.status, await created.clone().text()).toBe(201);
   const { id: importId, upload } = (await created.json()) as { id: string; upload: { url: string; headers: Record<string, string> } };
+  lastImport = importId;
   const put = await fetch(upload.url, { method: 'PUT', headers: upload.headers, body: zip });
   expect(put.ok, `the PUT of the archive to the file store: ${String(put.status)}`).toBe(true);
   const started = await api('POST', `/v1/imports/${importId}/start`);
@@ -175,16 +225,30 @@ describe('an import of 400 pages across a restart of the application', () => {
     zip = archive();
     recreated = true;
     await recreateApp(true);
+    await runMigrate(true);
+    // What the test relies on, asked before it is relied on: the queue of the imports has the expiry this test set. If not, the setting does not reach the queue, and the test says that, not a timeout 5 minutes later.
+    const expiry = await psql("select expire_seconds from pgboss.queue where name = 'import'");
+    if (expiry !== '20') {
+      await dump();
+      throw new Error(
+        `the queue of the imports expires a run after ${expiry} seconds, not the 20 this test asked for: GRIMOIRE_JOBS_IMPORT_EXPIRE_SECONDS does not reach the queue (the migrate service must pass it through, and the migrate command must hand config.jobs.importExpireSeconds to jobQueues())`,
+      );
+    }
     // The first request of a person creates their row, and only `GET /v1/me` may be that first request (any other from someone the application has not seen is 403): the person signs in first, as an administrator.
     const me = await api('GET', '/v1/me');
     expect(me.status, await me.clone().text()).toBe(200);
     expect(((await me.json()) as { role: string }).role).toBe('admin');
   }, 240_000);
   afterAll(async () => {
-    if (recreated) await recreateApp(false); // only a stack that was found running and was changed here is put back
+    if (recreated) {
+      // only a stack that was found running and was changed here is put back
+      await recreateApp(false);
+      await runMigrate(false);
+    }
   }, 240_000);
 
   it('survives docker kill: the run the container left is taken back after the expiry, and every page and attachment exists once', async () => {
+    onTestFailed(dump);
     const { importId, collectionId } = await startImport(zip);
     const mid = await waitMidRun(importId);
     await compose(['kill', '-s', 'SIGKILL', 'app']);
@@ -195,6 +259,7 @@ describe('an import of 400 pages across a restart of the application', () => {
   }, 600_000);
 
   it('survives docker stop (graceful): the run continues within 10 seconds of the restart, and every page and attachment exists once', async () => {
+    onTestFailed(dump);
     const { importId, collectionId } = await startImport(zip);
     const mid = await waitMidRun(importId);
     await compose(['stop', '-t', '30', 'app']);
