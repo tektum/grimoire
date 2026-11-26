@@ -379,10 +379,49 @@ describe('GET /v1/imports/{id}', () => {
         startedAt: new Date(t.clock.now()).toISOString(),
         finishedAt: null,
         error: null,
+        report: { constructs: [], rawHtmlPages: [], rawHtmlCapped: false },
       });
     }
     for (const who of ['bob', 'eve']) expect((await t.call(who, 'GET', `/v1/imports/${id}`)).status, who).toBe(404);
     expect((await t.call('ada', 'GET', '/v1/imports/00000000-0000-4000-8000-0000000000ff')).status).toBe(404);
+  });
+  it('says there was nothing to report when the import is gone between the look and the report', async () => {
+    const t = build();
+    const id = await t.running();
+    vi.spyOn(t.imports, 'constructReport').mockResolvedValueOnce(undefined);
+    const res = await t.call('ada', 'GET', `/v1/imports/${id}`);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { report: unknown }).report).toEqual({ constructs: [], rawHtmlPages: [], rawHtmlCapped: false });
+  });
+  it('carries the construct report: what the written pages held, the pages that hold it with their address, the databases and rows, and the pages that still hold HTML; a path is cut and cleaned', async () => {
+    const t = build();
+    const id = await t.running();
+    await t.imports.addItems('T-a', id, [
+      { path: `a\u0007${'x'.repeat(400)}.md`, kind: 'page' },
+      { path: 'db.csv', kind: 'database_csv' },
+      { path: 'row.md', kind: 'page', status: 'skipped', message: 'database_row' },
+    ]);
+    const [a] = await t.imports.pending('T-a', id, 'page', 10);
+    const [db] = await t.imports.pending('T-a', id, 'database_csv', 10);
+    const page = (itemId: string, constructs?: Record<string, number>) => ({ itemId, collectionId: 'c', parentId: null, position: (before: string | null) => `${before ?? ''}a`, title: 'T', createdBy: 'u', content: { state: new Uint8Array([1]), markdown: 'x', text: 'x', hash: Buffer.alloc(32) }, markdownBytes: 1, stateBytes: 1, attachments: [], ...(constructs === undefined ? {} : { constructs }) });
+    await t.imports.writePage('T-a', id, page(a!.id, { callout: 2, raw_html: 3 }));
+    await t.imports.writePage('T-a', id, page(db!.id));
+    const items = await t.imports.scanItems('T-a', id, { limit: 10 });
+    const urlOf = (itemId: string) => items.find((i) => i.id === itemId)?.urlId;
+    const cut = `a${'x'.repeat(299)}`;
+    for (const who of ['ada', 'root']) {
+      const body = (await (await t.call(who, 'GET', `/v1/imports/${id}`)).json()) as { report: unknown };
+      expect(body.report, who).toEqual({
+        constructs: [
+          { kind: 'callout', fate: 'converted', count: 2, pages: [{ itemId: a!.id, path: cut, urlId: urlOf(a!.id) }], capped: false },
+          { kind: 'raw_html', fate: 'kept', count: 3, pages: [{ itemId: a!.id, path: cut, urlId: urlOf(a!.id) }], capped: false },
+          { kind: 'database_table', fate: 'converted', count: 1, pages: [{ itemId: db!.id, path: 'db.csv', urlId: urlOf(db!.id) }], capped: false },
+          { kind: 'database_row', fate: 'dropped', count: 1, pages: [{ itemId: items.find((i) => i.path === 'row.md')!.id, path: 'row.md', urlId: null }], capped: false },
+        ],
+        rawHtmlPages: [{ itemId: a!.id, path: cut, urlId: urlOf(a!.id), fragments: 3 }],
+        rawHtmlCapped: false,
+      });
+    }
   });
 });
 
@@ -567,7 +606,7 @@ describe('POST /v1/imports/{id}/cancel', () => {
     const id = await t.running();
     const res = await t.call('root', 'POST', `/v1/imports/${id}/cancel`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString() });
+    expect(await res.json()).toMatchObject({ status: 'cancelled', finishedAt: new Date(t.clock.now()).toISOString(), report: { constructs: [], rawHtmlPages: [], rawHtmlCapped: false } });
     expect(t.audit.events.map((e) => e.action)).toEqual(['import.cancelled']);
     expect(t.audit.events[0]).toMatchObject({ actorId: t.uid('root'), targetId: id, tenantId: 'T-a' });
   });

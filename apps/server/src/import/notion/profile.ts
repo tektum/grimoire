@@ -141,7 +141,7 @@ export const notionProfile: ImportProfile = {
    */
   preprocess: (markdown, ctx) => {
     const body = withoutTitleLine(markdown);
-    return convertConstructs(body === markdown ? markdownProfile.preprocess(markdown, ctx) : body);
+    return convertConstructs(body === markdown ? markdownProfile.preprocess(markdown, ctx) : body, ctx.onConstruct);
   },
   resolveLink: resolveNotionLink,
   idOf,

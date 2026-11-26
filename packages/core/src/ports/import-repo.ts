@@ -18,6 +18,25 @@ export interface ImportCounts {
   readonly remote?: number;
 }
 
+/**
+ * The constructs of an export that the import converts, drops or keeps, and what became of each (the construct report, spec R6.41). A page counts the ones it holds; a database's table and
+ * the rows that were left out are read from the items themselves.
+ */
+export const CONSTRUCT_FATES = {
+  callout: 'converted', toggle: 'converted', front_matter: 'dropped', icon_cover: 'dropped', page_mention: 'converted', unresolved_link: 'kept', raw_html: 'kept', database_table: 'converted', database_row: 'dropped',
+} as const;
+export type ConstructKind = keyof typeof CONSTRUCT_FATES;
+export type ConstructFate = (typeof CONSTRUCT_FATES)[ConstructKind];
+/** How many times each construct occurred on one page (a kind that did not occur is absent). */
+export type ConstructCounts = Readonly<Partial<Record<ConstructKind, number>>>;
+/** The most pages the report names for one kind. */
+export const MAX_REPORT_PAGES = 100;
+/** A page of the report: the item, its path and the id of the page it became (null for a row that was left out). */
+export interface ReportPage { readonly itemId: string; readonly path: string; readonly urlId: string | null }
+export interface ConstructLine { readonly kind: ConstructKind; readonly fate: ConstructFate; readonly count: number; readonly pages: readonly ReportPage[]; readonly capped: boolean }
+export interface RawHtmlPage extends ReportPage { readonly fragments: number }
+export interface ConstructReport { readonly constructs: readonly ConstructLine[]; readonly rawHtmlPages: readonly RawHtmlPage[]; readonly rawHtmlCapped: boolean }
+
 export const NO_IMPORT_COUNTS: ImportCounts = { pagesTotal: 0, pagesDone: 0, attachments: 0, skipped: 0, failed: 0, warnings: 0 };
 
 export interface ImportRecord {
@@ -121,6 +140,8 @@ export interface NewImportedPage {
   readonly markdownBytes: number;
   readonly stateBytes: number;
   readonly warnings?: number;
+  /** What the page held that the import converted, dropped or kept (counted for the construct report). */
+  readonly constructs?: ConstructCounts;
   /** Remote images of the page that were not copied, a count per reason code (never an address): kept with the item's warnings. */
   readonly remoteImageFailures?: Readonly<Record<string, number>>;
   readonly attachments: readonly Omit<NewReady, 'pageId'>[];
@@ -177,6 +198,11 @@ export interface ImportRepo {
   closePart(tenantId: string, importId: string, ordinal: number): Promise<boolean>;
   /** `created` or `uploaded` becomes `uploaded`; `false` for any other status (and for another tenant's import). */
   markUploaded(tenantId: string, id: string): Promise<boolean>;
+  /**
+   * The construct report of an import: each kind of construct with its count and the pages that hold it (at most `MAX_REPORT_PAGES` for a kind, `capped` when there are more), the pages that
+   * still hold HTML with the number of fragments, and the databases and rows (read from the items). Only pages that were written count. `undefined` for another tenant's import.
+   */
+  constructReport(tenantId: string, importId: string): Promise<ConstructReport | undefined>;
   /** The settled items (`ok`, `skipped` or `failed`: not the ones still `pending`), in ascending id, after `afterId` when given, at most `limit`. Ids compare as whole numbers. */
   /** Every item of the import in any status (`listItems` is for the report and leaves out the pending ones), by id: what the engine builds its link index from. Keyset on `afterId`. */
   scanItems(tenantId: string, importId: string, options: { readonly afterId?: string; readonly limit: number }): Promise<readonly ImportItem[]>;

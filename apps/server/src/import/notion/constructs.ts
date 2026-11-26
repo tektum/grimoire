@@ -70,7 +70,7 @@ function matchBlocks(lines: readonly string[]): Map<number, { kind: Kind; close:
  * A callout (`<aside>`) becomes a quote whose first line of text is bold, the emoji kept inside the bold; a toggle (`<details><summary>`) becomes its summary as a bold
  * paragraph followed by its content. A block that is not closed, and anything inside a code fence, is left as it is.
  */
-export function convertConstructs(markdown: string): string {
+export function convertConstructs(markdown: string, onConstruct?: (kind: 'callout' | 'toggle') => void): string {
   const lines = markdown.split('\n');
   const blocks = matchBlocks(lines);
   if (blocks.size === 0) return markdown;
@@ -80,6 +80,7 @@ export function convertConstructs(markdown: string): string {
   lines.forEach((line, i) => {
     const block = blocks.get(i);
     if (block !== undefined) {
+      onConstruct?.(block.kind === 'aside' ? 'callout' : 'toggle');
       // A block that opens before a callout's first line of text is that first line: the callout's own text after it is not bold.
       const top = frames.at(-1);
       if (top?.kind === 'aside') top.first = false;
