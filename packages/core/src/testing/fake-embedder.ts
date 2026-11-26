@@ -43,8 +43,8 @@ export class FakeEmbedder implements Embedder {
     return this.closed ? 'unavailable' : this.current;
   }
 
-  countTokens(text: string): number {
-    return words(text).length;
+  countTokens(text: string): Promise<number> {
+    return Promise.resolve(this.count(text));
   }
 
   embedPassages(texts: readonly string[], o: { readonly signal?: AbortSignal } = {}): Promise<EmbedResult> {
@@ -73,8 +73,12 @@ export class FakeEmbedder implements Embedder {
       this.failure = undefined;
       return Promise.resolve({ ok: false, reason });
     }
-    if (texts.some((t) => this.countTokens(t) > this.model.maxTokens)) return Promise.resolve({ ok: false, reason: 'too-long' });
+    if (texts.some((t) => this.count(t) > this.model.maxTokens)) return Promise.resolve({ ok: false, reason: 'too-long' });
     return Promise.resolve({ ok: true, vectors: texts.map((t) => vectorOf(prefix + t, this.model.dims)) });
+  }
+
+  private count(text: string): number {
+    return words(text).length;
   }
 }
 

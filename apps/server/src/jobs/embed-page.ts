@@ -1,9 +1,8 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
 import type { Clock } from '@tektum/grimoire-core/ports/clock';
 import type { Embedder } from '@tektum/grimoire-core/ports/embedder';
 import type { ChunkRow, EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
-import { chunkTextYielding } from '@tektum/grimoire-core/semantic/chunk';
+import { chunkTextAsync } from '@tektum/grimoire-core/semantic/chunk';
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import type { EventLog } from '../events.js';
 import type { RateLimiter } from './rate-limit.js';
@@ -54,8 +53,8 @@ export function createEmbedPage(deps: EmbedPageDeps): JobHandler<unknown> {
     if (embedder.status() !== 'ready') throw new Error('embedder-unavailable'); // not the page's doing: no failure is recorded
     // The key of the model as it is now: the version of the weights is known only once the model has loaded, and new weights are a model change (every page is embedded again).
     const model = modelKey(embedder.model);
-    // Counting the tokens of a long page is main-thread work (600 ms in one piece for 20,000 words on a hosted runner, on the loop that serves requests): the cut gives the loop a turn between its steps.
-    const chunks = await chunkTextYielding(page.text, (text) => embedder.countTokens(text), { model, maxTokens: Math.min(400, embedder.model.maxTokens) }, () => nextTurn()); // under the embedder's own limit, which the model's special tokens and prefix already come off
+    // The tokenizer is on the embedder's thread: every count is a round trip, so the loop that serves requests has a turn at each and no count is main-thread work.
+    const chunks = await chunkTextAsync(page.text, (text) => embedder.countTokens(text), { model, maxTokens: Math.min(400, embedder.model.maxTokens) }); // under the embedder's own limit, which the model's special tokens and prefix already come off
     const existing = await store.existingHashes(tenantId, pageId, model);
     const changed = chunks.filter((c) => !sameBytes(existing.get(c.chunkIndex), c.contentHash));
     const vectors = new Map<number, Float32Array>();

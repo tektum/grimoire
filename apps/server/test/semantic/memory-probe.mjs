@@ -20,17 +20,18 @@ async function ready(threads) {
   return e;
 }
 const sentence = 'The quarterly planning meeting covered hiring, the budget for the next year, and how the platform team will migrate its services to the new cluster before the end of March. ';
-const chunk = (e, n) => {
+const chunk = async (e, n) => {
   let text = '';
-  while (e.countTokens(text) < 195) text += sentence;
+  while ((await e.countTokens(text)) < 195) text += sentence;
   return `${text} ${String(n)}`;
 };
 
 const result = { model };
 const e = await ready(2);
-result.tokensPerChunk = e.countTokens(chunk(e, 0));
+result.tokensPerChunk = await e.countTokens(await chunk(e, 0));
 result.rssAfterLoadMB = mb(process.memoryUsage().rss);
-const texts = Array.from({ length: 200 }, (_, i) => chunk(e, i));
+const texts = [];
+for (let i = 0; i < 200; i += 1) texts.push(await chunk(e, i));
 const r = await e.embedPassages(texts);
 if (!r.ok) throw new Error(`200 chunks were not embedded: ${r.reason}`);
 result.rssAfter200ChunksMB = mb(process.memoryUsage().rss);

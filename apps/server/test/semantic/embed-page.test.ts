@@ -236,8 +236,11 @@ describe('the embed-page job', () => {
     expect(text).not.toContain(String(vector));
   });
 
-  it('gives the event loop a turn while it cuts a long page into chunks: the cut is main-thread work, and a page of 20,000 words took 600 ms of it in one piece on a hosted runner', async () => {
-    const s = setup(paragraphs(200)); // 200 paragraphs, 200 chunks
+  it('gives the event loop a turn at every count while it cuts a long page into chunks: the tokenizer is on the model thread, and a page of 20,000 words took 600 ms of counting in one piece on the main thread', async () => {
+    const embedder = new FakeEmbedder({ maxTokens: 512 });
+    const count = embedder.countTokens.bind(embedder);
+    embedder.countTokens = (text) => new Promise((resolve) => setImmediate(() => resolve(count(text)))); // a round trip to another thread: the answer comes in a later turn
+    const s = setup(paragraphs(200), { embedder }); // 200 paragraphs, 200 chunks
     let turns = 0;
     let running = true;
     const turn = (): void => {

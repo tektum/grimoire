@@ -25,8 +25,8 @@ export interface Embedder {
   readonly model: EmbedderModel;
   /** `loading` until the model is read, `ready` when it can embed, `unavailable` when it cannot (missing or altered files, a failed load that is retried, closed). */
   status(): 'loading' | 'ready' | 'unavailable';
-  /** The tokens of `text`, with no prefix, as the model counts them. Synchronous: the chunker calls it for every paragraph. */
-  countTokens(text: string): number;
+  /** The tokens of `text`, with no prefix, as the model counts them. The tokenizer is on the model's thread (its heap would stop the server's event loop in every full GC), so the answer comes later; the chunker asks for every paragraph. */
+  countTokens(text: string): Promise<number>;
   embedPassages(texts: readonly string[], o?: { readonly signal?: AbortSignal }): Promise<EmbedResult>;
   embedQuery(text: string, o?: { readonly signal?: AbortSignal; readonly timeoutMs?: number }): Promise<EmbedResult>;
   stats(): { readonly threads: number; readonly queued: number; readonly chunksPerMinute: number };

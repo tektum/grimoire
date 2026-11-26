@@ -187,7 +187,7 @@ describe('the semantic statement without an index', () => {
     const embedder: Embedder = {
       model,
       status: () => 'ready',
-      countTokens: (t) => t.split(/\s+/).length,
+      countTokens: (t) => Promise.resolve(t.split(/\s+/).length),
       embedPassages: () => Promise.resolve<EmbedResult>({ ok: false, reason: 'unavailable' }),
       embedQuery: (text) => Promise.resolve<EmbedResult>({ ok: true, vectors: [queryVectors[text.length % QUERIES] as Float32Array] }),
       stats: () => ({ threads: 1, queued: 0, chunksPerMinute: 0 }),
