@@ -253,6 +253,26 @@ describe('the copies an import makes are bounded: a page that links a file gets 
     expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
   });
 
+  it('charges the budget only for the copies that are kept: a copy deleted because its page was not written is given back, so pages that fail do not use the budget of those that succeed', async () => {
+    const converter = new EchoConverter();
+    converter.fail = (markdown) => markdown.includes('FAILME');
+    const t = await setup([
+      md('a.md\u0000![x](big.png)\nFAILME\n'), md('b.md\u0000![x](big.png)\nFAILME\n'), md('c.md\u0000![x](big.png)\n'), md('d.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(5000) },
+    ], { copiedMaxBytes: 11_000, converter });
+    const result = await t.run();
+    expect(result.kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['c', 'd']);
+    expect((await t.files.list('')).items.filter((i) => i.key.includes('attachments/'))).toHaveLength(2);
+  });
+
+  it('does not charge the budget for a file that would not be copied: a link to a file of a type that is refused costs the import nothing, however near the budget it is', async () => {
+    const t = await setup([md('a.md\u0000![x](big.png)\n'), md('b.md\u0000[tool](tool.bin)\n'), { name: 'big.png', data: png(5000) }, { name: 'tool.bin', data: Buffer.alloc(5000, 1) }], { copiedMaxBytes: 6000 });
+    const result = await t.run();
+    expect(result.kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+    expect(await t.byPath('tool.bin')).toMatchObject({ status: 'skipped', message: 'type_not_allowed' });
+  });
+
   it('is no limit for an import within it', async () => {
     const t = await setup(shared, { copiedMaxBytes: 16_000 });
     expect((await t.run()).kind).toBe('done');

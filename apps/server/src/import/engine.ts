@@ -15,7 +15,7 @@ import type { RemoteImageFetcher } from './remote-images/index.js';
 import { buildLinkIndex } from './link-index.js';
 import { readCsv } from './notion/table.js';
 import { MAX_TITLE, type ImportProfile, type IndexedItem } from './profile.js';
-import { stageAttachment, stageRemoteImage } from './attachments.js';
+import { judgeFile, stageAttachment, stageRemoteImage } from './attachments.js';
 import type { AttachmentSettings, Rejection, Staged, StagedFile, StageContext } from './attachments.js';
 import { readEntry } from './read-entry.js';
 import { EntryAbort } from './zip-reader.js';
@@ -510,7 +510,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
         if (rejected.has(file.id)) continue;
         const entry = entryByPath.get(file.path);
         // A copy that would take the copies of the import past its budget is not made: the import stops, and ends failed (the pages before it are trashed with it, as for any failed import).
-        if (entry !== undefined && deps.limits.maxCopiedBytes !== undefined && copiedBytes + entry.size > deps.limits.maxCopiedBytes) return { stop: 'attachment_budget', bytes: 0 };
+        // Only a file that would be copied is charged: one that is refused for its type, its size or its emptiness costs nothing (`stageAttachment` skips it without a copy).
+        if (entry !== undefined && deps.limits.maxCopiedBytes !== undefined && !('status' in judgeFile(stage, entry)) && copiedBytes + entry.size > deps.limits.maxCopiedBytes) return { stop: 'attachment_budget', bytes: 0 };
         const result: Staged = entry === undefined ? { kind: 'rejected', status: 'failed', reason: 'missing_entry' } : await stageAttachment(stage, entry, item.path);
         if (result.kind === 'ok') { staged.set(file.id, result); copiedBytes += result.row.size; continue; }
         if (result.scope === 'page') continue; // this page's object, not the file: this page keeps its link, other pages may still use the file
@@ -595,6 +596,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
     // Objects are removed only for a page that is known not to be written: keys are deterministic, so another run that wrote the page has rows that point at them.
     if (step.wrote !== 'here' && staged.size + copied.size > 0 && (await repo.getItem(tenantId, importId, item.id))?.status !== 'ok') {
       for (const f of [...staged.values(), ...copied.values()]) await deps.files.delete(f.row.key);
+      // The copies are gone: their bytes are given back to the budget, which counts the copies that are kept.
+      copiedBytes -= [...staged.values()].reduce((sum, f) => sum + f.row.size, 0);
     }
     return step;
   };
