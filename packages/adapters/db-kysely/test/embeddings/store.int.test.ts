@@ -284,16 +284,16 @@ describe('search', () => {
 });
 
 describe('counts', () => {
-  it('counts the chunks of the model and the pages ready, failed and pending at their current hash, over every tenant', async () => {
+  it('counts the chunks of the model, the pages ready, failed and pending at their current hash, and the pages whose state names another model, over every tenant', async () => {
     await run(`delete from pages where true`);
     const a = await page(); const b = await page(); const c = await page(); const d = await page({ tenant: 'T-third', collection: thirdCollection }); await page({ deleted: true }); await page({ hashByte: null });
     await store.replacePage(TENANT, a, hash(1), M, [chunk(0, unit(1, 0, 0, 0)), chunk(1, unit(0, 1, 0, 0))]);
     await store.markFailed(TENANT, b, hash(1), M, 'e');
     await store.replacePage(TENANT, c, hash(1), M2, [chunk(0, unit(1, 1, 1))]); // ready for another model: pending for this one
     void d;
-    expect(await store.counts(M)).toEqual({ chunks: 2, pagesReady: 1, pagesFailed: 1, pagesPending: 2 });
-    expect(await store.counts(M2)).toEqual({ chunks: 1, pagesReady: 1, pagesFailed: 0, pagesPending: 3 });
-    expect(await store.counts('no-such-model')).toEqual({ chunks: 0, pagesReady: 0, pagesFailed: 0, pagesPending: 4 });
+    expect(await store.counts(M)).toEqual({ chunks: 2, pagesReady: 1, pagesFailed: 1, pagesPending: 2, pagesOtherModel: 1 }); // c is under M2
+    expect(await store.counts(M2)).toEqual({ chunks: 1, pagesReady: 1, pagesFailed: 0, pagesPending: 3, pagesOtherModel: 2 }); // a and b are under M; d has no state
+    expect(await store.counts('no-such-model')).toEqual({ chunks: 0, pagesReady: 0, pagesFailed: 0, pagesPending: 4, pagesOtherModel: 3 });
   });
 });
 

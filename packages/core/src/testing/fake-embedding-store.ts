@@ -130,20 +130,22 @@ export class FakeEmbeddingStore implements EmbeddingStore {
     return Promise.resolve([...best.values()].slice(0, o.limit));
   }
 
-  counts(model: string): Promise<{ readonly chunks: number; readonly pagesReady: number; readonly pagesFailed: number; readonly pagesPending: number }> {
+  counts(model: string): Promise<{ readonly chunks: number; readonly pagesReady: number; readonly pagesFailed: number; readonly pagesPending: number; readonly pagesOtherModel: number }> {
     let chunks = 0;
     let pagesReady = 0;
     let pagesFailed = 0;
     let pagesPending = 0;
+    let pagesOtherModel = 0;
     for (const [id, page] of this.pages) {
       chunks += this.rowsOf(id, model).length;
       if (page.deleted || page.markdownHash === null) continue;
       const state = this.states.get(id);
+      if (state !== undefined && state.model !== model) pagesOtherModel += 1;
       if (state?.model !== model || !same(state.markdownHash, page.markdownHash)) pagesPending += 1;
       else if (state.status === 'ready') pagesReady += 1;
       else pagesFailed += 1;
     }
-    return Promise.resolve({ chunks, pagesReady, pagesFailed, pagesPending });
+    return Promise.resolve({ chunks, pagesReady, pagesFailed, pagesPending, pagesOtherModel });
   }
 
   private rowsOf(pageId: string, model: string): readonly StoredChunk[] {

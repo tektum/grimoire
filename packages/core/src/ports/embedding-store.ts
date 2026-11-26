@@ -70,6 +70,9 @@ export interface EmbeddingStore {
     queryVector: Float32Array,
     o: { readonly model: string; readonly collectionIds: readonly string[]; readonly collectionId?: string; readonly limit: number; readonly minSimilarity: number },
   ): Promise<readonly ChunkHit[]>;
-  /** What exists for `model`, over every tenant. */
-  counts(model: string): Promise<{ readonly chunks: number; readonly pagesReady: number; readonly pagesFailed: number; readonly pagesPending: number }>;
+  /**
+   * What exists for `model`, over every tenant. `pagesPending` is every live page that has no ready state at its current Markdown under `model`; `pagesOtherModel` is the part of those
+   * whose state names another model (what a model change leaves to be embedded again; a page that was never embedded is not one).
+   */
+  counts(model: string): Promise<{ readonly chunks: number; readonly pagesReady: number; readonly pagesFailed: number; readonly pagesPending: number; readonly pagesOtherModel: number }>;
 }

@@ -122,7 +122,7 @@ describe('FakeEmbeddingStore', () => {
     await store.replacePage('legacy', 'p1', hash(1), 'm', [chunk(0, 'a'), chunk(1, 'b')]);
     await store.markFailed('legacy', 'p2', hash(2), 'm', 'internal');
     store.trashPage('p3');
-    expect(await store.counts('m')).toEqual({ chunks: 2, pagesReady: 1, pagesFailed: 1, pagesPending: 1 }); // p3 is trashed, x1 (another tenant) is pending
+    expect(await store.counts('m')).toEqual({ chunks: 2, pagesReady: 1, pagesFailed: 1, pagesPending: 1, pagesOtherModel: 0 }); // p3 is trashed, x1 (another tenant) is pending
     store.seedPage({ id: 'p5', collectionId: 'open', markdownHash: null });
     expect((await store.counts('m')).pagesPending).toBe(1);
   });
@@ -220,7 +220,22 @@ describe('FakeEmbeddingStore, one state per page', () => {
     expect(await store.counts('m1')).toMatchObject({ chunks: 0, pagesReady: 0, pagesPending: 1 });
     expect(await store.pagesNeedingEmbedding('legacy', 'm1', { olderThanSeconds: 1, limit: 5 })).toHaveLength(1);
     expect(await store.search('legacy', vectorOf('passage: beta', 8), { model: 'm1', collectionIds: ['open'], limit: 5, minSimilarity: 0 })).toEqual([]);
-    expect(await store.counts('m2')).toMatchObject({ chunks: 1, pagesReady: 1 });
+    expect(await store.counts('m2')).toMatchObject({ chunks: 1, pagesReady: 1, pagesOtherModel: 0 });
+    expect(await store.counts('m1')).toMatchObject({ pagesOtherModel: 1 }); // the page is embedded, but under m2: a rollout to m1 would find it so
+  });
+
+  it('counts the live pages whose state names another model, at any hash, and not the ones with no state, the trashed ones or the ones of the model asked for', async () => {
+    const store = new FakeEmbeddingStore(() => NOW);
+    for (const id of ['a', 'b', 'c', 'd', 'e']) store.seedPage({ id, collectionId: 'open', markdownHash: hash(1), editedAt: 0 });
+    await store.replacePage('legacy', 'a', hash(1), 'old', [chunk(0, 'one')]);
+    await store.replacePage('legacy', 'b', hash(1), 'old', [chunk(0, 'two')]);
+    store.editPage('b', hash(2), 0); // changed since: still a page whose state names the old model
+    await store.replacePage('legacy', 'c', hash(1), 'new', [chunk(0, 'three')]);
+    await store.replacePage('legacy', 'd', hash(1), 'old', [chunk(0, 'four')]);
+    store.trashPage('d');
+    // e has no state at all
+    expect(await store.counts('new')).toMatchObject({ pagesOtherModel: 2, pagesReady: 1 });
+    expect(await store.counts('old')).toMatchObject({ pagesOtherModel: 1 });
   });
 });
 
