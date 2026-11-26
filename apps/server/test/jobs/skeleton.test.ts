@@ -23,7 +23,7 @@ describe('the registry of jobs', () => {
     expect(jobs.map((j) => j.name)).toEqual(['import', 'import-sweep', 'import-cleanup', 'purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
     expect(jobs.every((j) => typeof j.handler === 'function')).toBe(true);
     expect(Object.fromEntries(jobs.map((j) => [j.name, j.schedule]))).toEqual({
-      import: undefined, 'import-sweep': '*/5 * * * *', 'import-cleanup': undefined, purge: '17 3 * * *', 'upload-cleanup': '*/15 * * * *', 'revision-catchup': '47 3 * * *', 'markdown-sweep': '* * * * *',
+      import: undefined, 'import-sweep': '*/5 * * * *', 'import-cleanup': '17 3 * * *', purge: '17 3 * * *', 'upload-cleanup': '*/15 * * * *', 'revision-catchup': '47 3 * * *', 'markdown-sweep': '* * * * *',
     });
   });
 
@@ -39,7 +39,7 @@ describe('the registry of jobs', () => {
   it('schedules only jobs that are real: a handler that is a stub (it rejects until its task lands) is never given a schedule, so it cannot retry and dead-letter every few minutes', () => {
     const jobs = registerJobs(fakeJobDeps().deps);
     const scheduled = jobs.filter((j) => j.schedule !== undefined);
-    expect(scheduled.map((j) => j.name)).toEqual(['import-sweep', 'purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
+    expect(scheduled.map((j) => j.name)).toEqual(['import-sweep', 'import-cleanup', 'purge', 'upload-cleanup', 'revision-catchup', 'markdown-sweep']);
     for (const j of scheduled) expect(isStubHandler(j.handler), j.name).toBe(false);
     expect(jobs.filter((j) => isStubHandler(j.handler)).map((j) => j.name)).toEqual(['import']);
   });

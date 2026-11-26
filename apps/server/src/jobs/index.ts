@@ -16,6 +16,8 @@ import { createEmbedPage, embedBatchSize } from './embed-page.js';
 import { handleEmbedSweep } from './embed-sweep.js';
 import { handleImport } from './import.js';
 import { abandonStaleImportsOfAll } from './import-abandon.js';
+import { runFailedSourceCleanup } from './failed-sources.js';
+import { reconcileEndedImports } from './import-reconcile.js';
 import { runImportCleanup } from './import-cleanup.js';
 import { runImportSweep } from './import-sweep.js';
 import { createMarkdownSweep } from './markdown-sweep.js';
@@ -90,7 +92,22 @@ export function registerJobs(deps: JobDeps): readonly RegisteredJob[] {
     },
     {
       name: 'import-cleanup',
-      handler: async (payload) => {
+      // The daily run (no payload) deletes the kept originals of failed pages after 30 days; a run with a payload cleans up one import. Without a file store there is nothing kept.
+      schedule: config.jobs.purgeCron,
+      handler: async (payload, ctx) => {
+        if (payload === undefined || payload === null) {
+          if (deps.files === undefined) return;
+          // Both passes run whichever fails: a store that cannot list the kept originals must not also skip the safety net, and the run still fails after, to be tried again.
+          const sources = await runFailedSourceCleanup({ tenants: deps.tenants, files: deps.files, now: () => clock.now() }, ctx.signal).then(
+            (count) => ({ count }),
+            (error: unknown) => ({ error }),
+          );
+          if ('count' in sources) log.info('import.sources_cleaned', { count: sources.count });
+          // The safety net: a cleanup that was never enqueued or never ran is made up for here.
+          log.info('import.reconciled', await reconcileEndedImports({ tenants: deps.tenants, imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent, now: () => clock.now() }, ctx.signal));
+          if ('error' in sources) throw sources.error;
+          return;
+        }
         if (!isImportPayload(payload)) return; // an id of the wrong shape names no import
         const done = await runImportCleanup({ imports: deps.imports, deleteFiles: deps.deleteFiles, zipPresent }, payload);
         if (done !== undefined) log.info('import.cleaned', { importId: payload.importId, pages: done.pages, zip: done.zip });

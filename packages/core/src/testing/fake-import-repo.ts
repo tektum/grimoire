@@ -179,6 +179,13 @@ export class FakeImportRepo implements ImportRepo {
     return Promise.resolve(true);
   }
 
+  ended(tenantId: string, options: { readonly since: number; readonly afterId?: string; readonly limit: number }): Promise<readonly ImportRecord[]> {
+    const rows = this.rows
+      .filter((r) => r.tenantId === tenantId && (r.status === 'done' || r.status === 'failed' || r.status === 'cancelled') && (r.finishedAt ?? 0) >= options.since && (options.afterId === undefined || r.id > options.afterId))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    return Promise.resolve(rows.slice(0, options.limit));
+  }
+
   /** The fake keeps the parent of each page it wrote: a page under another page of the import is part of that page's subtree, so the batches are the outermost roots, as in the database. A page a person added has nowhere to be here (the database case checks those). */
   trashImported(tenantId: string, id: string): Promise<{ readonly batches: readonly string[]; readonly pages: number } | undefined> {
     if (this.find(tenantId, id) === -1) return Promise.resolve(undefined);
