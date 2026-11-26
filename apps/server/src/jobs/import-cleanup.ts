@@ -4,6 +4,8 @@ import type { ImportPayload } from './types.js';
 export interface ImportCleanupDeps {
   readonly imports: ImportRepo;
   readonly deleteFiles: (keys: readonly string[]) => Promise<void>;
+  /** Ends a multipart upload that was never completed (the store drops its parts; one it does not know is a success). */
+  readonly abortUpload: (key: string, uploadId: string) => Promise<void>;
   /** Whether the zip is still in the store; false only when it is gone (any other failure of the store is thrown). */
   readonly zipPresent: (key: string) => Promise<boolean>;
 }
@@ -20,6 +22,10 @@ export async function runImportCleanup(deps: ImportCleanupDeps, payload: ImportP
   if (record === undefined || (record.status !== 'done' && record.status !== 'failed' && record.status !== 'cancelled')) return undefined;
   const pending = record.status !== 'done' && (record.s3Key === null || (await deps.zipPresent(record.s3Key)));
   const moved = pending ? await deps.imports.trashImported(payload.tenantId, payload.importId) : undefined;
-  if (record.s3Key !== null) await deps.deleteFiles([record.s3Key]);
-  return { pages: moved?.pages ?? 0, zip: record.s3Key !== null };
+  // Every zip goes: the keys of the parts (the first is the import's own `s3Key`), after the multipart uploads that were never completed are ended, so that no part is left billed in the store.
+  const parts = await deps.imports.parts(payload.tenantId, payload.importId);
+  for (const part of parts) if (part.uploadId !== null) await deps.abortUpload(part.s3Key, part.uploadId);
+  const keys = [...new Set([...(record.s3Key === null ? [] : [record.s3Key]), ...parts.map((part) => part.s3Key)])];
+  if (keys.length > 0) await deps.deleteFiles(keys);
+  return { pages: moved?.pages ?? 0, zip: keys.length > 0 };
 }

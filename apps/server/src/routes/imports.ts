@@ -2,10 +2,10 @@ import { z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { v7 } from 'uuid';
 import { cleanFileName } from '@tektum/grimoire-core/attachments/file-name';
-import { importFailedKey, importZipKey } from '../import/keys.js';
+import { importFailedKey, importPartKey, importZipKey } from '../import/keys.js';
 import { cleanItemText, CONSTRUCT_FATES, MAX_REPORT_PAGES } from '@tektum/grimoire-core/ports/import-repo';
-import type { ConstructKind, ConstructReport, ImportItem, ImportRecord, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
-import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
+import type { ConstructKind, ConstructReport, ImportItem, ImportRecord, NewImportPart, ReportPage } from '@tektum/grimoire-core/ports/import-repo';
+import { FileStorageError, MAX_PARTS } from '@tektum/grimoire-core/ports/file-storage';
 import type { FileStorage } from '@tektum/grimoire-core/ports/file-storage';
 import { attachmentDeps } from '../attachments/deps.js';
 import { caller, callerTenant, guardCollection } from '../http/collection-guard.js';
@@ -15,6 +15,7 @@ import { createRouter, defineRoute } from '../http/factory.js';
 import { guardImport } from '../http/import-guard.js';
 import { decodeCursor, paginationQuery, toPage } from '../http/pagination.js';
 import { ZIP_MAGIC } from '../import/zip-reader.js';
+import { cutParts, partLength, planUpload, sizingOf } from '../import/upload-plan.js';
 import { importSingletonKey } from '../jobs/types.js';
 import type { ErrorEvents } from '../events.js';
 
@@ -27,18 +28,54 @@ const ItemParam = IdParam.extend({ itemId: z.string().regex(/^[0-9]{1,18}$/).ope
 const UPLOAD_TTL_SECONDS = 3600;
 /** How long the address of a failed original works: it is fetched at once. */
 const SOURCE_TTL_SECONDS = 300;
+/** How long the signed address of one part works: a part is sent at once, and the page asks for more addresses as it goes. */
+const PART_TTL_SECONDS = 900;
+/** The most addresses one request gives. */
+const MAX_PART_URLS = 50;
+/** One file for now: the job reads the first zip only until it reads them all, so a second file would be sent and silently left out. */
+const MAX_FILES = 1;
 
 const CreateBody = z
   .object({
     collectionId: z.string().uuid(),
-    fileName: z.string().min(1).max(1024).describe('The name of the zip as the person has it; shown nowhere, kept nowhere'),
-    size: z.number().int().positive().describe('Bytes of the zip; not above the largest zip an import takes'),
+    files: z
+      .array(
+        z
+          .object({
+            fileName: z.string().min(1).max(1024).describe('The name of the zip as the person has it; shown nowhere, kept nowhere'),
+            size: z.number().int().positive().describe('Bytes of the zip; not above the largest zip an import takes'),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_FILES)
+      .describe('The zips of the import, in the order they are read'),
     profile: z.enum(['markdown_zip', 'notion_md_csv']).optional().describe('How the archive is read: `notion_md_csv` for an export of Notion (Markdown and CSV files), `markdown_zip` (the default) for any other zip of Markdown files'),
   })
   .strict()
   .openapi('CreateImport');
-const Upload = z.object({ method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.string().describe('ISO 8601') }).openapi('ImportUpload');
-const Created = z.object({ id: z.string().uuid(), upload: Upload }).openapi('ImportCreated');
+const Upload = z
+  .discriminatedUnion('kind', [
+    z.object({ kind: z.literal('single'), method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.string().describe('ISO 8601') }),
+    z.object({ kind: z.literal('multipart'), partSize: z.number().int().describe('Bytes of every part but the last, which is what is left of the file'), partCount: z.number().int() }),
+  ])
+  .openapi('ImportUpload');
+const Created = z.object({ id: z.string().uuid(), uploads: z.array(z.object({ index: z.number().int().describe('The place of the file in the request, from 0'), upload: Upload })) }).openapi('ImportCreated');
+const PartParam = IdParam.extend({ index: z.string().regex(/^[0-9]{1,3}$/).openapi({ param: { name: 'index', in: 'path' } }) });
+const PartUrlsBody = z
+  .object({ partNumbers: z.array(z.number().int().min(1).max(MAX_PARTS)).min(1).max(MAX_PART_URLS).describe('The parts to sign, from 1 to the part count of the file, each once') })
+  .strict()
+  .openapi('ImportPartUrlsRequest');
+const PartUrls = z
+  .object({ urls: z.array(z.object({ partNumber: z.number().int(), method: z.literal('PUT'), url: z.string(), headers: z.record(z.string(), z.string()), expiresAt: z.string().describe('ISO 8601') })) })
+  .openapi('ImportPartUrls');
+const PartList = z
+  .object({
+    partSize: z.number().int(),
+    partCount: z.number().int(),
+    parts: z.array(z.object({ partNumber: z.number().int(), size: z.number().int() })).describe('The parts the store holds, in ascending number'),
+  })
+  .openapi('ImportPartList');
 const Status = z.enum(['created', 'uploaded', 'running', 'done', 'failed', 'cancelled']);
 const CONSTRUCT_KINDS = Object.keys(CONSTRUCT_FATES) as [ConstructKind, ...ConstructKind[]];
 const ReportPageBody = z.object({
@@ -93,11 +130,11 @@ const Started = z.object({ status: z.literal('uploaded').describe('The import wa
 const Source = z.object({ url: z.string(), expiresAt: z.string().describe('ISO 8601') }).openapi('ImportSource');
 
 export const createImport = defineRoute({
-  method: 'post', path: '/v1/imports', operationId: 'createImport', summary: 'Make an import: a signed address to PUT the zip to', tags: ['imports'],
+  method: 'post', path: '/v1/imports', operationId: 'createImport', summary: 'Make an import: where to send each zip (a signed PUT, or a multipart upload sent part by part)', tags: ['imports'],
   policy: { kind: 'collection-body', field: 'collectionId', need: 'write' }, rateLimit: { max: 10, windowSeconds: 3600 },
   request: { body: { required: true, content: { 'application/json': { schema: CreateBody } } } },
   responses: {
-    201: json(Created, 'The import and where to PUT the zip (the address works for an hour)'),
+    201: json(Created, 'The import and where to send each file: one signed PUT (it works for an hour), or the part size and count of a multipart upload (ask for the addresses of the parts)'),
     404: json(ErrorBody, 'No such collection, or not one the caller can see'),
     413: json(ErrorBody, 'Larger than the largest zip an import takes'),
     422: json(ErrorBody, 'Not a valid request'),
@@ -113,9 +150,46 @@ export const startImport = defineRoute({
   responses: {
     202: json(Started, 'The import is accepted and its job queued'),
     404: json(ErrorBody, 'Not found, not the caller\'s, or the caller can no longer write in the collection'),
-    409: json(ErrorBody, '`upload_missing`, `size_mismatch` or `already_started`'),
+    409: json(ErrorBody, '`upload_missing`, `size_mismatch`, `part_missing` (a part of a multipart upload is not there) or `already_started`'),
     422: json(ErrorBody, '`not_a_zip`: the file does not start as a zip archive'),
     503: json(ErrorBody, 'The file store does not answer, or the job queue is not up'),
+  },
+});
+
+export const createImportPartUrls = defineRoute({
+  method: 'post', path: '/v1/imports/{id}/parts/{index}/urls', operationId: 'createImportPartUrls', summary: 'Signed addresses to PUT parts of a file that goes up in parts', tags: ['imports'],
+  policy: { kind: 'import', param: 'id', who: 'creator' }, rateLimit: { max: 120, windowSeconds: 3600 },
+  request: { params: PartParam, body: { required: true, content: { 'application/json': { schema: PartUrlsBody } } } },
+  responses: {
+    200: json(PartUrls, 'One address for each part asked, valid for 15 minutes, signed for the exact length of the part'),
+    404: json(ErrorBody, 'Not found, not the caller\'s, or the file is not one that goes up in parts'),
+    409: json(ErrorBody, '`already_started`'),
+    422: json(ErrorBody, 'More than 50 parts, a part that is not in the file, or one asked twice'),
+    429: json(ErrorBody, 'Too many requests'),
+    503: json(ErrorBody, 'The file store does not answer'),
+  },
+});
+
+export const listImportParts = defineRoute({
+  method: 'get', path: '/v1/imports/{id}/parts/{index}', operationId: 'listImportParts', summary: 'The parts of a file the store holds, to go on with an upload after a reload', tags: ['imports'],
+  policy: { kind: 'import', param: 'id', who: 'creator' },
+  request: { params: PartParam },
+  responses: {
+    200: json(PartList, 'How the file is cut and which parts the store holds'),
+    404: json(ErrorBody, 'Not found, not the caller\'s, or the file is not one that goes up in parts'),
+    409: json(ErrorBody, '`already_started`, or `upload_missing` (the store no longer has the upload)'),
+    503: json(ErrorBody, 'The file store does not answer'),
+  },
+});
+
+export const abortImport = defineRoute({
+  method: 'post', path: '/v1/imports/{id}/abort', operationId: 'abortImport', summary: 'Give up an upload that was not started', tags: ['imports'],
+  policy: { kind: 'import', param: 'id', who: 'creator' },
+  request: { params: IdParam },
+  responses: {
+    200: json(State, 'The import is abandoned; its zips are deleted and its multipart uploads ended by the cleanup'),
+    404: json(ErrorBody, 'Not found or not the caller\'s'),
+    409: json(ErrorBody, '`already_started`: use cancel for an import that was started'),
   },
 });
 
@@ -210,15 +284,38 @@ router.openapi(createImport, async (c) => {
   const body = c.req.valid('json');
   await guardCollection(c, body.collectionId, 'write');
   const { config, imports, log } = c.get('deps');
-  if (body.size > config.import.maxZipBytes) return fail('too_large');
+  if (body.files.some((file) => file.size > config.import.maxZipBytes)) return fail('too_large');
   const files = store(c, 'import-create');
+  const sizing = sizingOf(config.import);
   const id = v7();
-  const key = importZipKey(tenant, id);
-  const upload = await viaStore(c, 'import-create', () => files.signUpload(key, { size: body.size, contentType: 'application/zip', ttlSeconds: UPLOAD_TTL_SECONDS, ifNoneMatch: true }));
-  await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: body.profile ?? 'markdown_zip', bytes: body.size, s3Key: key });
-  log.info('import.created', { importId: id });
-  noStore(c);
-  return c.json({ id, upload: { ...upload, expiresAt: new Date(upload.expiresAt).toISOString() } }, 201);
+  const opened: { key: string; uploadId: string }[] = [];
+  try {
+    // Every call to the store comes first and the row is one write after them: a failure leaves no row, and the multipart uploads already opened are ended below.
+    const uploads = await viaStore(c, 'import-create', async () => {
+      const made: { part: NewImportPart; upload: z.infer<typeof Upload> }[] = [];
+      for (const [index, file] of body.files.entries()) {
+        const key = importPartKey(tenant, id, index);
+        const plan = planUpload(file.size, sizing);
+        if (plan.kind === 'single') {
+          const signed = await files.signUpload(key, { size: file.size, contentType: 'application/zip', ttlSeconds: UPLOAD_TTL_SECONDS, ifNoneMatch: true });
+          made.push({ part: { s3Key: key, bytes: file.size, uploadId: null }, upload: { kind: 'single', ...signed, expiresAt: new Date(signed.expiresAt).toISOString() } });
+        } else {
+          const { uploadId } = await files.createMultipart(key, { contentType: 'application/zip' });
+          opened.push({ key, uploadId });
+          made.push({ part: { s3Key: key, bytes: file.size, uploadId }, upload: { kind: 'multipart', partSize: plan.partSize, partCount: plan.partCount } });
+        }
+      }
+      return made;
+    });
+    await imports.create(tenant, { id, targetCollectionId: body.collectionId, createdBy: user.id, source: body.profile ?? 'markdown_zip', parts: uploads.map((u) => u.part) });
+    log.info('import.created', { importId: id });
+    noStore(c);
+    return c.json({ id, uploads: uploads.map((u, index) => ({ index, upload: u.upload })) }, 201);
+  } catch (error) {
+    // Nothing was made: end the uploads that were opened (when the store does not answer, its own lifecycle rule ends them).
+    await Promise.allSettled(opened.map((o) => files.abortMultipart(o.key, o.uploadId)));
+    throw error;
+  }
 });
 
 router.openapi(startImport, async (c) => {
@@ -232,15 +329,36 @@ router.openapi(startImport, async (c) => {
   if (decision?.access !== 'read-write') return fail('not_found');
   if (record.status !== 'created' && record.status !== 'uploaded') return fail('already_started');
   const files = store(c, 'import-start');
-  const key = record.s3Key ?? importZipKey(tenant, id);
-  const head = await ifThere(c, 'import-start', () => files.head(key));
-  if (head === undefined) return fail('upload_missing');
-  if (head.size !== record.bytes) return fail('size_mismatch');
-  // Only the signature the archive reader requires (four bytes): the central directory and the header checks are the job's first stage, where the work is bounded by the workers of the
-  // queue, and not a request's, which a person can repeat at will. A zip the reader refuses there ends the import as failed, with its code.
-  const first = await ifThere(c, 'import-start', () => signature(files, key));
-  if (first === undefined) return fail('upload_missing');
-  if (!ZIP_MAGIC.some((m) => first.equals(m))) return fail('not_a_zip');
+  const stored = await deps.imports.parts(tenant, id);
+  // A row with no part (one that does not keep its key) has one zip, at the conventional key, as the job reads it.
+  const parts = stored.length > 0 ? stored : record.bytes === null ? [] : [{ ordinal: 0, s3Key: record.s3Key ?? importZipKey(tenant, id), bytes: record.bytes, uploadId: null }];
+  if (parts.length === 0) return fail('upload_missing');
+  const { partBytes } = sizingOf(deps.config.import);
+  for (const part of parts) {
+    const { uploadId } = part;
+    if (uploadId !== null) {
+      // A file that went up in parts is joined here, from the parts the store holds (the page never handles an ETag): all of them, each of its exact length, or `part_missing`.
+      const held = await ifThere(c, 'import-start', () => files.listParts(part.s3Key, uploadId));
+      if (held === undefined) {
+        // The upload is gone: an earlier start joined it and did not get to write that down (or the store dropped it). The object says which.
+        const joined = await ifThere(c, 'import-start', () => files.head(part.s3Key));
+        if (joined?.size !== part.bytes) return fail('upload_missing');
+      } else {
+        const { partSize, partCount } = cutParts(part.bytes, partBytes);
+        if (held.length !== partCount || held.some((h, n) => h.partNumber !== n + 1 || h.size !== partLength(part.bytes, partSize, n + 1))) return fail('part_missing');
+        await viaStore(c, 'import-start', () => files.completeMultipart(part.s3Key, uploadId));
+      }
+      await deps.imports.closePart(tenant, id, part.ordinal);
+    }
+    const head = await ifThere(c, 'import-start', () => files.head(part.s3Key));
+    if (head === undefined) return fail('upload_missing');
+    if (head.size !== part.bytes) return fail('size_mismatch');
+    // Only the signature the archive reader requires (four bytes): the central directory and the header checks are the job's first stage, where the work is bounded by the workers of the
+    // queue, and not a request's, which a person can repeat at will. A zip the reader refuses there ends the import as failed, with its code.
+    const first = await ifThere(c, 'import-start', () => signature(files, part.s3Key));
+    if (first === undefined) return fail('upload_missing');
+    if (!ZIP_MAGIC.some((m) => first.equals(m))) return fail('not_a_zip');
+  }
   if (!(await deps.imports.markUploaded(tenant, id))) return fail('already_started');
   // Accepted: audited once, by the start that moved it from `created`; asking again while it waits (or after the job could not be queued) is a retry, not another start.
   if (record.status === 'created') await deps.audit.append({ actorId: user.id, action: 'import.started', targetType: 'import', targetId: id, tenantId: tenant, detail: { bytes: record.bytes } });
@@ -344,6 +462,56 @@ router.openapi(cancelImport, async (c) => {
   await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
   noStore(c);
   return c.json(await stateOf(c, cancelled), 200);
+});
+
+/** The upload of file `index` of an import that is not started, when it goes up in parts and is open: the part, its upload id and how the file was cut. The cut is worked out again from the size and the server's sizes, so it holds as long as those do. */
+async function openUpload(c: Ctx, record: ImportRecord, index: number) {
+  if (record.status !== 'created') return fail('already_started');
+  const deps = c.get('deps');
+  const part = (await deps.imports.parts(callerTenant(c), record.id)).find((p) => p.ordinal === index);
+  const uploadId = part?.uploadId;
+  if (part === undefined || uploadId === null || uploadId === undefined) return fail('not_found');
+  return { part, uploadId, plan: cutParts(part.bytes, sizingOf(deps.config.import).partBytes) };
+}
+
+router.openapi(createImportPartUrls, async (c) => {
+  const { id, index } = c.req.valid('param');
+  const { partNumbers } = c.req.valid('json');
+  const record = await guardImport(c, id, 'creator');
+  const { part, uploadId, plan } = await openUpload(c, record, Number(index));
+  if (new Set(partNumbers).size !== partNumbers.length || partNumbers.some((n) => n > plan.partCount)) return fail('invalid');
+  const files = store(c, 'import-part-urls');
+  // Each address signs the exact length of its part (the last is what is left), so that what a page can write is the size it declared.
+  const urls = await viaStore(c, 'import-part-urls', () =>
+    Promise.all(partNumbers.map(async (partNumber) => ({ partNumber, ...(await files.signPart(part.s3Key, { uploadId, partNumber, size: partLength(part.bytes, plan.partSize, partNumber), ttlSeconds: PART_TTL_SECONDS })) }))),
+  );
+  noStore(c);
+  return c.json({ urls: urls.map((u) => ({ ...u, expiresAt: new Date(u.expiresAt).toISOString() })) }, 200);
+});
+
+router.openapi(listImportParts, async (c) => {
+  const { id, index } = c.req.valid('param');
+  const record = await guardImport(c, id, 'creator');
+  const { part, uploadId, plan } = await openUpload(c, record, Number(index));
+  const files = store(c, 'import-parts');
+  const held = await ifThere(c, 'import-parts', () => files.listParts(part.s3Key, uploadId));
+  if (held === undefined) return fail('upload_missing');
+  noStore(c);
+  return c.json({ partSize: plan.partSize, partCount: plan.partCount, parts: held.map(({ partNumber, size }) => ({ partNumber, size })) }, 200);
+});
+
+router.openapi(abortImport, async (c) => {
+  const tenant = callerTenant(c);
+  const { id } = c.req.valid('param');
+  const record = await guardImport(c, id, 'creator');
+  const deps = c.get('deps');
+  // Only an upload that was not started: an accepted import is the cancel's. The row ends as the daily clean-up ends a stale one (`abandoned`), and the same cleanup deletes the zips and ends the multipart uploads.
+  const now = deps.clock.now();
+  if (record.status !== 'created' || !(await deps.imports.abandon(tenant, id, now))) return fail('already_started');
+  deps.log.info('import.aborted', { importId: id });
+  await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
+  noStore(c);
+  return c.json(present({ ...record, status: 'failed', error: 'abandoned', finishedAt: now }), 200);
 });
 
 export default router;

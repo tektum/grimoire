@@ -56,6 +56,8 @@ export interface InfoEvents {
   'import.progress': { importId: string; pagesDone: number; pagesTotal: number };
   'import.finished': { importId: string; ok: number; skipped: number; failed: number };
   'import.cancelled': { importId: string };
+  /** The person gave up an upload that was not started (the zips are deleted, and the multipart uploads ended, by the cleanup). */
+  'import.aborted': { importId: string };
   'import.swept': { importId: string; action: string };
   /** The cleanup of an import that is over ran: pages moved to the trash, and whether its zip was deleted. */
   'import.cleaned': { importId: string; pages: number; zip: boolean };
@@ -136,7 +138,7 @@ export interface ErrorEvents {
   /** The queue could not be started after every try: the server serves without background jobs (imports, sweeps) until it is restarted. `/readyz` says so in a header. */
   'jobs.unavailable': { attempts: number };
   /** The file store did not answer (or is not configured): the operation that needed it, nothing of the request, the key or the store's message. */
-  'files.unavailable': { operation: 'create' | 'complete' | 'download' | 'urls' | 'cleanup' | 'delete' | 'import-create' | 'import-start' | 'import-enqueue' | 'import-cleanup-enqueue' | 'import-items' | 'import-source' };
+  'files.unavailable': { operation: 'create' | 'complete' | 'download' | 'urls' | 'cleanup' | 'delete' | 'import-create' | 'import-start' | 'import-enqueue' | 'import-cleanup-enqueue' | 'import-items' | 'import-source' | 'import-part-urls' | 'import-parts' };
   'http.request_failed': { errorName: string };
   'http.handler_error': { errorName: string; method: RequestMethod; route: string; status: number; origin?: string };
   'server.config_invalid': { settings: readonly ConfigProblem[] };

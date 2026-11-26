@@ -56,14 +56,16 @@ export interface ImportRecord {
   readonly s3Key: string | null;
 }
 
-/** What `create` needs: the import starts as `created`. */
+/** One zip of a new import: where it will be kept, its declared size, and the id of its multipart upload when it goes up in parts (null for a single PUT). */
+export type NewImportPart = Omit<ImportPart, 'ordinal'>;
+
+/** What `create` needs: the import starts as `created`, with its zips (at least one) in the order the person gave them. */
 export interface NewImport {
   readonly id: string;
   readonly targetCollectionId: string;
   readonly createdBy: string;
   readonly source: ImportSource;
-  readonly bytes: number;
-  readonly s3Key: string;
+  readonly parts: readonly NewImportPart[];
 }
 
 /** One zip of an import: where it is kept, its declared size, and the id of its multipart upload while that is open (null for a single PUT and once the upload is completed). */
@@ -188,7 +190,7 @@ export interface ImportRepo {
   finish(tenantId: string, id: string, status: 'done' | 'failed', error: string | null, now: number): Promise<boolean>;
 
   // What the routes of M7-T05 use. Everything above is the engine's and stays as it is.
-  /** Makes an import row, `created`, for the tenant, with its first zip (`s3Key`, `bytes`) as part 0. */
+  /** Makes an import row, `created`, for the tenant, with its zips as parts 0 to n-1 in one statement. `bytes` is the sum of the parts' and `s3Key` the first part's key (the job reads the first part until it reads them all). Throws on no part. */
   create(tenantId: string, row: NewImport): Promise<ImportRecord>;
   /** The zips of an import, by ordinal; none for another tenant's import. */
   parts(tenantId: string, importId: string): Promise<readonly ImportPart[]>;

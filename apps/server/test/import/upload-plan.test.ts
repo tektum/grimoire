@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_PARTS, MIN_PART_BYTES } from '@tektum/grimoire-core/ports/file-storage';
-import { DEFAULT_UPLOAD_SIZING, partLength, planUpload } from '../../src/import/upload-plan.js';
+import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
+import { cutParts, DEFAULT_UPLOAD_SIZING, partLength, planUpload, sizingOf } from '../../src/import/upload-plan.js';
 
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
@@ -46,5 +47,25 @@ describe('partLength', () => {
     let sum = 0;
     for (let n = 1; n <= plan.partCount; n += 1) sum += partLength(size, plan.partSize, n);
     expect(sum).toBe(size);
+  });
+});
+
+describe('cutParts', () => {
+  it('cuts a file in parts of the size given, and is what planUpload says of a file that goes up in parts', () => {
+    expect(cutParts(12 * MIB, 5 * MIB)).toEqual({ partSize: 5 * MIB, partCount: 3 });
+    expect(planUpload(12 * MIB, { singleMaxBytes: 1, partBytes: 5 * MIB })).toEqual({ kind: 'multipart', ...cutParts(12 * MIB, 5 * MIB) });
+  });
+
+  it('raises the part size when the parts would pass the most a store takes', () => {
+    const { partSize, partCount } = cutParts(700 * GIB, 64 * MIB);
+    expect([partSize > 64 * MIB, partCount <= MAX_PARTS, partSize % MIB]).toEqual([true, true, 0]);
+  });
+});
+
+describe('sizingOf', () => {
+  it('is the setting of the config when it has one, and the server\'s own sizes otherwise', () => {
+    const config = makeFakeConfig({}).import;
+    expect(sizingOf(config)).toEqual(DEFAULT_UPLOAD_SIZING);
+    expect(sizingOf({ ...config, uploadSizing: { singleMaxBytes: 7, partBytes: 9 } })).toEqual({ singleMaxBytes: 7, partBytes: 9 });
   });
 });

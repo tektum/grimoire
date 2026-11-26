@@ -19,6 +19,7 @@ function world(tenants: readonly string[] = ['T-a', 'T-b']) {
   const started: { payload: unknown; key: string }[] = [];
   const cleaned: unknown[] = [];
   const deleted: string[][] = [];
+  const aborted: [string, string][] = [];
   const row = (id: string, tenantId: string, status: ImportStatus, ageHours = 0, s3Key: string | null = `tenants/${tenantId}/imports/${id}/source.zip`) =>
     imports.seed({ id, tenantId, status, s3Key }, NOW - ageHours * HOUR);
   return {
@@ -27,6 +28,7 @@ function world(tenants: readonly string[] = ['T-a', 'T-b']) {
     started,
     cleaned,
     deleted,
+    aborted,
     row,
     tenants: new FakeTenantRepo([...tenants]),
     isLive: (key: string) => Promise.resolve(liveJobs.has(key)),
@@ -40,6 +42,10 @@ function world(tenants: readonly string[] = ['T-a', 'T-b']) {
     },
     deleteFiles: (keys: readonly string[]) => {
       deleted.push([...keys]);
+      return Promise.resolve();
+    },
+    abortUpload: (key: string, uploadId: string) => {
+      aborted.push([key, uploadId]);
       return Promise.resolve();
     },
     zipPresent: (key: string) => Promise.resolve(!deleted.some((keys) => keys.includes(key))),
@@ -157,6 +163,17 @@ describe('runImportCleanup', () => {
     expect(await runImportCleanup(w, payload('i'))).toEqual({ pages: 1, zip: true });
     expect(w.deleted).toEqual([['tenants/T-a/imports/i/source.zip']]);
     expect(await runImportCleanup(w, payload('i'))).toEqual({ pages: 0, zip: true }); // idempotent: nothing left to move; deleting a key that is gone is not an error
+  });
+
+  it('aborts the multipart upload still open on a part and deletes the key of every part, so that an upload that was given up leaves nothing in the store', async () => {
+    const w = world();
+    w.row('m', 'T-a', 'created');
+    await w.imports.addPart('T-a', 'm', { ordinal: 1, s3Key: 'tenants/T-a/imports/m/source-1.zip', bytes: 20, uploadId: 'up-1' });
+    await w.imports.addPart('T-a', 'm', { ordinal: 2, s3Key: 'tenants/T-a/imports/m/source-2.zip', bytes: 20, uploadId: null });
+    w.imports.setStatus('m', 'failed');
+    expect(await runImportCleanup(w, payload('m'))).toEqual({ pages: 0, zip: true });
+    expect(w.aborted).toEqual([['tenants/T-a/imports/m/source-1.zip', 'up-1']]);
+    expect(w.deleted).toEqual([['tenants/T-a/imports/m/source.zip', 'tenants/T-a/imports/m/source-1.zip', 'tenants/T-a/imports/m/source-2.zip']]);
   });
 
   it('moves the pages to the trash once: a second cleanup finds the zip gone, so pages a person restored since do not go back', async () => {

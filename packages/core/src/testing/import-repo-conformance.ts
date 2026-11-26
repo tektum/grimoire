@@ -358,7 +358,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
   {
     name: 'create-makes-a-created-import-with-its-size-and-key',
     async run(h) {
-      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000c1', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 1234, s3Key: 'tenants/t/imports/c1/source.zip' });
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000c1', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', parts: [{ s3Key: 'tenants/t/imports/c1/source.zip', bytes: 1234, uploadId: null }] });
       assert.equal(made.status, 'created');
       assert.equal(made.bytes, 1234);
       assert.equal(made.s3Key, 'tenants/t/imports/c1/source.zip');
@@ -590,15 +590,37 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
   {
     name: 'create-makes-the-first-zip-part-zero',
     async run(h) {
-      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d1', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 77, s3Key: 'tenants/t/imports/d1/source.zip' });
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d1', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', parts: [{ s3Key: 'tenants/t/imports/d1/source.zip', bytes: 77, uploadId: null }] });
       assert.deepEqual(await h.repo.parts(h.tenantId, made.id), [{ ordinal: 0, s3Key: 'tenants/t/imports/d1/source.zip', bytes: 77, uploadId: null }]);
       assert.deepEqual(await h.repo.parts(h.otherTenantId, made.id), [], 'another tenant sees no part');
     },
   },
   {
+    name: 'create-makes-every-zip-a-part-in-one-go',
+    async run(h) {
+      const made = await h.repo.create(h.tenantId, {
+        id: '00000000-0000-4000-8000-0000000000d4', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'notion_md_csv',
+        parts: [{ s3Key: 'k/0', bytes: 10, uploadId: null }, { s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' }, { s3Key: 'k/2', bytes: 30, uploadId: null }],
+      });
+      assert.equal(made.bytes, 60, 'the import holds the total');
+      assert.equal(made.s3Key, 'k/0', 'and the key of the first zip');
+      assert.deepEqual(await h.repo.parts(h.tenantId, made.id), [
+        { ordinal: 0, s3Key: 'k/0', bytes: 10, uploadId: null }, { ordinal: 1, s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' }, { ordinal: 2, s3Key: 'k/2', bytes: 30, uploadId: null },
+      ]);
+      assert.deepEqual(await h.repo.parts(h.otherTenantId, made.id), [], 'another tenant sees no part');
+    },
+  },
+  {
+    name: 'create-refuses-an-import-without-a-zip',
+    async run(h) {
+      await assert.rejects(() => h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d5', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', parts: [] }));
+      assert.equal(await h.repo.get(h.tenantId, '00000000-0000-4000-8000-0000000000d5'), undefined, 'and leaves no row');
+    },
+  },
+  {
     name: 'add-part-adds-a-zip-to-a-created-import-only',
     async run(h) {
-      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d2', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 10, s3Key: 'k/0' });
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d2', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', parts: [{ s3Key: 'k/0', bytes: 10, uploadId: null }] });
       const second = { ordinal: 1, s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' };
       assert.equal(await h.repo.addPart(h.tenantId, made.id, second), true);
       assert.deepEqual((await h.repo.parts(h.tenantId, made.id)).map((p) => p.ordinal), [0, 1], 'by ordinal');
@@ -613,7 +635,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
   {
     name: 'close-part-ends-an-open-upload-once',
     async run(h) {
-      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d3', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', bytes: 10, s3Key: 'k/0' });
+      const made = await h.repo.create(h.tenantId, { id: '00000000-0000-4000-8000-0000000000d3', targetCollectionId: h.collectionId, createdBy: h.userId, source: 'markdown_zip', parts: [{ s3Key: 'k/0', bytes: 10, uploadId: null }] });
       await h.repo.addPart(h.tenantId, made.id, { ordinal: 1, s3Key: 'k/1', bytes: 20, uploadId: 'upload-1' });
       assert.equal(await h.repo.closePart(h.otherTenantId, made.id, 1), false, 'another tenant');
       assert.equal(await h.repo.closePart(h.tenantId, made.id, 1), true);

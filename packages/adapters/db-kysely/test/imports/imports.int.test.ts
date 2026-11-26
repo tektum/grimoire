@@ -100,7 +100,7 @@ describe('what only the database does', () => {
   });
   it('addPart waits for a markUploaded that is committing, and then adds nothing (the import is no longer created)', async () => {
     const repo = createImportRepo(t.app);
-    const made = await repo.create('legacy', { id: '00000000-0000-4000-8000-0000000000e1', targetCollectionId: collectionId, createdBy: userId, source: 'markdown_zip', bytes: 1, s3Key: 'k/0' });
+    const made = await repo.create('legacy', { id: '00000000-0000-4000-8000-0000000000e1', targetCollectionId: collectionId, createdBy: userId, source: 'markdown_zip', parts: [{ s3Key: 'k/0', bytes: 1, uploadId: null }] });
     let held!: () => void;
     const locked = new Promise<void>((resolve) => { held = resolve; });
     let release!: () => void;
