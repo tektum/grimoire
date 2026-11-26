@@ -878,7 +878,7 @@ describe('POST /v1/imports/{id}/abort', () => {
     const res = await t.call('ada', 'POST', `/v1/imports/${id}/abort`);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
-    expect(await res.json()).toMatchObject({ status: 'failed', error: 'abandoned', finishedAt: new Date(t.clock.now()).toISOString() });
+    expect(await res.json()).toMatchObject({ status: 'failed', error: 'abandoned', finishedAt: new Date(t.clock.now()).toISOString(), report: { constructs: [], rawHtmlPages: [], rawHtmlCapped: false } }); // the same state every import answer has
     expect(t.enqueued).toEqual([{ name: 'import-cleanup', payload: { importId: id, tenantId: 'T-a' }, options: undefined }]);
   });
 

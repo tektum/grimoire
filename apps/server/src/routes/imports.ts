@@ -511,7 +511,7 @@ router.openapi(abortImport, async (c) => {
   deps.log.info('import.aborted', { importId: id });
   await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
   noStore(c);
-  return c.json(present({ ...record, status: 'failed', error: 'abandoned', finishedAt: now }), 200);
+  return c.json(await stateOf(c, { ...record, status: 'failed', error: 'abandoned', finishedAt: now }), 200);
 });
 
 export default router;
