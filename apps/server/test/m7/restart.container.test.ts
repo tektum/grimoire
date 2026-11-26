@@ -175,6 +175,10 @@ describe('an import of 400 pages across a restart of the application', () => {
     zip = archive();
     recreated = true;
     await recreateApp(true);
+    // The first request of a person creates their row, and only `GET /v1/me` may be that first request (any other from someone the application has not seen is 403): the person signs in first, as an administrator.
+    const me = await api('GET', '/v1/me');
+    expect(me.status, await me.clone().text()).toBe(200);
+    expect(((await me.json()) as { role: string }).role).toBe('admin');
   }, 240_000);
   afterAll(async () => {
     if (recreated) await recreateApp(false); // only a stack that was found running and was changed here is put back
