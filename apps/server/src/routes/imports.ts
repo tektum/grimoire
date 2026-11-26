@@ -505,9 +505,9 @@ router.openapi(abortImport, async (c) => {
   const { id } = c.req.valid('param');
   const record = await guardImport(c, id, 'creator');
   const deps = c.get('deps');
-  // Only an upload that was not started: an accepted import is the cancel's. The row ends as the daily clean-up ends a stale one (`abandoned`), and the same cleanup deletes the zips and ends the multipart uploads.
+  // Only an upload that was not started: an accepted import is the cancel's. The write itself takes only `created` (a start that wins between the read and the write makes it `uploaded`, and then nothing changes), and the row ends as the daily clean-up ends a stale one (`abandoned`); the same cleanup deletes the zips and ends the multipart uploads.
   const now = deps.clock.now();
-  if (record.status !== 'created' || !(await deps.imports.abandon(tenant, id, now))) return fail('already_started');
+  if (record.status !== 'created' || !(await deps.imports.abort(tenant, id, now))) return fail('already_started');
   deps.log.info('import.aborted', { importId: id });
   await deps.enqueueImportCleanup({ importId: id, tenantId: tenant }).catch(() => { deps.log.error('files.unavailable', { operation: 'import-cleanup-enqueue' }); });
   noStore(c);

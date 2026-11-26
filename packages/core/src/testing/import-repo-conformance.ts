@@ -507,6 +507,23 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
     },
   },
   {
+    name: 'abort-fails-an-upload-that-was-not-started-and-nothing-else',
+    async run(h) {
+      const made = await h.seed('created');
+      assert.equal(await h.repo.abort(h.otherTenantId, made.id, h.now), false, 'another tenant cannot');
+      assert.equal(await h.repo.abort(h.tenantId, made.id, h.now + 7), true);
+      const row = await h.repo.get(h.tenantId, made.id);
+      assert.deepEqual([row?.status, row?.error, row?.finishedAt], ['failed', 'abandoned', h.now + 7]);
+      assert.equal(await h.repo.abort(h.tenantId, made.id, h.now + 99), false, 'a second call changes nothing');
+      // An import that was accepted (a start won) is not an upload to give up: it stays as it is, and its zip with it.
+      for (const status of ['uploaded', 'running', 'done', 'cancelled', 'failed'] as const) {
+        const other = await h.seed(status);
+        assert.equal(await h.repo.abort(h.tenantId, other.id, h.now), false, status);
+        assert.equal((await h.repo.get(h.tenantId, other.id))?.status, status);
+      }
+    },
+  },
+  {
     name: 'trash-imported-moves-the-pages-of-ok-page-items-once',
     async run(h) {
       const made = await h.seed('running');

@@ -889,6 +889,20 @@ describe('POST /v1/imports/{id}/abort', () => {
     expect([res.status, ((await res.json()) as { status: string }).status]).toEqual([200, 'failed']);
   });
 
+  it('does not fail an import that a start accepted between the look and the abort: 409 already_started, nothing handed to the queue', async () => {
+    const t = build();
+    const { id } = await t.made();
+    await t.sent(id);
+    // The route has read `created`; by the time it writes, a start has made the import `uploaded`: the write takes only `created`, so it changes nothing.
+    vi.spyOn(t.imports, 'abort').mockImplementationOnce(async (tenant, importId, now) => {
+      expect(await t.imports.markUploaded(tenant, importId)).toBe(true);
+      return t.imports.abort(tenant, importId, now);
+    });
+    expect(await code(await t.call('ada', 'POST', `/v1/imports/${id}/abort`))).toBe('already_started');
+    expect((await t.imports.get('T-a', id))?.status).toBe('uploaded');
+    expect(t.enqueued).toEqual([]);
+  });
+
   it('is for the creator only, and for an upload that was not started: 404, then 409 already_started, and a second abort changes nothing', async () => {
     const t = build();
     const { id } = await t.made();

@@ -233,6 +233,13 @@ export class FakeImportRepo implements ImportRepo {
     return Promise.resolve(true);
   }
 
+  abort(tenantId: string, id: string, now: number): Promise<boolean> {
+    const at = this.find(tenantId, id);
+    if (this.rows[at]?.status !== 'created') return Promise.resolve(false);
+    this.replace(at, { status: 'failed', error: 'abandoned', finishedAt: now });
+    return Promise.resolve(true);
+  }
+
   ended(tenantId: string, options: { readonly since: number; readonly afterId?: string; readonly limit: number }): Promise<readonly ImportRecord[]> {
     const rows = this.rows
       .filter((r) => r.tenantId === tenantId && (r.status === 'done' || r.status === 'failed' || r.status === 'cancelled') && (r.finishedAt ?? 0) >= options.since && (options.afterId === undefined || r.id > options.afterId))

@@ -224,6 +224,7 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
     running: (tn) => imports().running(tn),
     stale: (tn) => imports().stale(tn, Date.now(), 10),
     abandon: (tn) => imports().abandon(tn, s.importId, Date.now()),
+    abort: (tn) => imports().abort(tn, s.importId, Date.now()),
     trashImported: (tn) => imports().trashImported(tn, s.importId),
   },
   search: {

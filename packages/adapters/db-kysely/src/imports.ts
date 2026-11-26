@@ -283,6 +283,14 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
       );
       return rows.length === 1;
     },
+    async abort(tenantId, id, now) {
+      const rows = await scoped(db, tenantId).query(
+        `update imports set status = 'failed', error = 'abandoned', finished_at = to_timestamp($3::double precision / 1000.0)
+         where tenant_id = $1 and id = $2 and status = 'created' returning 1`,
+        [tenantId, id, now],
+      );
+      return rows.length === 1;
+    },
     async ended(tenantId, options) {
       const rows = await scoped(db, tenantId).query<ImportRow>(
         `select ${IMPORT_COLUMNS} from imports where tenant_id = $1 and status in ('done', 'failed', 'cancelled') and finished_at >= to_timestamp($2::double precision / 1000.0)
