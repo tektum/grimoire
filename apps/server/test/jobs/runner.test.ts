@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { JobQueue } from '@tektum/grimoire-core/ports/job-queue';
+import type { JobHandler, JobQueue } from '@tektum/grimoire-core/ports/job-queue';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { createEventLog } from '../../src/events.js';
-import { createJobRunner, MAX_START_ATTEMPTS, START_RETRY_MS, START_STOP_WAIT_MS } from '../../src/jobs/runner.js';
+import { createJobRunner, MAX_START_ATTEMPTS, START_RETRY_MS, START_STOP_WAIT_MS, type JobsApi } from '../../src/jobs/runner.js';
 
 class RecordingQueue implements JobQueue {
   readonly worked: string[] = [];
@@ -72,6 +72,49 @@ describe('the job runner', () => {
     await make(queue, [], [scheduledJob, { name: 'import', handler: () => Promise.resolve() }]).runner.start();
     expect(queue.scheduled).toEqual(['purge 17 3 * * *']);
     expect(queue.order.indexOf('schedule purge')).toBeGreaterThan(queue.order.indexOf('work purge'));
+  });
+
+  it('sends the first run of a chain at start, after its handler is registered, under its schedule key and its seconds later (every replica does, and the key makes that one run)', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); queue.order.push(`enqueue ${name}`); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    await make(queue, [], [{ name: 'embed-sweep', chainSeconds: 15, handler: () => Promise.resolve() }, { name: 'import', handler: () => Promise.resolve() }]).runner.start();
+    expect(sent).toEqual([['embed-sweep', undefined, { singletonKey: 'sched:embed-sweep', delaySeconds: 15 }]]);
+    expect(queue.order.indexOf('enqueue embed-sweep')).toBeGreaterThan(queue.order.indexOf('work embed-sweep'));
+  });
+
+  it('sends a page to embed-page with the ids only, under a key of its own, and the sweep\'s next run under the sweep\'s schedule key', async () => {
+    const sent: unknown[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    const { runner } = make(queue);
+    await expect(runner.enqueueEmbedPage({ tenantId: 't1', pageId: 'p1' })).rejects.toThrow('jobs-unavailable');
+    await runner.start();
+    await runner.enqueueEmbedPage({ tenantId: 't1', pageId: 'p1' });
+    await runner.enqueueEmbedSweep(15);
+    expect(sent).toEqual([
+      ['embed-page', { tenantId: 't1', pageId: 'p1' }, { singletonKey: 'embed:p1' }],
+      ['embed-sweep', undefined, { singletonKey: 'sched:embed-sweep', delaySeconds: 15 }],
+    ]);
+  });
+
+  it('hands the jobs a queue api that reaches the queue while it is still starting: a run picked up as soon as its handler is registered (one due before a restart) sends its next run, and the api refuses once a stop begins', async () => {
+    const sent: unknown[] = [];
+    const ran: string[] = [];
+    const queue = new RecordingQueue();
+    queue.enqueue = ((name: string, payload: unknown, options?: unknown) => { sent.push([name, payload, options]); return Promise.resolve('job-1'); }) as RecordingQueue['enqueue'];
+    // pg-boss may fetch a run that is due the moment its handler is registered, before the runner is up
+    queue.work = (async (name: string, handler: JobHandler) => {
+      queue.worked.push(name);
+      await handler(undefined, { jobId: 'j', attempt: 1, retryLimit: 3, signal: new AbortController().signal }).then(() => { ran.push('ok'); }, (e: unknown) => { ran.push((e as Error).message); });
+    }) as RecordingQueue['work'];
+    let jobsApi: JobsApi | undefined;
+    const { runner } = make(queue, [], (api) => { jobsApi = api; return [{ name: 'embed-sweep', chainSeconds: 15, handler: async () => { await api.enqueueEmbedSweep(15); } }]; });
+    await runner.start();
+    expect(ran).toEqual(['ok']);
+    expect(sent[0]).toEqual(['embed-sweep', undefined, { singletonKey: 'sched:embed-sweep', delaySeconds: 15 }]);
+    await runner.hook.run();
+    await expect(jobsApi?.enqueueEmbedSweep(15)).rejects.toThrow('jobs-unavailable');
   });
 
   it('counts a schedule that cannot be sent as a failed start: the queue is stopped and the start is tried again', async () => {

@@ -18,7 +18,9 @@ export function fakeJobDeps(over: Partial<JobDeps> = {}): { readonly deps: JobDe
   const clock = new FakeClock(1_000_000);
   const deps: JobDeps = {
     config: makeFakeConfig(), log: createEventLog(logger), clock, tenants: new FakeTenantRepo(['T-a']), trash: new FakeTrashRepo(), deleteFiles: () => Promise.resolve(),
-    attachments: new FakeAttachmentRepo(), files: new FakeFileStorage(), revisions: new FakeRevisionRepo(), pages: new FakePageStore(), imports: new FakeImportRepo(), queue: { isLive: () => Promise.resolve(false), enqueueImport: () => Promise.resolve('job'), enqueueImportCleanup: () => Promise.resolve('job') }, converter: new FakeMarkdownConverter(), ...over,
+    attachments: new FakeAttachmentRepo(), files: new FakeFileStorage(), revisions: new FakeRevisionRepo(), pages: new FakePageStore(), imports: new FakeImportRepo(),
+    queue: { isLive: () => Promise.resolve(false), enqueueImport: () => Promise.resolve('job'), enqueueImportCleanup: () => Promise.resolve('job'), enqueueEmbedPage: () => Promise.resolve('job'), enqueueEmbedSweep: () => Promise.resolve('job') },
+    converter: new FakeMarkdownConverter(), ...over,
   };
   return { deps, logger, clock };
 }

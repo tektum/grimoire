@@ -227,6 +227,8 @@ describe('the registry handlers of the import jobs', () => {
         calls.push(`cleanup ${payload.importId}`);
         return Promise.resolve('j');
       },
+      enqueueEmbedPage: () => Promise.resolve('j'),
+      enqueueEmbedSweep: () => Promise.resolve('j'),
     };
     const w = fakeJobDeps({ imports, queue });
     return { ...w, imports, calls, jobs: registerJobs(w.deps) };
