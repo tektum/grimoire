@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { FileStorageError } from '@tektum/grimoire-core/ports/file-storage';
 import { ImportBusyError } from '@tektum/grimoire-core/ports/import-repo';
 import type { ImportSource, ImportStatus } from '@tektum/grimoire-core/ports/import-repo';
 import type { FilesConfig, ImportConfig } from '@tektum/grimoire-core/ports/config';
@@ -662,6 +663,21 @@ describe('endings that are not the end of the run', () => {
 });
 
 describe('a failure of the job', () => {
+  it('a store that does not answer while the zips are sized is a failure of the job, not a missing upload: the error goes up for the queue to retry', async () => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    vi.spyOn(t.files, 'head').mockRejectedValueOnce(new FileStorageError('unavailable', 'the store is down'));
+    await expect(t.run(ctx({ attempt: 2, retryLimit: 3 }))).rejects.toThrow('the store is down');
+    expect((await t.record())?.status).toBe('running');
+  });
+
+  it('an import with no part rows and no key on the row reads its one zip at the conventional key', async () => {
+    const t = await setup([md('a.md\u0000# A\n')]);
+    t.repo.seed({ id: IMPORT, tenantId: TENANT, status: 'uploaded', createdBy: 'user-1', targetCollectionId: 'col', s3Key: null });
+    await t.run();
+    expect((await t.record())?.status).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['A']);
+  });
+
   it('while retries remain: the error goes up for the queue to retry, the import stays running', async () => {
     const t = await setup([md('a.md\u0000# A\n')]);
     t.converter.seedHook = () => { throw new Error('boom'); };
