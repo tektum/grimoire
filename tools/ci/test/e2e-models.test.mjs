@@ -26,7 +26,7 @@ test('every Compose service that builds the image passes the argument, defaultin
 });
 
 test('the e2e jobs skip the models and turn the semantic search off, and the image job and the integration job do neither', () => {
-  for (const name of ['e2e-m1', 'e2e-m2', 'e2e-m3', 'e2e-m4', 'e2e-m5', 'e2e-web', 'e2e-web-browsers']) {
+  for (const name of ['e2e-m1-m3', 'e2e-m4', 'e2e-m5', 'e2e-web', 'e2e-web-browsers']) {
     const text = job(name);
     assert.match(text, /\n {4}env:\n {6}GRIMOIRE_IMAGE_MODELS: skip\n {6}GRIMOIRE_SEMANTIC_SEARCH: 'off'\n/, name);
   }
