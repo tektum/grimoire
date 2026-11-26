@@ -276,6 +276,88 @@ describe('signDownload', () => {
   });
 });
 
+describe('multipart', () => {
+  const xml = { 'content-type': 'application/xml' };
+  const MIN = 5 * 1024 * 1024;
+  const part = (n: number, size: number, etag = `"e${String(n)}"`) => `<Part><PartNumber>${String(n)}</PartNumber><ETag>${etag}</ETag><Size>${String(size)}</Size></Part>`;
+  const listing = (parts: string, next?: number) => `<ListPartsResult><IsTruncated>${next === undefined ? 'false' : 'true'}</IsTruncated>${next === undefined ? '' : `<NextPartNumberMarker>${String(next)}</NextPartNumberMarker>`}${parts}</ListPartsResult>`;
+
+  it('createMultipart opens the upload with the content type and returns its id; a store that sends none is unavailable', async () => {
+    recorder.reply = { status: 200, headers: xml, body: '<InitiateMultipartUploadResult><UploadId>u-1</UploadId></InitiateMultipartUploadResult>' };
+    expect(await store().createMultipart('a/b', { contentType: 'application/zip' })).toEqual({ uploadId: 'u-1' });
+    expect(seen[0]?.method).toBe('POST');
+    expect(seen[0]?.query.has('uploads')).toBe(true);
+    expect(seen[0]?.headers['content-type']).toBe('application/zip');
+    recorder.reply = { status: 200, headers: xml, body: '<InitiateMultipartUploadResult></InitiateMultipartUploadResult>' };
+    expect(await kindOf(store().createMultipart('a/b', { contentType: 'application/zip' }))).toBe('unavailable');
+  });
+
+  it('signPart signs the length, the upload and the part number for the public endpoint, valid for the time asked; a part number outside 1 to 10000 is refused', async () => {
+    const s = store();
+    const before = Date.now();
+    const signed = await s.signPart('a/b', { uploadId: 'u-1', partNumber: 7, size: 1234, ttlSeconds: 900 });
+    const url = new URL(signed.url);
+    expect(url.origin).toBe('http://public.invalid:8333');
+    expect(url.searchParams.get('partNumber')).toBe('7');
+    expect(url.searchParams.get('uploadId')).toBe('u-1');
+    expect(url.searchParams.get('X-Amz-Expires')).toBe('900');
+    expect(url.searchParams.get('X-Amz-SignedHeaders')).toContain('content-length');
+    expect(signed.method).toBe('PUT');
+    expect(signed.expiresAt).toBeGreaterThanOrEqual(before + 900_000);
+    for (const partNumber of [0, 10_001, 1.5]) expect(await kindOf(s.signPart('a/b', { uploadId: 'u-1', partNumber, size: 1, ttlSeconds: 60 }))).toBe('invalid-parts');
+    expect(seen).toHaveLength(0);
+  });
+
+  it('listParts follows the pages by part number and lists a part the store reports twice once, in order', async () => {
+    recorder.respond = (request) => request.query.get('part-number-marker') === null
+      ? { status: 200, headers: xml, body: listing(part(2, 7) + part(1, MIN), 2) }
+      : { status: 200, headers: xml, body: listing(part(2, 7, '"e2b"') + part(3, 9)) };
+    expect(await store().listParts('a/b', 'u-1')).toEqual([{ partNumber: 1, size: MIN }, { partNumber: 2, size: 7 }, { partNumber: 3, size: 9 }]);
+    expect(seen.map((r) => r.query.get('part-number-marker'))).toEqual([null, '2']);
+    expect(seen.every((r) => r.query.get('uploadId') === 'u-1')).toBe(true);
+  });
+
+  it('completeMultipart joins the parts the store lists with the tags the store gave, and reports the size', async () => {
+    recorder.respond = (request) => request.method === 'GET'
+      ? { status: 200, headers: xml, body: listing(part(1, MIN) + part(2, 100)) }
+      : { status: 200, headers: xml, body: '<CompleteMultipartUploadResult><ETag>"done-2"</ETag></CompleteMultipartUploadResult>' };
+    expect(await store().completeMultipart('a/b', 'u-1')).toEqual({ etag: '"done-2"', size: MIN + 100 });
+    const post = seen[1];
+    expect(post?.method).toBe('POST');
+    expect(post?.query.get('uploadId')).toBe('u-1');
+    const body = post?.body.toString() ?? '';
+    expect(body.indexOf('e1')).toBeGreaterThan(-1);
+    expect(body.indexOf('e1')).toBeLessThan(body.indexOf('e2'));
+  });
+
+  it('completeMultipart refuses an empty list, a gap and a short part itself, without asking the store to complete', async () => {
+    for (const parts of ['', part(1, MIN) + part(3, 10), part(1, 10) + part(2, 10)]) {
+      seen.length = 0;
+      recorder.reply = { status: 200, headers: xml, body: listing(parts) };
+      expect(await kindOf(store().completeMultipart('a/b', 'u-1'))).toBe('invalid-parts');
+      expect(seen.map((r) => r.method)).toEqual(['GET']);
+    }
+  });
+
+  it('abortMultipart treats an unknown upload as done and any other failure as unavailable', async () => {
+    recorder.reply = { status: 404, headers: xml, body: '<Error><Code>NoSuchUpload</Code></Error>' };
+    await expect(store().abortMultipart('a/b', 'u-1')).resolves.toBeUndefined();
+    expect(seen[0]?.method).toBe('DELETE');
+    recorder.reply = { status: 500, headers: xml, body: '<Error><Code>InternalError</Code></Error>' };
+    expect(await kindOf(store().abortMultipart('a/b', 'u-1'))).toBe('unavailable');
+  });
+
+  it('every call checks the key first', async () => {
+    const s = store();
+    expect(await kindOf(s.createMultipart('../x', { contentType: 'a/b' }))).toBe('invalid-key');
+    expect(await kindOf(s.signPart('../x', { uploadId: 'u', partNumber: 1, size: 1, ttlSeconds: 1 }))).toBe('invalid-key');
+    expect(await kindOf(s.listParts('../x', 'u'))).toBe('invalid-key');
+    expect(await kindOf(s.completeMultipart('../x', 'u'))).toBe('invalid-key');
+    expect(await kindOf(s.abortMultipart('../x', 'u'))).toBe('invalid-key');
+    expect(seen).toHaveLength(0);
+  });
+});
+
 describe('mapError', () => {
   it.each([
     [{ name: 'NoSuchKey' }, 'not-found'],
