@@ -4,6 +4,7 @@ import type { JobHandler } from '@tektum/grimoire-core/ports/job-queue';
 import type { TenantRepo } from '@tektum/grimoire-core/ports/tenant-repo';
 import { modelKey } from '@tektum/grimoire-core/semantic/model-key';
 import type { EventLog } from '../events.js';
+import { reasonOf } from './instrument.js';
 import type { JobsApi } from './runner.js';
 import { forEachTenant } from './tenants.js';
 
@@ -15,7 +16,7 @@ export interface EmbedSweepDeps {
   readonly store: Pick<EmbeddingStore, 'pagesNeedingEmbedding' | 'counts'>;
   readonly embedder: Pick<Embedder, 'status' | 'model'>;
   readonly queue: Pick<JobsApi, 'enqueueEmbedSweep' | 'enqueueEmbedPage'>;
-  readonly log: Pick<EventLog, 'info'>;
+  readonly log: Pick<EventLog, 'info' | 'warn'>;
   readonly sweepSeconds: number;
   readonly debounceSeconds: number;
 }
@@ -27,7 +28,8 @@ export interface EmbedSweepDeps {
  *
  * A model change needs nothing more: the pages whose state names the old model are selected like any page whose Markdown changed, 50 a run, and `embed-page` replaces each one's rows as it goes (search reads
  * the rows of the active model only, so its coverage rises while this runs). The first run of a process that knows the model's key says how many pages are in that case, once (`semantic.reembed_started`;
- * a restart in the middle of a rollout says it again, for the pages that are left).
+ * a restart in the middle of a rollout says it again, for the pages that are left). The lookup is only for that line: it is claimed before it is awaited (a slow run with the next one already due does not
+ * make it twice), and a lookup that fails is reported with its reason and tried again at the next run, never in the way of the pages.
  */
 export function createEmbedSweep(deps: EmbedSweepDeps): JobHandler<unknown> {
   let looked = false;
@@ -36,9 +38,14 @@ export function createEmbedSweep(deps: EmbedSweepDeps): JobHandler<unknown> {
     if (deps.embedder.status() !== 'ready') return; // the key of the model is known once it has loaded: the next run looks again
     const model = modelKey(deps.embedder.model);
     if (!looked) {
-      const { pagesOtherModel } = await deps.store.counts(model);
       looked = true;
-      if (pagesOtherModel > 0) deps.log.info('semantic.reembed_started', { model, pages: pagesOtherModel });
+      try {
+        const { pagesOtherModel } = await deps.store.counts(model);
+        if (pagesOtherModel > 0) deps.log.info('semantic.reembed_started', { model, pages: pagesOtherModel });
+      } catch (error) {
+        looked = false;
+        deps.log.warn('semantic.reembed_count_failed', reasonOf(error));
+      }
     }
     await forEachTenant(await deps.tenants.ids(), ctx.signal, async (tenantId) => {
       for (const page of await deps.store.pagesNeedingEmbedding(tenantId, model, { olderThanSeconds: deps.debounceSeconds, limit: SWEEP_PAGES })) {

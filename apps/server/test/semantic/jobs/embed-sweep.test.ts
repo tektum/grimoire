@@ -113,5 +113,31 @@ describe('the embed sweep', () => {
       await loading.handler(null, ctxOf());
       expect(started(loading.logger)).toEqual([{ model: loading.model, pages: 2 }]); // the first run that could know the model's key
     });
+
+    it('says it once when two runs overlap (a slow run with the next one already due): the lookup is claimed before it is awaited', async () => {
+      const s = setup();
+      await embeddedUnderOld(s, 2);
+      const real = s.store.counts.bind(s.store);
+      const gate = Promise.withResolvers<void>();
+      s.store.counts = async (model) => { await gate.promise; return real(model); };
+      const runs = [s.handler(null, ctxOf()), s.handler(null, ctxOf())];
+      gate.resolve();
+      await Promise.all(runs);
+      expect(started(s.logger)).toEqual([{ model: s.model, pages: 2 }]);
+    });
+
+    it('does not let a failed lookup stop the pages: the run goes on, says so with the reason of the failure only, and looks again at its next run', async () => {
+      const s = setup();
+      const ids = await embeddedUnderOld(s, 2);
+      const real = s.store.counts.bind(s.store);
+      s.store.counts = () => Promise.reject(new Error('operator connection down'));
+      await s.handler(null, ctxOf()); // does not reject
+      expect(s.calls.flatMap((c) => (c[0] === 'page' ? [c[1].pageId] : []))).toEqual(ids);
+      expect(started(s.logger)).toEqual([]);
+      expect(s.logger.entries.filter((e) => e.event === 'semantic.reembed_count_failed').map((e) => [e.level, e.fields])).toEqual([['warn', { errorName: 'Error', errorMessage: 'operator connection down' }]]);
+      s.store.counts = real;
+      await s.handler(null, ctxOf());
+      expect(started(s.logger)).toEqual([{ model: s.model, pages: 2 }]);
+    });
   });
 });

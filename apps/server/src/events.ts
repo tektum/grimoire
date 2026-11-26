@@ -107,6 +107,8 @@ export interface WarnEvents {
   'search.timeout': Record<string, never>;
   /** A page could not be embedded (`reason` is the embedder's code, never text) on this attempt. */
   'semantic.failed': { pageId: string; reason: string; attempt: number };
+  /** The sweep could not count the pages a model change leaves (the line `semantic.reembed_started` is not written yet; the pages are handed on all the same). The failure's name, code and message only. */
+  'semantic.reembed_count_failed': { errorName: string; errorCode?: string; errorMessage: string };
   'import.failed': { importId: string; reason: string };
   /** The archive was refused before any entry was read. `reason` is a code, never a name from the archive. */
   'import.archive_refused': { importId: string; reason: string };

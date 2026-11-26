@@ -11,9 +11,10 @@ describe('the semantic events', () => {
     log.warn('semantic.failed', { pageId: 'p1', reason: 'too-long', attempt: 2 });
     log.error('semantic.unavailable', { reason: 'model-missing' });
     log.info('semantic.reembed_started', { model: 'multilingual-e5-base@1a2b3c4d', pages: 40 });
+    log.warn('semantic.reembed_count_failed', { errorName: 'Error', errorMessage: 'connection down' });
     log.debug('search.semantic_fallback', { reason: 'embedder-unavailable' });
     expect(logger.entries.map((e) => `${e.level} ${e.event}`)).toEqual([
-      'info semantic.embedded', 'warn semantic.failed', 'error semantic.unavailable', 'info semantic.reembed_started', 'debug search.semantic_fallback',
+      'info semantic.embedded', 'warn semantic.failed', 'error semantic.unavailable', 'info semantic.reembed_started', 'warn semantic.reembed_count_failed', 'debug search.semantic_fallback',
     ]);
     expect(logger.entries[2]?.fields).toEqual({ reason: 'model-missing' });
   });
