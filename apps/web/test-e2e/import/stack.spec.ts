@@ -6,9 +6,9 @@ import { signInAs } from '../support/sign-in';
 import { storedZip } from '../support/zip';
 import { chooseMarkdown } from './support';
 
-// The import screen against the stack: the real import routes (M7-T05) and the real file store, signed in as development users. The engine that runs an accepted import (M7-T04) is not in the stack yet,
-// so an import is accepted and WAITS (`uploaded`); what an import does once it runs (the progress to done, the report, the source of a failed page, cancelling while it runs) is in the scripted
-// specifications of this folder until then (`stack-engine.spec.ts` is its place). When the engine is in, an accepted import is taken at once and the waiting specification below must change with it.
+// The import screen against the stack: the real import routes (M7-T05), the real file store and the import job (M7-T04), signed in as development users. An accepted import is taken at once and runs
+// to its end, so the specification below follows one to done (what the screen shows while it runs, the report, the source of a failed page and cancelling while it runs are in the scripted
+// specifications of this folder: a run in the stack is too short to catch in the middle).
 // Written for the stack (`make test-m6`, `make test-web-e2e`); not run where there is none.
 /** What the browser did with the PUT of the zip to the file store: its status or why it failed, for the message of a failure ("could not be sent" alone does not say). */
 function watchStore(page: Page): { readonly seen: string[] } {
@@ -59,7 +59,7 @@ const stateOf = async (id: string): Promise<{ status: string }> => {
   return (await response.json()) as { status: string };
 };
 
-test('a zip is created, sent to the file store and started through the real routes: the import is accepted and waits, and can be cancelled while it waits', async ({ page, context }) => {
+test('a zip is created, sent to the file store and started through the real routes: the import runs to done and the pages are in the collection', async ({ page, context }) => {
   const made = await makePage('# A collection to import into\n');
   await signInAs(context, 'e2e-alice', 'member');
   await page.goto('/import');
@@ -78,13 +78,8 @@ test('a zip is created, sent to the file store and started through the real rout
   await page.getByRole('button', { name: 'Import' }).click();
   await explained(store, () => expect(page).toHaveURL(/\/import\?import=[0-9a-f-]{36}/));
   const id = new URL(page.url()).searchParams.get('import') as string;
-  await expect(page.getByRole('progressbar')).toBeVisible();
-  await expect(page.getByRole('status').first()).toHaveText('Waiting to start…');
-  expect((await stateOf(id)).status, 'the API holds it as accepted and waiting').toBe('uploaded');
-
-  await page.getByRole('button', { name: 'Cancel import' }).click();
-  await expect(page.getByRole('status').first()).toHaveText('Cancelled. The pages it created were moved to the trash.');
-  expect((await stateOf(id)).status).toBe('cancelled');
+  await expect(page.getByRole('status').first()).toHaveText(/^Done: \d+ pages? imported/);
+  expect((await stateOf(id)).status, 'the API holds it as done').toBe('done');
   await expect(page.getByRole('button', { name: 'Cancel import' })).toHaveCount(0);
 });
 
