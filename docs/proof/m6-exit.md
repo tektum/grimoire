@@ -205,6 +205,6 @@ Each of these is checked by a job of the merge gate, on every pull request:
 | `bun run licence` | step `Licence check` of job `checks` |
 | secrets scan | step `Secret Scan` of job `checks` |
 | workflows | step `Workflow Policy` of job `checks` (actionlint, zizmor) |
-| the browser specifications against the stack, in Chromium | job `e2e-web` |
-| the same, in Firefox and WebKit | job `e2e-web-browsers` (one runner per browser; not in the required checks). Firefox leaves out the accessibility folder and every `axe.spec` by one rule (`FIREFOX_ARIA_CRASH_SPECS`, a Firefox crash on the ARIA tree; `tools/ci/test/firefox-exclusion.test.mjs` fails once Playwright's Firefox is 163 or later); those run in Chromium and WebKit |
+| the browser specifications against the stack, in Chromium | job `e2e-web` (in the list of `ci-required`) |
+| the same, in Firefox and WebKit | job `e2e-web-browsers` (one runner per browser; in the list of `ci-required`, so the merge gate waits for it). Firefox leaves out the accessibility folder and every `axe.spec` by one rule (`FIREFOX_ARIA_CRASH_SPECS`, a Firefox crash on the ARIA tree; `tools/ci/test/firefox-exclusion.test.mjs` fails once Playwright's Firefox is 163 or later); those run in Chromium and WebKit |
 

@@ -814,17 +814,27 @@ jobs:
       - e2e-m1-m3
       - e2e-m4
       - e2e-m5
+      - e2e-web
+      - e2e-web-browsers
+      - search-latency
+      - semantic-models
     steps:
       - name: Verify every needed job succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -eu
-          # A failed or cancelled job always fails the gate. A skipped job passes only when the changes job
-          # reported a documents-only change (code=false): anything else that is skipped fails.
+          # A failed or cancelled job always fails the gate. A skipped job passes only where the skip is meant: the changes job reported a documents-only change (code=false), or the job is one of
+          # the two with a path filter and the filter said no (Search latency runs for a change to the search or the embeddings, Semantic models for a change to the embedder, its tests or the models).
+          # Anything else that is skipped fails: a job that should have run and did not is not a pass.
           code=$(jq -r '.changes.outputs.code // "true"' <<< "$NEEDS_JSON")
-          jq -r 'to_entries[] | if .value.result == "success" then "OK   \(.key)" else "FAIL \(.key) (result=\(.value.result))" end' <<< "$NEEDS_JSON"
-          if jq -e --arg code "$code" '[ to_entries[] | select(.value.result != "success") | select(.value.result != "skipped" or $code == "true") ] | length > 0' <<< "$NEEDS_JSON" >/dev/null; then
+          semantic=$(jq -r '.changes.outputs.semantic // "true"' <<< "$NEEDS_JSON")
+          search=$(jq -r '.changes.outputs.search // "true"' <<< "$NEEDS_JSON")
+          # A missing output counts as "true" for all three: a changes job that did not say is a changes job that did not run, and the filters then cannot excuse a skip.
+          # shellcheck disable=SC2016 # $code, $search and $semantic are jq variables here, bound by --arg below, not shell variables
+          skipok='def skipok($k): $code == "false" or ($k == "search-latency" and $search != "true") or ($k == "semantic-models" and $semantic != "true");'
+          jq -r --arg code "$code" --arg semantic "$semantic" --arg search "$search" "$skipok"' to_entries[] | if .value.result == "success" then "OK   \(.key)" elif .value.result == "skipped" and skipok(.key) then "SKIP \(.key)" else "FAIL \(.key) (result=\(.value.result))" end' <<< "$NEEDS_JSON"
+          if jq -e --arg code "$code" --arg semantic "$semantic" --arg search "$search" "$skipok"' [ to_entries[] | select(.value.result != "success") | select(.value.result != "skipped" or (skipok(.key) | not)) ] | length > 0' <<< "$NEEDS_JSON" >/dev/null; then
             echo ""
             echo "::error::One or more required jobs did not succeed. CI gate failing."
             exit 1
