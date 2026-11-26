@@ -23,7 +23,7 @@ describe('logger-json', () => {
       expect(['info', 'warn']).toContain(o['level']);
       expect(typeof o['event']).toBe('string');
     }
-    expect(JSON.parse(lines[0] ?? '')).toEqual({ page: 'p1', bytes: 5, ts: '2026-11-20T00:00:00.000Z', level: 'info', event: 'connect' });
+    expect(JSON.parse(lines[0] ?? '')).toEqual({ page: 'p1', bytes: 5, ts: '2026-11-20T00:00:00.000Z', level: 'info', event: 'connect', message: 'connect' });
   });
 
   it('never writes a token field or a URL query string', () => {
@@ -61,5 +61,25 @@ describe('logger-json', () => {
     const o = JSON.parse(lines[0] ?? '') as Record<string, unknown>;
     expect(o).toMatchObject({ level: 'info', event: 'real' });
     expect(o['ts']).not.toBe('x');
+  });
+
+  it('writes the event text as `message` as well, so a log pipeline that shows `message` (Datadog) shows the line, with the same redaction', () => {
+    const { lines, log } = capture();
+    log.info('connect', { page: 'p1' });
+    log.error('GET /p?token=zzz-leak failed');
+    const [a, b] = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(a).toMatchObject({ event: 'connect', message: 'connect', level: 'info' });
+    expect(b?.['message']).toBe(b?.['event']);
+    expect(String(b?.['message'])).not.toContain('zzz-leak');
+    expect(String(b?.['message'])).toContain('/p');
+  });
+
+  it('does not let fields or a child logger override `message`', () => {
+    const { lines, log } = capture();
+    log.info('real', { message: 'fake' });
+    log.child({ message: 'fake-child' }).info('real-child');
+    const [a, b] = lines.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(a).toMatchObject({ event: 'real', message: 'real' });
+    expect(b).toMatchObject({ event: 'real-child', message: 'real-child' });
   });
 });

@@ -257,6 +257,6 @@ export function scrubFields(fields: Record<string, unknown> | undefined): Record
   const out = scrub(fields ?? {}, 0, { nodes: 0, seen: new WeakSet() });
   if (typeof out !== 'object' || out === null || Array.isArray(out)) return { fields: UNSERIALISABLE };
   const clean: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(out)) if (k !== 'ts' && k !== 'level' && k !== 'event') clean[k] = v;
+  for (const [k, v] of Object.entries(out)) if (k !== 'ts' && k !== 'level' && k !== 'event' && k !== 'message') clean[k] = v;
   return clean;
 }
