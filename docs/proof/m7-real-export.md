@@ -7,7 +7,7 @@ A real Notion export was imported by the engine on a developer machine, to check
 - Three zips: the full export (30.67 GB), which is a zip that holds two part zips, and those two parts (18.56 GB and 12.11 GB). 172 pages of the first part use files that are only in the second.
 - Inside: 6,305 pages (Markdown), 272 CSV files, 1,578 folders, at most 9 deep. Uncompressed, the two parts hold 32.73 GB (19.79 GB and 12.94 GB), of which 126 video files make up 32.43 GB.
 - Sizes are in GB of 10^9 bytes. A zip's size is its compressed size and what it holds is counted uncompressed, which is why the videos alone (32.43 GB) are more than the zips (30.67 GB).
-- Each of the three is over the upload limit of 500 MiB (R10.3), so none of them can be imported as it is.
+- Each of the three is over the upload limit of 500 MiB (R10.3), so none of them could be imported as it was (the limit was raised by the upload in parts: see the last section of results below).
 - For the runs below, the two parts were merged into one zip without the video files, which are over the 25 MB attachment cap anyway: 7,323 entries, 257 MB zipped, 292 MB uncompressed.
 
 ## The ten things only a real export could show
@@ -88,8 +88,29 @@ With the Notion profile:
 | Peak memory | 523 MB for the resumed process |
 | Cancelled after 10 s | Stopped at once with 168 pages written. The counts lag by up to one batch: 150 counted |
 
+## The whole export, with videos, through the routes (M7 big exports)
+
+The two part zips of the export (the third zip at the top level is a wrapper that holds only those two, and a wrapper fails `nested_or_split_export` by design), uploaded and imported through the routes the import screen uses, on a local stack: the built server (`role=all`, local mode), PostgreSQL, a SeaweedFS file store, main at the merge of the limits (#519). Nothing else was involved: no bytes went through the application, and the limits were the defaults (zip 32 GiB, import 64 GiB, file 2 GiB, copies 96 GiB).
+
+| | |
+|---|---|
+| Zips | 2: 18,556,508,051 and 12,113,837,269 bytes (30.67 GB, 28.6 GiB); 7,144 and 305 entries |
+| Upload | multipart, 277 and 181 parts of 64 MiB, 4 parts at a time, 64 s |
+| Items | 7,574 |
+| Pages written | 4,192 (3,923 pages and 269 databases as tables); 0 in the trash |
+| Skipped | 2,559: `database_row` 2,505, `type_not_allowed` 32, `unreferenced` 13, `nested_archive` 6, `too_large` 2 (pages), `too-large-to-seed` 1 |
+| Failed | 1: a database, `table_too_large` |
+| Attachments | 932 ready, 32,694,304,896 bytes (30.45 GiB): 122 mp4 (32.25 GB, the largest 609 MB), 4 quicktime (0.18 GB), 736 png, 32 pdf, 20 jpeg, 6 heic, 2 pptx; 39 pictures copied from the web; 80 warnings; 311 pages hold copies |
+| Copies against the bound | 32.69 GB of 96 GiB (103.08 GB): 31.7% |
+| Server memory, peak | 862 MB before the kill, 716 MB after the resume |
+| Time | 19 min 20 s from start to done, 13.5 min of it waiting for the queue to offer the killed job again (below); about 5.6 min of work |
+| After the run | both zips deleted by the clean-up, no multipart upload left open |
+
+### A hard kill in the middle
+
+The server was killed with `kill -9` with 1,406 pages done. The queue offered the job again 13.8 min later (attempt 2: the job's expiry of 900 s, then the retry delay of 30 s), and the import went on from its settled items: the counts went from 1,406 to 4,192 and never back, there were no duplicate pages, and the import ended `done`. This wait is known behaviour: the import sweep gives a `running` import a new job only when the queue holds none, and the queue holds the dead one until it expires. A kill costs time, not data; a deploy that stops the process cleanly does not wait.
+
 ## What is still open
 
-- None of the three zips can be uploaded as it is: each is over 500 MiB. An export without its video files fits.
 - The 21 database CSVs that no reader parsed are read by #471 (21 of 272 failed before, 0 after).
 - The construct counts in the import's report (`report.constructs`) follow when the M7-T06 stack is on main.
