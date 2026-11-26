@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createEmbeddingStore, createPageStore } from '@tektum/grimoire-adapter-db-kysely';
 import { createOnnxEmbedder } from '@tektum/grimoire-adapter-embedder-onnx';
 import type { SemanticConfig } from '@tektum/grimoire-core/ports/config';
+import type { EmbeddingStore } from '@tektum/grimoire-core/ports/embedding-store';
 import { FakeLogger } from '@tektum/grimoire-core/testing/fake-logger';
 import { insertPage, raw } from '@tektum/grimoire-test-support/database';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -51,6 +52,8 @@ describe('the real model, embedding a page of 20,000 words', () => {
     const embedder = createOnnxEmbedder(config, { lockFile: path.join(modelDir, 'models.lock.json') });
     const delay = monitorEventLoopDelay({ resolution: RESOLUTION_MS });
     let embedded: Promise<void> = Promise.resolve();
+    let probing = false;
+    let probeRun: Promise<void> = Promise.resolve();
     try {
       await vi.waitFor(() => { expect(embedder.status(), 'the model did not load').toBe('ready'); }, { timeout: 120_000, interval: 50 });
       const tenant = await seedTenant(db.sql, 'T-event-loop');
@@ -63,22 +66,48 @@ describe('the real model, embedding a page of 20,000 words', () => {
       const others = Array.from({ length: SAVES }, () => randomUUID());
       for (const id of others) await insertPage(db.sql, { id, collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'Saved', markdown: null });
 
+      const began = performance.now();
+      // What was running when the loop stalled: every store call of the job and every save is a span of this run (milliseconds from its start), and a 10 ms probe records each gap of more than 100 ms.
+      const spans: { what: string; from: number; to: number }[] = [];
+      const traced = <T>(what: string, call: () => Promise<T>): Promise<T> => {
+        const from = Math.round(performance.now() - began);
+        return call().finally(() => { spans.push({ what, from, to: Math.round(performance.now() - began) }); });
+      };
+      const store = createEmbeddingStore(db.app, db.ops);
+      const tracedStore: EmbeddingStore = {
+        ...store,
+        pageText: (tenantId, id) => traced('pageText', () => store.pageText(tenantId, id)),
+        existingHashes: (tenantId, id, model) => traced('existingHashes', () => store.existingHashes(tenantId, id, model)),
+        saveChunks: (tenantId, id, hash, model, rows) => traced('saveChunks', () => store.saveChunks(tenantId, id, hash, model, rows)),
+        replacePage: (tenantId, id, hash, model, rows) => traced('replacePage', () => store.replacePage(tenantId, id, hash, model, rows)),
+      };
       const embedPage = createEmbedPage({
-        embedder, store: createEmbeddingStore(db.app, db.ops), log: createEventLog(new FakeLogger()), clock: { now: () => Date.now() },
+        embedder, store: tracedStore, log: createEventLog(new FakeLogger()), clock: { now: () => Date.now() },
         limiter: createRateLimiter({ perMinute: 100_000, now: () => Date.now(), sleep: () => Promise.resolve() }), // the cap is the subject of its own tests: here it must not be what slows the page down
       });
       const saves = createPageStore(db.app, db.ops, { now: () => Date.now() });
 
+      const stalls: { at: number; ms: number }[] = [];
+      probing = true;
+      const probe = (async () => {
+        let last = performance.now();
+        while (probing) {
+          await sleep(10);
+          const now = performance.now();
+          if (now - last > 100) stalls.push({ at: Math.round(last - began), ms: Math.round(now - last) });
+          last = now;
+        }
+      })();
+      probeRun = probe;
       delay.enable();
       let embedding = true;
-      const began = performance.now();
       embedded = embedPage({ tenantId: tenant.tenantId, pageId }, { jobId: 'event-loop', attempt: 1, retryLimit: 0, signal: new AbortController().signal }).finally(() => { embedding = false; });
       embedded.catch(() => undefined); // an embedding that fails while the saves are still going is not an unhandled rejection: `await embedded` below (or the finally) is where it is seen
       const saved: number[] = [];
       let savedWhileEmbedding = 0;
       for (const id of others) {
         const from = performance.now();
-        const outcome = await saves.store(tenant.tenantId, id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: `# Saved\n\n${pageText(400)}`, text: pageText(400), epoch: 0, editedAt: Date.now() });
+        const outcome = await traced('save', () => saves.store(tenant.tenantId, id, { kind: 'converted', state: new Uint8Array([1, 2, 3]), markdown: `# Saved\n\n${pageText(400)}`, text: pageText(400), epoch: 0, editedAt: Date.now() }));
         saved.push(performance.now() - from);
         if (embedding) savedWhileEmbedding += 1;
         expect(outcome).toEqual({ written: true });
@@ -87,14 +116,17 @@ describe('the real model, embedding a page of 20,000 words', () => {
       await embedded;
       const embedMs = performance.now() - began;
       delay.disable();
+      probing = false;
+      await probe;
 
       const [state] = (await db.sql(`select status, chunk_count from page_embedding_state where page_id = '${pageId}'`)) as { status: string; chunk_count: number }[];
       const measured = {
         words: WORDS, chunks: state?.chunk_count, embedMs: Math.round(embedMs), savedWhileEmbedding, saveMsMax: Math.round(Math.max(...saved)),
         loopDelayMs: { p50: delay.percentile(50) / 1e6, p99: delay.percentile(99) / 1e6, max: delay.max / 1e6 },
       };
-      console.log(JSON.stringify({ eventLoop: measured }));
-      const why = JSON.stringify(measured);
+      const detail = { stalls, spans: spans.filter((s) => s.to - s.from >= 20 || stalls.some((x) => s.from <= x.at + x.ms && s.to >= x.at)) }; // the long spans, and any span a stall fell in
+      console.log(JSON.stringify({ eventLoop: measured, ...detail }));
+      const why = JSON.stringify({ ...measured, ...detail });
 
       expect(state?.status, why).toBe('ready');
       expect(state?.chunk_count ?? 0, why).toBeGreaterThan(100); // a page of this size is many chunks: it was embedded, not skipped
@@ -104,6 +136,8 @@ describe('the real model, embedding a page of 20,000 words', () => {
       expect(delay.max / 1e6, why).toBeLessThanOrEqual(MAX_MS);
     } finally {
       delay.disable();
+      probing = false;
+      await probeRun;
       await embedded.catch(() => undefined); // the embedding has settled before the embedder is closed and the database dropped, whatever stopped the test
       await embedder.close();
     }
