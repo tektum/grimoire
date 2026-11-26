@@ -64,7 +64,12 @@ describe('a save, while the embedder is busy', () => {
         expect(row?.ready).toBe(6); // the busy page, and the five saved ones, found by the sweep after the debounce
       }, { timeout: 90_000, interval: 500 });
       const [chunks] = (await db.sql(`select count(distinct page_id)::int as pages from page_chunks where page_id in (${others.map((id) => `'${id}'`).join(',')})`)) as { pages: number }[];
-      expect(chunks?.pages, JSON.stringify(embedder.calls.map((c) => c.texts.length))).toBe(others.length); // each saved page has its chunk rows: it was embedded, from its saved text
+      expect(chunks?.pages).toBe(others.length); // each saved page has its chunk rows
+      // And the text asked for is the saved body, one text per saved page. On a failure the message shows what the embedder was given and what the pages hold.
+      const asked = embedder.calls.flatMap((c) => c.texts);
+      const held = (await db.sql(`select left(text_content, 80) as text from pages where id in (${others.map((id) => `'${id}'`).join(',')})`)) as { text: string | null }[];
+      const diagnosis = JSON.stringify({ asked: asked.map((t) => t.slice(0, 80)), held: held.map((h) => h.text) });
+      expect(asked.filter((t) => t.includes(SAVED)), diagnosis).toHaveLength(others.length);
     } finally {
       embedder.gate.resolve();
       await runner.hook.run();
