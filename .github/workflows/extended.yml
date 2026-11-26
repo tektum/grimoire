@@ -265,3 +265,53 @@ jobs:
       - name: Tear down
         if: always()
         run: make down-volumes
+
+  m6-exit:
+    name: M6 exit test (make test-m6)
+    if: (github.event_name != 'pull_request' || github.event.label.name == 'extended') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    # RUNNER: ubuntu-24.04 and not ubuntu-latest, as the browser jobs of CI (the system libraries Playwright installs for WebKit are those of 24.04).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The stack of this job runs with the semantic search off: its image is built without the model files (the Image job of CI builds and checks the full one).
+    env:
+      GRIMOIRE_IMAGE_MODELS: skip
+      GRIMOIRE_SEMANTIC_SEARCH: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          version: 2026.11.9
+          sha256: f13f3e5ec88807e0161669b3aa07a91d84478cdf1e95b5b92b63f85a25d42395
+          install_args: node bun
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # The three browsers, through the script that retries the download and the apt step (`make test-m6` tries to install them too, and goes on when it cannot).
+      - run: tools/ci/playwright-install.sh chromium firefox webkit
+      - run: make up
+      # The exit test of milestone 6 (M6-T13), as docs/proof/m6-exit.md runs it: the checks that need no stack, the stack with the handshake required, the production headers, and the scenarios of
+      # apps/web/test-e2e/m6/scenarios.ts in Chromium, Firefox and WebKit. The merge gate runs the parts of it that one browser and no stack change can show (the same document says which).
+      - run: make test-m6
+      # The last step of the exit test command: the licence report (no violation).
+      - run: bun run licence
+      - name: Collect Compose logs
+        if: failure()
+        run: docker compose -p grimoire logs --no-color > compose.log
+      - name: Upload m6-exit-results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: m6-exit-results
+          path: |
+            test-results/
+            compose.log
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-volumes
