@@ -75,7 +75,7 @@ test('`test-m6-static` checks the list of scenarios, then builds the client for 
   assert.doesNotMatch(run.stdout, /--mode e2e|docker|playwright| up$/);
 });
 
-test('`test-m6-handshake` starts the stack with the handshake required, renders the headers once, and runs the handshake check in Chromium alone with the exit test settings', () => {
+test('`test-m6-handshake` starts the stack with the handshake required, renders the headers once, and runs the handshake check and the check of the served headers in Chromium alone, with the exit test settings', () => {
   const run = dryOf('test-m6-handshake');
   assert.equal(run.status, 0, run.stderr);
   const lines = stepsOf(run);
@@ -89,6 +89,6 @@ test('`test-m6-handshake` starts the stack with the handshake required, renders 
   assert.match(lines[spec] ?? '', /M6_EXIT=1/);
   assert.match(lines[spec] ?? '', /M6_REQUIRE_HANDSHAKE=1/);
   assert.match(lines[spec] ?? '', /GRIMOIRE_WEB_HEADERS_DIR="\/[^"]*\/test-results\/m6-headers"/);
-  assert.match(lines[spec] ?? '', /--project=chromium apps\/web\/test-e2e\/m6\/handshake\.spec\.ts$/);
+  assert.match(lines[spec] ?? '', /--project=chromium apps\/web\/test-e2e\/m6\/handshake\.spec\.ts apps\/web\/test-e2e\/m6\/origins\.spec\.ts$/, 'the handshake check and the one that asserts the page served with its headers');
   assert.equal(lines.filter((l) => /bunx playwright test/.test(l)).length, 1, 'one run, one browser');
 });

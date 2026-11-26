@@ -33,11 +33,11 @@ test-m6-static:
 	bun run apps/web/test-e2e/m6/scenarios.ts check
 	cd apps/web && bunx vite build && bun run check:build
 
-# `test-m6-handshake` is the stack that requires the handshake, with the production response headers served on 4173, and the handshake check in Chromium: it starts the stack again with the
+# `test-m6-handshake` is the stack that requires the handshake, with the production response headers served on 4173, and two specs in Chromium: the handshake check, and the one that asserts the page served with its rendered headers (origins.spec.ts skips itself without GRIMOIRE_WEB_HEADERS_DIR, which only this run and `test-m6` set): it starts the stack again with the
 # setting changed (the browser jobs run on the stack of the default), and needs the client built in e2e mode, as `make test-web-e2e` leaves it.
 .PHONY: test-m6-handshake
 test-m6-handshake: dev-secret
 	M6_REQUIRE_HANDSHAKE=1 GRIMOIRE_S3_PUBLIC_ENDPOINT=http://127.0.0.1:8333 $(WEB_COMPOSE) $(MAKE) up
 	GRIMOIRE_ALLOWED_ORIGINS="http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:$${E2E_WEB_PORT:-4173},http://localhost:$${E2E_WEB_PORT:-4173}" $(MAKE) files-setup
 	bun run apps/web/test-e2e/m6/headers.ts
-	$(M6_PLAYWRIGHT) --project=chromium apps/web/test-e2e/m6/handshake.spec.ts
+	$(M6_PLAYWRIGHT) --project=chromium apps/web/test-e2e/m6/handshake.spec.ts apps/web/test-e2e/m6/origins.spec.ts
