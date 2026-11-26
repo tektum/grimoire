@@ -46,7 +46,10 @@ test.describe('the live region', () => {
       const saving = seen.indexOf('Saving');
       expect(saving, 'Saving was received').toBeGreaterThanOrEqual(0);
       expect(seen.indexOf('Saved', saving + 1), 'Saved came after Saving').toBeGreaterThan(saving);
-      expect(await page.evaluate(() => (window as unknown as { line: Element }).line === document.querySelector('p.page-status') && (window as unknown as { line: Element }).line.isConnected), 'the same live region node').toBe(true);
+      expect(
+        await page.evaluate(() => (window as unknown as { line: Element }).line === document.querySelector('p.page-status') && (window as unknown as { line: Element }).line.isConnected),
+        'the same live region node',
+      ).toBe(true);
       expect(await active(page)).toBe(before);
     } finally {
       await context.close();
@@ -59,8 +62,17 @@ test.describe('the live region', () => {
       await page.getByRole('button', { name: 'More page actions' }).focus();
       const before = await active(page);
       await collab.stop();
-      await page.clock.runFor(11_000);
-      await expect(statusLine(page)).toHaveText('Offline: changes kept in this tab');
+      // The page's clock is the test's: the offline text comes 10 s after an attempt has failed, and the failed attempt arrives in real time (a browser that takes longer to refuse the connection, WebKit,
+      // delivers it after a single `runFor` has run, and the timer is then armed on a clock that nobody advances). So the clock is advanced a second at a time until the text is there.
+      await expect
+        .poll(
+          async () => {
+            await page.clock.runFor(1_000);
+            return statusLine(page).textContent();
+          },
+          { timeout: 20_000, intervals: [100], message: 'the connection-loss text, with the clock advanced a second at a time' },
+        )
+        .toBe('Offline: changes kept in this tab');
       expect(await active(page)).toBe(before);
     });
   });
