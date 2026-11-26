@@ -17,3 +17,6 @@ packages/api-client/src/schema.d.ts
 # SST: its working folder and the generated types
 .sst/
 sst-env.d.ts
+
+# The owner's real Notion export (M7-T08): private, never committed, never in CI.
+/test-data/notion-real/
