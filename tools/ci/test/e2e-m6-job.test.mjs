@@ -42,7 +42,7 @@ test('the Extended workflow runs the whole exit test, `make test-m6`, on the run
   assert.match(nightly, /name: M6 exit test \(make test-m6\)/);
   assert.match(nightly, /\n {4}runs-on: ubuntu-24\.04\n/, 'the runner of the browser jobs of CI');
   const install = nightly.search(/run: tools\/ci\/playwright-install\.sh chromium firefox webkit\n/);
-  const exit = nightly.search(/run: make test-m6\n/);
+  const exit = nightly.search(/run: make test-m6 M6_BROWSER_INSTALL=true\n/);
   const down = nightly.search(/run: make down-volumes\n/);
   assert.ok(install > 0 && exit > install && down > exit, 'the browsers, then the exit test, then the teardown');
   assert.match(nightly.slice(down - 60, down), /if: always\(\)/);

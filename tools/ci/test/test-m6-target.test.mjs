@@ -92,3 +92,15 @@ test('`test-m6-handshake` starts the stack with the handshake required, renders 
   assert.match(lines[spec] ?? '', /--project=chromium apps\/web\/test-e2e\/m6\/handshake\.spec\.ts apps\/web\/test-e2e\/m6\/origins\.spec\.ts$/, 'the handshake check and the one that asserts the page served with its headers');
   assert.equal(lines.filter((l) => /bunx playwright test/.test(l)).length, 1, 'one run, one browser');
 });
+
+test('the browsers are installed by the line `M6_BROWSER_INSTALL` says: the default is the install with its apt step, and a job that installed them already turns it into a no-op', () => {
+  const plain = stepsOf(dryOf('test-m6'));
+  assert.ok(plain.some((l) => /^bunx playwright install --with-deps chromium firefox webkit$/.test(l)), 'by default, the install');
+  const run = spawnSync('make', ['-n', '-C', root, 'test-m6', 'M6_BROWSER_INSTALL=true'], { encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const lines = stepsOf(run);
+  assert.ok(lines.includes('true'), 'the install line is the one given');
+  assert.ok(!lines.some((l) => /playwright install/.test(l)), 'no second install');
+  assert.ok(lines.findIndex((l) => l === 'true') < lines.findIndex((l) => /m6\/scenarios\.ts check/.test(l)), 'in the place of the install: before the checks');
+});
+

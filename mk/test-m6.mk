@@ -7,11 +7,14 @@
 # apps/web/test-e2e/m6/scenarios.ts in Chromium, Firefox and WebKit. The scenarios of screens that are not built yet are listed as pending in the run and in docs/proof/m6-exit.md.
 # A real sign-in with the identity provider is not part of it. The Makefile does not change for this target: `-include mk/*.mk` takes this file.
 M6_BROWSERS := chromium firefox webkit
+# How the browsers are installed (a line that goes on when it cannot): a job that has installed them already, and with a retry (tools/ci/playwright-install.sh), sets this to `true`, so that the target does not
+# run a second install, with its own apt step and no time limit.
+M6_BROWSER_INSTALL ?= bunx playwright install --with-deps $(M6_BROWSERS)
 M6_HEADERS := $(CURDIR)/test-results/m6-headers
 M6_PLAYWRIGHT := GRIMOIRE_WEB_HEADERS_DIR="$(M6_HEADERS)" E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" M6_EXIT=1 M6_REQUIRE_HANDSHAKE=1 bunx playwright test -c apps/web/playwright.config.ts
 test-m6: dev-secret
 	bun install --frozen-lockfile
-	-bunx playwright install --with-deps $(M6_BROWSERS)
+	-$(M6_BROWSER_INSTALL)
 	bun run apps/web/test-e2e/support/run-check.ts
 	bun run apps/web/test-e2e/m6/scenarios.ts check
 	bun run build

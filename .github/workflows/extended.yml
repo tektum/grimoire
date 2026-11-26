@@ -291,12 +291,12 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      # The three browsers, through the script that retries the download and the apt step (`make test-m6` tries to install them too, and goes on when it cannot).
+      # The three browsers, through the script that retries the download and the apt step (`make test-m6` would install them again, with an apt step of its own and no time limit: the line below turns that off).
       - run: tools/ci/playwright-install.sh chromium firefox webkit
       - run: make up
       # The exit test of milestone 6 (M6-T13), as docs/proof/m6-exit.md runs it: the checks that need no stack, the stack with the handshake required, the production headers, and the scenarios of
       # apps/web/test-e2e/m6/scenarios.ts in Chromium, Firefox and WebKit. The merge gate runs the parts of it that one browser and no stack change can show (the same document says which).
-      - run: make test-m6
+      - run: make test-m6 M6_BROWSER_INSTALL=true
       # The last step of the exit test command: the licence report (no violation).
       - run: bun run licence
       - name: Collect Compose logs
