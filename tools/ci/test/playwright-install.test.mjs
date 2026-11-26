@@ -106,9 +106,30 @@ test('dpkg is repaired before each retry of the libraries (a killed apt leaves i
 test('the time for the whole install is bounded: when it is used up it stops trying and says so, instead of running into the budget of the job', () => {
   const f = fake({ failing: 'install', failures: 99, hang: true });
   const started = Date.now();
+  // The first attempt ends at 1 s; 1 s is left, which is not more than the wait: no second attempt.
   const r = run(f.bin, { PLAYWRIGHT_TOTAL_SECONDS: '2', PLAYWRIGHT_ATTEMPT_TIMEOUT: '1', PLAYWRIGHT_RETRY_DELAYS: '1 1' });
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /used up|failed after/);
+  assert.match(r.stderr, /used up/);
   assert.match(r.stderr, /not a test failure/);
-  assert.ok(Date.now() - started < 12_000, 'it stopped within a few seconds of its total');
+  assert.equal(f.calls().filter((c) => c.startsWith('install ')).length, 1, 'without the limit there would be three attempts');
+  assert.ok(Date.now() - started < 8_000);
+});
+
+test('a repair of dpkg that stalls is cut by the time that is left of the total, and the wait is not slept past it', () => {
+  const f = fake({ failing: 'install-deps', failures: 99 });
+  const stall = path.join(dir, 'stalled-repair');
+  writeFileSync(stall, '#!/bin/sh\nsleep 30\n');
+  chmodSync(stall, 0o755);
+  const started = Date.now();
+  const r = run(f.bin, { PLAYWRIGHT_TOTAL_SECONDS: '4', PLAYWRIGHT_RETRY_DELAYS: '1 1', PLAYWRIGHT_REPAIR_CMD: stall });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not a test failure/);
+  assert.ok(Date.now() - started < 12_000, 'it did not wait for the 30 s repair');
+
+  const slow = fake({ failing: 'install-deps', failures: 99 });
+  const t1 = Date.now();
+  const r2 = run(slow.bin, { PLAYWRIGHT_TOTAL_SECONDS: '2', PLAYWRIGHT_RETRY_DELAYS: '10 10' });
+  assert.notEqual(r2.status, 0);
+  assert.match(r2.stderr, /used up/);
+  assert.ok(Date.now() - t1 < 8_000, 'it did not sleep the 10 s wait with 2 s left');
 });
