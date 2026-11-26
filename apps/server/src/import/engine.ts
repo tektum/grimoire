@@ -144,7 +144,14 @@ export interface PassTwoDeps {
   /** The entries of the archive, as `openArchive` read them. */
   readonly entries: readonly ZipEntry[];
   /** `maxTableBytes`: the largest Markdown table a database becomes (`GRIMOIRE_IMPORT_MAX_TABLE_BYTES`, the contract's default when absent). */
-  readonly limits: { readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number };
+  readonly limits: {
+    readonly maxEntryBytes: number; readonly maxRatio: number; readonly seedMaxMarkdownBytes: number; readonly maxStateBytes: number; readonly maxTableBytes?: number;
+    /**
+     * The most bytes of copies of files the import may make (a page that links a file gets a copy of its own, so a file that many pages link is many copies): past it the import stops
+     * (`attachment_budget`). Counted from the pages already written, so a resumed run does not start from zero. Absent: no budget.
+     */
+    readonly maxCopiedBytes?: number;
+  };
   readonly pageLimits: TenantPageLimits;
   readonly now: () => number;
 }
@@ -157,7 +164,7 @@ export interface PassTwoOptions {
   readonly signal?: AbortSignal;
 }
 
-export type PassTwoStop = 'not_running' | 'aborted' | 'collection_deleted';
+export type PassTwoStop = 'not_running' | 'aborted' | 'collection_deleted' | 'attachment_budget';
 export type PassTwoResult =
   | { readonly kind: 'done'; readonly counts: ImportCounts }
   /** The run ended before every page was dealt with; what was done is kept, and the counts say so. */
@@ -395,6 +402,8 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
   const queue = pageItems.filter((i) => i.status === 'pending').sort((a, b) => depthOf(a) - depthOf(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   // Warnings live on the item rows (written with the page or the settle), so the count is worked out from them like the others and survives a resumed or an overlapping run.
   const warned = new Map(all.map((i) => [i.id, i.warnings]));
+  // The bytes of copies the written pages hold (on their rows, so a resumed run counts them), and the ones this run has made for pages not yet written.
+  let copiedBytes = all.reduce((sum, i) => sum + i.attachmentBytes, 0);
   const counts = (): ImportCounts => {
     let pagesDone = 0, attachments = 0, skipped = 0, failed = 0;
     for (const i of all) {
@@ -500,8 +509,10 @@ export async function passTwo(deps: PassTwoDeps, record: ImportRecord, options: 
       for (const file of wanted) {
         if (rejected.has(file.id)) continue;
         const entry = entryByPath.get(file.path);
+        // A copy that would take the copies of the import past its budget is not made: the import stops, and ends failed (the pages before it are trashed with it, as for any failed import).
+        if (entry !== undefined && deps.limits.maxCopiedBytes !== undefined && copiedBytes + entry.size > deps.limits.maxCopiedBytes) return { stop: 'attachment_budget', bytes: 0 };
         const result: Staged = entry === undefined ? { kind: 'rejected', status: 'failed', reason: 'missing_entry' } : await stageAttachment(stage, entry, item.path);
-        if (result.kind === 'ok') { staged.set(file.id, result); continue; }
+        if (result.kind === 'ok') { staged.set(file.id, result); copiedBytes += result.row.size; continue; }
         if (result.scope === 'page') continue; // this page's object, not the file: this page keeps its link, other pages may still use the file
         rejected.set(file.id, result);
         if (status.get(file.id) === 'pending') await settle(file, result.status, result.reason);

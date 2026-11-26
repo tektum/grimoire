@@ -15,12 +15,12 @@ interface PartRow { ordinal: number; s3_key: string; bytes: string; upload_id: s
 interface ReportRow { kind: string; total: string; id: string; path: string; url_id: string | null; n: string; rn: number }
 interface ItemRow {
   id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
-  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; remote_failures: Record<string, number>;
+  markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; attachment_bytes: number; remote_failures: Record<string, number>;
 }
 
 const IMPORT_COLUMNS = `id, tenant_id, status, source, target_collection_id, created_by, counts, error, bytes::text as bytes, s3_key,
   (extract(epoch from started_at) * 1000)::bigint::text as started_ms, (extract(epoch from finished_at) * 1000)::bigint::text as finished_ms`;
-const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
+const ITEM_COLUMNS = 'id::text as id, path, kind, status, page_id, url_id, message, markdown_bytes, state_bytes, attempts::int as attempts, coalesce((detail->>\'warnings\')::int, 0) as warnings, coalesce((detail->>\'attachmentBytes\')::float8, 0) as attachment_bytes, coalesce(detail->\'remoteImageFailures\', \'{}\'::jsonb) as remote_failures';
 
 /** The counts a page keeps, as JSON: the kinds the report knows, each a whole number from 1. */
 const constructsJson = (counts: ConstructCounts | undefined): string =>
@@ -35,7 +35,7 @@ const record = (r: ImportRow): ImportRecord => ({
 });
 
 const item = (r: ItemRow): ImportItem => ({
-  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings, remoteImageFailures: r.remote_failures,
+  id: r.id, path: r.path, kind: r.kind, status: r.status, pageId: r.page_id, urlId: r.url_id, message: r.message, markdownBytes: r.markdown_bytes, stateBytes: r.state_bytes, attempts: r.attempts, warnings: r.warnings, attachmentBytes: r.attachment_bytes, remoteImageFailures: r.remote_failures,
 });
 
 /** The partial unique index of migration 0012: a tenant has one `running` import. */
@@ -137,8 +137,8 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
           await tx.query(`update import_items set status = 'ok', message = null where tenant_id = $1 and import_id = $2 and id = any($3::bigint[]) and kind = 'attachment' and status = 'pending'`, [tenantId, importId, page.attachmentItemIds]);
         }
         await tx.query(
-          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb or $10::jsonb <> '{}'::jsonb then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb, 'constructs', $10::jsonb) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
-          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {}), constructsJson(page.constructs)],
+          `update import_items set status = 'ok', page_id = $4, url_id = $5, message = null, markdown_bytes = $6, state_bytes = $7, detail = case when $8::int > 0 or $9::jsonb <> '{}'::jsonb or $10::jsonb <> '{}'::jsonb or $11::float8 > 0 then jsonb_build_object('warnings', $8::int, 'remoteImageFailures', $9::jsonb, 'constructs', $10::jsonb, 'attachmentBytes', $11::float8) end where tenant_id = $1 and import_id = $2 and id = $3::bigint`,
+          [tenantId, importId, page.itemId, row.id, row.url_id, page.markdownBytes, page.stateBytes, page.warnings ?? 0, JSON.stringify(page.remoteImageFailures ?? {}), constructsJson(page.constructs), page.attachments.reduce((sum, a) => sum + a.size, 0)],
         );
         return { kind: 'ok', pageId: row.id, urlId: row.url_id };
       });

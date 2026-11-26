@@ -43,7 +43,7 @@ class EchoConverter implements MarkdownConverter {
 
 const ordering = { between: (before: string | null) => `${before ?? ''}a` };
 
-async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: number; entryMaxBytes?: number; files?: FakeFileStorage; converter?: EchoConverter } = {}) {
+async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: number; entryMaxBytes?: number; copiedMaxBytes?: number; files?: FakeFileStorage; converter?: EchoConverter } = {}) {
   const store = new SegmentStore(buildSegments(entries as BuilderEntry[]));
   const opened = await openArchive(store, 'imports/x.zip', store.size, defaultImportConfig);
   if (opened.kind !== 'ok') throw new Error(`refused: ${opened.reason}`);
@@ -54,7 +54,7 @@ async function setup(entries: readonly BuilderEntry[], over: { filesMaxBytes?: n
   await passOne(repo, TENANT, 'imp', opened.entries, { profile: markdownProfile, allowNestedZips: false, maxPages: 10_000 });
   const deps = {
     repo, files, converter, profile: markdownProfile, ordering, reader: opened.reader, entries: opened.entries, now: () => 1_700_000_000_000,
-    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000, ...(over.entryMaxBytes === undefined ? {} : { maxEntryBytes: over.entryMaxBytes }) },
+    limits: { ...defaultImportConfig, seedMaxMarkdownBytes: 128 * 1024, maxStateBytes: 1_536_000, ...(over.entryMaxBytes === undefined ? {} : { maxEntryBytes: over.entryMaxBytes }), ...(over.copiedMaxBytes === undefined ? {} : { maxCopiedBytes: over.copiedMaxBytes }) },
     pageLimits: { maxDepth: 32, maxPages: 10_000, maxTenantPages: 50_000 },
     attachments: { maxBytes: over.filesMaxBytes ?? 25 * 1024 * 1024, allowedTypes: ALLOWED, sniff: sniffType },
   };
@@ -233,6 +233,30 @@ describe('a file of an import is held to the import\'s limit, and is streamed to
     expect((await again.run()).kind).toBe('done');
     expect(head).toHaveBeenCalled();
     expect(page(again, 'a')?.attachments[0]?.key).toBe(key);
+  });
+});
+describe('the copies an import makes are bounded: a page that links a file gets a copy of its own, so one file linked by many pages is many copies', () => {
+  const shared = [md('a.md\u0000![x](big.png)\n'), md('b.md\u0000![x](big.png)\n'), md('c.md\u0000![x](big.png)\n'), { name: 'big.png', data: png(5000) }];
+
+  it('stops the import (attachment_budget) when the next copy would take the copies past the budget; the pages before it stay written', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 11_000 });
+    const result = await t.run();
+    expect(result).toMatchObject({ kind: 'stopped', reason: 'attachment_budget' });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+  });
+
+  it('counts the copies of the runs before it: a second run does not start again from zero (a chunk cannot write the whole budget, so a budget of one run would bound nothing)', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 11_000 });
+    await t.run();
+    const again = await t.run();
+    expect(again).toMatchObject({ kind: 'stopped', reason: 'attachment_budget' });
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b']);
+  });
+
+  it('is no limit for an import within it', async () => {
+    const t = await setup(shared, { copiedMaxBytes: 16_000 });
+    expect((await t.run()).kind).toBe('done');
+    expect(t.repo.written.map((w) => w.page.title)).toEqual(['a', 'b', 'c']);
   });
 });
 describe('resuming', () => {

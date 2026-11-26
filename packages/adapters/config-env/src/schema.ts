@@ -198,8 +198,9 @@ const fieldSchema = (purpose: Purpose) => z.object({
   GRIMOIRE_IMPORT_MAX_ENTRIES: field(int(1, MAX_INT)).default(100_000),
   GRIMOIRE_IMPORT_MAX_UNCOMPRESSED_BYTES: field(int(1, MAX_INT)).default(103_079_215_104),
   GRIMOIRE_IMPORT_MAX_RATIO: field(int(1, MAX_INT)).default(100),
-  // The largest file of a zip, which an attachment of an import may be: not the editor's upload limit (GRIMOIRE_FILES_MAX_BYTES). A file is sent to the store as a stream, so none is held in memory.
-  GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: field(int(1, MAX_INT)).default(2_147_483_648),
+  // The largest file of a zip, which an attachment of an import may be: not the editor's upload limit (GRIMOIRE_FILES_MAX_BYTES). A file is sent to the store as a stream, so none is held in memory,
+  // and in one request (a store takes a single PUT of up to 5 GiB: the same 4 GiB the upload plan uses to cut a zip into parts).
+  GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: field(int(1, 4_294_967_296)).default(2_147_483_648),
   GRIMOIRE_IMPORT_MAX_TABLE_BYTES: field(int(1, MAX_INT)).default(262_144),
   GRIMOIRE_IMPORT_ALLOW_NESTED_ZIPS: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('0'),
   GRIMOIRE_IMPORT_FETCH_REMOTE_IMAGES: field(z.enum(['0', '1'], msg('must be 0 or 1'))).default('1'),

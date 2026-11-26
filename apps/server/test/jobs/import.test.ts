@@ -489,6 +489,15 @@ describe('the profile an import is read with is the one of its source', () => {
   });
 });
 
+describe('the copies of files an import makes are bounded', () => {
+  it('an import whose pages would make more bytes of copies than its zip may hold ends failed as attachments_too_large, and the clean-up is asked for', async () => {
+    // A CSV: a type whose bytes are not checked, so the test needs no sniffer; 5,000 bytes, linked from two pages, are two copies of 5,000 against a zip that may hold 8,000.
+    const t = await setup([md('a.md\u0000[d](data.csv)\n'), md('b.md\u0000[d](data.csv)\n'), { name: 'data.csv', data: Buffer.from(`a,b\n${'1,2\n'.repeat(1250)}`) }], { files: true, importConfig: { maxUncompressedBytes: 8000 } });
+    await t.run();
+    expect(await t.record()).toMatchObject({ status: 'failed', error: 'attachments_too_large' });
+    expect(cleanup(t)).toHaveLength(1);
+  });
+});
 describe('an import of several zips (an export in parts)', () => {
   const PART_1 = `tenants/${TENANT}/imports/${IMPORT}/source-1.zip`;
   /** An import whose zips are `parts` (the first at the import's own key), started as a person would after sending them. */

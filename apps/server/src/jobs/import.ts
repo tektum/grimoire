@@ -119,7 +119,9 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
         return;
       }
       try {
-        const limits = { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes, maxTableBytes: config.import.maxTableBytes };
+        const limits = { maxEntryBytes: config.import.maxEntryBytes, maxRatio: config.import.maxRatio, seedMaxMarkdownBytes: config.collab.seedMaxMarkdownBytes, maxStateBytes: config.collab.maxStateBytes, maxTableBytes: config.import.maxTableBytes,
+          // The copies the import makes of the files its pages link may be as many bytes as the zips may hold uncompressed: a file that thousands of pages link is thousands of copies.
+          maxCopiedBytes: config.import.maxUncompressedBytes };
         const one = await passOne(imports, tenantId, importId, opened.entries, { profile: PROFILES[record.source], allowNestedZips: config.import.allowNestedZips, maxPages: deps.maxPages ?? 10_000, read: pageText(opened.reader, limits, opened.entries) });
         if (!one.ok) {
           await imports.setCounts(tenantId, importId, { ...NO_IMPORT_COUNTS, pagesTotal: one.pagesTotal });
@@ -147,6 +149,8 @@ export function createImportHandler(deps: ImportJobDeps): JobHandler {
           await continueLater(undefined, true);
         } else if (result.reason === 'collection_deleted') {
           await fail('collection_deleted');
+        } else if (result.reason === 'attachment_budget') {
+          await fail('attachments_too_large');
         } // `not_running`: cancelled (or ended) by someone else; whoever did it asks for the clean-up
       } finally {
         opened.reader.close();

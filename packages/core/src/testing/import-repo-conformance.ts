@@ -62,7 +62,7 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       assert.deepEqual(await h.repo.pending(h.tenantId, made.id, 'attachment', 10), [], 'the second a.md did not replace the first');
       const first = items[0];
       assert.ok(typeof first?.pageId === 'string' && first.pageId !== '' && typeof first.urlId === 'string' && first.urlId !== '', 'a pending page item has both ids');
-      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} });
+      assert.deepEqual(first, { id: first.id, path: 'a.md', kind: 'page', status: 'pending', pageId: first.pageId, urlId: first.urlId, message: null, markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, attachmentBytes: 0, remoteImageFailures: {} });
     },
   },
   {
@@ -759,6 +759,20 @@ export const importRepoConformance: readonly ImportRepoCase[] = [
       await assert.rejects(() => make(4, 1), StagingQuotaError, 'a running import still holds its zip');
       await h.seedStatus(next.id, 'failed');
       await make(4, 100);
+    },
+  },
+  {
+    name: 'a-written-page-item-keeps-the-bytes-of-the-copies-it-made',
+    async run(h) {
+      const made = await h.seed('running');
+      await h.repo.addItems(h.tenantId, made.id, pages('a.md', 'b.md'));
+      const [a, b] = await h.repo.pending(h.tenantId, made.id, 'page', 10);
+      assert.ok(a && b);
+      const copy = (n: number) => ({ id: `00000000-0000-4000-8000-0000000000${String(n)}0`, uploaderId: h.userId, fileName: `f${String(n)}.png`, contentType: 'image/png', size: 100 * n, key: `attachments/k${String(n)}`, readyAt: h.now });
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, a.id, { collectionId: made.targetCollectionId, attachments: [copy(1), copy(2)] }), limits, h.now)).kind, 'ok');
+      assert.equal((await h.repo.writePage(h.tenantId, made.id, pageOf(h, b.id, { collectionId: made.targetCollectionId }), limits, h.now)).kind, 'ok');
+      const rows = await h.repo.scanItems(h.tenantId, made.id, { limit: 10 });
+      assert.deepEqual(rows.map((r) => [r.path, r.attachmentBytes]), [['a.md', 300], ['b.md', 0]]);
     },
   },
 ];

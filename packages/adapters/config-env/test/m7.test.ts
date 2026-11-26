@@ -56,6 +56,11 @@ describe('the refusals name the variable', () => {
     expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ZIP_BYTES: '1000', GRIMOIRE_IMPORT_MAX_TOTAL_BYTES: '1000', GRIMOIRE_IMPORT_STAGED_QUOTA_BYTES: '1000' })).toEqual([]);
   });
 
+  it('a file of a zip is refused above the largest single PUT the store takes (4 GiB): it goes up in one request', () => {
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967297' }).some((i) => i.includes('GRIMOIRE_IMPORT_MAX_ENTRY_BYTES'))).toBe(true);
+    expect(issuesOf({ GRIMOIRE_IMPORT_MAX_ENTRY_BYTES: '4294967296' })).toEqual([]);
+  });
+
   it('a remote image larger than an upload is refused, on the variable of the remote limit', () => {
     expect(issuesOf({ GRIMOIRE_FILES_MAX_BYTES: '1000', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1001' }).some((i) => i.includes('GRIMOIRE_IMPORT_REMOTE_MAX_BYTES'))).toBe(true);
     expect(issuesOf({ GRIMOIRE_FILES_MAX_BYTES: '1000', GRIMOIRE_IMPORT_REMOTE_MAX_BYTES: '1000' })).toEqual([]);

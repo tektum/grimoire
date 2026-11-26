@@ -118,6 +118,8 @@ export interface ImportItem {
   readonly attempts: number;
   /** Warnings this item raised (a cut title, a link that matched nothing), kept on the row so the import's count is worked out from the rows and survives a resumed or overlapping run. */
   readonly warnings: number;
+  /** The bytes of the copies of files that this page made (a page that links a file gets a copy of its own), once it is written; 0 for any other item. What bounds the copies an import makes. */
+  readonly attachmentBytes: number;
   /** Remote images of this page that were not copied, a count per reason code (`blocked_address`, `timeout`, `scheme`, ...), never an address: where a report reads why a warning was raised. */
   readonly remoteImageFailures: Readonly<Record<string, number>>;
 }

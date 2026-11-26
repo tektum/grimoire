@@ -58,7 +58,7 @@ export class FakeImportRepo implements ImportRepo {
       const pending = item.status === undefined;
       // A page, and a database that becomes one, gets its ids as it is added.
       const ids = pending && (item.kind === 'page' || item.kind === 'database_csv') ? { pageId: `page-${id}`, urlId: `u-${id}` } : { pageId: null, urlId: null };
-      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, remoteImageFailures: {} } });
+      this.stored.push({ tenantId, importId, item: { id, path, kind: item.kind, status: item.status ?? 'pending', ...ids, message: item.message === undefined ? null : clean(item.message), markdownBytes: null, stateBytes: null, attempts: 0, warnings: 0, attachmentBytes: 0, remoteImageFailures: {} } });
       added += 1;
     }
     return Promise.resolve(added);
@@ -96,7 +96,7 @@ export class FakeImportRepo implements ImportRepo {
     const position = page.position(lastOfParent, null);
     const pageId = found.item.pageId ?? `page-${String(this.next++)}`;
     const urlId = found.item.urlId ?? `u${pageId}`;
-    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, remoteImageFailures: page.remoteImageFailures ?? {}, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
+    this.stored[at] = { ...found, item: { ...found.item, status: 'ok', pageId, urlId, warnings: page.warnings ?? 0, attachmentBytes: page.attachments.reduce((sum, a) => sum + a.size, 0), remoteImageFailures: page.remoteImageFailures ?? {}, message: null, markdownBytes: page.markdownBytes, stateBytes: page.stateBytes } };
     for (const fileId of page.attachmentItemIds ?? []) {
       const f = this.stored.findIndex((x) => x.tenantId === tenantId && x.importId === importId && x.item.id === fileId && x.item.status === 'pending' && x.item.kind === 'attachment');
       const file = this.stored[f];
