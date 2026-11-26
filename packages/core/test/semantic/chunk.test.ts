@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { ChunkRow } from '../../src/ports/embedding-store.js';
-import { chunkText, chunkTextYielding } from '../../src/semantic/chunk.js';
+import { chunkText, chunkTextYielding, type Chunk } from '../../src/semantic/chunk.js';
 
 // One token per whitespace-separated word, as the task says.
 const words = (text: string): number => text.split(/\s+/).filter((w) => w !== '').length;
@@ -58,6 +58,15 @@ describe('chunkText', () => {
     const chunks = chunkText(text, count, { model: MODEL });
     expect(chunks.every((c) => c.tokenCount <= 400)).toBe(true);
     expect(chunks.map((c) => c.text).join('').replace(/\s/g, '')).toBe(text.replace(/\s/g, ''));
+  });
+
+  it('never cuts a long run of astral characters between the halves of a pair, even when the limit falls between them', () => {
+    const count = (t: string): number => Math.ceil(t.length / 3); // three UTF-16 units a token: a limit of 401 tokens is 1,203 units, an odd number, so it falls inside a pair
+    const text = '🙂'.repeat(1500);
+    const chunks = chunkText(text, count, { model: MODEL, maxTokens: 401, targetTokens: 401 });
+    expect(chunks.length).toBeGreaterThan(2);
+    expect(chunks.map((c) => c.text).join('')).toBe(text);
+    for (const c of chunks) expect(c.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
   });
 
   it('gives no chunk for an empty text, a blank text and a text of 2 tokens, and one for 3', () => {
@@ -231,5 +240,60 @@ describe('chunkTextYielding', () => {
     let turns = 0;
     expect(await chunkTextYielding('two words', words, options, () => { turns += 1; return Promise.resolve(); })).toEqual([]);
     expect(turns).toBe(1);
+  });
+
+  // A page that is one enormous line (pasted text with no line break): the cut must not hand the counter the whole of it, nor count a whole line's sentences or words in one go. 20,000 words
+  // of real text took 250 ms (with sentence ends) to 400 ms (without) of main-thread work in one piece, 132 ms of it a single count of the whole line.
+  describe.each([['with sentence ends', 15], ['with no sentence ends', 0]] as const)('one line of 20,000 words, %s', (_name, every) => {
+    const line = Array.from({ length: 20_000 }, (_, i) => `w${String(i)}${every > 0 && i % every === every - 1 ? '.' : ''}`).join(' ');
+
+    it('hands the counter only small texts, and gives a turn after every count', async () => {
+      let biggest = 0;
+      let sinceTurn = 0;
+      let mostBetweenTurns = 0;
+      const chunks = await chunkTextYielding(line, (t) => { biggest = Math.max(biggest, t.length); sinceTurn += 1; mostBetweenTurns = Math.max(mostBetweenTurns, sinceTurn); return words(t); }, options, () => { sinceTurn = 0; return Promise.resolve(); });
+      expect(chunks.length).toBeGreaterThan(50);
+      expect(biggest).toBeLessThanOrEqual(8 * 400); // the start of the line (to see that it is over the limit), a chunk or a sentence: never the 140,000 characters of the whole
+      expect(mostBetweenTurns).toBeLessThanOrEqual(1);
+    });
+
+    it('gives the same chunks as chunkText', async () => {
+      expect(await chunkTextYielding(line, words, options, () => Promise.resolve())).toEqual(chunkText(line, words, options));
+    });
+  });
+
+  it('cuts a line that is one unbroken run (no white space at all), over the limit in its start, without handing the counter the whole of it', async () => {
+    const quarter = (t: string): number => Math.ceil(t.length / 4); // a counter for which a run of characters has tokens
+    const run = 'abcdefghij'.repeat(900); // 9,000 characters, 2,250 tokens
+    let biggest = 0;
+    const chunks = await chunkTextYielding(run, (t) => { biggest = Math.max(biggest, t.length); return quarter(t); }, options, () => Promise.resolve());
+    expect(chunks.length).toBeGreaterThan(4);
+    expect(chunks.map((c) => c.text).join('')).toBe(run);
+    expect(chunks.every((c) => c.tokenCount <= 400)).toBe(true);
+    expect(biggest).toBeLessThanOrEqual(8 * 400);
+    expect(chunks).toEqual(chunkText(run, quarter, options));
+  });
+});
+
+// The chunks the cut gave before it became steps (offsets, token counts and hashes of every chunk, digested), for inputs of different shapes: the cut and its steps must not change a chunk.
+describe('the cut in steps gives the chunks the cut gave before', () => {
+  const w = (n: number, len = 6, tag = 'w'): string[] => Array.from({ length: n }, (_, i) => (tag + String(i)).padEnd(len, 'x'));
+  const sent = (n: number, per: number): string => w(n).map((x, i) => x + (i % per === per - 1 ? '.' : '')).join(' ');
+  const digestOf = (chunks: readonly Chunk[]): string => createHash('sha256').update(JSON.stringify(chunks.map((c) => [c.chunkIndex, c.charStart, c.charEnd, c.unitStart, c.unitEnd, c.tokenCount, Buffer.from(c.contentHash).toString('hex')]))).digest('hex').slice(0, 16);
+  const cases: readonly (readonly [string, string, number, string])[] = [
+    ['fifty paragraphs', Array.from({ length: 50 }, (_, i) => sent(40, 20).replace(/w/g, `p${String(i)}`)).join('\n\n'), 10, 'e7e924514b9bf0a7'],
+    ['one line of 3,000 words in sentences, far over the limit', sent(3000, 15), 16, '7fbc40c143058ba1'],
+    ['one line of 3,000 words with no sentence end', w(3000).join(' '), 15, '9356c293c03a083d'],
+    ['a sentence of 2,000 words between ordinary ones', `${sent(200, 10)} ${w(2000, 7, 'z').join(' ')}. ${sent(100, 10)}`, 12, '0fcd674a31f417a6'],
+    ['a long line with few tokens (90 words of 40 characters)', w(90, 40).join(' '), 1, 'd5513198dd8ee19c'],
+    ['carriage returns, blank and white-space lines', `${sent(200, 12)}\r\n\r\n${sent(220, 9)}\r\n  \r\n${sent(50, 5)}`, 3, '1307adc0d1bfac25'],
+    ['astral characters', `😀 ${sent(500, 11)}\n😀😀 ${w(600).join(' ')}`, 6, 'ed0ca4dfd858fdaf'],
+    ['a line just over the limit and its probe', w(420, 8).join(' '), 3, '55db6ea79abba715'],
+  ];
+  it.each(cases)('%s', async (_name, text, count, digest) => {
+    const options = { model: MODEL };
+    expect(chunkText(text, words, options)).toHaveLength(count);
+    expect(digestOf(chunkText(text, words, options))).toBe(digest);
+    expect(digestOf(await chunkTextYielding(text, words, options, () => Promise.resolve()))).toBe(digest);
   });
 });
