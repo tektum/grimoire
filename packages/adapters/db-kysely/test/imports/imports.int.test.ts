@@ -112,8 +112,9 @@ describe('what only the database does', () => {
     });
     await locked;
     // The gate is released whatever happens, so a failure here cannot leave the update open holding the row for the cases and the drop that follow.
+    let adding: Promise<boolean> | undefined;
     try {
-      const adding = repo.addPart('legacy', made.id, { ordinal: 1, s3Key: 'k/1', bytes: 2, uploadId: null });
+      adding = repo.addPart('legacy', made.id, { ordinal: 1, s3Key: 'k/1', bytes: 2, uploadId: null });
       await eventually(async () => ((await t.admin.query<{ n: number }>(`select count(*)::int as n from pg_locks l where not l.granted and l.pid in (select pg_stat_activity.pid from pg_stat_activity where datname = current_database())`))[0]?.n ?? 0) >= 1, 10_000, 'the part waits for the update');
       release();
       await uploading;
@@ -121,6 +122,8 @@ describe('what only the database does', () => {
     } finally {
       release();
       await uploading;
+      // Nothing outlives the test: the part is awaited, and its rejection (a regression that made it fail) is the poll's to report, not an error in the teardown.
+      await adding?.catch(() => undefined);
     }
     expect(await repo.parts('legacy', made.id)).toHaveLength(1);
   }, 30_000);
