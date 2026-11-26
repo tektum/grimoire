@@ -27,9 +27,9 @@ async function sweepRuns(): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((r) => [r.state, r.n]));
 }
 
-async function start(sweepSeconds: number, store: EmbeddingStore = createEmbeddingStore(db.app, db.ops)): Promise<JobRunner> {
-  const config = makeFakeConfig({ database: { url: appUrl(DB) }, semantic: { sweepSeconds, debounceSeconds: 1 } });
-  const { deps } = fakeJobDeps({ config, embedder: new FakeEmbedder({ maxTokens: 512, dims: 8 }), embeddings: store, tenants: { ids: async () => ((await db.sql('select id from tenants order by id')) as { id: string }[]).map((t) => t.id) } });
+async function start(sweepSeconds: number, store: EmbeddingStore = createEmbeddingStore(db.app, db.ops), o: { readonly embedder?: FakeEmbedder; readonly debounceSeconds?: number } = {}): Promise<JobRunner> {
+  const config = makeFakeConfig({ database: { url: appUrl(DB) }, semantic: { sweepSeconds, debounceSeconds: o.debounceSeconds ?? 1 } });
+  const { deps } = fakeJobDeps({ config, embedder: o.embedder ?? new FakeEmbedder({ maxTokens: 512, dims: 8 }), embeddings: store, tenants: { ids: async () => ((await db.sql('select id from tenants order by id')) as { id: string }[]).map((t) => t.id) } });
   const runner = createJobRunner({ config, log: deps.log, make: () => runtimeQueue(DB), jobs: (queue) => registerJobs({ ...deps, queue }) });
   runners.push(runner);
   await runner.start();
@@ -73,6 +73,33 @@ describe('the embed sweep, a chain of runs', () => {
       expect(await db.sql(`select status from page_embedding_state where page_id = '${settled}'`)).toEqual([{ status: 'ready' }]);
     }, { timeout: 60_000, interval: 500 });
     expect(await db.sql(`select status from page_embedding_state where page_id = '${typing}'`)).toEqual([]);
+    await stopAll();
+  }, 120_000);
+
+  it('ten saves of one page in a row make one embed-page job and one embed: the debounce keeps the sweep off while the saves go on, and the page is embedded once, after it has settled', async () => {
+    const tenant = await seedTenant(db.sql, 'T-saves');
+    const id = randomUUID();
+    await insertPage(db.sql, {
+      id, collection_id: tenant.collectionId, created_by: tenant.userId, tenant_id: tenant.tenantId, title: 'T', text_content: 'alpha beta gamma delta',
+      markdown_hash: raw(`decode(repeat('0f', 32), 'hex')`), last_edited_at: raw('now()'),
+    });
+    const embedder = new FakeEmbedder({ maxTokens: 512, dims: 8 });
+    await start(1, createEmbeddingStore(db.app, db.ops), { embedder, debounceSeconds: 5 });
+    for (let save = 0; save < 10; save++) await db.sql(`update pages set last_edited_at = now() where id = '${id}'`);
+    // Sweeps go on every second. While the page is inside its 5 s of quiet (read in the same statement, so a slow machine only makes the check weaker, never wrong), they hand nothing on.
+    await vi.waitFor(async () => {
+      const [row] = (await db.sql(`select (select count(*)::int from pgboss.job where name = 'embed-sweep' and state = 'completed') as sweeps,
+                                          (select count(*)::int from pgboss.job where name = 'embed-page') as jobs,
+                                          (now() - last_edited_at) < interval '4 seconds' as inside from pages where id = '${id}'`)) as { sweeps: number; jobs: number; inside: boolean }[];
+      expect(row?.sweeps).toBeGreaterThanOrEqual(2);
+      if (row?.inside === true) expect(row.jobs).toBe(0);
+    }, { timeout: 60_000, interval: 200 });
+    await vi.waitFor(async () => {
+      expect(await db.sql(`select status from page_embedding_state where page_id = '${id}'`)).toEqual([{ status: 'ready' }]);
+    }, { timeout: 60_000, interval: 500 });
+    expect(embedder.calls).toHaveLength(1); // one embed, of the one chunk
+    const [jobs] = (await db.sql(`select count(*)::int as n from pgboss.job where name = 'embed-page' and data->>'pageId' = '${id}'`)) as { n: number }[];
+    expect(jobs?.n).toBe(1);
     await stopAll();
   }, 120_000);
 });
