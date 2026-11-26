@@ -78,7 +78,7 @@ test('a zip is created, sent to the file store and started through the real rout
   await page.getByRole('button', { name: 'Import' }).click();
   await explained(store, () => expect(page).toHaveURL(/\/import\?import=[0-9a-f-]{36}/));
   const id = new URL(page.url()).searchParams.get('import') as string;
-  await expect(page.getByRole('status').first()).toHaveText(/^Done: \d+ pages? imported/);
+  await expect(page.getByRole('status').first()).toHaveText(/^Done: [1-9]\d* pages? imported\.$/); // at least one page, and no ", N failed" or ", N skipped" after it
   expect((await stateOf(id)).status, 'the API holds it as done').toBe('done');
   await expect(page.getByRole('button', { name: 'Cancel import' })).toHaveCount(0);
 });
