@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -109,3 +111,24 @@ test('the browsers are installed by the line `M6_BROWSER_INSTALL` says: the defa
   assert.ok(lines.findIndex((l) => l === 'true') < lines.findIndex((l) => /m6\/scenarios\.ts check/.test(l)), 'in the place of the install: before the checks');
 });
 
+test('the built client is told the address the headers are rendered for, after the e2e build and before the stack and the runs, and the scenario runs stop after three failures', () => {
+  const build = at(/vite build --mode e2e/);
+  const config = at(/m6\/client-config\.ts/);
+  const render = at(/m6\/headers\.ts/);
+  assert.ok(config === build + 1, 'right after the e2e build (which copies the config that names localhost)');
+  assert.ok(config < render && config < at(/bunx playwright test/), 'before the headers and the runs');
+  for (const run of steps.filter((l) => /scenarios\.ts files/.test(l))) assert.match(run, / --max-failures=3 /, 'a broken run ends in minutes, not at the job limit');
+});
+
+test('client-config.ts writes the address of apiUrl() (E2E_API_URL, the one the headers are rendered for) and keeps the other keys', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'client-config-'));
+  try {
+    const file = path.join(dir, 'config.json');
+    writeFileSync(file, '{"apiUrl":"http://localhost:8080","other":1}');
+    const run = spawnSync('bun', ['run', `${root}apps/web/test-e2e/m6/client-config.ts`, file], { encoding: 'utf8', env: { ...process.env, E2E_API_URL: 'http://127.0.0.1:9999/' } });
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { apiUrl: 'http://127.0.0.1:9999', other: 1 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
