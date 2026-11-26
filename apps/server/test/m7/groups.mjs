@@ -30,6 +30,11 @@ export function problems(groups) {
     for (const f of files) if (!existsSync(path.join(root, f))) out.push(`${name}: ${f} does not exist`);
     for (const f of pending) if (existsSync(path.join(root, f))) out.push(`${name}: ${f} exists now: move it to "files"`);
   }
+  // A file that two groups both reach (the same entry, or a folder and a file in it) runs twice and a failure is reported under both.
+  const entries = Object.entries(groups).flatMap(([name, group]) => (group.files ?? []).map((f) => [name, f.replace(/\/+$/, '')]));
+  for (const [i, [a, fa]] of entries.entries())
+    for (const [b, fb] of entries.slice(i + 1))
+      if (a !== b && (fa === fb || fa.startsWith(`${fb}/`) || fb.startsWith(`${fa}/`))) out.push(`${fa.length >= fb.length ? fa : fb} is in "${fa.length >= fb.length ? a : b}" and in "${fa.length >= fb.length ? b : a}"`);
   return out;
 }
 
@@ -41,6 +46,10 @@ function check() {
 
 function run() {
   if (!check()) return false;
+  if (process.env['M7_RUNNER'] !== undefined && process.env['M7_GROUPS_FILE'] === undefined) {
+    console.error('M7_RUNNER is only for the test of this script (with M7_GROUPS_FILE): it would replace vitest for every group');
+    process.exit(2);
+  }
   const groups = load();
   let failed = 0;
   for (const name of REQUIRED) {

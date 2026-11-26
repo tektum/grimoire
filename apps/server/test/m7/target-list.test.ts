@@ -86,4 +86,22 @@ describe('the test list of the M7 exit test', () => {
     expect(r.status, r.stderr).toBe(0);
     expect(readFileSync(log, 'utf8')).toContain('--project container apps/server/test/m7/target-list.test.ts');
   });
+
+  it('exits 1 when two groups name the same file, or a folder and a file in it (a file would run twice and a failure would be reported under both)', () => {
+    const groups = real();
+    groups['remote-images']!.files = [...groups['remote-images']!.files!, 'apps/server/test/import/engine/remote-hook.test.ts'];
+    const r = node(['check'], { M7_GROUPS_FILE: withList(groups) });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('apps/server/test/import/engine/remote-hook.test.ts is in "remote-images" and in "synthetic"');
+  });
+
+  it('runs the semantic group in the container project too (the real-model tests are *.container.test.ts and the other projects leave them out)', () => {
+    expect(real()['semantic']!.projects).toEqual(expect.arrayContaining(['unit', 'integration', 'container']));
+  });
+
+  it('refuses a runner from the environment unless the list is a test list too, so that a stray M7_RUNNER cannot make the target pass without running the tests', () => {
+    const r = node(['run'], { M7_RUNNER: process.execPath });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('M7_RUNNER is only for the test of this script');
+  });
 });
