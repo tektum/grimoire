@@ -52,6 +52,7 @@ test('the jobs that run Playwright stay on the Ubuntu its browsers get their sys
   for (const name of ['e2e-m5', 'e2e-web', 'e2e-web-browsers']) {
     const job = ci.match(new RegExp(`\\n  ${name}:\\n[\\s\\S]*?(?=\\n  [a-z0-9-]+:\\n|$)`))?.[0] ?? '';
     assert.match(job, /\n {4}runs-on: ubuntu-24\.04\n/, name);
-    assert.match(job, /playwright install --with-deps/, name);
+    assert.match(job, /tools\/ci\/playwright-install\.sh /, `${name}: browsers and system libraries come from the script that retries them`);
+    assert.doesNotMatch(job, /playwright install --with-deps/, name);
   }
 });
