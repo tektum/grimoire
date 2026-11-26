@@ -47,6 +47,14 @@ export interface NewImport {
   readonly s3Key: string;
 }
 
+/** One zip of an import: where it is kept, its declared size, and the id of its multipart upload while that is open (null for a single PUT and once the upload is completed). */
+export interface ImportPart {
+  readonly ordinal: number;
+  readonly s3Key: string;
+  readonly bytes: number;
+  readonly uploadId: string | null;
+}
+
 /** Thrown by `start` when another import of the tenant is running (decision 6: a workspace has one running import at a time). The import stays `uploaded` and its job is tried again later. */
 export class ImportBusyError extends Error {
   constructor() {
@@ -159,8 +167,14 @@ export interface ImportRepo {
   finish(tenantId: string, id: string, status: 'done' | 'failed', error: string | null, now: number): Promise<boolean>;
 
   // What the routes of M7-T05 use. Everything above is the engine's and stays as it is.
-  /** Makes an import row, `created`, for the tenant. */
+  /** Makes an import row, `created`, for the tenant, with its first zip (`s3Key`, `bytes`) as part 0. */
   create(tenantId: string, row: NewImport): Promise<ImportRecord>;
+  /** The zips of an import, by ordinal; none for another tenant's import. */
+  parts(tenantId: string, importId: string): Promise<readonly ImportPart[]>;
+  /** Adds a zip to an import that is still `created`; `false` when the ordinal is taken, the import is not `created`, or it is another tenant's. */
+  addPart(tenantId: string, importId: string, part: ImportPart): Promise<boolean>;
+  /** Ends the open multipart upload of a part (its id becomes null); `false` when the part has none open or does not exist. */
+  closePart(tenantId: string, importId: string, ordinal: number): Promise<boolean>;
   /** `created` or `uploaded` becomes `uploaded`; `false` for any other status (and for another tenant's import). */
   markUploaded(tenantId: string, id: string): Promise<boolean>;
   /** The settled items (`ok`, `skipped` or `failed`: not the ones still `pending`), in ascending id, after `afterId` when given, at most `limit`. Ids compare as whole numbers. */

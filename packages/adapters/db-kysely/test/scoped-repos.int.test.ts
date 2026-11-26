@@ -204,6 +204,9 @@ const calls: Record<string, Record<string, (tenant: string) => Promise<unknown>>
   imports: {
     create: (tn) => imports().create(tn, { id: s.importId, targetCollectionId: s.collection, createdBy: s.boss, source: 'markdown_zip', bytes: 1, s3Key: `tenants/${tn}/imports/${s.importId}` }),
     markUploaded: (tn) => imports().markUploaded(tn, s.importId),
+    parts: (tn) => imports().parts(tn, s.importId),
+    addPart: (tn) => imports().addPart(tn, s.importId, { ordinal: 5, s3Key: `tenants/${tn}/imports/${s.importId}/5`, bytes: 1, uploadId: null }),
+    closePart: (tn) => imports().closePart(tn, s.importId, 0),
     start: (tn) => imports().start(tn, s.importId, Date.now()),
     addItems: (tn) => imports().addItems(tn, s.importId, [{ path: 'a.md', kind: 'page' }, { path: 'b.md', kind: 'page' }]),
     pending: async (tn) => { const items = await imports().pending(tn, s.importId, 'page', 10); s.item = items[0]?.id; s.skipped = items[1]?.id; },

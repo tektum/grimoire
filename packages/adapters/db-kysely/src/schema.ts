@@ -164,6 +164,15 @@ export interface ImportsTable {
   finished_at: Date | null;
 }
 
+export interface ImportPartsTable {
+  tenant_id: string;
+  import_id: string;
+  ordinal: number;
+  s3_key: string;
+  bytes: string;
+  upload_id: string | null;
+}
+
 export interface ImportItemsTable {
   tenant_id: Generated<string>;
   id: Generated<string>;
@@ -215,6 +224,7 @@ export interface GrimoireTables {
   page_embedding_state: PageEmbeddingStateTable;
   imports: ImportsTable;
   import_items: ImportItemsTable;
+  import_parts: ImportPartsTable;
   audit_events: AuditEventsTable;
   idempotency_keys: IdempotencyKeysTable;
 }
@@ -263,6 +273,7 @@ export const declaredColumns = {
     id: 'required', import_id: 'required', path: 'required', kind: 'required', page_id: 'nullable', url_id: 'nullable', status: 'required',
     message: 'nullable', markdown_bytes: 'nullable', state_bytes: 'nullable', attempts: 'required', detail: 'nullable',
   },
+  import_parts: { tenant_id: 'required', import_id: 'required', ordinal: 'required', s3_key: 'required', bytes: 'required', upload_id: 'nullable' },
   audit_events: { tenant_id: 'required',
     id: 'required', actor_id: 'nullable', action: 'required', target_type: 'nullable', target_id: 'nullable', detail: 'nullable',
     created_at: 'required',

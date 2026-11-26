@@ -1,5 +1,5 @@
 import { cleanItemText as clean, ImportBusyError, NO_IMPORT_COUNTS } from '../ports/import-repo.js';
-import type { ImportCounts, ImportItem, ImportItemKind, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
+import type { ImportCounts, ImportItem, ImportItemKind, ImportPart, ImportRecord, ImportRepo, ItemOutcome, NewImport, NewImportedPage, NewImportItem, WriteImportedPageResult } from '../ports/import-repo.js';
 
 const depth = (path: string): number => path.split('/').length;
 
@@ -12,6 +12,7 @@ export class FakeImportRepo implements ImportRepo {
   private next = 1;
   private readonly createdAt = new Map<string, number>();
   private readonly trashed = new Set<string>();
+  private readonly partRows: { tenantId: string; importId: string; part: ImportPart }[] = [];
 
   seed(row: Omit<ImportRecord, 'counts' | 'error' | 'startedAt' | 'finishedAt' | 'source' | 'targetCollectionId' | 'createdBy' | 'bytes' | 's3Key'> & Partial<ImportRecord>, createdAt?: number): ImportRecord {
     const full: ImportRecord = { bytes: null, s3Key: null, source: 'markdown_zip', targetCollectionId: 'c', createdBy: null, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, ...row };
@@ -131,7 +132,27 @@ export class FakeImportRepo implements ImportRepo {
   create(tenantId: string, row: NewImport): Promise<ImportRecord> {
     const made: ImportRecord = { id: row.id, tenantId, status: 'created', source: row.source, targetCollectionId: row.targetCollectionId, createdBy: row.createdBy, counts: NO_IMPORT_COUNTS, error: null, startedAt: null, finishedAt: null, bytes: row.bytes, s3Key: row.s3Key };
     this.rows.push(made);
+    this.partRows.push({ tenantId, importId: row.id, part: { ordinal: 0, s3Key: row.s3Key, bytes: row.bytes, uploadId: null } });
     return Promise.resolve(made);
+  }
+
+  parts(tenantId: string, importId: string): Promise<readonly ImportPart[]> {
+    return Promise.resolve(this.partRows.filter((p) => p.tenantId === tenantId && p.importId === importId).map((p) => p.part).sort((a, b) => a.ordinal - b.ordinal));
+  }
+
+  addPart(tenantId: string, importId: string, part: ImportPart): Promise<boolean> {
+    const row = this.rows[this.find(tenantId, importId)];
+    if (row?.status !== 'created') return Promise.resolve(false);
+    if (this.partRows.some((p) => p.tenantId === tenantId && p.importId === importId && p.part.ordinal === part.ordinal)) return Promise.resolve(false);
+    this.partRows.push({ tenantId, importId, part: { ...part } });
+    return Promise.resolve(true);
+  }
+
+  closePart(tenantId: string, importId: string, ordinal: number): Promise<boolean> {
+    const found = this.partRows.find((p) => p.tenantId === tenantId && p.importId === importId && p.part.ordinal === ordinal);
+    if (found === undefined || found.part.uploadId === null) return Promise.resolve(false);
+    found.part = { ...found.part, uploadId: null };
+    return Promise.resolve(true);
   }
 
   markUploaded(tenantId: string, id: string): Promise<boolean> {

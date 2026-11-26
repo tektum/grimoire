@@ -11,6 +11,7 @@ interface ImportRow {
   counts: Partial<ImportCounts> | null; error: string | null; started_ms: string | null; finished_ms: string | null; bytes: string | null; s3_key: string | null;
 }
 
+interface PartRow { ordinal: number; s3_key: string; bytes: string; upload_id: string | null }
 interface ItemRow {
   id: string; path: string; kind: ImportItem['kind']; status: ImportItem['status']; page_id: string | null; url_id: string | null; message: string | null;
   markdown_bytes: number | null; state_bytes: number | null; attempts: number; warnings: number; remote_failures: Record<string, number>;
@@ -164,12 +165,34 @@ export function createImportRepo(db: KyselyDatabase): ImportRepo {
 
     // What the routes use.
     async create(tenantId, row) {
+      // The first zip is part 0, in the same statement as the import.
       const rows = await scoped(db, tenantId).query<ImportRow>(
-        `insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
-         returning ${IMPORT_COLUMNS}`,
+        `with i as (
+           insert into imports (id, tenant_id, target_collection_id, created_by, source, status, s3_key, bytes) values ($1, $2, $3, $4, $5, 'created', $6, $7)
+           returning ${IMPORT_COLUMNS}
+         ), p as (insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes) select $2, $1, 0, $6, $7 returning 1)
+         select * from i`,
         [row.id, tenantId, row.targetCollectionId, row.createdBy, row.source, row.s3Key, row.bytes],
       );
       return record(rows[0] as ImportRow);
+    },
+    async parts(tenantId, importId) {
+      const rows = await scoped(db, tenantId).query<PartRow>(`select ordinal::int as ordinal, s3_key, bytes::text as bytes, upload_id from import_parts where tenant_id = $1 and import_id = $2 order by ordinal`, [tenantId, importId]);
+      return rows.map((r) => ({ ordinal: r.ordinal, s3Key: r.s3_key, bytes: Number(r.bytes), uploadId: r.upload_id }));
+    },
+    // `for share` makes the insert wait for a `markUploaded` that is committing and look at the status again, as `writePage` does.
+    async addPart(tenantId, importId, part) {
+      const rows = await scoped(db, tenantId).query(
+        `insert into import_parts (tenant_id, import_id, ordinal, s3_key, bytes, upload_id)
+         select $1, $2, $3, $4, $5, $6 where exists (select 1 from imports where tenant_id = $1 and id = $2 and status = 'created' for share)
+         on conflict (import_id, ordinal) do nothing returning 1`,
+        [tenantId, importId, part.ordinal, part.s3Key, part.bytes, part.uploadId],
+      );
+      return rows.length === 1;
+    },
+    async closePart(tenantId, importId, ordinal) {
+      const rows = await scoped(db, tenantId).query(`update import_parts set upload_id = null where tenant_id = $1 and import_id = $2 and ordinal = $3 and upload_id is not null returning 1`, [tenantId, importId, ordinal]);
+      return rows.length === 1;
     },
     async markUploaded(tenantId, id) {
       const rows = await scoped(db, tenantId).query(`update imports set status = 'uploaded' where tenant_id = $1 and id = $2 and status in ('created', 'uploaded') returning 1`, [tenantId, id]);

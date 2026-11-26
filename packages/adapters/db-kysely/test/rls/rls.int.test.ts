@@ -77,7 +77,7 @@ describe('which tables are policed', () => {
 
   it('adds a tenant_id index to the tables that had none to lead with', async () => {
     const indexes = await t.admin.query<{ indexname: string }>(`select indexname from pg_indexes where schemaname = 'public' and indexname like '%\\_tenant\\_idx' order by 1`);
-    expect(indexes.map((i) => i.indexname)).toEqual(expect.arrayContaining(['attachments_tenant_idx', 'collection_access_tenant_idx', 'group_members_tenant_idx', 'idempotency_keys_tenant_idx', 'import_items_tenant_idx', 'imports_tenant_idx', 'revisions_tenant_idx']));
+    expect(indexes.map((i) => i.indexname)).toEqual(expect.arrayContaining(['attachments_tenant_idx', 'collection_access_tenant_idx', 'group_members_tenant_idx', 'idempotency_keys_tenant_idx', 'import_items_tenant_idx', 'import_parts_tenant_idx', 'imports_tenant_idx', 'revisions_tenant_idx']));
   });
 });
 
