@@ -45,7 +45,7 @@ Terms used throughout:
 
 ## 2. Architecture
 
-Live editing runs in one always-on container running Hocuspocus, inside the application. The design is hosting-agnostic: a backend and a front end that are split, nothing rendered on the server, so that web, desktop and mobile clients can share one app. The backend is one codebase whose core depends on no hosting provider and talks to the outside world through a small set of named interfaces ("ports"). The planned deployment is one container image on one machine with Docker Compose, with managed PostgreSQL and S3-API storage on Google Cloud. Flavours for other hosts may come later. See [decisions.md](decisions.md) and [research 11](research/11-frameworks.md).
+Live editing runs in one always-on container running Hocuspocus, inside the application. The design is hosting-agnostic: a backend and a front end that are split, nothing rendered on the server, so that web, desktop and mobile clients can share one app. The backend is one codebase whose core depends on no hosting provider and talks to the outside world through a small set of named interfaces ("ports"). The planned deployment runs on AWS, built by SST (R1.6, decision 174). Flavours for other hosts may come later. See [decisions.md](decisions.md) and [research 11](research/11-frameworks.md).
 
 ### 2.1 The stack
 
