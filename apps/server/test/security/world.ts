@@ -14,6 +14,7 @@ import { FakeMarkdownConverter } from '@tektum/grimoire-core/testing/fake-markdo
 import { FakePageRepo } from '@tektum/grimoire-core/testing/fake-page-repo';
 import { FakePageStateRepo } from '@tektum/grimoire-core/testing/fake-page-state-repo';
 import { FakeRevisionRepo } from '@tektum/grimoire-core/testing/fake-revision-repo';
+import { FakeSearchRepo } from '@tektum/grimoire-core/testing/fake-search-repo';
 import { FakeTrashRepo } from '@tektum/grimoire-core/testing/fake-trash-repo';
 import { FakeUserStore } from '@tektum/grimoire-core/testing/fake-user-store';
 import { makeFakeConfig } from '@tektum/grimoire-core/testing/fake-config';
@@ -33,6 +34,9 @@ const uuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStar
 export const NIL = uuid(0);
 /** The administrator of another tenant (`other`), present when a world is built with `outsider`: every id of this world belongs to `legacy`, so none of them exists for this person. */
 export const OUTSIDER_ID = uuid(199);
+/** The collection of the other tenant, readable by its administrator, with a search hit of its own (present with `outsider`). */
+export const OTHER_COLLECTION_ID = uuid(198);
+export const OTHER_HIT_ID = uuid(197);
 export const USER_ID = Object.fromEntries(NAMES.map((name, i) => [name, uuid(100 + i)])) as Record<(typeof NAMES)[number], string>;
 
 /**
@@ -59,6 +63,7 @@ export async function buildWorld(options: { outsider?: boolean } = {}) {
   if (options.outsider === true) {
     rows.push({ id: OUTSIDER_ID, descopeUserId: 'd-outsider', email: 'outsider@example.com', name: 'outsider', role: 'admin', suspended: false, tenantId: 'other' });
     world.users.push({ id: OUTSIDER_ID, role: 'admin', suspended: false, tenantId: 'other' });
+    world.collections.push({ id: OTHER_COLLECTION_ID, deleted: false, defaultPermission: 'read', tenantId: 'other' });
   }
   const users = new FakeUserStore(rows);
   const signInPolicy = { firstAdminEmails: [], allowedEmailDomains: ['example.com'], refusedEmailDomains: [], allowDevRole: false };
@@ -130,11 +135,16 @@ export async function buildWorld(options: { outsider?: boolean } = {}) {
     imports.seed({ ...(row as NonNullable<typeof row>), status });
   };
   const config = makeFakeConfig({ files: FILES, allowedEmailDomains: ['example.com'], http: { userLimitPerMinute: 100_000, addressLimitPerMinute: 100_000, addressCeilingPerMinute: 100_000 } });
+  // Search: a hit in each tenant, so that a search of the wrong tenant, or of a collection that is not the caller's, returns something to be refused.
+  const search = new FakeSearchRepo();
+  const hit = { urlId: 'u', title: 'x', snippet: { text: '', ranges: [] as [number, number][] }, partial: false, updatedAt: 1, rank: 1 };
+  search.seed({ ...hit, tenantId: 'legacy', pageId: page.id, collectionId: open.id });
+  if (options.outsider === true) search.seed({ ...hit, tenantId: 'other', pageId: OTHER_HIT_ID, collectionId: OTHER_COLLECTION_ID });
   const store = createFakeAccessStore(world);
   const app = createApp({
     ...t.ctx, config, auth: { verifier }, signInPolicy,
     http: {
-      ...t.ctx.http, config, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit, attachments, files, imports,
+      ...t.ctx.http, config, search, users, collections, pages, trash, revisions, pageState, admin, converter, audit: collections.audit, attachments, files, imports,
       idempotency: new FakeIdempotencyStore(t.clock),
       provisioner: createProvisioner({ users, verifier, policy: signInPolicy }),
       access: createPageAccess(store), authorizer: createAuthorizer(store),
@@ -162,7 +172,7 @@ export async function buildWorld(options: { outsider?: boolean } = {}) {
     openCollection: open.id, closedCollection: closed.id, page: page.id, hiddenPage: hidden.id, urlId: page.urlId, hiddenUrlId: hidden.urlId,
     ...importRows, item: items[importRows.import] as string, hiddenItem: items[importRows.hiddenImport] as string, readyAttachment, hiddenReadyAttachment, pendingAttachment, hiddenPendingAttachment, trashed, hiddenTrashed, revision: revision.id, group: made.group.id, entry: granted.entry.id,
   };
-  return { call, demote, suspend, prepareImport, imports, ids, world, pages, collections, converter, trash, pageState, admin, config };
+  return { call, demote, suspend, prepareImport, imports, search, ids, world, pages, collections, converter, trash, pageState, admin, config };
 }
 export type WorldBuilt = Awaited<ReturnType<typeof buildWorld>>;
 
