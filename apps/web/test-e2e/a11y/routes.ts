@@ -43,7 +43,13 @@ export const STOPS: readonly Stop[] = [
 /** What a placeholder screen says: a stop marked `pending` shows it, and a stop that is not marked must not. */
 export const PLACEHOLDER_TEXT = 'This screen is not built yet.';
 
+/** A stop that is not ready fails naming the route, the address and what the page says in its place (a server that could not be reached shows as that sentence, not as a missing heading). */
 export const stopReady = async (stop: Stop, page: Page, world: World): Promise<void> => {
-  await (stop.ready ?? headingVisible)(page, world);
-  await headingVisible(page);
+  try {
+    await (stop.ready ?? headingVisible)(page, world);
+    await headingVisible(page);
+  } catch (error) {
+    const said = ((await page.locator('body').innerText({ timeout: 2000 }).catch(() => '')) || 'nothing').replace(/\s+/g, ' ').slice(0, 160);
+    throw new Error(`stop ${stop.route} (${page.url()}) is not ready; the page says: "${said}"`, { cause: error });
+  }
 };
