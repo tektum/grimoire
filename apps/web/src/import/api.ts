@@ -74,11 +74,23 @@ function shaped<T>(step: ImportError['step'], value: unknown, is: (v: unknown) =
 /** What is in the zip, which says how it is read (R6.39): an export of Notion, or Markdown files. The person says which; nothing is guessed from the file. */
 export type ImportProfile = 'notion_md_csv' | 'markdown_zip';
 
-/** Makes the import (R6.39): the zip is not sent yet. */
+/**
+ * Makes the import (R6.39): the zip is not sent yet. An answer for a file that goes up in parts is one this screen cannot send yet: the import the API made for it is given up (R6.58), so that
+ * nothing stays open to be cleaned up a day later, and the create fails.
+ */
 export async function createImport(api: ApiLike, body: { collectionId: string; fileName: string; size: number; profile: ImportProfile }): Promise<CreatedImport> {
   const { fileName, size, ...rest } = body;
-  const made = shaped('create', okOr('create', await api.POST('/v1/imports' as never, { body: { ...rest, files: [{ fileName, size }] } } as never)), isCreated);
+  const made = okOr('create', await api.POST('/v1/imports' as never, { body: { ...rest, files: [{ fileName, size }] } } as never));
+  if (!isCreated(made)) {
+    if (isObject(made) && typeof made.id === 'string') await abortImport(api, made.id).catch(() => undefined);
+    throw new ImportError('create', 200, undefined);
+  }
   return { id: made.id, upload: made.uploads[0].upload };
+}
+
+/** Gives up an import whose zip was not started (R6.58): the cleanup deletes what was made for it. */
+async function abortImport(api: ApiLike, id: string): Promise<void> {
+  okOr('cancel', await api.POST('/v1/imports/{id}/abort' as never, { params: { path: { id } } } as never));
 }
 
 /** PUTs the zip where the API said, with the headers it said (they are part of what the signature covers). A network failure is a status 0. */
