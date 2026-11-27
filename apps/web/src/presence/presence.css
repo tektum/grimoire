@@ -39,6 +39,16 @@
 .presence-disc + .presence-disc {
   margin-inline-start: -6px;
 }
+/* The first disc is the one in front, so its initials are never cut by the next: each later one goes under the one before. */
+.presence-disc,
+.presence-more {
+  position: relative;
+}
+.presence-discs > :nth-child(1) { z-index: 5; }
+.presence-discs > :nth-child(2) { z-index: 4; }
+.presence-discs > :nth-child(3) { z-index: 3; }
+.presence-discs > :nth-child(4) { z-index: 2; }
+.presence-discs > :nth-child(5) { z-index: 1; }
 .presence-more {
   border: 1px solid var(--control-border);
   background: var(--paper-raised);

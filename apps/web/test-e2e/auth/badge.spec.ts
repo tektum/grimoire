@@ -61,11 +61,11 @@ const PEOPLE = [
 for (const person of PEOPLE) {
   for (const scheme of ['light', 'dark'] as const) {
     for (const width of [1280, 360]) {
-      test(`${person.label}: the name, the role and Sign out are in the header, with a box and a contrast, in the ${scheme} scheme at ${width} px`, async ({ page }) => {
+      test(`${person.label}: the name, the role and Sign out are in the account area (the foot of the contents on a wide screen, the menu on a phone), with a box and a contrast, in the ${scheme} scheme at ${width} px`, async ({ page }) => {
         await page.setViewportSize({ width, height: 800 });
         await page.emulateMedia({ colorScheme: scheme });
         await signIn(page, person.userId, person.role);
-        const badge = page.locator('.shell-header .user-badge');
+        const badge = page.locator('.user-badge');
         if (width < 641) await page.getByRole('button', { name: 'Show menu' }).click(); // on a phone the account area is behind the menu button
         await expectSeen(page, badge.getByTestId('user-name'), 'the name');
         await expectSeen(page, badge.getByTestId('user-role'), 'the role');

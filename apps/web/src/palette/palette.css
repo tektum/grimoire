@@ -1,21 +1,216 @@
-.palette { top: 12vh; padding: var(--space-3); width: min(40rem, 94vw); max-height: 70vh; display: flex; flex-direction: column; }
-.palette [cmdk-list] { overflow-y: auto; margin-top: var(--space-2); }
-.palette [cmdk-group-heading] { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-2); padding: var(--space-2) var(--space-3) var(--space-1); }
-.palette [cmdk-item] { overflow-wrap: anywhere; }
-/* The row the keys are on: the accent as a 2 px outline inside the row (3:1 or more against the panel in both schemes), not only a background that is barely different from the panel in the dark one. */
-.palette [cmdk-item][data-selected='true'] { outline: 2px solid var(--accent); outline-offset: -2px; }
-@media (forced-colors: active) {
-  .palette [cmdk-item][data-selected='true'] { outline-color: Highlight; }
+/* The palette (docs/DESIGN.md "Search"): 14vh from the top, 640px wide, 14px corners, over the scrim; a 52px input row, the groups, rows of 36px or more, and a footer of keycaps. */
+.palette {
+  top: 14vh;
+  display: flex;
+  flex-direction: column;
+  width: min(40rem, 94vw);
+  max-height: 70vh;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-dialog);
 }
-.palette-result-title { font-weight: 600; display: block; }
-.palette-snippet { display: block; color: var(--ink-2); font-size: 0.85rem; }
-/* The matched words: a marker colour with the text colour on it, in both schemes (4.5 or more: #ffe08a under #1b1a17, #6b5600 under #ece8de). */
-.palette-snippet mark, .search-snippet mark { background: #ffe08a; color: #1b1a17; border-radius: 2px; }
-@media (prefers-color-scheme: dark) {
-  .palette-snippet mark, .search-snippet mark { background: #6b5600; color: #ece8de; }
+.palette-input {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  height: 52px;
+  padding-inline: var(--space-4);
+  color: var(--ink-3);
 }
-.palette-note { padding: var(--space-3); color: var(--ink-2); margin: 0; }
+.palette-input [cmdk-input] {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: var(--weight-regular) var(--text-ui-lg) / 1.3 var(--font-ui);
+}
+.palette-input [cmdk-input]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-1);
+}
+.palette-input [cmdk-input]::placeholder {
+  color: var(--ink-3);
+}
+/* The line under the input while a search runs: the accent, thin, moving by transform only; still under reduced motion (no movement, just there). */
+.palette-progress {
+  flex: none;
+  height: 2px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
+  box-sizing: content-box;
+}
+.palette-progress::before {
+  content: '';
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0;
+  transform-origin: left;
+  transition: opacity var(--duration-press) var(--ease);
+}
+.palette-progress[data-active='true']::before {
+  opacity: 1;
+  animation: palette-progress 1s var(--ease) infinite;
+}
+@keyframes palette-progress {
+  from { transform: translateX(-100%) scaleX(0.4); }
+  to { transform: translateX(250%) scaleX(0.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .palette-progress[data-active='true']::before { animation: none; transform: none; }
+}
+.palette [cmdk-list] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.palette [cmdk-group-heading] {
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  color: var(--ink-3);
+  font: var(--weight-semibold) var(--text-ui-xs) / 1.3 var(--font-ui);
+}
+.palette [cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  color: var(--ink);
+  font: var(--weight-regular) var(--text-ui-md) / 1.3 var(--font-ui);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.palette [cmdk-item][data-selected='true'] {
+  background: var(--fill-selected);
+}
+.palette-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+.palette-row-text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-3);
+  min-width: 0;
+}
+.palette-label {
+  display: block;
+}
+/* A match: the words that were typed, in 600, no colour. */
+.palette-hit,
+.palette-snippet mark,
+.search-snippet mark {
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-semibold);
+}
+.palette-path {
+  color: var(--ink-3);
+  font-size: var(--text-ui-sm);
+}
+/* ink-3 on the selected fill in dark is 3.7:1: on the row the keys are on, the path and the hint step up to ink-2. */
+.palette [cmdk-item][data-selected='true'] .palette-path,
+.palette [cmdk-item][data-selected='true'] .palette-icon {
+  color: var(--ink-2);
+}
+/* The snippet of a body match: Literata 14, roman, two lines at most. */
+.palette-snippet {
+  display: -webkit-box;
+  flex-basis: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ink-2);
+  font: var(--weight-regular) 0.875rem / 1.45 var(--font-page);
+  font-style: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+/* The return glyph: on the row the keys are on, and only there (it keeps its place on the others, so nothing moves). */
+.palette-return {
+  flex: none;
+  color: var(--ink-2);
+  visibility: hidden;
+}
+.palette [cmdk-item][data-selected='true'] .palette-return {
+  visibility: visible;
+}
+.palette-note {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--ink-2);
+  font-size: var(--text-ui-md);
+}
+/* "Searching…" is for a screen reader: the line under the input is what is seen. */
+.palette-searching {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.palette-foot {
+  display: flex;
+  flex: none;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-3);
+  font: var(--weight-regular) var(--text-ui-xs) / 1.3 var(--font-ui);
+}
+.palette-foot span {
+  display: inline-flex;
+  align-items: center;
+}
+.palette-foot kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  margin-inline-end: var(--space-1);
+  padding: 1px var(--space-1);
+  box-sizing: border-box;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  color: var(--ink-2);
+  font: inherit;
+  text-align: center;
+}
+/* A touch screen has no keys to name. */
+@media (pointer: coarse) {
+  .palette-foot {
+    display: none;
+  }
+}
 @media (forced-colors: active) {
-  /* The system's own pair for a marker (`Mark` under `MarkText`), not the selection's (`Highlight`): the engine draws the one it means for a <mark>, and a checker reads it as readable. */
-  .palette-snippet mark, .search-snippet mark { background: Mark; color: MarkText; }
+  /* A fill disappears in forced colours: the row the keys are on is the system's selection colour, with an outline of the text colour besides, and its return glyph. */
+  .palette [cmdk-item][data-selected='true'] {
+    background: Highlight;
+    color: HighlightText;
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+    forced-color-adjust: none;
+  }
+  .palette [cmdk-item][data-selected='true'] .palette-path,
+  .palette [cmdk-item][data-selected='true'] .palette-icon,
+  .palette [cmdk-item][data-selected='true'] .palette-return,
+  .palette [cmdk-item][data-selected='true'] .palette-snippet {
+    color: HighlightText;
+  }
+  .palette-progress::before { background: Highlight; }
 }

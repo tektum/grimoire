@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readRecent, recordRecent } from '../../src/storage/recent';
 import { createAuth, DESCOPE_DEVICE_KEY, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY, type AuthState } from '../../src/auth';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
 import { config, fakeSdk, fakeSdkStorage, fakeStorage, jwt, moduleOf, spyConsole } from './support';
@@ -181,6 +182,34 @@ describe('signOut', () => {
     stop();
     await t.auth.signOut('manual');
     expect(seen).toHaveLength(1);
+  });
+
+  it('takes the lists of recent pages of every person away on sign-out, whatever the reason, and leaves the preferences', async () => {
+    for (const reason of ['manual', 'expired'] as const) {
+      const t = setup();
+      recordRecent('alice', { id: 'p1', urlId: 'u1', title: 'One', path: '' }, t.storage);
+      recordRecent('bob', { id: 'p2', urlId: 'u2', title: 'Two', path: '' }, t.storage);
+      t.storage.set('last-collection', 'c1');
+      await t.auth.signOut(reason);
+      expect(readRecent('alice', t.storage)).toEqual([]);
+      expect(readRecent('bob', t.storage)).toEqual([]);
+      expect([...t.map.keys()]).toEqual(['grimoire.last-collection']);
+      await t.auth.signOut(reason); // an ended session is cleared again, and nothing is left to take
+    }
+  });
+
+  it('clears the recent pages again after the provider logout: a page listed while it was waited for does not stay for the next person', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    await t.auth.getToken();
+    recordRecent('alice', { id: 'p1', urlId: 'u1', title: 'One', path: '' }, t.storage);
+    const logout = t.sdk.logout.bind(t.sdk);
+    t.sdk.logout = async () => {
+      expect(readRecent('alice', t.storage)).toEqual([]); // hidden from the start of the wait
+      recordRecent('alice', { id: 'p2', urlId: 'u2', title: 'Two', path: '' }, t.storage); // the open page lists itself while the wait goes on
+      await logout();
+    };
+    await t.auth.signOut('manual');
+    expect(readRecent('alice', t.storage)).toEqual([]);
   });
 
   it('calls the SDK logout for a manual sign-out once the SDK is loaded, and not for an ended session', async () => {

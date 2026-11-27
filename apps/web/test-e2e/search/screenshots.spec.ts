@@ -22,7 +22,9 @@ test('the palette open with results, one match highlighted', async ({ page, cont
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox').fill('roadmap');
   await expect(
+    // The result row, in its group: the page of the same name is also offered above it as a Pages row, which has no snippet.
     page
+      .getByRole('group', { name: 'Search results' })
       .getByRole('option', { name: /Product roadmap/ })
       .first()
       .locator('mark'),

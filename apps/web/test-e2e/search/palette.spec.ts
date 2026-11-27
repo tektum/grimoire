@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test';
 import { mockApi } from '../collections/mock-api';
-import { contrastRatio } from '../support/contrast';
 import { signInAs } from '../support/sign-in';
 import { hit, scriptedSearch } from './support';
 
@@ -86,23 +85,22 @@ test('Admin is in the palette for an administrator and not for a member, and a s
 });
 
 for (const scheme of ['light', 'dark'] as const) {
-  test(`the row the keys are on can be told from the others, in the ${scheme} scheme (its outline has 3:1 against the panel, the others have none)`, async ({ page, context }) => {
+  // DESIGN.md "Search" and "Selection in dark": the row the keys are on is `--fill-selected` with a return glyph, not an outline; the glyph is what tells it apart, and shows on that row only.
+  test(`the row the keys are on can be told from the others, in the ${scheme} scheme (it has the return glyph and the selected fill, the others have neither)`, async ({ page, context }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await open(page, context);
     await page.keyboard.press('Control+k');
     await page.getByRole('combobox').fill('roadmap');
     const selected = page.locator('[cmdk-item][data-selected="true"]');
     await expect(selected).toHaveCount(1);
-    const style = await selected.evaluate((el) => {
-      const own = getComputedStyle(el);
-      const panel = getComputedStyle(el.closest('.palette')!);
-      return { outline: own.outlineColor, width: own.outlineWidth, style: own.outlineStyle, panel: panel.backgroundColor };
-    });
-    expect(style.style).toBe('solid');
-    expect(Number.parseFloat(style.width)).toBeGreaterThanOrEqual(2);
-    expect(contrastRatio(style.outline, style.panel), 'the outline against the panel').toBeGreaterThanOrEqual(3);
-    const others = await page.locator('[cmdk-item][data-selected="false"]').evaluateAll((els) => els.map((el) => getComputedStyle(el).outlineStyle));
-    expect(others.length).toBeGreaterThan(0);
-    for (const outline of others) expect(outline).toBe('none');
+    await expect(selected.locator('.palette-return')).toBeVisible();
+    const fill = await selected.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(fill).not.toBe('rgba(0, 0, 0, 0)');
+    const others = page.locator('[cmdk-item][data-selected="false"]');
+    expect(await others.count()).toBeGreaterThan(0);
+    for (const row of await others.all()) {
+      await expect(row.locator('.palette-return')).toBeHidden();
+      expect(await row.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+    }
   });
 }
