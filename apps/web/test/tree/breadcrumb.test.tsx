@@ -57,6 +57,20 @@ describe('the top bar', () => {
     expect(within(trail).getByText('Paging rules').closest('li')?.classList.contains('breadcrumb-middle')).toBe(false);
   });
 
+  it('tells the top bar there is a parent page once the trail has one, and not on the collection screen (the phone shows the parent in place of the brand)', async () => {
+    open('/p/paging-rules-leaf');
+    const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    await within(trail).findByText('Paging rules');
+    await waitFor(() => { expect(document.querySelector('.shell-header')!.hasAttribute('data-parent')).toBe(true); });
+  });
+
+  it('does not say so on the collection screen, where the trail is the collection alone', async () => {
+    open('/c/c1');
+    const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(trail).getAllByRole('listitem')).toHaveLength(1);
+    expect(document.querySelector('.shell-header')!.hasAttribute('data-parent')).toBe(false);
+  });
+
   it('shows only the collection on its own screen', async () => {
     open('/c/c1');
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });

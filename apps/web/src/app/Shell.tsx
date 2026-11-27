@@ -63,6 +63,7 @@ export function Shell() {
   const session = useSession();
   const scrolled = useScrolled();
   const room = useBarRoom();
+  const [hasParent, setHasParent] = useState(false);
   // On a phone the contents are behind a button; a new screen closes them.
   const [contentsOpen, setContentsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -76,7 +77,7 @@ export function Shell() {
         <a className="skip-link" href={inPageHref(pathname, search, 'main')}>
           Skip to the page
         </a>
-        <header className="shell-header" data-scrolled={scrolled || undefined}>
+        <header className="shell-header" data-scrolled={scrolled || undefined} data-parent={hasParent || undefined}>
           <button
             type="button"
             className="shell-contents-toggle"
@@ -93,7 +94,7 @@ export function Shell() {
           <Link to="/" className="shell-brand">
             Grimoire
           </Link>
-          <Breadcrumb />
+          <Breadcrumb onParent={setHasParent} />
           <PageControlsSlot />
           {/* The person's own button, so that it cannot be taken for the page's menu ("···") beside it: the account and the places are behind it. */}
           <button

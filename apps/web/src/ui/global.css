@@ -62,7 +62,7 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .breadcrumb li:nth-last-child(2):dir(rtl)::before { content: '\203A' / ''; margin-inline: 0 var(--space-1); } /* the chevron points the way back, which is right in a right-to-left text */
   .breadcrumb li:nth-last-child(2) { align-items: center; }
   .breadcrumb li:nth-last-child(2) > a { display: inline-flex; align-items: center; min-height: 44px; }
-  .shell-header:has(.breadcrumb li:nth-last-child(2)) .shell-brand { display: none; }
+  .shell-header[data-parent] .shell-brand { display: none; } /* set by the trail itself: a :has() on a trail that arrives later is not redrawn by every engine */
 }
 .shell-body { display: flex; flex: 1; min-height: 0; }
 .shell-contents { overflow: auto; box-sizing: border-box; flex: none; width: 264px; padding: var(--space-3); border-inline-end: 1px solid var(--hairline); background: var(--paper-sunken); color: var(--ink-2); font-size: 0.8125rem; }
