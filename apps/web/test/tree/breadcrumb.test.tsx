@@ -5,6 +5,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { routeObjects } from '../../src/app/router';
 import { SessionContext } from '../../src/auth/session';
+import { LAST_COLLECTION_KEY } from '../../src/screens/collections/useCollections';
+import { createClientStorage } from '../../src/storage';
 import '../support/dom';
 import { COLLECTIONS, fakeApi, page } from './support';
 
@@ -39,6 +41,15 @@ describe('the top bar', () => {
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     expect(trail.textContent).toBe('Dev');
     expect(within(trail).queryAllByRole('link')).toHaveLength(0);
+  });
+});
+
+describe('the top bar on other screens', () => {
+  it('has no trail on a screen that is not a collection or a page, even with a collection remembered', async () => {
+    createClientStorage().set(LAST_COLLECTION_KEY, 'c1');
+    open('/search');
+    await screen.findByRole('link', { name: 'Trash' });
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
   });
 });
 

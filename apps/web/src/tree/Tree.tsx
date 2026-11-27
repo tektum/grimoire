@@ -14,6 +14,9 @@ import './tree.css';
 /** Rows are drawn for the visible window only: the DOM holds a screenful, however many pages there are. */
 export const TREE_HEIGHT = 560;
 export const ROW_HEIGHT = 28;
+/** Under a coarse pointer every target is 44px, so a row is too. */
+export const ROW_HEIGHT_COARSE = 44;
+const rowHeight = (): number => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches ? ROW_HEIGHT_COARSE : ROW_HEIGHT);
 const INDENT = 20;
 
 /** The first level is open at the start (a page with children shows them); deeper levels start closed. */
@@ -158,7 +161,7 @@ export function Tree({ items, editing, currentUrlId }: TreeProps) {
         data={items as TreeItem[]}
         width="100%"
         height={TREE_HEIGHT}
-        rowHeight={ROW_HEIGHT}
+        rowHeight={rowHeight()}
         indent={INDENT}
         className="tree"
         rowClassName="tree-item"

@@ -49,7 +49,7 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 }
 @media (pointer: coarse) {
   .shell-header { min-height: 44px; }
-  .shell-header a, .shell-header button { display: inline-flex; align-items: center; min-height: 44px; }
+  .shell-header a, .shell-header button:not(.shell-contents-toggle) { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .error-boundary { max-width: 30rem; margin: var(--space-6) auto; padding: var(--space-5); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); }
 .error-boundary h1 { margin-top: 0; font-size: 1.4rem; }

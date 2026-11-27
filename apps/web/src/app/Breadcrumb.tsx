@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useMatch } from 'react-router';
 import type { ApiLike } from '../api/query';
 import { useCollections } from '../screens/collections/useCollections';
 import { ancestry, pagePath } from '../tree/model';
@@ -14,16 +14,18 @@ export function Breadcrumb() {
 
 function Trail({ api }: { readonly api: ApiLike }) {
   const { collectionId, urlId } = useOpenCollection(api);
+  const inCollection = useMatch('/c/:collectionId') !== null;
   const collections = useCollections(api);
   const tree = useCollectionTree(api, collectionId);
   const name = collections.data?.find((c) => c.id === collectionId)?.name;
-  if (collectionId === undefined || name === undefined) return null;
+  // The remembered collection also answers on other screens (search, trash): there is no trail there.
+  if (collectionId === undefined || name === undefined || (!inCollection && urlId === undefined)) return null;
   const path = urlId === undefined || tree.data === undefined ? [] : ancestry(tree.data, urlId);
   const label = (title: string): string => (title === '' ? 'Untitled' : title);
   return (
     <nav aria-label="Breadcrumb" className="breadcrumb">
       <ol>
-        <li>{path.length === 0 ? <span aria-current="page">{name}</span> : <Link to={`/c/${collectionId}`}>{name}</Link>}</li>
+        <li>{inCollection ? <span aria-current="page">{name}</span> : <Link to={`/c/${collectionId}`}>{name}</Link>}</li>
         {path.map((p, i) => (
           <li key={p.id}>{i === path.length - 1 ? <span aria-current="page">{label(p.title)}</span> : <Link to={pagePath(p.title, p.urlId)}>{label(p.title)}</Link>}</li>
         ))}
