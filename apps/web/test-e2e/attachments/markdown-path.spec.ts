@@ -14,7 +14,19 @@ test.describe('what is saved for an image', () => {
     page.on('console', (message) => message.type() !== 'log' && message.type() !== 'debug' && seen.push(`console.${message.type()}: ${message.text().slice(0, 200)}`));
     page.on('pageerror', (error) => seen.push(`pageerror: ${error.message.slice(0, 200)}`));
     page.on('requestfailed', (request) => seen.push(`requestfailed: ${request.method()} ${new URL(request.url()).pathname} ${request.failure()?.errorText ?? ''}`));
-    page.on('response', (response) => response.status() >= 400 && seen.push(`response ${String(response.status())}: ${response.request().method()} ${new URL(response.url()).pathname}`));
+    page.on('response', (response) => {
+      const image = response.request().resourceType() === 'image';
+      if (!image && response.status() < 400) return;
+      const headers = response.headers();
+      seen.push(`response ${String(response.status())}${image ? ' image' : ''}: ${response.request().method()} ${new URL(response.url()).origin}${new URL(response.url()).pathname} type=${headers['content-type'] ?? '-'} length=${headers['content-length'] ?? '-'}`);
+    });
+    page.on('requestfinished', (request) => request.resourceType() === 'image' && seen.push(`finished image: ${new URL(request.url()).pathname}`));
+    // The `error` events of images, which do not bubble: noted at capture, with the address (no query) and the time, because a failed image is replaced by a message and its element is gone when the test looks.
+    await page.addInitScript(() => {
+      const errors: string[] = [];
+      (window as unknown as { __imageErrors: string[] }).__imageErrors = errors;
+      document.addEventListener('error', (event) => event.target instanceof HTMLImageElement && errors.push(`${String(Math.round(performance.now()))}ms ${event.target.currentSrc.split('?')[0] ?? ''} complete=${String(event.target.complete)} natural=${String(event.target.naturalWidth)}`), true);
+    });
     await signInAs(context, 'e2e-alice', 'member');
     await page.goto(made.path);
     await waitForSynced(page);
@@ -39,7 +51,8 @@ test.describe('what is saved for an image', () => {
           ),
         )
         .catch((e: unknown) => [`could not read the page: ${String(e)}`]);
-      await test.info().attach('after-reload.txt', { body: JSON.stringify({ states, seen, markdown: saved.slice(0, 300) }, null, 2), contentType: 'text/plain' });
+      const imageErrors = await page.evaluate(() => (window as unknown as { __imageErrors?: string[] }).__imageErrors ?? []).catch((e: unknown) => [`could not read the page: ${String(e)}`]);
+      await test.info().attach('after-reload.txt', { body: JSON.stringify({ states, imageErrors, seen, markdown: saved.slice(0, 300) }, null, 2), contentType: 'text/plain' });
       throw error;
     }
   });
