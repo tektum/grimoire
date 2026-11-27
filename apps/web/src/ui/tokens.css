@@ -1,4 +1,4 @@
-/* Design tokens: option B, "Bound book" (docs/DESIGN.md). Light is the default; dark follows the system (`prefers-color-scheme`) unless `data-theme` on <html> says
+/* Design tokens: the system in docs/DESIGN.md. Light is the default; dark follows the system (`prefers-color-scheme`) unless `data-theme` on <html> says
    otherwise. Components use these roles, never raw values. Every text and edge pair is measured by test/ui/tokens-contrast.test.ts against the tables in DESIGN.md. */
 :root {
   /* Surfaces */

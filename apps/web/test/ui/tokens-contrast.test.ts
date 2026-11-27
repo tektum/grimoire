@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { contrast } from '../../src/ui/collab';
 
-// The contrast tables of docs/DESIGN.md (option B), measured on the values tokens.css declares, so a token edit that breaks AA fails here.
+// The contrast tables of the system in docs/DESIGN.md, measured on the values tokens.css declares, so a token edit that breaks AA fails here.
 const css = readFileSync(new URL('../../src/ui/tokens.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** The custom properties of every block whose selector is exactly `selector`, later blocks winning. */
@@ -47,7 +47,7 @@ function surface(theme: Theme, spec: string): string {
 
 const TEXT = 4.5;
 const EDGE = 3;
-// [what, foreground, background, needs]: the rows of the table under "B. Bound book".
+// [what, foreground, background, needs]: the rows of the contrast table under "The system".
 const PAIRS: readonly (readonly [string, string, string, number])[] = [
   ['body text', '--ink', '--paper', TEXT],
   ['body text on contents', '--ink', '--paper-sunken', TEXT],
