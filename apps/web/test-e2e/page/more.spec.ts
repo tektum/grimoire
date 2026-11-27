@@ -19,7 +19,8 @@ test('an administrator: History and Reset saved state… are in the menu, not on
   await expect(page.getByRole('button', { name: /Reset saved state/ })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'History' })).toHaveCount(0);
   const more = page.getByRole('button', { name: 'More page actions' });
-  await expect(more).toHaveText('More');
+  await expect(more).toHaveText('');
+  await expect(more).toHaveAttribute('title', 'More page actions');
   await more.click();
   await expect(page.getByRole('menuitem')).toHaveText(['History', 'Reset saved state…']);
 });

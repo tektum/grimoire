@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { inPageHref } from '../../src/ui/inpage';
-import { COLLAB_COLOURS, colourIndex, contrast, labelText } from '../../src/ui/collab';
+import { COLLAB_COLOURS, caretColour, colourIndex, contrast, labelText } from '../../src/ui/collab';
 
 const ui = path.resolve(import.meta.dirname, '../../src/ui');
 const tokens = readFileSync(path.join(ui, 'tokens.css'), 'utf8');
@@ -93,6 +93,22 @@ describe('collaborator colour index', () => {
     expect(labelText('#000000')).toBe('#ffffff');
     expect(labelText('#882255')).toBe('#ffffff');
     expect(labelText('#E69F00')).toBe('#000000');
+  });
+
+  it('gives each collaborator a caret colour per theme, the values of docs/DESIGN.md, that reaches 3:1 on the paper of the theme', () => {
+    const light = declared(tokens, ':root');
+    const dark = declared(tokens, ":root[data-theme='dark']");
+    const table = {
+      light: ['#0072b2', '#d55e00', '#009e73', '#c774a2', '#3698cb', '#c68100', '#882255', '#379f8e'],
+      dark: ['#0072b2', '#d55e00', '#009e73', '#cc79a7', '#56b4e9', '#e69f00', '#a23b6c', '#44aa99'],
+    };
+    for (const [theme, values] of [[light, table.light], [dark, table.dark]] as const) {
+      COLLAB_COLOURS.forEach((_, i) => {
+        const name = /var\((--[\w-]+)\)/.exec(caretColour(i))![1]!;
+        expect([name, theme[name]]).toEqual([name, values[i]]);
+        expect([name, contrast(theme[name]!, theme['--paper']!) >= 3]).toEqual([name, true]);
+      });
+    }
   });
 });
 

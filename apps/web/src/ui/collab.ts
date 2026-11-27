@@ -11,6 +11,14 @@ export function colourIndex(userId: string): number {
   return hash % COLLAB_COLOURS.length;
 }
 
+/**
+ * The caret colour of the collaborator with colour index `index`: the `--collab-caret-N` token of tokens.css, the fixed colour moved in lightness until it
+ * reaches 3:1 on the paper of the theme (docs/DESIGN.md "Collaborator colours"). The name label keeps the fixed colour.
+ */
+export function caretColour(index: number): string {
+  return `var(--collab-caret-${index})`;
+}
+
 const channel = (v: number): number => {
   const s = v / 255;
   return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;

@@ -16,6 +16,8 @@ export interface BlockKind {
   readonly keywords: readonly string[];
   /** Whether it recreates the block (a list, a quote, a code block): then the soft lock refuses it while another person's cursor is in the block. A level change or an insertion does not. */
   readonly structural?: boolean;
+  /** The Markdown that makes this block when typed at the start of a line, shown beside the item (decoration: the label is the name). */
+  readonly shortcut?: string;
   /** Does it. False when the schema does not allow it where the cursor is (the editor is left as it was). */
   run(ctx: Ctx): boolean;
 }
@@ -27,6 +29,7 @@ const level = (n: number): BlockKind => ({
   label: n === 0 ? 'Text' : `Heading ${n}`,
   description: n === 0 ? 'Plain paragraph' : (['', 'Large section title', 'Section title', 'Subsection title', 'Small title', 'Smaller title', 'Smallest title'][n] ?? ''),
   keywords: n === 0 ? ['paragraph', 'plain', 'normal'] : ['heading', 'title', `h${n}`, String(n)],
+  ...(n === 0 ? {} : { shortcut: '#'.repeat(n) }),
   run: (ctx) => call(ctx, setBlockLevelCommand.key, n),
 });
 
@@ -51,12 +54,12 @@ function wrapInTaskList(ctx: Ctx): boolean {
 export const BLOCK_KINDS: readonly BlockKind[] = [
   level(0),
   ...[1, 2, 3, 4, 5, 6].map(level),
-  { id: 'bullet-list', label: 'Bulleted list', description: 'A list with bullets', keywords: ['bullet', 'list', 'unordered', 'ul'], structural: true, run: (ctx) => call(ctx, wrapInBulletListCommand.key) },
-  { id: 'numbered-list', label: 'Numbered list', description: 'A list with numbers', keywords: ['number', 'ordered', 'list', 'ol'], structural: true, run: (ctx) => call(ctx, wrapInOrderedListCommand.key) },
-  { id: 'task-list', label: 'Task list', description: 'A list with check boxes', keywords: ['task', 'todo', 'check', 'checkbox', 'list'], structural: true, run: wrapInTaskList },
-  { id: 'quote', label: 'Quote', description: 'Set text apart as a quotation', keywords: ['quote', 'blockquote', 'cite'], structural: true, run: (ctx) => call(ctx, wrapInBlockquoteCommand.key) },
-  { id: 'code', label: 'Code block', description: 'Text in a fixed-width font', keywords: ['code', 'fence', 'pre', 'snippet'], structural: true, run: (ctx) => call(ctx, createCodeBlockCommand.key) },
-  { id: 'divider', label: 'Divider', description: 'A horizontal line', keywords: ['divider', 'rule', 'line', 'hr', 'separator'], run: (ctx) => call(ctx, insertHrCommand.key) },
+  { id: 'bullet-list', label: 'Bulleted list', description: 'A list with bullets', keywords: ['bullet', 'list', 'unordered', 'ul'], shortcut: '-', structural: true, run: (ctx) => call(ctx, wrapInBulletListCommand.key) },
+  { id: 'numbered-list', label: 'Numbered list', description: 'A list with numbers', keywords: ['number', 'ordered', 'list', 'ol'], shortcut: '1.', structural: true, run: (ctx) => call(ctx, wrapInOrderedListCommand.key) },
+  { id: 'task-list', label: 'Task list', description: 'A list with check boxes', keywords: ['task', 'todo', 'check', 'checkbox', 'list'], shortcut: '- [ ]', structural: true, run: wrapInTaskList },
+  { id: 'quote', label: 'Quote', description: 'Set text apart as a quotation', keywords: ['quote', 'blockquote', 'cite'], shortcut: '>', structural: true, run: (ctx) => call(ctx, wrapInBlockquoteCommand.key) },
+  { id: 'code', label: 'Code block', description: 'Text in a fixed-width font', keywords: ['code', 'fence', 'pre', 'snippet'], shortcut: '```', structural: true, run: (ctx) => call(ctx, createCodeBlockCommand.key) },
+  { id: 'divider', label: 'Divider', description: 'A horizontal line', keywords: ['divider', 'rule', 'line', 'hr', 'separator'], shortcut: '---', run: (ctx) => call(ctx, insertHrCommand.key) },
   { id: 'table', label: 'Table', description: 'Rows and columns', keywords: ['table', 'grid', 'rows', 'columns'], run: (ctx) => call(ctx, insertTableCommand.key, { row: 3, col: 3 }) },
 ];
 

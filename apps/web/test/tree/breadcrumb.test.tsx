@@ -32,15 +32,36 @@ describe('the top bar', () => {
   it('names the collection and the pages above the open page, the page itself last and not a link', async () => {
     open('/p/paging-rules-leaf');
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
-    await waitFor(() => { expect(trail.textContent).toBe('DevTeam handbookOn-callPaging rules'); });
+    // The items as assistive technology has them: the fold ("...") for a phone is hidden from it, so it is not part of the trail's text.
+    await waitFor(() => { expect(within(trail).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Dev', 'Team handbook', 'On-call', 'Paging rules']); });
     expect(within(trail).getAllByRole('link').map((a) => a.textContent)).toEqual(['Dev', 'Team handbook', 'On-call']);
     expect(within(trail).getByText('Paging rules').getAttribute('aria-current')).toBe('page');
+  });
+
+  it('gives every item its full name as a tooltip, so a name cut with an ellipsis can still be read', async () => {
+    open('/p/paging-rules-leaf');
+    const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    await within(trail).findByText('Paging rules');
+    expect(within(trail).getAllByRole('link').map((a) => a.getAttribute('title'))).toEqual(['Dev', 'Team handbook', 'On-call']);
+    expect(within(trail).getByText('Paging rules').getAttribute('title')).toBe('Paging rules');
+  });
+
+  it('folds the items between the first and the last into one "..." for a phone, hidden from assistive technology, which keeps every item', async () => {
+    open('/p/paging-rules-leaf');
+    const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+    await within(trail).findByText('Paging rules');
+    const fold = trail.querySelector('.breadcrumb-fold');
+    expect(fold?.textContent).toBe('\u2026');
+    expect(fold?.getAttribute('aria-hidden')).toBe('true');
+    expect([...trail.querySelectorAll('.breadcrumb-middle')].map((li) => li.textContent)).toEqual(['Team handbook', 'On-call']);
+    expect(within(trail).getByText('Paging rules').closest('li')?.classList.contains('breadcrumb-middle')).toBe(false);
   });
 
   it('shows only the collection on its own screen', async () => {
     open('/c/c1');
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     expect(trail.textContent).toBe('Dev');
+    expect(trail.querySelector('.breadcrumb-fold')).toBeNull(); // nothing between the first and the last: nothing to fold
     expect(within(trail).queryAllByRole('link')).toHaveLength(0);
   });
 });

@@ -1,12 +1,15 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
 import { urlIdOf } from '../../app/routes';
+import { InBar, Movable, useBarRoom } from '../../app/page-controls';
+import { Clock } from 'lucide-react';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
 import type { MountedEditor } from '../../editor/core/mount';
 import { log } from '../../logging';
 import { Outline } from '../../outline';
 import { StatusLine } from '../../status';
+import { PresenceAnnouncer, PresenceStack, awarenessOf, jumpTo, usePresence, type PresenceSource } from '../../presence';
 import { useSession } from '../../auth/session';
 import { CLIENT_VERSION } from '../../version';
 import type { components } from '@tektum/grimoire-api-client';
@@ -57,6 +60,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const [liveReady, setLiveReady] = useState(false);
   const [stale, setStale] = useState(false);
   const [showingSaved, setShowingSaved] = useState(false);
+  // Who else is on the page: the awareness of the live editor's provider, from when that editor is up.
+  const [presenceSource, setPresenceSource] = useState<PresenceSource | null>(null);
   const editableRef = useRef<(editable: boolean) => void>(() => undefined);
   const permissionReadOnly = page.myPermission === 'read-only';
   // The effect below outlives a page response: it reads what the person may do now, not what the first response said.
@@ -67,6 +72,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const moreRef = useRef<HTMLButtonElement>(null);
   const meRef = useRef<string | null>(null);
   meRef.current = me.data?.id ?? null;
+  const barRoom = useBarRoom();
+  const presence = usePresence(presenceSource, me.data?.id ?? null);
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;
   const staleRef = useRef(page.markdownStale);
@@ -182,6 +189,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         liveGeneration = generation;
         editableRef.current = (flag) => live?.setEditable(flag);
         live.setEditable(editable()); // a read-only signal that came while the editor was being built applies now
+        const awareness = awarenessOf(synced);
+        setPresenceSource(awareness === null ? null : { source: awareness, directory: sessionDirectory(session.api) });
         setLiveReady(true);
         const handed = restoreRef.current;
         if (handed !== null) {
@@ -212,6 +221,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
         live = null;
         starting = false;
         setLiveReady(false);
+        setPresenceSource(null);
         void queue(element, async () => void (await old.destroy())).then(showSaved);
       }
       if (next.phase === 'synced' && live === null && !starting) goLive(next.generation);
@@ -262,15 +272,31 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   // The server says the page is not there any more (removed while it was open): the not-found screen, with the editor out of sight and nothing more sent.
   if (state.stopped === 'not-found') return <PageNotFound />;
 
+  const status = <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />;
+
   return (
     <div className="page-layout">
       <article className="page">
         <header className="page-head">
           <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={newPageRef.current} onSave={saveTitle} />
           {readOnly ? <span className="page-readonly">Read only</span> : null}
-          <PageMenu triggerRef={moreRef} onHistory={() => navigate(`${pagePath(page.title, page.urlId)}/history`)} onReset={me.data?.role === 'admin' && session !== null ? () => setResetOpen(true) : undefined} />
+          <InBar part="presence">
+            <PresenceStack people={presence.people} onJump={(id) => jumpTo(rootRef.current, id)} />
+          </InBar>
+          <InBar part="history" barOnly show={barRoom}>
+            <button type="button" className="page-history" onClick={() => navigate(`${pagePath(page.title, page.urlId)}/history`)}>
+              <Clock aria-hidden size={14} strokeWidth={1.5} />
+              History
+            </button>
+          </InBar>
+          <InBar part="menu">
+            <PageMenu triggerRef={moreRef} onHistory={() => navigate(`${pagePath(page.title, page.urlId)}/history`)} onReset={me.data?.role === 'admin' && session !== null ? () => setResetOpen(true) : undefined} />
+          </InBar>
         </header>
-        <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />
+        <Movable part="status" inBar={barRoom}>
+          {status}
+        </Movable>
+        {presenceSource !== null ? <PresenceAnnouncer text={presence.announcement} /> : null}
         {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}
         {showingSaved && stale ? <p className="page-stale">{STALE_TEXT}</p> : null}

@@ -10,6 +10,11 @@
 .tree-item:focus-visible {
   outline: none;
 }
+/* The library sizes each row to its content (an inline min-width of max-content), so a long name was clipped by the list mid-word. A row is as wide as the panel, and its
+   name is cut with an ellipsis (.tree-link), the full name in its tooltip. */
+.tree-item {
+  min-width: 0 !important;
+}
 .tree-row {
   position: relative;
   display: flex;
@@ -145,14 +150,13 @@
   gap: var(--space-2);
   min-height: 100%;
 }
-/* Quiet: the label identifies the button, so its edge is the hairline, not the 3:1 control edge. */
 .contents-search {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: 32px;
   padding: 0 var(--space-3);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-border);
   background: var(--paper-raised);
   color: var(--ink-3);
   font-size: 0.8125rem;

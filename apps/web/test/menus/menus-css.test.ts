@@ -11,7 +11,8 @@ describe('the styles of the editor menus', () => {
     expect(css).not.toMatch(/:\s*(red|blue|green|black|white|gray|grey|orange|yellow|purple)\b/);
     const colours = [...css.matchAll(/(?:color|background|border-color|border|outline):[^;]*;/g)].map((m) => m[0]);
     expect(colours.length).toBeGreaterThan(0);
-    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|color-mix\(|transparent|none|solid/);
+    // System colours are what forced colours mode asks for (DESIGN.md "Accessibility rules"): they are not colours of the menus' own.
+    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|color-mix\(|transparent|none|solid|\b(Highlight|HighlightText)\b/);
   });
 
   it('keep the slash menu out of sight until the library shows it: the host has no `data-show` before that', () => {
@@ -22,5 +23,13 @@ describe('the styles of the editor menus', () => {
     expect(css).toMatch(/\.bubble-host:not\(\[data-show='true'\]\)\s*\{\s*display:\s*none/);
     expect(css).toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{\s*visibility:\s*hidden/);
     expect(css).not.toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{[^}]*display:\s*none/);
+  });
+
+  it('the active row`s icon is drawn in HighlightText in forced colours, with its shortcut', () => {
+    expect(css).toMatch(/\.slash-option\[data-active='true'\] \.slash-shortcut,\s*\.slash-option\[data-active='true'\] \.slash-icon\s*\{\s*color:\s*HighlightText/);
+  });
+
+  it('the slash menu opens from the line-start side in a right-to-left page too', () => {
+    expect(css).toMatch(/:root\[dir='rtl'\] \.slash-host\s*\{\s*transform-origin:\s*top right/);
   });
 });

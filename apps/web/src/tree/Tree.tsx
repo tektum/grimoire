@@ -83,7 +83,7 @@ function Row({ node, style, dragHandle }: NodeRendererProps<TreeItem>) {
       {node.isEditing ? (
         <RenameInput node={node} />
       ) : (
-        <Link to={pagePath(item.title, item.urlId)} className="tree-link" tabIndex={-1} onClick={(e) => { e.stopPropagation(); }} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
+        <Link to={pagePath(item.title, item.urlId)} className="tree-link" title={item.name} tabIndex={-1} onClick={(e) => { e.stopPropagation(); }} {...(item.urlId === currentUrlId ? { 'aria-current': 'page' as const } : {})}>
           {item.icon !== null && <span aria-hidden className="tree-icon">{item.icon}</span>}
           {item.name}
         </Link>

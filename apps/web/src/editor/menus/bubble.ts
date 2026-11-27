@@ -9,6 +9,8 @@ import { LINK_REFUSAL, activeInline, bubbleSelection, linkAt, setLink, toggleInl
 const bubble = tooltipFactory('grimoire-bubble');
 /** How much room above the selection, inside the editor, the bar needs to go there (its height and the gap). */
 const BAR_ROOM = 56;
+/** How long after the pointer is released the bar comes: a selection made by dragging is finished by then, and the bar does not jump in under the hand. */
+export const BUBBLE_DELAY = 120;
 
 function createView(ctx: Ctx, view: EditorView) {
   const host = document.createElement('div');
@@ -32,13 +34,34 @@ function createView(ctx: Ctx, view: EditorView) {
       placing.placement = 'top'; // no layout to ask (the view is going): the library's own choice
     }
   };
+  // The bar never comes while the pointer is pressed in the text (a selection being dragged), and comes a moment after it is released; a new press puts off the one waited for.
+  const pointer = { pressing: false, timer: undefined as ReturnType<typeof setTimeout> | undefined };
   const provider = new TooltipProvider({
     content: host,
     debounce: 0,
     offset: 8,
     floatingUIOptions: placing,
-    shouldShow: (v) => v.editable && (state.mode === 'link' || (bubbleSelection(v) && !isDismissed(v))),
+    shouldShow: (v) => v.editable && !pointer.pressing && (state.mode === 'link' || (bubbleSelection(v) && !isDismissed(v))),
   });
+  const onPointerDown = (): void => {
+    clearTimeout(pointer.timer);
+    pointer.pressing = true;
+  };
+  const onPointerUp = (): void => {
+    if (!pointer.pressing) return; // a release of a press made outside the text
+    clearTimeout(pointer.timer);
+    pointer.timer = setTimeout(() => {
+      pointer.pressing = false;
+      provider.update(view);
+    }, BUBBLE_DELAY);
+  };
+  view.dom.addEventListener('pointerdown', onPointerDown);
+  const doc = view.dom.ownerDocument;
+  doc.addEventListener('pointerup', onPointerUp); // the release may be outside the text, where the drag ended
+  doc.addEventListener('pointercancel', onPointerUp);
+  doc.addEventListener('dragend', onPointerUp); // a native drag of selected text may end with no pointer event at all
+  doc.addEventListener('drop', onPointerUp); // a touch that became a scroll or a native drag ends so, with no release
+  doc.defaultView?.addEventListener('blur', onPointerUp); // a press that ends in another window
 
   const render = (): void => {
     root.render(
@@ -111,6 +134,13 @@ function createView(ctx: Ctx, view: EditorView) {
         if (host.dataset['show'] === 'true') render();
       },
       destroy() {
+        clearTimeout(pointer.timer);
+        view.dom.removeEventListener('pointerdown', onPointerDown);
+        doc.removeEventListener('pointerup', onPointerUp);
+        doc.removeEventListener('pointercancel', onPointerUp);
+        doc.removeEventListener('dragend', onPointerUp);
+        doc.removeEventListener('drop', onPointerUp);
+        doc.defaultView?.removeEventListener('blur', onPointerUp);
         provider.destroy();
         root.unmount();
         host.remove();
@@ -124,6 +154,9 @@ function createView(ctx: Ctx, view: EditorView) {
         return true;
       }
       if (event.key.toLowerCase() !== 'k' || !(event.ctrlKey || event.metaKey) || !bubbleSelection(view)) return false;
+      // Mod-K is the person's own act: whatever press was being waited out is over, so the editor comes now and is not held back until a release that may never be seen.
+      clearTimeout(pointer.timer);
+      pointer.pressing = false;
       openLink();
       provider.show();
       return true;

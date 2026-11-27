@@ -1,0 +1,107 @@
+/* The people on the page: a stack of initials discs, then their first names when there are two or fewer. */
+.presence {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+/* In the top bar the stack goes to the end of the slot, History and the page menu right after it. */
+.shell-page-controls .presence {
+  margin-inline-start: auto;
+}
+.presence-discs {
+  display: flex;
+  align-items: center;
+}
+/* 24px, a 2px paper ring, each one over the one before by 6px. */
+.presence-disc {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--paper);
+  background: var(--presence-colour, var(--paper-raised));
+  color: var(--presence-text, var(--ink));
+  font: 600 0.6875rem/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.presence-disc + .presence-disc {
+  margin-inline-start: -6px;
+}
+.presence-more {
+  border: 1px solid var(--control-border);
+  background: var(--paper-raised);
+  color: var(--ink-2);
+  cursor: default;
+}
+.presence-names {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A phone has no room for the names: the discs carry them. */
+@media (max-width: 40rem) {
+  .presence-names {
+    display: none;
+  }
+}
+/* A finger needs 44px: the discs stand apart at full target size, the disc itself drawn at 24px inside. */
+@media (pointer: coarse) {
+  .presence-disc {
+    inline-size: 2.75rem;
+    block-size: 2.75rem;
+    background: transparent;
+    box-shadow: none;
+    color: var(--presence-text, var(--ink));
+  }
+  .presence-disc > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--paper);
+    background: var(--presence-colour, var(--paper-raised));
+  }
+  .presence-disc + .presence-disc {
+    margin-inline-start: 0;
+  }
+  .presence-more {
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: 1px solid var(--control-border);
+    background: var(--paper-raised);
+  }
+}
+@media (forced-colors: active) {
+  .presence-disc,
+  .presence-disc > span {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+}
+/* Heard, not seen: who joined and who left. */
+.presence-announcer {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

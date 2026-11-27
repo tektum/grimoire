@@ -77,13 +77,13 @@ export interface MenuItem {
   readonly label: string;
   readonly onSelect: () => void;
 }
-/** A menu of actions behind one button: `label` names the button for a screen reader, and `text` (it should be part of `label`) is what the button shows instead of the dots. */
-export function Menu({ label, items, text, triggerRef }: { label: string; items: readonly MenuItem[]; text?: string; triggerRef?: Ref<HTMLButtonElement> }) {
+/** A menu of actions behind one button: `label` names the button for a screen reader, and `text` (it should be part of `label`) or `icon` is what the button shows instead of the dots. */
+export function Menu({ label, items, text, icon, triggerRef }: { label: string; items: readonly MenuItem[]; text?: string; icon?: ReactNode; triggerRef?: Ref<HTMLButtonElement> }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button type="button" ref={triggerRef} aria-label={label}>
-          {text ?? '…'}
+        <button type="button" ref={triggerRef} aria-label={label} title={icon === undefined ? undefined : label}>
+          {icon ?? text ?? '…'}
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

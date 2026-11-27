@@ -193,5 +193,10 @@
     "file": "apps/web/test-e2e/editor/stack.ts",
     "line": "const stalled = setTimeout(reportStall, STALL_REPORT_MS);",
     "reason": "A watchdog, not a wait: nothing awaits it and it never delays the test; it prints the stack report once if a recreate of the app is still going after 45 s (it is cleared when the recreate ends), so a spec cut off by its own timeout has already shown which phase stalled."
+  },
+  {
+    "file": "apps/web/test-e2e/status/support.ts",
+    "line": "const timer = setTimeout(() => { pending.delete(timer); ws.send(message); }, ms);",
+    "reason": "The stimulus, not a wait: the collaboration server's answers are delayed by a fixed time so that a save takes longer than the 400 ms after which Saving is shown (DESIGN.md, Save status); nothing is polled and no assertion rests on the delay elapsing."
   }
 ]
