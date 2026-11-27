@@ -148,10 +148,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .overlay { position: fixed; inset: 0; z-index: 50; background: var(--scrim); } /* over the top bar (5) and the popovers (20) */
 .modal { position: fixed; z-index: 51; top: 20vh; inset-inline: 0; margin-inline: auto; box-sizing: border-box; width: min(28rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-3); box-shadow: var(--shadow-dialog); font-size: var(--text-ui-md); }
 /* A dialog names its object in the title, says what happens in one or two lines, and ends with the verbs, apart from the text. */
-.modal h2 { margin: 0 0 var(--space-2); }
-.modal p { color: var(--ink-2); }
-.modal label { display: block; margin-block: var(--space-3) var(--space-1); color: var(--ink-2); font-size: var(--text-ui-sm); }
-.modal > button { margin-top: var(--space-4); }
+.modal:not(.palette) h2 { margin: 0 0 var(--space-2); }
+.modal:not(.palette) p { color: var(--ink-2); }
+.modal:not(.palette) label { display: block; margin-block: var(--space-3) var(--space-1); color: var(--ink-2); font-size: var(--text-ui-sm); }
+.modal:not(.palette) > button { margin-top: var(--space-4); }
 .modal button + button { margin-inline-start: var(--space-2); }
 .menu { min-width: 10rem; padding: var(--space-1); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
 .menu-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; outline: none; }
