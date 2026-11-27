@@ -198,6 +198,20 @@ describe('signOut', () => {
     }
   });
 
+  it('clears the recent pages again after the provider logout: a page listed while it was waited for does not stay for the next person', async () => {
+    const t = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
+    await t.auth.getToken();
+    recordRecent('alice', { id: 'p1', urlId: 'u1', title: 'One', path: '' }, t.storage);
+    const logout = t.sdk.logout.bind(t.sdk);
+    t.sdk.logout = async () => {
+      expect(readRecent('alice', t.storage)).toEqual([]); // hidden from the start of the wait
+      recordRecent('alice', { id: 'p2', urlId: 'u2', title: 'Two', path: '' }, t.storage); // the open page lists itself while the wait goes on
+      await logout();
+    };
+    await t.auth.signOut('manual');
+    expect(readRecent('alice', t.storage)).toEqual([]);
+  });
+
   it('calls the SDK logout for a manual sign-out once the SDK is loaded, and not for an ended session', async () => {
     const manual = setup({ projectId: 'P', sdkKeys: { [DESCOPE_REFRESH_KEY]: 'r' }, sdkToken: jwt(secs(NOW) + 600) });
     await manual.auth.getToken();

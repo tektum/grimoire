@@ -204,6 +204,7 @@ export function createAuth(o: CreateAuthOptions): Auth {
         // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
         if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
         clearSdkKeys();
+        clearRecent(o.storage); // again: the page is still open while the provider is waited for, and may have listed a page in that time
         log('info', 'web.sign_out', { reason });
         set({ status: 'signed-out', reason });
       })().finally(() => {
