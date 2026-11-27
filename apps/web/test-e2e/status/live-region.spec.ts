@@ -2,18 +2,22 @@ import { expect, test, type Page } from '@playwright/test';
 import { makePage } from '../editor/pages';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
-import { statusLine, withScriptedPage } from './support';
+import { slowServer, statusLine, withScriptedPage } from './support';
 
 // The one polite live region (`role="status"`, `aria-live="polite"`) receives Saved, the connection-loss text and each refusal text, and the focus does not move.
 // The focused element by its tag and class, not its text: the text of the editor changes as the person types.
 const active = (page: Page): Promise<string> => page.evaluate(() => `${document.activeElement?.tagName ?? ''}.${document.activeElement?.className ?? ''}`);
 
 test.describe('the live region', () => {
-  test('is the only role=status / aria-live element of the page screen, polite', async ({ browser, baseURL }) => {
+  // DESIGN.md (Accessibility rules): one polite live region for the save status and one for presence changes. The status sits in the top bar, the presence region in the page
+  // (once the live editor is up, so not on this scripted server that never completes the sync); nothing else of the page screen is live (the toast area of the library is not part of it).
+  test('has the save status in the top bar as its one polite live region, and in the page only the presence announcer', async ({ browser, baseURL }) => {
     await withScriptedPage(browser, baseURL, {}, async ({ page }) => {
       await expect(statusLine(page)).toBeVisible();
-      expect(await page.locator('main [role="status"], main [aria-live]').count()).toBe(1);
-      await expect(statusLine(page)).toHaveAttribute('aria-live', 'polite');
+      expect(await page.locator('.shell-header [role="status"], .shell-header [aria-live]').count()).toBe(1);
+      await expect(page.locator('.shell-header').locator(statusLine(page))).toHaveAttribute('aria-live', 'polite');
+      expect(await page.locator('main [role="status"]:not(.presence-announcer), main [aria-live]:not(.presence-announcer)').count()).toBe(0);
+      for (const announcer of await page.locator('main .presence-announcer').all()) await expect(announcer).toHaveAttribute('aria-live', 'polite');
     });
   });
 
@@ -24,6 +28,7 @@ test.describe('the live region', () => {
     try {
       await signInAs(context, 'e2e-alice', 'member');
       const page = await context.newPage();
+      await slowServer(page); // "Saving" shows only when a save takes longer than 400ms
       await page.goto(made.path);
       await waitForSynced(page);
       await expect(statusLine(page)).toHaveText('Saved'); // nothing is waiting: what follows is the typing's

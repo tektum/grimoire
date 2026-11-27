@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { makePage } from '../editor/pages';
 import { signInAs } from '../support/sign-in';
 import { waitForSynced } from '../support/sync';
-import { statusLine, withScriptedPage } from './support';
+import { slowServer, statusLine, withScriptedPage } from './support';
 
 test.describe('the status line: Saved, Saving and Offline', () => {
   // Needs the whole stack: the server acknowledges what is typed.
@@ -12,6 +12,7 @@ test.describe('the status line: Saved, Saving and Offline', () => {
     try {
       await signInAs(context, 'e2e-alice', 'member');
       const page = await context.newPage();
+      await slowServer(page); // "Saving" shows only when a save takes longer than 400ms
       await page.goto(made.path);
       await waitForSynced(page);
       await expect(statusLine(page)).toHaveText('Saved');

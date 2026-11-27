@@ -35,3 +35,17 @@ export async function withScriptedPage(
     await collab.stop();
   }
 }
+
+/**
+ * Makes the collaboration server slow to answer: everything it sends reaches the page `ms` later. DESIGN.md ("Save status"): "Saving" shows only when a save takes longer than 400ms, so a
+ * test that looks for it needs a server that is not fast. Call it before the page is opened.
+ */
+export async function slowServer(page: Page, ms = 900): Promise<void> {
+  await page.routeWebSocket(/.*/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((message) => { server.send(message); });
+    server.onMessage((message) => { setTimeout(() => { ws.send(message); }, ms); });
+    ws.onClose(() => { void server.close(); });
+    server.onClose(() => { void ws.close(); });
+  });
+}

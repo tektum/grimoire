@@ -12,7 +12,12 @@ const REFUSAL = "This kind of link isn't allowed";
  */
 async function clearSelection(page: Page): Promise<void> {
   const bar = page.getByRole('toolbar', { name: 'Text formatting' });
-  if (await bar.isVisible()) {
+  // The bar comes a moment (120 ms) after a press is released, so one that is about to come is waited for, not missed.
+  const shown = await bar.waitFor({ state: 'visible', timeout: 1_000 }).then(
+    () => true,
+    () => false,
+  );
+  if (shown) {
     await page.keyboard.press('Escape');
     await expect(bar).toBeHidden();
   }
