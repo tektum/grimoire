@@ -26,7 +26,7 @@ The web client works, but it looks like a sketch. The tokens in `apps/web/src/ui
 
 All three were drawn on the same page (a long title, a three-level contents tree, a nested list, a table, a code block, a quote) and the same five views, each in light and dark: reading a page, a long scroll through the table, code block and quote, editing with another person present, search in the command palette, and the empty palette (Recent); plus reading on a phone. Every option shows keyboard focus on a tree row, the selected tree row, a remote caret with its name, and the offline status. All three follow the brief's anti-pattern list and its advice for the options: a serif page with a neutral sans interface, one cool accent, no warm accent, no pure-black dark mode, and no glass except on the top bar. After B was revised against the design critique, A and C were brought to the same standard in their own style, so the comparison is fair: no chrome dimming, "Saved" in `--ink-3` with a neutral tick, the status after the breadcrumb in a reserved slot (the offline line moves nothing), one focus indicator at a time in the editor, no key-hint footer in the slash menu, the palette's placeholder and groups as resolved below with sentence-case labels and arrow keycaps, dark selected rows lighter than their surface, a lighter scrim in light, a code block that fits the column, collaborator names in words, and on the phone a back chevron and a reserved status line. A keeps its yellow match highlight and C its underlined matches and solid accent selection; those are part of what the options are.
 
-The mocks and screenshots (1440 x 900, and 390 x 844 for the phone) are kept outside the repository; ask the owner for them.
+Option B's screens (1440 x 900, and 390 x 844 for the phone) are in [screenshots/redesign](screenshots/redesign/). The mocks of A and C are not kept in the repository.
 
 ### A. Quiet system
 
@@ -56,7 +56,7 @@ Feels like a well-made platform app: neutral grey paper, chrome at the platform'
 | `--fill-selected` | `rgb(26 28 30 / 0.06)` | `rgb(255 255 255 / 0.08)` | Hovered and selected rows in menus, the palette and the tree |
 | `--warn` | `#8a5a00` | `#e0b252` | Offline and warnings, always with a word |
 | `--danger` | `#b3261e` | `#f2857c` | Destructive actions and errors only |
-| `--ok` | `#2f6b3f` | `#7fc292` | Saved tick |
+| `--ok` | `#2f6b3f` | `#7fc292` | Success text, always with a word (not the Saved tick, which is `--ink-3`) |
 | selection | `#cbd9dc` | `#3b545b` | Accent at 22% (light) or 35% (dark) over paper |
 
 Contrast, measured:
@@ -78,9 +78,9 @@ Contrast, measured:
 | Control border on paper (`--control-border` on `--paper`) | 3:1 | 3.4 | 3.9 |
 | Control border on contents (`--control-border` on `--paper-sunken`) | 3:1 | 3.1 | 4.1 |
 | Control border on menus (`--control-border` on `--paper-raised`) | 3:1 | 3.5 | 3.4 |
-| Focus ring on paper (`--focus` on `--paper`) | 3:1 | 7.3 | 9.2 |
-| Focus ring on contents (`--focus` on `--paper-sunken`) | 3:1 | 6.8 | 9.7 |
-| Focus ring on menus (`--focus` on `--paper-raised`) | 3:1 | 7.5 | 8.1 |
+| Focus ring on paper (`--accent`, the focus colour, on `--paper`) | 3:1 | 7.3 | 9.2 |
+| Focus ring on contents (`--accent`, the focus colour, on `--paper-sunken`) | 3:1 | 6.8 | 9.7 |
+| Focus ring on menus (`--accent`, the focus colour, on `--paper-raised`) | 3:1 | 7.5 | 8.1 |
 | Text on selection | 4.5:1 | 11.8 | 6.6 |
 | Text on a selected menu row (`--ink` on `--fill-selected` over `--paper-raised`) | 4.5:1 | 15.1 | 10.0 |
 | Path and hint on a selected row (`--ink-2`; `--ink-3` would be 3.8:1 in dark) | 4.5:1 | 6.1 | 5.1 |
@@ -115,7 +115,7 @@ A well-bound reference book lit from within: warm paper, one ink, one pen colour
 | `--fill-selected` | `rgb(28 26 22 / 0.06)` | `rgb(255 255 255 / 0.08)` | Hovered and selected rows in menus, the palette and the tree |
 | `--warn` | `#8a5a00` | `#e0b252` | Offline and warnings, always with a word |
 | `--danger` | `#b3261e` | `#f2857c` | Destructive actions and errors only |
-| `--ok` | `#2f6b3f` | `#7fc292` | Saved tick |
+| `--ok` | `#2f6b3f` | `#7fc292` | Success text, always with a word (not the Saved tick, which is `--ink-3`) |
 | selection | `#ccd1dd` | `#434a60` | Accent at 22% (light) or 35% (dark) over paper |
 
 Contrast, measured:
@@ -137,9 +137,9 @@ Contrast, measured:
 | Control border on paper (`--control-border` on `--paper`) | 3:1 | 3.5 | 3.9 |
 | Control border on contents (`--control-border` on `--paper-sunken`) | 3:1 | 3.3 | 4.1 |
 | Control border on menus (`--control-border` on `--paper-raised`) | 3:1 | 3.8 | 3.6 |
-| Focus ring on paper (`--focus` on `--paper`) | 3:1 | 7.5 | 9.2 |
-| Focus ring on contents (`--focus` on `--paper-sunken`) | 3:1 | 6.9 | 9.6 |
-| Focus ring on menus (`--focus` on `--paper-raised`) | 3:1 | 8.0 | 8.4 |
+| Focus ring on paper (`--accent`, the focus colour, on `--paper`) | 3:1 | 7.5 | 9.2 |
+| Focus ring on contents (`--accent`, the focus colour, on `--paper-sunken`) | 3:1 | 6.9 | 9.6 |
+| Focus ring on menus (`--accent`, the focus colour, on `--paper-raised`) | 3:1 | 8.0 | 8.4 |
 | Text on selection | 4.5:1 | 11.4 | 6.9 |
 | Text on a selected menu row (`--ink` on `--fill-selected` over `--paper-raised`) | 4.5:1 | 15.4 | 10.8 |
 | Path and hint on a selected row (`--ink-2`; `--ink-3` would be 3.7:1 in dark) | 4.5:1 | 6.4 | 5.4 |
@@ -150,7 +150,7 @@ Screen treatments, as drawn:
 - **Phone.** The top bar holds the contents button, the parent page with a leading back chevron (it reads as "up to On-call", not as a title), presence, the page menu and search; targets are 44px. The save status has its own reserved line under the metadata, so "Offline: changes kept in this tab" never pushes the text down.
 - **Editing with another person.** It looks the same as reading; no chrome dims or fades (see "Resolved"). While keys are going, only the hover affordances (the block handle, row actions) hide; they come back on pointer movement. Your caret is the native one (`caret-color` in the accent). A remote caret is 2px in the person's colour, does not blink, and carries an Inter 11 name flag that shows for 2 seconds after it moves and on hover, then shrinks to a 6px dot. The flag sits above the line with 2px clearance, and flips below the line when a heading is directly above or the line is at the top of the viewport. A remote selection is the person's colour at 18%, under your own selection. Presence is a stack of 24px initials discs with a 2px paper ring, at most 4 and then "+2"; each is a button named after the person (and the name is its tooltip) that jumps to their place, and when 2 or fewer people are here and the bar has room their first names are shown in words beside the discs ("Tomás, Priya"). Joining and leaving is one polite, debounced announcement. The block handle is a 6-dot grip in the left gutter in `--ink-3`, shown on hover and on keyboard focus inside the block, and is a real button ("Block menu") with a shortcut. The slash menu and selection bubble use popover elevation, a 10px radius, 28px rows, `--fill-selected` on the active row and the Markdown shortcut right-aligned in `--ink-3`; there is no key-hint footer in the slash menu (that belongs to the palette). The bubble appears 120ms after the pointer is released, never mid-drag.
 - **Save status.** Inter 12 in `--ink-3`, tick included (not green), after the breadcrumb, in one `role="status"` region with its width reserved. "Saving" shows only when a save takes longer than 400ms, with no spinner. "Saved" stays at full `--ink-3`; it never fades. "Offline: changes kept in this tab" uses `--warn` with an icon and stays. The three strings do not change.
-- **Search.** The palette opens at 14vh, 640px wide, 14px radius, over the scrim. The input row is 52px, Inter 16, with a search icon, no border, and the placeholder "Search, go to, or do" (the same as its accessible name). Groups, in order: "Pages" (title matches from the contents, at most 5, no snippet), "Search results" (body matches, with a snippet), "Actions", and "Recent" on an empty query. Group labels are sentence case, Inter 12 weight 600 in `--ink-3`. Rows are at least 36px: icon, title in `--ink`, the parent or collection in `--ink-3`; a body match adds the snippet in Literata 14 roman in `--ink-2`, clamped to 2 lines. Matched words are weight 600 with no highlight colour. The selected row is `--fill-selected` at 6px radius with a trailing return glyph; on a selected row the path and any hint step up to `--ink-2`, because `--ink-3` on the dark selected fill is only 3.7:1. A footer shows the keys to move, open and close as keycaps (arrow and return glyphs, with the words as their accessible text). No results says "No pages match" with the query and offers "Create page" with it; while a search runs, the previous results stay at 60% instead of flashing empty.
+- **Search.** The palette opens at 14vh, 640px wide, 14px radius, over the scrim. The input row is 52px, Inter 16, with a search icon, no border, and the placeholder "Search, go to, or do" (the same as its accessible name). Groups, in order: "Pages" (title matches from the contents, at most 5, no snippet), "Search results" (body matches, with a snippet), "Collections", "Go to" (Search, Trash, Admin), "Actions" (with "New page", its label unchanged), and "Recent" on an empty query. Every command today's palette offers stays, under the same words. Group labels are sentence case, Inter 12 weight 600 in `--ink-3`. Rows are at least 36px: icon, title in `--ink`, the parent or collection in `--ink-3`; a body match adds the snippet in Literata 14 roman in `--ink-2`, clamped to 2 lines. Matched words are weight 600 with no highlight colour. The selected row is `--fill-selected` at 6px radius with a trailing return glyph; on a selected row the path and any hint step up to `--ink-2`, because `--ink-3` on the dark selected fill is only 3.7:1. A footer shows the keys to move, open and close as keycaps (arrow and return glyphs, with the words as their accessible text). No results says "No pages match" with the query and offers "New page" with the query as its title; while a search runs, the previous results stay at full contrast with a thin progress line in `--accent` under the input, instead of flashing empty.
 
 ### C. Large print
 
@@ -180,7 +180,7 @@ Legibility first: bigger type, AAA contrast for text, every control labelled in 
 | `--on-accent` | `#ffffff` | `#14102b` | Text on the accent |
 | `--warn` | `#7a4f00` | `#e6bb5c` | Offline and warnings, always with a word |
 | `--danger` | `#a1221b` | `#f59a92` | Destructive actions and errors only |
-| `--ok` | `#1f5e32` | `#86cc9a` | Saved tick |
+| `--ok` | `#1f5e32` | `#86cc9a` | Success text, always with a word (not the Saved tick, which is `--ink-3`) |
 | selection | `#d7d2ee` | `#504e6a` | Accent at 22% (light) or 35% (dark) over paper |
 
 Contrast, measured:
@@ -202,9 +202,9 @@ Contrast, measured:
 | Control border on paper (`--control-border` on `--paper`) | 3:1 | 4.6 | 3.8 |
 | Control border on contents (`--control-border` on `--paper-sunken`) | 3:1 | 4.0 | 4.1 |
 | Control border on menus (`--control-border` on `--paper-raised`) | 3:1 | 4.6 | 3.3 |
-| Focus ring on paper (`--focus` on `--paper`) | 3:1 | 8.8 | 8.7 |
-| Focus ring on contents (`--focus` on `--paper-sunken`) | 3:1 | 7.7 | 9.5 |
-| Focus ring on menus (`--focus` on `--paper-raised`) | 3:1 | 8.8 | 7.5 |
+| Focus ring on paper (`--accent`, the focus colour, on `--paper`) | 3:1 | 8.8 | 8.7 |
+| Focus ring on contents (`--accent`, the focus colour, on `--paper-sunken`) | 3:1 | 7.7 | 9.5 |
+| Focus ring on menus (`--accent`, the focus colour, on `--paper-raised`) | 3:1 | 8.8 | 7.5 |
 | Text on selection | 4.5:1 | 12.6 | 7.0 |
 
 ## Collaborator colours
@@ -233,31 +233,31 @@ The design lead's rulings on the points where the first draft departed from the 
 - **Chrome while typing.** No dimming and no fade-out in version 1: dimming to 60% put `--ink-2` at 2.7:1 and `--ink-3` at 2.4:1, and a full fade hides presence (principle 4), pops back on every pause and strands anyone looking for a control. While keys are going, only the hover affordances hide (block handle, row actions). A focus mode may come later as an explicit toggle.
 - **"Saved".** Full `--ink-3`, permanently, with the tick in `--ink-3` too (not green). No 3-second fade and no tick-only state: the word reassures, and a tick alone would change the width.
 - **Palette placeholder.** Stays "Search, go to, or do": three verbs for its three jobs, the same as the accessible name (WCAG 2.5.3), and no test churn.
-- **Palette groups.** Both names stay: "Pages" for title matches (at most 5, no snippet) and "Search results" for body matches with snippets, then "Actions", and "Recent" on an empty query. Labels in sentence case, not capitals.
+- **Palette groups.** Both names stay: "Pages" for title matches (at most 5, no snippet) and "Search results" for body matches with snippets, then "Collections", "Go to" and "Actions" as today, and "Recent" on an empty query. Labels in sentence case, not capitals.
 - **Heading weight.** Title and H2 at 600, never 700; the title at -0.01em. The first mocks were already at 600 (checked in the browser's computed style); the heavier look probably comes from Literata's display optical size at 34px, which stays on. Worth a second look on the built page.
 - **Accepted departures.** `--control-border` is `#8A8373` in light (the brief's `#8F8878` is 3.04:1 on `--paper-sunken`, no margin; the new value is 3.3:1 there and 3.5:1 on paper). Ink on the 22% selection measures 11.4:1 in light and 6.9:1 in dark at 35%, not the 13:1 first stated; both are well above AA. Search has an entry at the top of the contents panel (a quiet button) and an icon in the phone's top bar. The outline shows from 1280px up.
 - **Selection in dark.** Selected and hovered rows in menus, the palette and the tree use `--fill-selected` (ink at 6% in light, white at 8% in dark), so a selected row is lighter than its surface in dark, never darker.
 
-## HIG on the web
+## Platform interface guidelines on the web
 
-Apple's Human Interface Guidelines are written for Apple platforms; we take the principles, not the platform look.
+The established desktop and mobile interface guidelines are written for native apps; we take their principles, not a platform's look.
 
 Adopt:
 
 - Clarity, deference and depth: content first, chrome quiet, depth only where it means something (popovers, the palette).
 - Semantic colour roles in tiers (text, secondary text, metadata; fill; separator), never raw values in components.
-- A Dynamic Type equivalent: all sizes in rem, layouts that survive 200% text and 400% zoom (320 CSS pixels wide) without sideways scrolling.
+- Text that scales with the reader's settings: all sizes in rem, layouts that survive 200% text and 400% zoom (320 CSS pixels wide) without sideways scrolling.
 - Sidebar, content and inspector: contents, page, outline; the contents panel collapses and remembers its width.
 - Standard shortcuts shown in menus and the palette.
 - Undo over confirmation where possible, as a notice with Undo; where a confirmation is needed, it names the object and uses a verb ("Move to Trash", not "OK").
-- Vibrancy only on bars; one focus ring everywhere; honour reduced motion, increased contrast (`prefers-contrast: more` promotes hairlines to `--control-border` and `--ink-2` to `--ink`) and reduced transparency.
+- Translucency only on bars; one focus ring everywhere; honour reduced motion, increased contrast (`prefers-contrast: more` promotes hairlines to `--control-border` and `--ink-2` to `--ink`) and reduced transparency.
 - Writing: sentence case, plain verbs, an action keeps its name through the flow.
 
 Deliberately not:
 
-- SF Pro, SF Mono, New York and SF Symbols. Their licence allows use only in apps for Apple platforms, not on the web. Inter stands in for SF Pro, Literata for New York, Lucide for SF Symbols.
+- A platform's system typefaces and symbol set. Their licences allow use only in native apps on that platform, not on the web. Inter, Literata and IBM Plex Mono stand in for them, and Lucide (already a dependency) for the symbols.
 - Platform blue as the accent.
-- Faux window chrome (traffic lights), iOS tab bars, large collapsing titles, sheets and rubber-banding.
+- Imitation window controls, native tab bars, large collapsing titles, sheets and rubber-banding.
 - Translucent sidebars: text over blur fails contrast unpredictably.
 - Hover-only disclosure: every hover affordance has a keyboard and touch route.
 
