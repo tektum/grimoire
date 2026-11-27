@@ -196,7 +196,7 @@
   },
   {
     "file": "apps/web/test-e2e/status/support.ts",
-    "line": "server.onMessage((message) => { setTimeout(() => { ws.send(message); }, ms); });",
+    "line": "const timer = setTimeout(() => { pending.delete(timer); ws.send(message); }, ms);",
     "reason": "The stimulus, not a wait: the collaboration server's answers are delayed by a fixed time so that a save takes longer than the 400 ms after which Saving is shown (DESIGN.md, Save status); nothing is polled and no assertion rests on the delay elapsing."
   }
 ]

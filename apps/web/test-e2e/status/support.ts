@@ -43,9 +43,20 @@ export async function withScriptedPage(
 export async function slowServer(page: Page, ms = 900): Promise<void> {
   await page.routeWebSocket(/.*/, (ws) => {
     const server = ws.connectToServer();
+    const pending = new Set<ReturnType<typeof setTimeout>>();
+    const stop = (): void => {
+      for (const timer of pending) clearTimeout(timer); // nothing is sent into a socket that has closed
+      pending.clear();
+    };
     ws.onMessage((message) => { server.send(message); });
-    server.onMessage((message) => { setTimeout(() => { ws.send(message); }, ms); });
-    ws.onClose(() => { void server.close(); });
-    server.onClose(() => { void ws.close(); });
+    server.onMessage((message) => {
+      const timer = setTimeout(() => {
+        pending.delete(timer);
+        ws.send(message);
+      }, ms);
+      pending.add(timer);
+    });
+    ws.onClose(() => { stop(); void server.close(); });
+    server.onClose(() => { stop(); void ws.close(); });
   });
 }
