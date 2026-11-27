@@ -6,7 +6,9 @@
 # (20 minutes). Before a retry of the libraries, `dpkg --configure -a` (at most 120 s) repairs what a killed apt left half done; the attempt, the wait and the repair are all cut by what is left of the total. apt retries each download five times itself. The
 # last line says how long it took.
 # Usage: playwright-install.sh BROWSER...   Overrides, for the tests: PLAYWRIGHT_CMD, PLAYWRIGHT_RETRY_DELAYS, PLAYWRIGHT_ATTEMPT_TIMEOUT, PLAYWRIGHT_TOTAL_SECONDS,
-# PLAYWRIGHT_REPAIR_CMD ("" repairs nothing), PLAYWRIGHT_APT_CONF ("" writes nothing).
+# PLAYWRIGHT_REPAIR_CMD ("" repairs nothing), PLAYWRIGHT_APT_CONF ("" writes nothing), PLAYWRIGHT_APT_SOURCES ("" removes nothing).
+# The runner image lists the Microsoft package repository, which the install does not use and whose signing has been refused by that repository (403 "no longer signed": apt-get update exits 100 on every try,
+# so the libraries can never be installed). Before the first apt call, its source files (any `*microsoft*` file of the apt sources folder) are removed, and each one is said.
 set -u
 [ "$#" -gt 0 ] || { echo "usage: playwright-install.sh BROWSER..." >&2; exit 2; }
 cmd=${PLAYWRIGHT_CMD:-bunx playwright}
@@ -15,6 +17,15 @@ limit=${PLAYWRIGHT_ATTEMPT_TIMEOUT:-240}
 total=${PLAYWRIGHT_TOTAL_SECONDS:-600}
 repair=${PLAYWRIGHT_REPAIR_CMD-sudo dpkg --configure -a}
 apt_conf=${PLAYWRIGHT_APT_CONF-/etc/apt/apt.conf.d/80-retries}
+apt_sources=${PLAYWRIGHT_APT_SOURCES-/etc/apt/sources.list.d}
+
+if [ -n "$apt_sources" ]; then
+  for source in "$apt_sources"/*[Mm]icrosoft*; do
+    [ -e "$source" ] || continue
+    rm -f "$source" 2>/dev/null || sudo rm -f "$source"
+    echo "removed the apt source $source (not used here; its repository refuses its own signature)"
+  done
+fi
 
 if [ -n "$apt_conf" ]; then echo 'Acquire::Retries "5";' | sudo tee "$apt_conf" >/dev/null; fi
 

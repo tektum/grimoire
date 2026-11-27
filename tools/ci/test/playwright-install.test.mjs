@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -33,7 +33,7 @@ exit 0
 const run = (bin, extra = {}) =>
   spawnSync('sh', [script, 'webkit', 'firefox'], {
     encoding: 'utf8',
-    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
+    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_APT_SOURCES: '', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
   });
 
 test('installs the browsers, then the libraries, once each when nothing fails', () => {
@@ -131,4 +131,28 @@ test('a repair of dpkg that stalls is cut by the time that is left of the total,
   assert.notEqual(r2.status, 0);
   assert.match(r2.stderr, /used up/);
   assert.ok(Date.now() - t1 < 8_000, 'it did not sleep the 10 s wait with 2 s left');
+});
+
+test('the Microsoft apt sources are removed before the first apt call, each one said, and the others are left', () => {
+  const sources = path.join(dir, 'sources.list.d');
+  mkdirSync(sources, { recursive: true });
+  for (const name of ['microsoft-prod.list', 'Microsoft-Edge.sources', 'ubuntu.sources', 'azure-cli.list']) writeFileSync(path.join(sources, name), 'x');
+  const f = fake({});
+  const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!existsSync(path.join(sources, 'microsoft-prod.list')) && !existsSync(path.join(sources, 'Microsoft-Edge.sources')), 'both Microsoft files are gone');
+  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')) && existsSync(path.join(sources, 'azure-cli.list')), 'the other sources stay');
+  assert.match(r.stdout, /removed the apt source .*microsoft-prod\.list/);
+  assert.match(r.stdout, /removed the apt source .*Microsoft-Edge\.sources/);
+  assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
+});
+
+test('with no Microsoft source in the folder nothing is removed or said', () => {
+  const sources = path.join(dir, 'clean.list.d');
+  mkdirSync(sources, { recursive: true });
+  writeFileSync(path.join(sources, 'ubuntu.sources'), 'x');
+  const r = run(fake({}).bin, { PLAYWRIGHT_APT_SOURCES: sources });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /removed the apt source/);
+  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')));
 });
