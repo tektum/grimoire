@@ -1,6 +1,8 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
 import { urlIdOf } from '../../app/routes';
+import { InBar, useBarRoom } from '../../app/page-controls';
+import { Clock } from 'lucide-react';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
 import type { MountedEditor } from '../../editor/core/mount';
@@ -70,6 +72,7 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const moreRef = useRef<HTMLButtonElement>(null);
   const meRef = useRef<string | null>(null);
   meRef.current = me.data?.id ?? null;
+  const barRoom = useBarRoom();
   const presence = usePresence(presenceSource, me.data?.id ?? null);
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;
@@ -269,16 +272,32 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   // The server says the page is not there any more (removed while it was open): the not-found screen, with the editor out of sight and nothing more sent.
   if (state.stopped === 'not-found') return <PageNotFound />;
 
+  const status = <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />;
+
   return (
     <div className="page-layout">
       <article className="page">
+        {/* First, so that in the top bar the status comes before presence and the menus. */}
+        <InBar barOnly show={barRoom}>
+          {status}
+        </InBar>
         <header className="page-head">
           <PageTitle title={page.title} editable={!readOnly && session !== null} startEditing={newPageRef.current} onSave={saveTitle} />
           {readOnly ? <span className="page-readonly">Read only</span> : null}
-          <PresenceStack people={presence.people} onJump={(id) => jumpTo(rootRef.current, id)} />
-          <PageMenu triggerRef={moreRef} onHistory={() => navigate(`${pagePath(page.title, page.urlId)}/history`)} onReset={me.data?.role === 'admin' && session !== null ? () => setResetOpen(true) : undefined} />
+          <InBar>
+            <PresenceStack people={presence.people} onJump={(id) => jumpTo(rootRef.current, id)} />
+            <InBar barOnly show={barRoom}>
+              <button type="button" className="page-history" onClick={() => navigate(`${pagePath(page.title, page.urlId)}/history`)}>
+                <Clock aria-hidden size={14} strokeWidth={1.5} />
+                History
+              </button>
+            </InBar>
+            <PageMenu triggerRef={moreRef} onHistory={() => navigate(`${pagePath(page.title, page.urlId)}/history`)} onReset={me.data?.role === 'admin' && session !== null ? () => setResetOpen(true) : undefined} />
+          </InBar>
         </header>
-        <StatusLine state={{ ...state, readOnly }} collab={collab} onRetry={() => managerRef.current?.retry()} />
+        <InBar fallbackOnly show={barRoom}>
+          {status}
+        </InBar>
         {presenceSource !== null ? <PresenceAnnouncer text={presence.announcement} /> : null}
         {state.copy !== null ? <ResetNotice key={state.copy} copy={state.copy} title={page.title} onDismiss={() => managerRef.current?.dismissCopy()} /> : null}
         {state.banner !== null ? <p className="page-banner">{state.banner}</p> : null}

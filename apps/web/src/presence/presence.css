@@ -9,13 +9,9 @@
   font-size: 0.8125rem;
   color: var(--ink-2);
 }
-/* In the page head the stack goes to the end of the row, the page menu right after it. */
-.page-head > .presence {
-  align-self: center;
+/* In the top bar the stack goes to the end of the slot, History and the page menu right after it. */
+.shell-page-controls > .presence {
   margin-inline-start: auto;
-}
-.page-head > .presence + button {
-  margin-inline-start: 0;
 }
 .presence-discs {
   display: flex;

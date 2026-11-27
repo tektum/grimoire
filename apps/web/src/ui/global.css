@@ -24,11 +24,18 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-header a { text-decoration: none; color: var(--ink-2); }
 .shell-header a:hover { color: var(--ink); }
 .shell-actions { display: contents; }
+/* The open page's own controls: the save status after the breadcrumb, then presence, History and the page menu at the end of the slot. */
+.shell-actions > * { flex: none; white-space: nowrap; }
+.shell-page-controls { display: flex; flex: 1 0 auto; align-items: center; gap: var(--space-3); }
+.shell-page-controls .page-status { margin: 0; min-height: 0; }
+.shell-page-controls > button { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
+.shell-page-controls .page-history { display: inline-flex; align-items: center; gap: var(--space-1); border-color: transparent; background: transparent; color: var(--ink-2); }
+.shell-page-controls .page-history:hover { color: var(--ink); }
 .shell-actions-toggle { display: none; margin-inline-start: auto; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-header .shell-brand { font-weight: 600; color: var(--ink); }
 .shell-header nav { display: flex; gap: var(--space-4); }
-.shell-header .breadcrumb { flex: 1; min-width: 0; font-feature-settings: 'case'; }
+.shell-header .breadcrumb { flex: 0 1 auto; min-width: 0; font-feature-settings: 'case'; }
 .breadcrumb ol { display: flex; min-width: 0; margin: 0; padding: 0; list-style: none; white-space: nowrap; }
 /* Every item can shrink, and its name is cut with an ellipsis (the full name is its tooltip); the separator never shrinks. */
 .breadcrumb li { display: flex; flex: 0 1 auto; min-width: 0; }
