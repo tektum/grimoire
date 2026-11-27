@@ -15,7 +15,8 @@ export default function PageScreen() {
   // A page that is not there for this person (removed, or no longer theirs to read) is taken out of their Recent, so that the palette does not lead to a dead end.
   const session = useSession();
   const me = useApiQuery<{ id: string }>(session?.api ?? (null as never), '/v1/me', undefined, { enabled: session !== null });
-  const missing = result.data?.kind === 'missing';
+  // Only on a completed, current answer: a cached 'missing' whose re-read failed (a 500, the network) says nothing about access now.
+  const missing = result.data?.kind === 'missing' && result.isSuccess && !result.isFetching;
   const meId = me.data?.id;
   useEffect(() => {
     if (missing && meId !== undefined) removeRecent(meId, urlId);

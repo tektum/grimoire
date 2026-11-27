@@ -177,7 +177,7 @@ function PaletteDialog() {
   // data, which is why the answer is looked at and not only the data.
   const unreadable = tree.error?.status === 404 || tree.error?.status === 403;
   const commands = useMemo(
-    () => commandsFor({ role: me.data?.role, collections: collections.data ?? [], pages: unreadable ? [] : (tree.data ?? []), collectionName, recent, canMakePage: writable && collectionId !== undefined && !unreadable }),
+    () => commandsFor({ role: me.data?.role, collections: collections.data ?? [], pages: unreadable ? [] : (tree.data ?? []), collectionName, recent: unreadable ? recent.filter((r) => r.collectionId !== collectionId) : recent, canMakePage: writable && collectionId !== undefined && !unreadable }),
     [me.data?.role, collections.data, tree.data, unreadable, writable, collectionId, collectionName, recent],
   );
   const words = useMemo(() => text.toLowerCase().split(/\s+/).filter((w) => w !== ''), [text]);

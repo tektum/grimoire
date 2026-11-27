@@ -199,11 +199,11 @@ export function createAuth(o: CreateAuthOptions): Auth {
       ending = (async () => {
         epoch += 1;
         o.devSignIn?.clear();
+        clearRecent(o.storage); // before the provider is waited for: what this person opened last is theirs, and must not be seen by the next person for those seconds
         // A manual sign-out ends the session at the provider first: the SDK reads the refresh token from storage to revoke it, so the keys must still be there.
         // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
         if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
         clearSdkKeys();
-        clearRecent(o.storage); // what this person opened last is theirs, not the next person's on a shared machine
         log('info', 'web.sign_out', { reason });
         set({ status: 'signed-out', reason });
       })().finally(() => {

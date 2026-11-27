@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
 import { urlIdOf } from '../../app/routes';
 import { InBar, Movable, useBarRoom } from '../../app/page-controls';
-import { recordRecent } from '../../storage/recent';
+import { recentPath, recordRecent } from '../../storage/recent';
 import { Clock } from 'lucide-react';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
@@ -76,10 +76,10 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const barRoom = useBarRoom();
   // The pages this person opened last, for the palette: noted once the page and the person are known, in this browser only.
   const meId = me.data?.id;
-  const parentTitle = (page.breadcrumb as readonly { title: string }[] | undefined)?.at(-1)?.title; // a record from before the breadcrumb was sent has none
+  const parentPath = recentPath(page.breadcrumb as readonly { title: string }[] | undefined); // a record from before the breadcrumb was sent has none
   useEffect(() => {
-    if (meId !== undefined) recordRecent(meId, { id: page.id, urlId: page.urlId, title: page.title, path: parentTitle ?? '', collectionId: page.collectionId });
-  }, [meId, page.id, page.urlId, page.title, parentTitle, page.collectionId]);
+    if (meId !== undefined) recordRecent(meId, { id: page.id, urlId: page.urlId, title: page.title, path: parentPath, collectionId: page.collectionId });
+  }, [meId, page.id, page.urlId, page.title, parentPath, page.collectionId]);
   const presence = usePresence(presenceSource, me.data?.id ?? null);
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;

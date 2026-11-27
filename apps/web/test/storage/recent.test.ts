@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createClientStorage } from '../../src/storage';
-import { RECENT_MAX, clearRecent, readRecent, recordRecent, removeRecent } from '../../src/storage/recent';
+import { RECENT_MAX, clearRecent, readRecent, recentPath, recordRecent, removeRecent } from '../../src/storage/recent';
 import '../support/dom';
 
 afterEach(() => { localStorage.clear(); });
@@ -24,33 +24,35 @@ describe('the pages opened last, kept in this browser', () => {
     expect(readRecent('nobody')).toEqual([]);
   });
 
-  it('reads what is not a list of pages as nothing, and storage that is blocked as no list', () => {
-    localStorage.setItem('grimoire.recent.u', '{"not":"a list"}');
-    expect(readRecent('u')).toEqual([]);
-    localStorage.setItem('grimoire.recent.u', 'not json');
-    expect(readRecent('u')).toEqual([]);
-    localStorage.setItem('grimoire.recent.u', JSON.stringify([page(1), { id: 3 }, 'x']));
+  it('reads what is not of the shape as nothing, and storage that is blocked as no list', () => {
+    for (const bad of ['not json', '[1]', 'null', '{"u":"x"}', '{"u":[{"id":3}]}']) {
+      localStorage.setItem('grimoire.recent', bad);
+      expect(readRecent('u')).toEqual([]);
+    }
+    localStorage.setItem('grimoire.recent', JSON.stringify({ u: [page(1), { id: 3 }, 'x'] }));
     expect(readRecent('u').map((p) => p.id)).toEqual(['p1']);
     const blocked = createClientStorage(null);
     expect(() => { recordRecent('u', page(2), blocked); }).not.toThrow();
     expect(readRecent('u', blocked)).toEqual([]);
   });
 
-  it('takes every person\'s list away, and nothing else the client keeps', () => {
+  it('takes every person\'s list away in one go, and nothing else the client keeps', () => {
     const storage = createClientStorage();
     recordRecent('a', page(1), storage);
-    recordRecent('a', page(2), storage); // the same person again: listed once among the owners
     recordRecent('b', page(3), storage);
     storage.set('last-collection', 'c1');
     clearRecent(storage);
     expect(readRecent('a', storage)).toEqual([]);
     expect(readRecent('b', storage)).toEqual([]);
+    expect(storage.get('recent')).toBeNull();
     expect(storage.get('last-collection')).toBe('c1');
-    expect(storage.get('recent-owners')).toBeNull();
-    localStorage.setItem('grimoire.recent-owners', 'not json');
-    expect(() => { clearRecent(storage); }).not.toThrow(); // an index that cannot be read is no index
-    localStorage.setItem('grimoire.recent-owners', '{"x":1}');
-    expect(() => { clearRecent(storage); }).not.toThrow();
+  });
+
+  it('says a parent that has no title as Untitled, and nothing at the top of a collection', () => {
+    expect(recentPath(undefined)).toBe('');
+    expect(recentPath([])).toBe('');
+    expect(recentPath([{ title: 'Root' }, { title: 'Parent' }])).toBe('Parent');
+    expect(recentPath([{ title: 'Root' }, { title: '' }])).toBe('Untitled');
   });
 
   it('takes one page out of one person\'s list, and writes nothing when it is not there', () => {
@@ -60,15 +62,15 @@ describe('the pages opened last, kept in this browser', () => {
     removeRecent('a', 'u1');
     expect(readRecent('a').map((p) => p.id)).toEqual(['p2']);
     expect(readRecent('b').map((p) => p.id)).toEqual(['p1']);
-    const before = localStorage.getItem('grimoire.recent.a');
+    const before = localStorage.getItem('grimoire.recent');
     removeRecent('a', 'nope');
-    expect(localStorage.getItem('grimoire.recent.a')).toBe(before);
+    expect(localStorage.getItem('grimoire.recent')).toBe(before);
   });
 
   it('keeps a page with a collection id, and drops what has a collection id that is not text', () => {
     recordRecent('a', { ...page(1), collectionId: 'c1' });
     expect(readRecent('a')[0]!.collectionId).toBe('c1');
-    localStorage.setItem('grimoire.recent.a', JSON.stringify([{ ...page(2), collectionId: 7 }]));
+    localStorage.setItem('grimoire.recent', JSON.stringify({ a: [{ ...page(2), collectionId: 7 }] }));
     expect(readRecent('a')).toEqual([]);
   });
 });

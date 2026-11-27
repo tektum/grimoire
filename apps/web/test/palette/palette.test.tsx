@@ -361,6 +361,16 @@ describe('what an empty query offers, and what no match offers (DESIGN.md Search
     expect(t.creates).toEqual([{ collectionId: 'c1', parentId: null, title: 'zzzz' }]);
   });
 
+  it('does not offer what was opened in a collection that can no longer be read', async () => {
+    localStorage.clear();
+    recordRecent('u', { id: 'p1', urlId: 'ab12cd', title: 'Gone page', path: '', collectionId: 'c1' });
+    recordRecent('u', { id: 'p9', urlId: 'zz00', title: 'Other collection page', path: '', collectionId: 'c2' });
+    show(fake({ tree: () => 404 }).api);
+    await openIt();
+    expect(await screen.findByRole('option', { name: 'Other collection page' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'Gone page' })).toBeNull());
+  });
+
   it('offers no page to make where the person can only read', async () => {
     localStorage.clear();
     show(fake().api, '/c/c2');
