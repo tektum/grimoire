@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -33,7 +33,7 @@ exit 0
 const run = (bin, extra = {}) =>
   spawnSync('sh', [script, 'webkit', 'firefox'], {
     encoding: 'utf8',
-    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
+    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_APT_SOURCES: '', PLAYWRIGHT_SUDO: 'false', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
   });
 
 test('installs the browsers, then the libraries, once each when nothing fails', () => {
@@ -131,4 +131,62 @@ test('a repair of dpkg that stalls is cut by the time that is left of the total,
   assert.notEqual(r2.status, 0);
   assert.match(r2.stderr, /used up/);
   assert.ok(Date.now() - t1 < 8_000, 'it did not sleep the 10 s wait with 2 s left');
+});
+
+test('every apt source that names packages.microsoft.com is removed before the first apt call, whatever it is called, each one said, and the others are left', () => {
+  const sources = path.join(dir, 'sources.list.d');
+  mkdirSync(sources, { recursive: true });
+  const host = 'deb [signed-by=/k.gpg] https://packages.microsoft.com/repos/x noble main\n';
+  writeFileSync(path.join(sources, 'microsoft-prod.list'), host);
+  writeFileSync(path.join(sources, 'azure-cli.list'), host);
+  writeFileSync(path.join(sources, 'edge.sources'), 'Types: deb\nURIs: https://packages.microsoft.com/repos/edge\n');
+  writeFileSync(path.join(sources, 'ubuntu.sources'), 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu\n');
+  writeFileSync(path.join(sources, 'microsoft-notes.list'), '# a name that says microsoft, a source that does not\n');
+  const f = fake({});
+  const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources });
+  assert.equal(r.status, 0, r.stderr);
+  for (const gone of ['microsoft-prod.list', 'azure-cli.list', 'edge.sources']) {
+    assert.ok(!existsSync(path.join(sources, gone)), `${gone} is gone`);
+    assert.match(r.stdout, new RegExp(`removed the apt source .*${gone.replace('.', '\\.')}`));
+  }
+  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')) && existsSync(path.join(sources, 'microsoft-notes.list')), 'the others stay: the rule is the host, not the name');
+  assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
+});
+
+test('with no source naming packages.microsoft.com nothing is removed or said', () => {
+  const sources = path.join(dir, 'clean.list.d');
+  mkdirSync(sources, { recursive: true });
+  writeFileSync(path.join(sources, 'ubuntu.sources'), 'URIs: http://archive.ubuntu.com/ubuntu\n');
+  const r = run(fake({}).bin, { PLAYWRIGHT_APT_SOURCES: sources });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /removed the apt source/);
+  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')));
+});
+
+test('a source that cannot be removed is said so on stderr, never reported as removed, and the install still runs', () => {
+  const sources = path.join(dir, 'locked.list.d');
+  mkdirSync(sources, { recursive: true });
+  writeFileSync(path.join(sources, 'microsoft-prod.list'), 'deb https://packages.microsoft.com/repos/x noble main\n');
+  const f = fake({});
+  const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_RM: 'false', PLAYWRIGHT_SUDO: 'false' }); // the removal command fails, for any user
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /could not remove the apt source .*microsoft-prod\.list/);
+  assert.doesNotMatch(r.stdout, /removed the apt source/);
+  assert.ok(existsSync(path.join(sources, 'microsoft-prod.list')));
+  assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
+});
+
+test('a source only root can read is read again through sudo, not skipped', { skip: process.getuid?.() === 0 && 'root reads every file: nothing to retry' }, () => {
+  const sources = path.join(dir, 'private.list.d');
+  mkdirSync(sources, { recursive: true });
+  const file = path.join(sources, 'microsoft-prod.list');
+  writeFileSync(file, 'deb https://packages.microsoft.com/repos/x noble main\n');
+  chmodSync(file, 0o000);
+  const sudo = path.join(dir, 'fake-sudo'); // reads and removes as "root": the file's mode is put back first
+  writeFileSync(sudo, `#!/bin/sh\nchmod 600 "${file}"\nexec "$@"\n`);
+  chmodSync(sudo, 0o755);
+  const r = run(fake({}).bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_SUDO: sudo });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /removed the apt source .*microsoft-prod\.list/);
+  assert.ok(!existsSync(file));
 });
