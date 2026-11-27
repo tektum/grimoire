@@ -66,6 +66,7 @@ for (const person of PEOPLE) {
         await page.emulateMedia({ colorScheme: scheme });
         await signIn(page, person.userId, person.role);
         const badge = page.locator('.shell-header .user-badge');
+        if (width < 641) await page.getByRole('button', { name: 'Show menu' }).click(); // on a phone the account area is behind the menu button
         await expectSeen(page, badge.getByTestId('user-name'), 'the name');
         await expectSeen(page, badge.getByTestId('user-role'), 'the role');
         await expectSeen(page, badge.getByRole('button', { name: 'Sign out' }), 'Sign out');
