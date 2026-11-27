@@ -3,25 +3,33 @@
 # It installs the browsers if they are missing (and stops with "playwright browsers missing" if it cannot), builds the client for production and runs `check:build` on that build (an `e2e`
 # build has the development sign-in, which `check:build` refuses), builds it in `e2e` mode, starts the stack with the
 # handshake required (compose.m6.yaml, M6_REQUIRE_HANDSHAKE=1), renders the response headers for that stack and serves the client on 4173 with them (another origin than the API
-# on 8080), and runs the scenarios of
-# apps/web/test-e2e/m6/scenarios.ts in Chromium, Firefox and WebKit. The scenarios of screens that are not built yet are listed as pending in the run and in docs/proof/m6-exit.md.
-# A real sign-in with the identity provider is not part of it. The Makefile does not change for this target: `-include mk/*.mk` takes this file.
+# on 8080), and runs the scenarios of apps/web/test-e2e/m6/scenarios.ts in Chromium, Firefox and WebKit: the specifications of the real stack with the client served with those headers (the
+# production content security policy must let them work), and the few that start a scripted server or API on a port of their own (SCRIPTED_SPECS) in a second run without the headers, since
+# that policy allows no origin but the stack's. The scenarios of screens that are not built yet are listed as pending in the run and in docs/proof/m6-exit.md.
+# The built client's config.json names `localhost`, so after the e2e build `client-config.ts` makes it name the address the specifications and the headers use (E2E_API_URL: one source for both), else the
+# policy would refuse the client's own requests. The scenario runs stop after three failures (--max-failures=3): a broken run ends in minutes. A real sign-in with the identity provider is not part of it. The Makefile does not change for this target: `-include mk/*.mk` takes this file.
 M6_BROWSERS := chromium firefox webkit
+# How the browsers are installed (a line that goes on when it cannot): a job that has installed them already, and with a retry (tools/ci/playwright-install.sh), sets this to `true`, so that the target does not
+# run a second install, with its own apt step and no time limit.
+M6_BROWSER_INSTALL ?= bunx playwright install --with-deps $(M6_BROWSERS)
 M6_HEADERS := $(CURDIR)/test-results/m6-headers
-M6_PLAYWRIGHT := GRIMOIRE_WEB_HEADERS_DIR="$(M6_HEADERS)" E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" M6_EXIT=1 M6_REQUIRE_HANDSHAKE=1 bunx playwright test -c apps/web/playwright.config.ts
+M6_ENV := E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" M6_EXIT=1 M6_REQUIRE_HANDSHAKE=1 bunx playwright test -c apps/web/playwright.config.ts
+M6_PLAYWRIGHT := GRIMOIRE_WEB_HEADERS_DIR="$(M6_HEADERS)" $(M6_ENV)
 test-m6: dev-secret
 	bun install --frozen-lockfile
-	-bunx playwright install --with-deps $(M6_BROWSERS)
+	-$(M6_BROWSER_INSTALL)
 	bun run apps/web/test-e2e/support/run-check.ts
 	bun run apps/web/test-e2e/m6/scenarios.ts check
 	bun run build
 	cd apps/web && bunx vite build && bun run check:build
 	cd apps/web && bunx vite build --mode e2e
+	bun run apps/web/test-e2e/m6/client-config.ts
 	M6_REQUIRE_HANDSHAKE=1 GRIMOIRE_S3_PUBLIC_ENDPOINT=http://127.0.0.1:8333 $(WEB_COMPOSE) $(MAKE) up
 	GRIMOIRE_ALLOWED_ORIGINS="http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:$${E2E_WEB_PORT:-4173},http://localhost:$${E2E_WEB_PORT:-4173}" $(MAKE) files-setup
 	bun run apps/web/test-e2e/m6/headers.ts
 	$(M6_PLAYWRIGHT) --project=chromium apps/web/test-e2e/m6/handshake.spec.ts
-	$(M6_PLAYWRIGHT) $(foreach browser,$(M6_BROWSERS),--project=$(browser)) $$(bun run apps/web/test-e2e/m6/scenarios.ts files)
+	$(M6_PLAYWRIGHT) --max-failures=3 $(foreach browser,$(M6_BROWSERS),--project=$(browser)) $$(bun run apps/web/test-e2e/m6/scenarios.ts files)
+	$(M6_ENV) --max-failures=3 $(foreach browser,$(M6_BROWSERS),--project=$(browser)) $$(bun run apps/web/test-e2e/m6/scenarios.ts files scripted)
 
 .PHONY: test-m6
 

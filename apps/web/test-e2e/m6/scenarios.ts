@@ -113,24 +113,33 @@ function firefoxNote(specs: readonly string[]): string {
   return out === specs.length ? '; NOT run in firefox (only chromium and webkit)' : `; ${String(out)} of them NOT run in firefox`;
 }
 
-/** The specification files to run, once each, in the order of the list: those of the scenarios that are not pending. */
-export const specFiles = (scenarios: readonly Scenario[]): string[] => [...new Set(scenarios.flatMap((s) => (s.pending === undefined ? s.specs : [])))];
+/**
+ * The files that start a scripted server or API on a port of their own. The production content security policy lets the page connect to the origins of the stack and no others, so the run that serves
+ * the client with the rendered headers cannot hold them: they run in a second run, without the headers. Every other file (the real-stack ones among them) runs with the headers.
+ */
+export const SCRIPTED_SPECS: readonly string[] = [`${E}/status/messages.spec.ts`, `${E}/editor/signal-rows.spec.ts`];
 
-// The command line: `bun run scenarios.ts check` (prints the run lines, exits 1 with the problems when the list is unsound) and `bun run scenarios.ts files` (prints the files, for make).
+/** The specification files to run, once each, in the order of the list: those of the scenarios that are not pending, with the scripted ones (`scripted`) or without them. */
+export const specFiles = (scenarios: readonly Scenario[], scripted = false): string[] =>
+  [...new Set(scenarios.flatMap((s) => (s.pending === undefined ? s.specs : [])))].filter((file) => SCRIPTED_SPECS.includes(file) === scripted);
+
+// The command line: `bun run scenarios.ts check` (prints the run lines, exits 1 with the problems when the list is unsound), `bun run scenarios.ts files` (prints the files that run with the production headers, for make) and `files scripted` (the others).
 if (import.meta.main) {
   const command = process.argv[2];
   const report = readFileSync(process.env['M6_EXIT_REPORT'] ?? path.join(repoRoot, 'docs/proof/m6-exit.md'), 'utf8'); // the variable is for the test of this list: another report
   if (command === 'check') {
     const problems = [...listProblems(SCENARIOS, report, undefined, process.env['M6_ALLOW_PENDING'] === '1'), ...fileDisagreements(SCENARIOS, report), ...reportProblems(report)]; // the list, the files it names against the report's, and the report itself
+    const listed = new Set(SCENARIOS.flatMap((s) => s.specs));
+    for (const file of SCRIPTED_SPECS) if (!listed.has(file)) problems.push(`${file} is in the scripted files and in no scenario`);
     if (problems.length > 0) {
       process.stderr.write(`${problems.join('\n')}\nthe list of scenarios is not sound\n`);
       process.exit(1);
     }
     process.stdout.write(`${runLines(SCENARIOS).join('\n')}\n`);
   } else if (command === 'files') {
-    process.stdout.write(`${specFiles(SCENARIOS).join(' ')}\n`);
+    process.stdout.write(`${specFiles(SCENARIOS, process.argv[3] === 'scripted').join(' ')}\n`);
   } else {
-    process.stderr.write('usage: scenarios.ts check | files\n');
+    process.stderr.write('usage: scenarios.ts check | files [scripted]\n');
     process.exit(2);
   }
 }
