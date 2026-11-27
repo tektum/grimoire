@@ -97,9 +97,10 @@ describe('collaborator colour index', () => {
 });
 
 describe('reduced motion and focus', () => {
-  it('removes transitions and animations under prefers-reduced-motion: reduce', () => {
+  it('leaves only an 80ms opacity transition and no animation under prefers-reduced-motion: reduce', () => {
     const block = global.slice(global.indexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(block).toMatch(/transition:\s*none\s*!important/);
+    expect(block).toMatch(/transition-property:\s*opacity\s*!important/);
+    expect(block).toMatch(/transition-duration:\s*80ms\s*!important/);
     expect(block).toMatch(/animation:\s*none\s*!important/);
   });
   it('shows a visible focus ring from the --focus token', () => {

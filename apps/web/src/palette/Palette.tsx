@@ -13,6 +13,7 @@ import { useOpenCollection } from '../tree/ContentsPanel';
 import { pagePath, type FlatPage } from '../tree/model';
 import { useCollectionTree } from '../tree/useTree';
 import { VisuallyHiddenText } from './hidden';
+import { onOpenPalette } from './open';
 import { commandsFor, filterCommands } from './commands';
 import './palette.css';
 
@@ -59,6 +60,8 @@ function PaletteDialog() {
     setOpen((was) => !was);
   }, []);
   useShortcut(toggle);
+  // A button opens it, and does not close it: only a closed palette is toggled.
+  useEffect(() => onOpenPalette(() => { if (!opened.current) toggle(); }), [toggle]);
   useEffect(() => {
     if (!open && opened.current) {
       const back = returnTo.current;

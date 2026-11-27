@@ -48,3 +48,15 @@ export function slugOf(title: string): string {
 
 /** The link to a page: `/p/<title-slug>-<urlId>`; the route reads the text after the last dash as the `urlId`. */
 export const pagePath = (title: string, urlId: string): string => `/p/${slugOf(title)}-${urlId}`;
+
+/** The pages from the top of the collection down to the page with this `urlId` (itself last); empty when it is not in the list. A parent cycle ends the walk. */
+export function ancestry(pages: readonly FlatPage[], urlId: string): FlatPage[] {
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const path: FlatPage[] = [];
+  const seen = new Set<string>();
+  for (let page = pages.find((p) => p.urlId === urlId); page !== undefined && !seen.has(page.id); page = page.parentId === null ? undefined : byId.get(page.parentId)) {
+    seen.add(page.id);
+    path.unshift(page);
+  }
+  return path;
+}

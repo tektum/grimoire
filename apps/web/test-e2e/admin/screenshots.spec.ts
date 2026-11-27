@@ -16,7 +16,7 @@ test('the users list with one suspended user, light and dark', async ({ page, co
   await adminApi(page, { role: 'admin', users: [u('u1', 'Alice Example', 'admin'), u('u2', 'Bob Builder'), u('u3', 'Carol Reader', 'viewer', true), u('u4', 'Dana Writer')] });
   await page.goto('/admin/users');
   await page.addStyleTag({ content: SANS });
-  await expect(page.getByRole('listitem')).toHaveCount(4);
+  await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(4);
   await expect(page.getByTestId('user-name')).toHaveText('Alice Example');
   await page.mouse.move(0, 0);
   await shots(page, TASK, 'users');

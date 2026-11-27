@@ -19,7 +19,7 @@ test('a viewer sees the version and the changes, and no element with role button
   await signInAs(context, 'e2e-vera', 'viewer', { check: false });
   await historyApi(page, { role: 'viewer', current: '# Quarterly plan\n\nThe newer text\n', revisions: [revision] });
   await page.goto(`/p/${SLUG}/history`);
-  await expect(page.getByRole('listitem')).toHaveCount(1);
+  await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(1);
   await page.getByRole('link', { name: /Open this version/ }).click();
   await expect(page.locator('#screen-title').filter({ hasText: 'Quarterly plan' })).toBeVisible();
   await page.getByRole('tab', { name: 'Changes' }).click();

@@ -74,7 +74,7 @@ test('searches by name and by email', async ({ page, context }) => {
   await adminApi(page, { role: 'admin', users: [u('u1', 'Alice', 'admin'), u('u2', 'Bob'), u('u3', 'Carol')] });
   await page.goto('/admin/users');
   await page.getByRole('searchbox', { name: 'Search users' }).fill('carol@');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.getByRole('listitem')).toHaveCount(1);
+  await page.getByRole('main').getByRole('button', { name: 'Search' }).click();
+  await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 2, name: 'Carol' })).toBeVisible();
 });

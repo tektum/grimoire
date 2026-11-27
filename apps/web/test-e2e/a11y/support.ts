@@ -104,11 +104,13 @@ export async function lastingMotion(page: Page): Promise<string[]> {
         const style = getComputedStyle(element, pseudo);
         const transition = Math.max(0, ...seconds(style.transitionDuration));
         const animation = Math.max(0, ...seconds(style.animationDuration));
-        if (transition > 0 || animation > 0)
+        // Reduced motion leaves a fade: opacity only, at most 80ms. Anything else that transitions, or any animation, moves.
+        const moves = style.transitionProperty.split(',').some((name) => name.trim() !== 'opacity');
+        if ((transition > 0 && (transition > 0.08 || moves)) || animation > 0)
           found.push(
             `${element.tagName.toLowerCase()}.${String((element as HTMLElement).className)
               .trim()
-              .replace(/\s+/g, '.')}${pseudo ?? ''} (transition ${transition}s, animation ${animation}s)`,
+              .replace(/\s+/g, '.')}${pseudo ?? ''} (transition ${transition}s of ${style.transitionProperty}, animation ${animation}s)`,
           );
       }
     }

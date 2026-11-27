@@ -12,8 +12,8 @@ test('a result with partial: true shows the notice and one without it does not',
   await mockApi(page, { collections: [{ id: 'c1', name: 'Dev', myPermission: 'read-write' }], pages: [] });
   await scriptedSearch(page, () => ({ items: [hit('big', 'b1000000', 'A very long page', 'word1 word2', [[0, 5]], { partial: true }), hit('small', 's1000000', 'A short page', 'word1', [[0, 5]])] }));
   await page.goto('/search?q=word1');
-  const big = page.getByRole('listitem').filter({ hasText: 'A very long page' });
-  const small = page.getByRole('listitem').filter({ hasText: 'A short page' });
+  const big = page.getByRole('main').getByRole('listitem').filter({ hasText: 'A very long page' });
+  const small = page.getByRole('main').getByRole('listitem').filter({ hasText: 'A short page' });
   await expect(big.getByText(NOTICE)).toBeVisible();
   await expect(small).toBeVisible();
   await expect(small.getByText(NOTICE)).toHaveCount(0);

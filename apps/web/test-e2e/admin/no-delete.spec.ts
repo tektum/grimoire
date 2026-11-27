@@ -10,7 +10,7 @@ test('the users screen offers Suspend or Reinstate and nothing that deletes a us
     { id: 'u2', name: 'Carol', email: 'carol@dev.invalid', role: 'viewer', suspended: true },
   ] });
   await page.goto('/admin/users');
-  await expect(page.getByRole('listitem')).toHaveCount(2);
+  await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(2);
   expect(await page.getByRole('button', { name: /delete|remove/i }).count()).toBe(0);
   expect(await page.getByRole('menuitem', { name: /delete|remove/i }).count()).toBe(0);
   await expect(page.getByRole('button', { name: 'Suspend Alice' })).toBeVisible();

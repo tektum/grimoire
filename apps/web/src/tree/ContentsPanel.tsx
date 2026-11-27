@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { type RefObject, useMemo, useRef } from 'react';
 import { Link, useLocation, useMatch, useNavigate } from 'react-router';
 import { urlIdOf } from '../app/routes';
 import { type ApiLike, queryKey } from '../api/query';
 import { LAST_COLLECTION_KEY, useCollections } from '../screens/collections/useCollections';
 import { type ClientStorage, createClientStorage } from '../storage';
+import { openPalette } from '../palette/open';
 import { Button } from '../ui/primitives';
 import { type TreeActions, useTreeActions } from './actions';
 import { buildTree, pagePath } from './model';
@@ -60,7 +62,6 @@ function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { read
         <Link to={`/c/${collectionId}`} className="contents-collection">
           {current?.name ?? 'Collection'}
         </Link>
-        {writable && <Button variant="primary" onClick={() => void actions.create(null)}>New page</Button>}
       </div>
       {tree.isError && tree.data === undefined ? (
         <p role="alert">
@@ -70,6 +71,11 @@ function CollectionContents({ api, collectionId, currentUrlId, hereKey }: { read
         <p>Loading</p>
       ) : (
         <Tree items={items} currentUrlId={currentUrlId} editing={writable ? { actions, pages: tree.data } : undefined} />
+      )}
+      {writable && (
+        <div className="contents-foot">
+          <Button onClick={() => void actions.create(null)}>New page</Button>
+        </div>
       )}
     </>
   );
@@ -103,6 +109,11 @@ export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonl
   return (
     <div className="contents">
       <p className="contents-title">Contents</p>
+      <button type="button" className="contents-search" aria-keyshortcuts="Control+K Meta+K" onClick={openPalette}>
+        <Search aria-hidden size={16} strokeWidth={1.5} />
+        <span>Search</span>
+        <kbd aria-hidden>Ctrl K</kbd>
+      </button>
       {collectionId !== undefined && <CollectionContents api={api} collectionId={collectionId} currentUrlId={urlId} hereKey={hereKey} />}
     </div>
   );
