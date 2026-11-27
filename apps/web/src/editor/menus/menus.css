@@ -46,6 +46,7 @@
   display: none; /* until the library shows it: it sets no attribute before that, and a view that never changes (a saved text) never reaches it, so an empty box would stay */
   opacity: 0;
   transform: scale(var(--popover-scale-from));
+  pointer-events: none; /* it stays drawn through its exit fade (display is discrete): nothing in it can be chosen while it leaves */
 }
 .slash-option {
   display: flex;
@@ -95,6 +96,7 @@
   display: none;
   opacity: 0;
   transform: scale(var(--popover-scale-from));
+  pointer-events: none; /* as the slash menu: inert while it leaves */
 }
 .bubble-bar {
   display: flex;
