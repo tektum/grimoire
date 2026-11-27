@@ -11,7 +11,7 @@
   flex: 1;
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);

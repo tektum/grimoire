@@ -178,9 +178,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   transform: none;
 }
 
-/* The screens that are not the page, and the dialogs: controls of 32px on the interface scale, edges that reach 3:1, the page's quiet secondary text. */
-.shell-main:not(:has(.page-layout)) :is(input:not([type='checkbox'], [type='radio'], [type='file']), select, textarea),
-.modal:not(.palette) :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+/* The screens that are not the page, and the dialogs: controls of 32px on the interface scale, edges that reach 3:1, the page's quiet secondary text. These are the defaults of those
+   places, so they carry no specificity of their own (:where): a rule of one screen (the narrow text of the access table, a button of the contents) is meant to win over them. */
+:where(.shell-main:not(:has(.page-layout)), .modal:not(.palette)) :where(input:not([type='checkbox'], [type='radio'], [type='file']), select, textarea) {
   box-sizing: border-box;
   min-block-size: 32px;
   padding: var(--space-1) var(--space-3);
@@ -190,9 +190,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: var(--ink);
   font: inherit;
 }
-.shell-main:not(:has(.page-layout)) button,
-.modal:not(.palette) button {
+:where(.shell-main:not(:has(.page-layout)), .modal:not(.palette)) button {
   min-block-size: 32px;
   padding-block: var(--space-1);
 }
-.shell-main:not(:has(.page-layout)) :is(input, select, textarea)::placeholder { color: var(--ink-3); }
+:where(.shell-main:not(:has(.page-layout))) :where(input, select, textarea)::placeholder { color: var(--ink-3); }
