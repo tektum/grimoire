@@ -117,7 +117,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 /* A collaborator's cursor: a 2px caret in the person's caret colour for the theme (`--cursor-caret`, docs/DESIGN.md "Collaborator colours") and a name flag
    in the person's fixed colour, Inter 11 weight 600, 2px above the line with its flat corner at the caret. */
 .cursor { position: relative; border-inline-start: 2px solid var(--cursor-caret, var(--cursor)); margin-inline-start: -1px; }
-.cursor-label { position: absolute; bottom: calc(100% + 2px); inset-inline-start: -2px; padding: 2px var(--space-1); font: 600 0.6875rem/0.6875rem var(--font-ui); white-space: nowrap; background: var(--cursor); color: var(--cursor-text); border-radius: 4px 4px 4px 0; }
+.cursor-label { position: absolute; bottom: calc(100% + 2px); inset-inline-start: -2px; padding: 2px var(--space-1); font: 600 0.6875rem/0.6875rem var(--font-ui); white-space: nowrap; background: var(--cursor); color: var(--cursor-text); border-radius: 4px; border-end-start-radius: 0; }
 @media (forced-colors: active) {
   .cursor-label { border: 1px solid CanvasText; }
 }

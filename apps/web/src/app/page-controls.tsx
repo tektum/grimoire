@@ -80,6 +80,7 @@ export function Movable({ part, inBar, children }: { part: Part; inBar: boolean;
   useEffect(() => {
     if (target !== null && host.parentElement !== target) target.appendChild(host);
   }, [target, host]);
+  useEffect(() => () => { host.remove(); }, [host]); // gone with the page: the bar's holder outlives it, and must not collect an empty node per page visited
   return (
     <>
       <div ref={setInline} style={{ display: 'contents' }} />

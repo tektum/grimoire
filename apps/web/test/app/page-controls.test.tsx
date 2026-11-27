@@ -86,4 +86,22 @@ describe('the top bar places for a page`s controls', () => {
     expect(screen.getByLabelText('draft')).toBe(input);
     expect(holder('status').contains(input)).toBe(true);
   });
+
+  it('takes its node out of the bar when the page goes', () => {
+    const view = render(
+      <PageControlsProvider>
+        <PageControlsSlot />
+        <Movable part="status" inBar>
+          <p>Saved</p>
+        </Movable>
+      </PageControlsProvider>,
+    );
+    expect(holder('status').children).toHaveLength(1);
+    view.rerender(
+      <PageControlsProvider>
+        <PageControlsSlot />
+      </PageControlsProvider>,
+    );
+    expect(holder('status').children).toHaveLength(0);
+  });
 });
