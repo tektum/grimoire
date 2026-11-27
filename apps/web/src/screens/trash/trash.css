@@ -12,11 +12,12 @@
   border-bottom: 1px solid var(--hairline);
 }
 .trash-title {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .trash-meta {
   grid-column: 1;
-  color: var(--ink-2);
+  color: var(--ink-3);
+  font-size: var(--text-ui-sm);
 }
 .trash-list li button {
   grid-column: 2;

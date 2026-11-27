@@ -3,6 +3,13 @@ import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { repoRoot } from './env';
 
+/** The width of a screenshot: 1280, or `E2E_SHOTS_WIDTH` (the redesign takes its pictures at 1440 and at 390). */
+export const shotsWidthOf = (raw: string | undefined): number => {
+  const width = Number(raw);
+  return raw !== undefined && Number.isInteger(width) && width > 0 ? width : 1280; // a malformed override is the default, not a viewport that Playwright refuses
+};
+const shotsWidth = (): number => shotsWidthOf(process.env['E2E_SHOTS_WIDTH']);
+
 export const THEMES = ['light', 'dark'] as const;
 
 /** Where the screenshots of `task` go: `test-results/shots/<task>/` (the CI job uploads the folder). */
@@ -21,7 +28,7 @@ export function shotPath(task: string, name: string, theme: (typeof THEMES)[numb
 export async function shots(page: Page, task: string, name: string, options: { width?: number } = {}): Promise<string[]> {
   const written: string[] = [];
   const previous = page.viewportSize();
-  await page.setViewportSize({ width: options.width ?? 1280, height: 800 });
+  await page.setViewportSize({ width: options.width ?? shotsWidth(), height: 800 });
   try {
     for (const theme of THEMES) {
       const file = shotPath(task, name, theme);

@@ -1,7 +1,8 @@
 .login {
   max-width: 26rem;
-  margin: var(--space-6) auto;
+  margin: var(--space-7) auto var(--space-6);
   padding: 0 var(--space-4);
+  font-size: var(--text-ui-md);
 }
 .login h1 {
   margin-bottom: var(--space-4);
@@ -17,24 +18,27 @@
   gap: var(--space-3);
   padding: var(--space-5);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius-3);
+  box-shadow: var(--shadow-popover);
   background: var(--paper-raised);
 }
 .login-form h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-ui-lg);
 }
 .login-form label {
   display: grid;
   gap: var(--space-1);
-  font-size: 0.9rem;
+  font-size: var(--text-ui-sm);
   color: var(--ink-2);
 }
 .login-form input,
 .login-form select {
   font: inherit;
-  padding: var(--space-2);
-  border: 1px solid var(--hairline);
+  box-sizing: border-box;
+  min-block-size: 36px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -46,7 +50,7 @@
   border: 1px solid var(--accent);
   border-radius: var(--radius-2);
   background: var(--paper-raised);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 .login-form .login-error {
   margin: 0;

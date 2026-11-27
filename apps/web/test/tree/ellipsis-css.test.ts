@@ -19,9 +19,4 @@ describe('long names are cut with an ellipsis, not mid-word', () => {
     expect(css).toMatch(/\.breadcrumb li \+ li::before\s*\{[^}]*flex:\s*none/);
   });
 
-  it('on a phone the middle of the breadcrumb folds: the fold shows only there, the middle items leave the eye only there (and come back with the focus)', () => {
-    const css = read('apps/web/src/ui/global.css');
-    expect(css).toMatch(/@media \(min-width: 40\.0625rem\)\s*\{\s*\.breadcrumb \.breadcrumb-fold\s*\{\s*display:\s*none/);
-    expect(css).toMatch(/@media \(max-width: 40rem\)\s*\{\s*\.breadcrumb \.breadcrumb-middle:not\(:focus-within\)\s*\{[^}]*clip-path:\s*inset\(50%\)/);
-  });
 });

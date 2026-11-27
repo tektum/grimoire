@@ -131,3 +131,27 @@ test('a page open with the tree beside it, light and dark', async ({ page: tab, 
     await stop();
   }
 });
+
+// DESIGN.md "Phone": the bar shows the parent page with a back chevron, not the path and not the page's own name (which the title says); the rest of the path stays for assistive technology.
+test('on a phone the bar shows the parent page with a back chevron, 44px high, and the rest of the path is for assistive technology only', async ({ page: tab }) => {
+  await tab.setViewportSize({ width: 390, height: 800 });
+  const stop = await open(tab, '/p/install-the-tools-install0', { collections: COLLECTIONS, pages: PAGES });
+  try {
+    await expect(tab.getByRole('heading', { level: 1, name: 'Install the tools' })).toBeVisible();
+    const trail = tab.getByRole('navigation', { name: 'Breadcrumb' });
+    const parent = trail.getByRole('link', { name: 'Getting started guide' });
+    await expect(parent).toBeVisible();
+    expect((await parent.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await parent.evaluate((a) => getComputedStyle(a.parentElement!, '::before').content)).toContain('\u2039'); // the chevron, drawn by the bar and not part of any name
+    for (const hidden of [trail.getByRole('link', { name: 'Dev' }), trail.getByRole('link', { name: 'Welcome' }), trail.locator('[aria-current="page"]')]) {
+      await expect(hidden).toBeAttached(); // still in the page for a screen reader
+      expect((await hidden.boundingBox())!.width).toBeLessThanOrEqual(1);
+    }
+    await expect(tab.getByRole('link', { name: 'Grimoire' })).toBeHidden(); // the brand gives way to it
+    await tab.evaluate(() => { document.documentElement.dir = 'rtl'; });
+    expect(await parent.evaluate((a) => getComputedStyle(a.parentElement!, '::before').content)).toContain('\u203a'); // in right-to-left text the way back is to the right
+    expect(await tab.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  } finally {
+    await stop();
+  }
+});
