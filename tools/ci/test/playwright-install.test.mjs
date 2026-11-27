@@ -133,26 +133,50 @@ test('a repair of dpkg that stalls is cut by the time that is left of the total,
   assert.ok(Date.now() - t1 < 8_000, 'it did not sleep the 10 s wait with 2 s left');
 });
 
-test('the Microsoft apt sources are removed before the first apt call, each one said, and the others are left', () => {
+test('every apt source that names packages.microsoft.com is removed before the first apt call, whatever it is called, each one said, and the others are left', () => {
   const sources = path.join(dir, 'sources.list.d');
   mkdirSync(sources, { recursive: true });
-  for (const name of ['microsoft-prod.list', 'Microsoft-Edge.sources', 'ubuntu.sources', 'azure-cli.list']) writeFileSync(path.join(sources, name), 'x');
+  const host = 'deb [signed-by=/k.gpg] https://packages.microsoft.com/repos/x noble main\n';
+  writeFileSync(path.join(sources, 'microsoft-prod.list'), host);
+  writeFileSync(path.join(sources, 'azure-cli.list'), host);
+  writeFileSync(path.join(sources, 'edge.sources'), 'Types: deb\nURIs: https://packages.microsoft.com/repos/edge\n');
+  writeFileSync(path.join(sources, 'ubuntu.sources'), 'Types: deb\nURIs: http://archive.ubuntu.com/ubuntu\n');
+  writeFileSync(path.join(sources, 'microsoft-notes.list'), '# a name that says microsoft, a source that does not\n');
   const f = fake({});
   const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources });
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(!existsSync(path.join(sources, 'microsoft-prod.list')) && !existsSync(path.join(sources, 'Microsoft-Edge.sources')), 'both Microsoft files are gone');
-  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')) && existsSync(path.join(sources, 'azure-cli.list')), 'the other sources stay');
-  assert.match(r.stdout, /removed the apt source .*microsoft-prod\.list/);
-  assert.match(r.stdout, /removed the apt source .*Microsoft-Edge\.sources/);
+  for (const gone of ['microsoft-prod.list', 'azure-cli.list', 'edge.sources']) {
+    assert.ok(!existsSync(path.join(sources, gone)), `${gone} is gone`);
+    assert.match(r.stdout, new RegExp(`removed the apt source .*${gone.replace('.', '\\.')}`));
+  }
+  assert.ok(existsSync(path.join(sources, 'ubuntu.sources')) && existsSync(path.join(sources, 'microsoft-notes.list')), 'the others stay: the rule is the host, not the name');
   assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
 });
 
-test('with no Microsoft source in the folder nothing is removed or said', () => {
+test('with no source naming packages.microsoft.com nothing is removed or said', () => {
   const sources = path.join(dir, 'clean.list.d');
   mkdirSync(sources, { recursive: true });
-  writeFileSync(path.join(sources, 'ubuntu.sources'), 'x');
+  writeFileSync(path.join(sources, 'ubuntu.sources'), 'URIs: http://archive.ubuntu.com/ubuntu\n');
   const r = run(fake({}).bin, { PLAYWRIGHT_APT_SOURCES: sources });
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(r.stdout, /removed the apt source/);
   assert.ok(existsSync(path.join(sources, 'ubuntu.sources')));
+});
+
+test('a source that cannot be removed is said so on stderr, never reported as removed, and the install still runs', { skip: process.getuid?.() === 0 && 'root can remove it' }, () => {
+  const sources = path.join(dir, 'locked.list.d');
+  mkdirSync(sources, { recursive: true });
+  writeFileSync(path.join(sources, 'microsoft-prod.list'), 'deb https://packages.microsoft.com/repos/x noble main\n');
+  chmodSync(sources, 0o555);
+  try {
+    const f = fake({});
+    const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_SUDO: 'false' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /could not remove the apt source .*microsoft-prod\.list/);
+    assert.doesNotMatch(r.stdout, /removed the apt source/);
+    assert.ok(existsSync(path.join(sources, 'microsoft-prod.list')));
+    assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
+  } finally {
+    chmodSync(sources, 0o755);
+  }
 });
