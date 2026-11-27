@@ -18,7 +18,7 @@ const caretAt = async (page: Page, text: string, where: 'End' | 'Home'): Promise
 };
 
 test.describe('remote cursors', () => {
-  test("are always visible: the caret and selection in the person's colour with the directory name, the label for 3 s after each move, readable on both themes, through a scroll and a reconnect", async ({
+  test("are always visible: the caret and selection in the person's colour with the directory name, the label for 2 s after each move, readable on both themes, through a scroll and a reconnect", async ({
     browser,
     baseURL,
   }) => {
@@ -35,14 +35,19 @@ test.describe('remote cursors', () => {
       const cursor = a.page.locator('.ProseMirror-yjs-cursor');
       const label = cursor.locator('.cursor-label');
 
-      // The label is shown when the cursor arrives, and hides after 3 s.
+      // The label is shown when the cursor arrives, and hides after 2 s, leaving the caret as a dot.
       await caretAt(b.page, PARAGRAPH, 'End');
       await expect(label).toHaveText(meB.name);
+      // The paragraph sits directly under the title heading, so the flag goes below the line instead of covering the heading.
+      await expect(label).toHaveAttribute('data-flip', '');
+      const [caretBox, flagBox] = [await cursor.boundingBox(), await label.boundingBox()];
+      expect(flagBox!.y).toBeGreaterThanOrEqual(caretBox!.y + caretBox!.height);
       await expect(label).toHaveClass(/cursor-label--shown/);
       await expect(label).not.toHaveClass(/cursor-label--shown/, { timeout: 8000 });
       await expect(label).toHaveCSS('opacity', '0');
+      await expect(cursor).toHaveClass(/cursor--dot/);
 
-      // It shows again for 3 s after each move, and the caret is at least 2 px wide, in the colour of the id.
+      // It shows again for 2 s after each move, and the caret is at least 2 px wide, in the colour of the id.
       await b.page.keyboard.press('ArrowLeft');
       await expect(label).toHaveClass(/cursor-label--shown/);
       const width = await cursor.evaluate((el) => Number.parseFloat(getComputedStyle(el).borderInlineStartWidth));
@@ -55,15 +60,14 @@ test.describe('remote cursors', () => {
       await expect(selection).toBeVisible();
       expect(await selection.evaluate((el) => getComputedStyle(el).backgroundColor)).toMatch(/^rgba\(.+, 0?\.\d+\)$/);
 
-      // Readable on both themes: the label text on every colour of the palette reaches 4.5:1, and the caret has a 1px ring of the page's ink, whose edge reaches
-      // 3:1 against the page (the colours alone do not, on both themes: that is the palette of the design, which stays as it is).
+      // Readable on both themes: the label text on every colour of the palette reaches 4.5:1, and the caret line is drawn in the theme's caret colour of the
+      // person, which reaches 3:1 against the page (the fixed colours alone do not on light paper; the label keeps them).
       for (const colour of COLLAB_COLOURS) expect(contrast(colour, labelText(colour)), `the label text on ${colour}`).toBeGreaterThanOrEqual(4.5);
       for (const scheme of ['light', 'dark'] as const) {
         await a.page.emulateMedia({ colorScheme: scheme });
         const background = toHex(await a.page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor));
-        const ring = await cursor.evaluate((el) => getComputedStyle(el).boxShadow); // `rgb(r, g, b) 0px 0px 0px 1px`
-        expect(ring, 'the ring is 1px').toMatch(/0px 0px 0px 1px$/);
-        expect(contrast(toHex(ring), background), `the ring of the caret on the ${scheme} page`).toBeGreaterThanOrEqual(3);
+        const line = toHex(await cursor.evaluate((el) => getComputedStyle(el).borderInlineStartColor));
+        expect(contrast(line, background), `the caret on the ${scheme} page`).toBeGreaterThanOrEqual(3);
       }
 
       // The cursor survives a scroll of A's page ...

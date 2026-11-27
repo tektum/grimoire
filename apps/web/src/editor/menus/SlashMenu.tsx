@@ -49,6 +49,11 @@ export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; 
         >
           <span className="slash-label">{kind.label}</span>
           <span className="slash-description">{kind.description}</span>
+          {kind.shortcut === undefined ? null : (
+            <span className="slash-shortcut" aria-hidden="true">
+              {kind.shortcut}
+            </span>
+          )}
         </div>
       ))}
     </div>

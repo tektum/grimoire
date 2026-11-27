@@ -1,14 +1,47 @@
 /*
- * Remote cursors: the caret is the 2px border of `.cursor` (ui/global.css) in the person's colour. The name label shows on arrival and after each move
- * (`cursor-label--shown`, removed after a few seconds), and when the caret is hovered. Cursors on the same character stack their labels and stand a few pixels apart, so every caret shows.
+ * Carets on the editing surface (docs/DESIGN.md "Editing with another person"). Your own caret is the native one, in the accent. A remote caret is the 2px
+ * border of `.cursor` (ui/global.css) in the person's caret colour; it does not blink. Its name flag shows on arrival and after each move
+ * (`cursor-label--shown`, removed after 2 seconds, when the caret takes `cursor--dot`) and when the caret is hovered; otherwise the flag collapses into a
+ * 6px dot at the top of the caret, by opacity and transform only (reduced motion: opacity only, ui/global.css). The flag goes below the line when it
+ * carries `data-flip` (src/editor/core/cursor.ts). Cursors on the same character stand a few pixels apart and stack their flags, so every caret shows.
  */
-/* The caret is the person's colour with a 1px ring of the ink of the page: the ring is what reaches 3:1 against the page on both themes, for every colour of the palette. */
-.page-editor .ProseMirror-yjs-cursor { box-shadow: 0 0 0 1px var(--ink); }
-.page-editor .ProseMirror-yjs-cursor .cursor-label { opacity: 0; pointer-events: none; transition: opacity var(--duration-press) var(--ease); }
+.page-editor .ProseMirror { caret-color: var(--accent); }
+.page-editor .ProseMirror-yjs-cursor { --flag-step: calc(0.6875rem + 6px); }
+.page-editor .ProseMirror-yjs-cursor .cursor-label {
+  opacity: 0;
+  transform: scale(0.4);
+  transform-origin: left bottom;
+  pointer-events: none;
+  transition: opacity var(--duration-press-exit) var(--ease), transform var(--duration-press-exit) var(--ease);
+}
+.page-editor .ProseMirror-yjs-cursor .cursor-label[data-flip] { bottom: auto; top: calc(100% + 2px); border-radius: 0 4px 4px 4px; transform-origin: left top; }
 .page-editor .ProseMirror-yjs-cursor .cursor-label--shown,
-.page-editor .ProseMirror-yjs-cursor:hover .cursor-label { opacity: 1; }
+.page-editor .ProseMirror-yjs-cursor:hover .cursor-label {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--duration-press);
+}
+.page-editor .ProseMirror-yjs-cursor::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  inset-inline-start: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cursor-caret, var(--cursor));
+  opacity: 0;
+  transform: scale(0.5);
+  pointer-events: none;
+  forced-color-adjust: none;
+  transition: opacity var(--duration-press) var(--ease), transform var(--duration-press) var(--ease);
+}
+.page-editor .ProseMirror-yjs-cursor.cursor--dot::before { opacity: 1; transform: none; }
+.page-editor .ProseMirror-yjs-cursor.cursor--dot:hover::before { opacity: 0; transform: scale(0.5); }
 .page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor { margin-inline-start: 2px; }
 .page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor { margin-inline-start: 5px; }
-.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 1.6em); }
-.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 3.2em); }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 2px + var(--flag-step)); }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label { bottom: calc(100% + 2px + 2 * var(--flag-step)); }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label[data-flip] { bottom: auto; top: calc(100% + 2px + var(--flag-step)); }
+.page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor .cursor-label[data-flip] { bottom: auto; top: calc(100% + 2px + 2 * var(--flag-step)); }
 .page-editor .ProseMirror-yjs-selection { border-radius: var(--radius-1); }

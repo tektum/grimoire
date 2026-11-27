@@ -2,7 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionManager, type ConnectionState } from '../../src/editor/core/connection';
 import { TEXTS } from '../../src/editor/core/map-signal';
-import { SAVED_HOLD_MS, StatusLine, statusText } from '../../src/status';
+import { SAVED_HOLD_MS, SAVING_DELAY_MS, StatusLine, statusText } from '../../src/status';
 import '../support/dom';
 import { flush, harness } from '../editor/support';
 
@@ -37,10 +37,15 @@ describe('the status line', () => {
     expect(document.querySelectorAll('[role="status"], [aria-live]')).toHaveLength(1);
   });
 
-  it('says Saving at once when a change is waiting, and Saved only after nothing has waited for a moment', () => {
+  // The line used to say Saving at once; the design wants it only for a save slower than SAVING_DELAY_MS, so these tests wait for it before they expect Saving.
+  it('says Saving only once a change has waited longer than the delay, and Saved only after nothing has waited for a moment', () => {
     const view = render(show({ unsynced: 0 }));
     expect(screen.getByRole('status').textContent).toBe('Saved');
     view.rerender(show({ unsynced: 1, changes: 1 }));
+    expect(screen.getByRole('status').textContent).toBe('Saved');
+    act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS - 1); });
+    expect(screen.getByRole('status').textContent).toBe('Saved'); // not before
+    act(() => { vi.advanceTimersByTime(1); });
     expect(screen.getByRole('status').textContent).toBe('Saving');
     view.rerender(show({ unsynced: 0, changes: 1 }));
     expect(screen.getByRole('status').textContent).toBe('Saving'); // the server answered, but typing may go on
@@ -50,11 +55,16 @@ describe('the status line', () => {
     expect(screen.getByRole('status').textContent).toBe('Saved');
   });
 
-  it('shows Saving for the moment even when the server acknowledged the change before the screen drew it (a fast server)', () => {
+  it('never says Saving for a quick save, even many in a row', () => {
     const view = render(show({ unsynced: 0, changes: 0 }));
-    view.rerender(show({ unsynced: 0, changes: 1 })); // a change came and was acknowledged between two draws
-    expect(screen.getByRole('status').textContent).toBe('Saving');
-    act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS + 10); });
+    for (let n = 1; n <= 5; n += 1) {
+      view.rerender(show({ unsynced: 1, changes: n }));
+      act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS - 50); });
+      expect(screen.getByRole('status').textContent).toBe('Saved');
+      view.rerender(show({ unsynced: 0, changes: n }));
+      act(() => { vi.advanceTimersByTime(20); });
+    }
+    act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS + SAVING_DELAY_MS); });
     expect(screen.getByRole('status').textContent).toBe('Saved');
   });
 
@@ -62,6 +72,8 @@ describe('the status line', () => {
     const view = render(show({ unsynced: 0 }));
     const line = screen.getByRole('status');
     view.rerender(show({ unsynced: 1, changes: 1 }));
+    act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS); });
+    expect(line.textContent).toBe('Saving');
     view.rerender(show({ unsynced: 0, changes: 1 }));
     act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS + 10); });
     expect(screen.getByRole('status')).toBe(line);
@@ -71,10 +83,11 @@ describe('the status line', () => {
   it('does not say Saved between keystrokes: a new change within the moment keeps Saving', () => {
     const view = render(show({ unsynced: 0 }));
     view.rerender(show({ unsynced: 1, changes: 1 }));
+    act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS); });
     view.rerender(show({ unsynced: 0, changes: 1 }));
     act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS - 50); });
-    view.rerender(show({ unsynced: 1, changes: 1 }));
-    view.rerender(show({ unsynced: 0, changes: 1 }));
+    view.rerender(show({ unsynced: 1, changes: 2 }));
+    view.rerender(show({ unsynced: 0, changes: 2 }));
     act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS - 50); });
     expect(screen.getByRole('status').textContent).toBe('Saving');
     act(() => { vi.advanceTimersByTime(100); });
@@ -83,11 +96,25 @@ describe('the status line', () => {
 
   it('shows a message or the offline text at once, without the moment', () => {
     const view = render(show({ unsynced: 1, changes: 1 }));
+    act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS); });
     expect(screen.getByRole('status').textContent).toBe('Saving');
     view.rerender(show({ unsynced: 1, changes: 1, offline: true, text: TEXTS.offline }, 'offline'));
     expect(screen.getByRole('status').textContent).toBe(TEXTS.offline);
     view.rerender(show({ text: TEXTS.busy }, 'connecting'));
     expect(screen.getByRole('status').textContent).toBe(TEXTS.busy);
+  });
+
+  it('marks the offline text as a warning with an icon hidden from assistive technology, and Saved with a tick in the same colour as its word', () => {
+    const view = render(show({ unsynced: 2, offline: true, text: TEXTS.offline }, 'offline'));
+    const line = screen.getByRole('status');
+    expect(line.getAttribute('data-tone')).toBe('warn');
+    expect(line.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+    view.rerender(show({}));
+    expect(line.textContent).toBe('Saved');
+    expect(line.hasAttribute('data-tone')).toBe(false); // --ink-3, never the warning colour, never faded
+    expect(line.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
+    view.rerender(show({ text: TEXTS.busy }, 'connecting'));
+    expect(line.querySelector('svg')).toBeNull();
   });
 
   it('changes its text without moving the focus', () => {

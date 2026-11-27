@@ -11,7 +11,8 @@ describe('the styles of the editor menus', () => {
     expect(css).not.toMatch(/:\s*(red|blue|green|black|white|gray|grey|orange|yellow|purple)\b/);
     const colours = [...css.matchAll(/(?:color|background|border-color|border|outline):[^;]*;/g)].map((m) => m[0]);
     expect(colours.length).toBeGreaterThan(0);
-    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|color-mix\(|transparent|none|solid/);
+    // System colours are what forced colours mode asks for (DESIGN.md "Accessibility rules"): they are not colours of the menus' own.
+    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|color-mix\(|transparent|none|solid|\b(Highlight|HighlightText)\b/);
   });
 
   it('keep the slash menu out of sight until the library shows it: the host has no `data-show` before that', () => {

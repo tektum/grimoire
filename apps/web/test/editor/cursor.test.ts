@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { LABEL_MS, cursorBuilders } from '../../src/editor/core/cursor';
+import { afterEach, describe, expect, it } from 'vitest';
+import { LABEL_MS, TOP_BAR_PX, cursorBuilders } from '../../src/editor/core/cursor';
 import { UNKNOWN_NAME, type Directory } from '../../src/editor/core/directory';
-import { COLLAB_COLOURS, colourIndex, labelText } from '../../src/ui/collab';
+import { COLLAB_COLOURS, caretColour, colourIndex, labelText } from '../../src/ui/collab';
 import { FakeClock } from './support';
 
 const ID = '00000000-0000-4000-8000-000000000001';
@@ -29,7 +29,10 @@ describe('the remote cursor', () => {
     const caret = builders.cursorBuilder({ id: ID });
     const colour = COLLAB_COLOURS[colourIndex(ID)]!;
     expect(caret.classList.contains('ProseMirror-yjs-cursor')).toBe(true);
+    expect(caret.dataset.userId).toBe(ID);
     expect(caret.style.getPropertyValue('--cursor')).toBe(colour);
+    // The caret line takes the theme's caret colour (3:1 on the paper); the flag keeps the fixed colour.
+    expect(caret.style.getPropertyValue('--cursor-caret')).toBe(caretColour(colourIndex(ID)));
     expect(caret.style.getPropertyValue('--cursor-text')).toBe(labelText(colour));
     expect(caret.querySelector('.cursor-label')!.textContent).toBe('Ada');
     expect(requested).toEqual([ID]);
@@ -66,15 +69,19 @@ describe('the remote cursor', () => {
     }
   });
 
-  it('shows the label on arrival and for 3 seconds, then hides it', async () => {
+  it('shows the label on arrival and for 2 seconds, then hides it and leaves the caret as a dot', async () => {
     const { clock, builders } = make({ [ID]: 'Ada' });
-    const label = builders.cursorBuilder({ id: ID }).querySelector('.cursor-label')!;
+    const caret = builders.cursorBuilder({ id: ID });
+    const label = caret.querySelector('.cursor-label')!;
     expect(label.classList.contains('cursor-label--shown')).toBe(true);
+    expect(caret.classList.contains('cursor--dot')).toBe(false);
     await clock.advance(LABEL_MS - 1);
     expect(label.classList.contains('cursor-label--shown')).toBe(true);
+    expect(caret.classList.contains('cursor--dot')).toBe(false);
     await clock.advance(1);
     expect(label.classList.contains('cursor-label--shown')).toBe(false);
-    expect(LABEL_MS).toBe(3000);
+    expect(caret.classList.contains('cursor--dot')).toBe(true);
+    expect(LABEL_MS).toBe(2000);
   });
 
   it('is still a cursor, with some colour and "Someone", when the peer published no id', () => {
@@ -83,14 +90,18 @@ describe('the remote cursor', () => {
       const caret = builders.cursorBuilder(user);
       expect(caret.querySelector('.cursor-label')!.textContent).toBe('Someone');
       expect(COLLAB_COLOURS).toContain(caret.style.getPropertyValue('--cursor') as never);
+      expect(caret.hasAttribute('data-user-id')).toBe(false);
     }
     expect(requested).toEqual([]);
   });
 
-  it("draws a selection with a tint of the person's colour", () => {
+  it("draws a selection with the person's colour at 18%", () => {
     const { builders } = make();
     const colour = COLLAB_COLOURS[colourIndex(ID)]!;
-    expect(builders.selectionBuilder({ id: ID })).toEqual({ class: 'ProseMirror-yjs-selection', style: `background-color: ${colour}33` });
+    expect(builders.selectionBuilder({ id: ID })).toEqual({ class: 'ProseMirror-yjs-selection', style: `background-color: ${colour}2e` });
+    expect(Math.round((0x2e / 0xff) * 100)).toBe(18);
+    // A peer that published no id still gets a tint, of the colour of the empty id.
+    expect(builders.selectionBuilder({}).style).toBe(`background-color: ${COLLAB_COLOURS[colourIndex('')]!}2e`);
   });
 
   it('gives two people different colours when their ids hash apart, and the same person the same colour every time', () => {
@@ -145,5 +156,91 @@ describe('the remote cursor', () => {
     arrive(ID, 'Ada');
     expect(caret.querySelector('.cursor-label')!.textContent).toBe('Someone'); // nothing listens any more
     caret.remove();
+  });
+});
+
+describe('the place of the name flag', () => {
+  const LINE = 30;
+  /** Makes `el` report a box at `top` of `height` pixels, as the browser would lay it out. */
+  const at = (el: Element, top: number, height = 24): void => {
+    el.getBoundingClientRect = () => ({ top, bottom: top + height, height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) });
+  };
+  /** A page with `before` (a tag name) and then a paragraph at `top`, with the remote caret put into the paragraph on line `line` (0 is the first). */
+  const page = (before: string, top: number, line = 0) => {
+    const surface = document.createElement('div');
+    surface.className = 'ProseMirror';
+    const above = document.createElement(before);
+    const paragraph = document.createElement('p');
+    paragraph.textContent = 'Some text';
+    surface.append(above, paragraph);
+    document.body.append(surface);
+    at(paragraph, top, LINE * 3);
+    const { builders } = make({ [ID]: 'Ada' });
+    const caret = builders.cursorBuilder({ id: ID });
+    at(caret, top + 3 + line * LINE);
+    paragraph.append(caret); // the render puts the caret into the page
+    return { caret, label: caret.querySelector<HTMLElement>('.cursor-label')! };
+  };
+  afterEach(() => document.body.replaceChildren());
+
+  it('goes below the line when a heading sits directly above it', async () => {
+    for (const heading of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
+      const { label } = page(heading, 400);
+      await Promise.resolve();
+      expect([heading, label.hasAttribute('data-flip')]).toEqual([heading, true]);
+      document.body.replaceChildren();
+    }
+  });
+
+  it('stays above the line when the block above is not a heading, or the caret is on a later line of its block', async () => {
+    const { label } = page('p', 400);
+    await Promise.resolve();
+    expect(label.hasAttribute('data-flip')).toBe(false);
+    document.body.replaceChildren();
+    const wrapped = page('h2', 400, 2);
+    await Promise.resolve();
+    expect(wrapped.label.hasAttribute('data-flip')).toBe(false);
+  });
+
+  it('stays above the line in a block that is first on the page', async () => {
+    const { caret, label } = page('p', 400);
+    caret.closest('.ProseMirror')!.firstElementChild!.remove();
+    caret.dispatchEvent(new MouseEvent('mouseenter'));
+    await Promise.resolve();
+    expect(label.hasAttribute('data-flip')).toBe(false);
+  });
+
+  it('goes below the line when the line is at the top of the viewport, under the top bar, by the measured height of the flag', async () => {
+    const { label } = page('p', TOP_BAR_PX + 2 + 15 - 3 - 1);
+    await Promise.resolve();
+    expect(label.hasAttribute('data-flip')).toBe(true);
+    document.body.replaceChildren();
+    const clear = page('p', TOP_BAR_PX + 2 + 15 - 3);
+    await Promise.resolve();
+    expect(clear.label.hasAttribute('data-flip')).toBe(false);
+    // A taller flag (larger text) needs more room.
+    Object.defineProperty(clear.label, 'offsetHeight', { configurable: true, value: 30 });
+    clear.caret.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(clear.label.hasAttribute('data-flip')).toBe(true);
+  });
+
+  it('is placed again when the caret is hovered: a scroll since it arrived may have brought the line under the top bar', async () => {
+    const { caret, label } = page('p', 400);
+    await Promise.resolve();
+    expect(label.hasAttribute('data-flip')).toBe(false);
+    at(caret, 10);
+    caret.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(label.hasAttribute('data-flip')).toBe(true);
+    at(caret, 400 + 3);
+    caret.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(label.hasAttribute('data-flip')).toBe(false);
+  });
+
+  it('is not placed while the caret is not in the page', async () => {
+    const { builders } = make({ [ID]: 'Ada' });
+    const caret = builders.cursorBuilder({ id: ID });
+    await Promise.resolve();
+    caret.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(caret.querySelector('.cursor-label')!.hasAttribute('data-flip')).toBe(false);
   });
 });

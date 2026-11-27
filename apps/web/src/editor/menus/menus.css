@@ -1,38 +1,81 @@
-.slash-host {
+/* Popovers (the slash menu, the bubble, the handle's menu): raised paper, a hairline, the popover shadow, 10px corners. They grow from the trigger at 0.97 with their opacity
+   (opacity only under reduced motion: the token scale is 1 there), and leave in 70% of that time. */
+.slash-host,
+.bubble-host,
+.block-handle-menu {
   position: absolute;
   z-index: 20;
-  width: 18rem;
-  max-height: 20rem;
-  overflow-y: auto;
   padding: var(--space-1);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-2);
   background: var(--paper-raised);
+  box-shadow: var(--shadow-popover);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: 0.9rem;
+  font-size: var(--text-ui-md);
   line-height: 1.3;
+}
+.slash-host,
+.bubble-host {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--duration-popover-exit) var(--ease),
+    transform var(--duration-popover-exit) var(--ease),
+    display var(--duration-popover-exit) allow-discrete;
+}
+.slash-host[data-show='true'],
+.bubble-host[data-show='true'] {
+  transition-duration: var(--duration-popover);
+}
+@starting-style {
+  .slash-host[data-show='true'],
+  .bubble-host[data-show='true'] {
+    opacity: 0;
+    transform: scale(var(--popover-scale-from));
+  }
+}
+.slash-host {
+  width: 18rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  transform-origin: top left; /* it opens under the slash */
 }
 .slash-host:not([data-show='true']) {
   display: none; /* until the library shows it: it sets no attribute before that, and a view that never changes (a saved text) never reaches it, so an empty box would stay */
+  opacity: 0;
+  transform: scale(var(--popover-scale-from));
 }
 .slash-option {
   display: flex;
-  flex-direction: column;
-  padding: var(--space-1) var(--space-2);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-1);
   cursor: pointer;
 }
 .slash-option[data-active='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--paper-raised));
-  outline: 1px solid var(--accent);
+  background: var(--fill-selected);
 }
 .slash-label {
-  font-weight: 600;
+  flex: 1 1 auto;
+  font-weight: var(--weight-regular);
 }
+/* The description stays in the name of the item, read out with it; the row shows the label only. */
 .slash-description {
-  color: var(--ink-2);
-  font-size: 0.8rem;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.slash-shortcut {
+  margin-inline-start: auto;
+  color: var(--ink-3);
+  font-family: var(--font-code);
+  font-size: var(--text-ui-xs);
 }
 .slash-empty {
   margin: 0;
@@ -41,18 +84,12 @@
 }
 
 .bubble-host {
-  position: absolute;
-  z-index: 20;
-  padding: var(--space-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-2);
-  background: var(--paper-raised);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: 0.9rem;
+  transform-origin: bottom center; /* it opens over the selection */
 }
 .bubble-host:not([data-show='true']) {
   display: none;
+  opacity: 0;
+  transform: scale(var(--popover-scale-from));
 }
 .bubble-bar {
   display: flex;
@@ -62,17 +99,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-1);
   background: transparent;
   color: var(--ink);
 }
+.bubble-button:hover,
 .bubble-button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--paper-raised));
-  border-color: var(--accent);
+  background: var(--fill-selected);
 }
 .bubble-link {
   display: flex;
@@ -87,16 +124,16 @@
   flex-direction: column;
   gap: var(--space-1);
   color: var(--ink-2);
-  font-size: 0.8rem;
+  font-size: var(--text-ui-sm);
 }
 .bubble-link-label input {
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: var(--text-ui-md);
 }
 .bubble-link-label input[aria-invalid='true'] {
   border-color: var(--ink);
@@ -104,7 +141,7 @@
 }
 .bubble-text-button {
   padding: var(--space-1) var(--space-2);
-  font-size: 0.85rem;
+  font-size: var(--text-ui-sm);
 }
 .bubble-link-error {
   flex: 1 1 100%;
@@ -122,6 +159,11 @@
   visibility: hidden;
   pointer-events: none;
 }
+/* While keys are going the handle gets out of the way; it comes back when the pointer moves. It stays while it, or its menu, has the focus. */
+[data-typing='true'] > .block-handle:not(:focus-within) {
+  visibility: hidden;
+  pointer-events: none;
+}
 .page-editor .ProseMirror[contenteditable='false'] ~ .block-handle {
   display: none;
 }
@@ -129,33 +171,54 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-1);
   background: transparent;
-  color: var(--ink-2);
+  color: var(--ink-3);
+  cursor: pointer;
 }
 .block-handle-button:hover,
 .block-handle-button[aria-expanded='true'] {
-  border-color: var(--hairline);
-  background: var(--paper-raised);
+  background: var(--fill-selected);
   color: var(--ink);
 }
 .block-handle-menu {
-  position: absolute;
   top: 100%;
   left: 0;
   width: 18rem;
   max-height: 20rem;
   overflow-y: auto;
-  padding: var(--space-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-2);
-  background: var(--paper-raised);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: 0.9rem;
-  line-height: 1.3;
+  transform-origin: top left;
+  animation: menus-popover-in var(--duration-popover) var(--ease);
+}
+@keyframes menus-popover-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--popover-scale-from));
+  }
+}
+
+@media (pointer: coarse) {
+  .slash-option {
+    min-height: 44px;
+  }
+  .bubble-button,
+  .block-handle-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Forced colours: the popovers keep their border (the hairline is a system colour there), and the chosen row is the system's selection. */
+@media (forced-colors: active) {
+  .slash-option[data-active='true'] {
+    background: Highlight;
+    color: HighlightText;
+  }
+  .slash-option[data-active='true'] .slash-shortcut {
+    color: HighlightText;
+  }
 }

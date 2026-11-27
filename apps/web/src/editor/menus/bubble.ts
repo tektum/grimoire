@@ -9,6 +9,8 @@ import { LINK_REFUSAL, activeInline, bubbleSelection, linkAt, setLink, toggleInl
 const bubble = tooltipFactory('grimoire-bubble');
 /** How much room above the selection, inside the editor, the bar needs to go there (its height and the gap). */
 const BAR_ROOM = 56;
+/** How long after the pointer is released the bar comes: a selection made by dragging is finished by then, and the bar does not jump in under the hand. */
+export const BUBBLE_DELAY = 120;
 
 function createView(ctx: Ctx, view: EditorView) {
   const host = document.createElement('div');
@@ -32,13 +34,29 @@ function createView(ctx: Ctx, view: EditorView) {
       placing.placement = 'top'; // no layout to ask (the view is going): the library's own choice
     }
   };
+  // The bar never comes while the pointer is pressed in the text (a selection being dragged), and comes a moment after it is released; a new press puts off the one waited for.
+  const pointer = { pressing: false, timer: undefined as ReturnType<typeof setTimeout> | undefined };
   const provider = new TooltipProvider({
     content: host,
     debounce: 0,
     offset: 8,
     floatingUIOptions: placing,
-    shouldShow: (v) => v.editable && (state.mode === 'link' || (bubbleSelection(v) && !isDismissed(v))),
+    shouldShow: (v) => v.editable && !pointer.pressing && (state.mode === 'link' || (bubbleSelection(v) && !isDismissed(v))),
   });
+  const onPointerDown = (): void => {
+    clearTimeout(pointer.timer);
+    pointer.pressing = true;
+  };
+  const onPointerUp = (): void => {
+    if (!pointer.pressing) return; // a release of a press made outside the text
+    clearTimeout(pointer.timer);
+    pointer.timer = setTimeout(() => {
+      pointer.pressing = false;
+      provider.update(view);
+    }, BUBBLE_DELAY);
+  };
+  view.dom.addEventListener('pointerdown', onPointerDown);
+  view.dom.ownerDocument.addEventListener('pointerup', onPointerUp); // the release may be outside the text, where the drag ended
 
   const render = (): void => {
     root.render(
@@ -111,6 +129,9 @@ function createView(ctx: Ctx, view: EditorView) {
         if (host.dataset['show'] === 'true') render();
       },
       destroy() {
+        clearTimeout(pointer.timer);
+        view.dom.removeEventListener('pointerdown', onPointerDown);
+        view.dom.ownerDocument.removeEventListener('pointerup', onPointerUp);
         provider.destroy();
         root.unmount();
         host.remove();

@@ -471,6 +471,37 @@ describe('the page screen', () => {
     expect(seen!.directory).toBe(sessionDirectory(t.api as never));
   });
 
+  it('shows the others on the page in its head, before the page menu, with their own live region after the status line, and a disc brings their caret into view', async () => {
+    const listeners = new Set<() => void>();
+    const awareness = {
+      clientID: 1,
+      states: new Map<number, Record<string, unknown>>([[1, {}], [2, { user: { id: '22222222-2222-4222-8222-222222222222' } }], [3, { user: { id: 'other' } }]]),
+      getStates() { return this.states; },
+      on: (_event: string, listener: () => void) => void listeners.add(listener),
+      off: (_event: string, listener: () => void) => void listeners.delete(listener),
+    };
+    const t = mountPage({ engine: (base) => ({ createSession: (o) => ({ ...base.createSession(o), awareness }) }) });
+    expect(document.querySelector('.presence')).toBeNull(); // nobody is shown before the live editor is up
+    await t.synced();
+    await waitFor(() => expect(t.lives).toHaveLength(1));
+    // The signed-in person (in another tab, client 2) is not in the stack once the id is known.
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Someone' })).toHaveLength(1));
+    const disc = screen.getByRole('button', { name: 'Someone' });
+    const more = screen.getByRole('button', { name: 'More page actions' });
+    expect(disc.closest('header')).toBe(more.closest('header'));
+    expect(disc.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const regions = screen.getAllByRole('status');
+    expect(regions).toHaveLength(2);
+    expect(regions[0]!.classList.contains('page-status')).toBe(true); // the save status stays the first
+    expect(regions[1]!.classList.contains('presence-announcer')).toBe(true);
+    const caret = t.root().appendChild(document.createElement('span'));
+    caret.className = 'ProseMirror-yjs-cursor';
+    caret.dataset['userId'] = 'other';
+    caret.scrollIntoView = vi.fn();
+    await userEvent.click(disc);
+    expect(caret.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
   it('after a reset that left unsent changes, says so with the copy of them, and Dismiss drops it', async () => {
     const t = mountPage();
     await t.synced();

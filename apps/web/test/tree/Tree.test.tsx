@@ -31,6 +31,12 @@ describe('Tree', () => {
     expect(screen.getByRole('link', { name: /Welcome/ }).getAttribute('href')).toBe('/p/welcome-welcome');
   });
 
+  it('gives every row its full name as a tooltip (a long name is cut with an ellipsis), and keeps the name as the accessible name', () => {
+    show();
+    expect(screen.getAllByRole('treeitem').map((row) => within(row).getByRole('link').getAttribute('title'))).toEqual(['Welcome', 'Nested', 'Deep', 'Plain page']);
+    expect(screen.getByRole('link', { name: 'Plain page' }).getAttribute('title')).toBe('Plain page');
+  });
+
   it('opens and closes a branch with its toggle button, named after the page', async () => {
     show();
     await userEvent.click(screen.getByRole('button', { name: 'Expand Deep' }));

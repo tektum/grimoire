@@ -15,6 +15,7 @@ export function BlockHandle(props: { open: boolean; kinds: readonly BlockKind[];
         type="button"
         className="block-handle-button"
         aria-label="Block menu"
+        title="Block menu"
         aria-haspopup="listbox"
         aria-expanded={props.open}
         aria-controls={props.open ? HANDLE_MENU_ID : undefined}

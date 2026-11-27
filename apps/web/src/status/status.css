@@ -1,3 +1,17 @@
+/* The line's width is reserved for its longest word, so Saving, Saved and the offline text never move what is beside it; the icon sits on the text's centre line. */
+.page-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-inline-size: 5rem;
+}
+.page-status svg {
+  flex: none;
+}
+/* Offline is a warning: the colour, an icon and the words, never the colour alone. Saved keeps --ink-3 with its tick, and never fades. */
+.page-status[data-tone='warn'] {
+  color: var(--warn);
+}
 /* The action beside the message of a page that cannot be opened ("Try again"): a gap, from the tokens. */
 .page-status-action {
   margin-inline-start: var(--space-2);

@@ -142,5 +142,6 @@ describe('the overrides for increased contrast and forced colours win in every t
     expect(winning('--paper', forced)).toBe('Canvas');
     expect(winning('--ink', forced)).toBe('CanvasText');
     expect(winning('--accent', forced)).toBe('LinkText');
+    for (let i = 0; i < 8; i++) expect(winning(`--collab-caret-${i}`, forced)).toBe('CanvasText');
   });
 });
