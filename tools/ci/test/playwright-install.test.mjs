@@ -33,7 +33,7 @@ exit 0
 const run = (bin, extra = {}) =>
   spawnSync('sh', [script, 'webkit', 'firefox'], {
     encoding: 'utf8',
-    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_APT_SOURCES: '', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
+    env: { ...process.env, PLAYWRIGHT_CMD: bin, PLAYWRIGHT_RETRY_DELAYS: '0 0', PLAYWRIGHT_APT_CONF: '', PLAYWRIGHT_APT_SOURCES: '', PLAYWRIGHT_SUDO: 'false', PLAYWRIGHT_REPAIR_CMD: '', PLAYWRIGHT_ATTEMPT_TIMEOUT: '5', ...extra },
   });
 
 test('installs the browsers, then the libraries, once each when nothing fails', () => {
@@ -163,20 +163,30 @@ test('with no source naming packages.microsoft.com nothing is removed or said', 
   assert.ok(existsSync(path.join(sources, 'ubuntu.sources')));
 });
 
-test('a source that cannot be removed is said so on stderr, never reported as removed, and the install still runs', { skip: process.getuid?.() === 0 && 'root can remove it' }, () => {
+test('a source that cannot be removed is said so on stderr, never reported as removed, and the install still runs', () => {
   const sources = path.join(dir, 'locked.list.d');
   mkdirSync(sources, { recursive: true });
   writeFileSync(path.join(sources, 'microsoft-prod.list'), 'deb https://packages.microsoft.com/repos/x noble main\n');
-  chmodSync(sources, 0o555);
-  try {
-    const f = fake({});
-    const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_SUDO: 'false' });
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stderr, /could not remove the apt source .*microsoft-prod\.list/);
-    assert.doesNotMatch(r.stdout, /removed the apt source/);
-    assert.ok(existsSync(path.join(sources, 'microsoft-prod.list')));
-    assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
-  } finally {
-    chmodSync(sources, 0o755);
-  }
+  const f = fake({});
+  const r = run(f.bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_RM: 'false', PLAYWRIGHT_SUDO: 'false' }); // the removal command fails, for any user
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /could not remove the apt source .*microsoft-prod\.list/);
+  assert.doesNotMatch(r.stdout, /removed the apt source/);
+  assert.ok(existsSync(path.join(sources, 'microsoft-prod.list')));
+  assert.deepEqual(f.calls(), ['install webkit firefox', 'install-deps webkit firefox']);
+});
+
+test('a source only root can read is read again through sudo, not skipped', { skip: process.getuid?.() === 0 && 'root reads every file: nothing to retry' }, () => {
+  const sources = path.join(dir, 'private.list.d');
+  mkdirSync(sources, { recursive: true });
+  const file = path.join(sources, 'microsoft-prod.list');
+  writeFileSync(file, 'deb https://packages.microsoft.com/repos/x noble main\n');
+  chmodSync(file, 0o000);
+  const sudo = path.join(dir, 'fake-sudo'); // reads and removes as "root": the file's mode is put back first
+  writeFileSync(sudo, `#!/bin/sh\nchmod 600 "${file}"\nexec "$@"\n`);
+  chmodSync(sudo, 0o755);
+  const r = run(fake({}).bin, { PLAYWRIGHT_APT_SOURCES: sources, PLAYWRIGHT_SUDO: sudo });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /removed the apt source .*microsoft-prod\.list/);
+  assert.ok(!existsSync(file));
 });
