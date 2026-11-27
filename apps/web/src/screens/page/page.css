@@ -9,10 +9,24 @@
   max-width: 46rem;
   margin-inline: auto;
 }
+/* The space above the title is 72px in all; the shell's main already has 32. */
 .page-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: var(--space-3);
+  margin-top: calc(var(--space-8) - var(--space-6));
+  margin-bottom: var(--space-2);
+}
+/* The title: Literata 34 on 40, weight 600 (never 700), tighter by 0.01em. */
+.page-head h1 {
+  margin: 0;
+  font-family: var(--font-page);
+  font-size: 2.125rem;
+  font-weight: 600;
+  line-height: 2.5rem;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  font-variant-numeric: oldstyle-nums;
 }
 .page-readonly {
   font-size: 0.8rem;
@@ -21,11 +35,21 @@
   border-radius: 999px;
   padding: 0 var(--space-3);
 }
+/* Inter 12 in --ink-3, with its line reserved so "Saving" and "Offline" never move the text. */
+/* On a phone the title is a step smaller, so a long one does not take the screen. */
+@media (max-width: 40rem) {
+  .page-head h1 {
+    font-size: 1.75rem;
+    line-height: 2.125rem;
+  }
+}
 .page-status {
-  margin: 0 0 var(--space-3);
-  font-size: 0.8rem;
-  color: var(--ink-2);
-  min-height: 1.2em;
+  margin: 0 0 var(--space-5);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--ink-3);
+  min-height: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 .page-banner,
 .page-stale {

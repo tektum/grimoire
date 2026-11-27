@@ -6,7 +6,7 @@ import { urlIdOf } from '../app/routes';
 import { type ApiLike, queryKey } from '../api/query';
 import { LAST_COLLECTION_KEY, useCollections } from '../screens/collections/useCollections';
 import { type ClientStorage, createClientStorage } from '../storage';
-import { openPalette } from '../palette/open';
+import { openPalette, shortcutHint } from '../palette/open';
 import { Button } from '../ui/primitives';
 import { type TreeActions, useTreeActions } from './actions';
 import { buildTree, pagePath } from './model';
@@ -112,7 +112,7 @@ export function ContentsPanel({ api, storage }: { readonly api: ApiLike; readonl
       <button type="button" className="contents-search" aria-keyshortcuts="Control+K Meta+K" onClick={openPalette}>
         <Search aria-hidden size={16} strokeWidth={1.5} />
         <span>Search</span>
-        <kbd aria-hidden>Ctrl K</kbd>
+        <kbd aria-hidden>{shortcutHint()}</kbd>
       </button>
       {collectionId !== undefined && <CollectionContents api={api} collectionId={collectionId} currentUrlId={urlId} hereKey={hereKey} />}
     </div>

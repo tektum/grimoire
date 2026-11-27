@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { routeObjects } from '../../src/app/router';
-import { openPalette } from '../../src/palette/open';
+import { openPalette, shortcutHint } from '../../src/palette/open';
 import { SessionContext } from '../../src/auth/session';
 import { LAST_COLLECTION_KEY } from '../../src/screens/collections/useCollections';
 import { createClientStorage } from '../../src/storage';
@@ -76,5 +76,25 @@ describe('the contents button (phone)', () => {
     await userEvent.click(toggle);
     expect(screen.getByRole('button', { name: 'Hide contents' }).getAttribute('aria-expanded')).toBe('true');
     expect(contents.hasAttribute('data-open')).toBe(true);
+  });
+});
+
+describe('the menu button (phone)', () => {
+  it('opens and closes the links and the account area behind it', async () => {
+    open('/c/c1');
+    const toggle = screen.getByRole('button', { name: 'Show menu' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await userEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Hide menu' }).getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(toggle.getAttribute('aria-controls') ?? '')?.hasAttribute('data-open')).toBe(true);
+  });
+});
+
+describe('the key shown on the search button', () => {
+  it('is Cmd K on a Mac or an iPad and Ctrl K elsewhere', () => {
+    expect(shortcutHint('MacIntel')).toBe('Cmd K');
+    expect(shortcutHint('iPad')).toBe('Cmd K');
+    expect(shortcutHint('Win32')).toBe('Ctrl K');
+    expect(shortcutHint('Linux x86_64')).toBe('Ctrl K');
   });
 });

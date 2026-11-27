@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PanelLeft } from 'lucide-react';
+import { Ellipsis, PanelLeft } from 'lucide-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { UserBadge } from '../auth/UserBadge';
 import { AdminLink } from './AdminLink';
@@ -30,7 +30,8 @@ export function Shell() {
   const scrolled = useScrolled();
   // On a phone the contents are behind a button; a new screen closes them.
   const [contentsOpen, setContentsOpen] = useState(false);
-  useEffect(() => { setContentsOpen(false); }, [pathname]);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  useEffect(() => { setContentsOpen(false); setActionsOpen(false); }, [pathname]);
   return (
     <div className="shell">
       <a className="skip-link" href={inPageHref(pathname, search, 'main')}>
@@ -42,10 +43,16 @@ export function Shell() {
         </button>
         <Link to="/" className="shell-brand">Grimoire</Link>
         <Breadcrumb />
-        <nav aria-label="Main">
-          <Link to="/search">Search</Link> <Link to="/trash">Trash</Link> <AdminLink />
-        </nav>
-        <UserBadge />
+        <button type="button" className="shell-actions-toggle" aria-controls="shell-actions" aria-expanded={actionsOpen} aria-label={actionsOpen ? 'Hide menu' : 'Show menu'} title={actionsOpen ? 'Hide menu' : 'Show menu'} onClick={() => { setActionsOpen((open) => !open); }}>
+          <Ellipsis aria-hidden size={16} strokeWidth={1.5} />
+        </button>
+        {/* On a phone these sit behind the button above: one compact bar, and the breadcrumb under it. */}
+        <div className="shell-actions" id="shell-actions" data-open={actionsOpen || undefined}>
+          <nav aria-label="Main">
+            <Link to="/search">Search</Link> <Link to="/trash">Trash</Link> <AdminLink />
+          </nav>
+          <UserBadge />
+        </div>
       </header>
       <Palette />
       <div className="shell-body">

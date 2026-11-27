@@ -8,3 +8,6 @@ export function onOpenPalette(open: () => void): () => void {
   window.addEventListener(OPEN_PALETTE, open);
   return () => { window.removeEventListener(OPEN_PALETTE, open); };
 }
+
+/** The palette's key as it is written on this machine: Cmd K on a Mac or an iPad, Ctrl K elsewhere. */
+export const shortcutHint = (platform: string = typeof navigator === 'undefined' ? '' : navigator.platform): string => (/Mac|iPhone|iPad/.test(platform) ? 'Cmd K' : 'Ctrl K');
