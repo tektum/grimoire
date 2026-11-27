@@ -15,12 +15,12 @@
 .page-editor.page-text ol > li::before { content: counter(list-item) '.'; position: static; grid-column: 1; grid-row: 1; white-space: nowrap; }
 .page-editor.page-text ol > li > * { grid-column: 2; }
 .page-editor.page-text li > p { margin: 0; line-height: 1.7; }
-.page-editor.page-text li::before { content: attr(data-label); position: absolute; inset-inline-start: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.page-editor.page-text li::before { content: attr(data-label); position: absolute; inset-inline-start: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .page-editor.page-text ul ul > li::before { content: '\25E6'; }
 .page-editor.page-text ul ul ul > li::before { content: '\25AA'; }
 
 /* Task items: a box in place of the bullet. */
-.page-editor.page-text li[data-item-type='task']::before { content: ''; top: 0.45em; width: 0.95em; height: 0.95em; box-sizing: border-box; border: 1.5px solid var(--muted); border-radius: var(--radius-1); }
+.page-editor.page-text li[data-item-type='task']::before { content: ''; top: 0.45em; width: 0.95em; height: 0.95em; box-sizing: border-box; border: 1.5px solid var(--ink-2); border-radius: var(--radius-1); }
 .page-editor.page-text li[data-item-type='task'][data-checked='true']::before { background: var(--accent); border-color: var(--accent); }
 .page-editor.page-text li[data-item-type='task'][data-checked='true']::after { content: ''; position: absolute; inset-inline-start: 0.3em; top: 0.62em; width: 0.28em; height: 0.5em; border: solid var(--paper); border-width: 0 2px 2px 0; transform: rotate(45deg); }
-.page-editor.page-text li[data-item-type='task'][data-checked='true'] > p { color: var(--muted); text-decoration: line-through; }
+.page-editor.page-text li[data-item-type='task'][data-checked='true'] > p { color: var(--ink-2); text-decoration: line-through; }

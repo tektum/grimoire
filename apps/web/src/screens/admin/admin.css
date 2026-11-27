@@ -11,7 +11,7 @@
   flex: 1;
   min-width: 0;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -28,7 +28,7 @@
   gap: var(--space-4);
   align-items: center;
   padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .admin-main {
   display: flex;
@@ -43,23 +43,23 @@
   font-size: 1rem;
 }
 .admin-meta {
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .admin-badge {
   padding: 0 var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .admin-field {
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .admin-field select {
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -74,7 +74,7 @@
   width: 100%;
   margin-top: var(--space-1);
   padding: var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -91,7 +91,7 @@
   box-sizing: border-box; /* a column width is the whole cell, padding included */
   overflow-wrap: anywhere;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
   text-align: start;
 }
 .admin-table th:nth-child(2) {
@@ -111,7 +111,7 @@
 .admin-table select {
   max-width: 100%;
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);

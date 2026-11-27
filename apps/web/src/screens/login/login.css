@@ -8,7 +8,7 @@
 }
 .login-notice {
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-2);
   background: var(--paper-raised);
 }
@@ -16,7 +16,7 @@
   display: grid;
   gap: var(--space-3);
   padding: var(--space-5);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-2);
   background: var(--paper-raised);
 }
@@ -28,13 +28,13 @@
   display: grid;
   gap: var(--space-1);
   font-size: 0.9rem;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .login-form input,
 .login-form select {
   font: inherit;
   padding: var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -54,7 +54,7 @@
 
 /* The wrapper of the provider's flow is a card of the same make as the rest of the application's: the flow draws its own padding and takes the card's colour from the project's styles. */
 .login-flow {
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-2);
   background: var(--paper-raised);
   overflow: hidden;

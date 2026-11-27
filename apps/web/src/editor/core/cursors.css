@@ -4,7 +4,7 @@
  */
 /* The caret is the person's colour with a 1px ring of the ink of the page: the ring is what reaches 3:1 against the page on both themes, for every colour of the palette. */
 .page-editor .ProseMirror-yjs-cursor { box-shadow: 0 0 0 1px var(--ink); }
-.page-editor .ProseMirror-yjs-cursor .cursor-label { opacity: 0; pointer-events: none; transition: opacity var(--transition); }
+.page-editor .ProseMirror-yjs-cursor .cursor-label { opacity: 0; pointer-events: none; transition: opacity var(--duration-press) var(--ease); }
 .page-editor .ProseMirror-yjs-cursor .cursor-label--shown,
 .page-editor .ProseMirror-yjs-cursor:hover .cursor-label { opacity: 1; }
 .page-editor .ProseMirror-yjs-cursor + .ProseMirror-yjs-cursor { margin-inline-start: 2px; }

@@ -59,10 +59,10 @@ function mode(tokens: Tokens) {
     globals: {
       colors: {
         primary: palette(need(tokens, '--accent')),
-        secondary: palette(need(tokens, '--muted')),
-        // The components draw their secondary text (labels, hints, placeholders) in `surface.dark` and the borders of their controls in `surface.light`: the muted ink for the first
+        secondary: palette(need(tokens, '--ink-2')),
+        // The components draw their secondary text (labels, hints, placeholders) in `surface.dark` and the borders of their controls in `surface.light`: the secondary ink for the first
         // (it reads on the card in both schemes) and a mid tone between ink and card for the second (3:1 against it at least), instead of tints of the card that fade into it.
-        surface: { main: need(tokens, '--paper-raised'), dark: need(tokens, '--muted'), light: mix(need(tokens, '--ink'), need(tokens, '--paper-raised'), 0.5), highlight: need(tokens, '--border'), contrast: need(tokens, '--ink') },
+        surface: { main: need(tokens, '--paper-raised'), dark: need(tokens, '--ink-2'), light: mix(need(tokens, '--ink'), need(tokens, '--paper-raised'), 0.5), highlight: need(tokens, '--hairline'), contrast: need(tokens, '--ink') },
       },
       fonts: {
         // The first font is the one every component uses unless told otherwise: the application's controls are in the interface font, the serif is the page's own.

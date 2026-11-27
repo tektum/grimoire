@@ -145,7 +145,7 @@ export function CommandPalette({ open, onOpenChange, items }: { open: boolean; o
 }
 
 /** The notices are painted with the tokens, so they follow the theme with the rest of the page; the library is told the scheme for the parts it draws itself. */
-const NOTICE_TOKENS = { '--normal-bg': 'var(--paper-raised)', '--normal-text': 'var(--ink)', '--normal-border': 'var(--border)' } as CSSProperties;
+const NOTICE_TOKENS = { '--normal-bg': 'var(--paper-raised)', '--normal-text': 'var(--ink)', '--normal-border': 'var(--hairline)' } as CSSProperties;
 
 /** Mount once, near the root. The wrapper's notices go through `notify`. */
 export function Toaster() {

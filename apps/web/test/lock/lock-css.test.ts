@@ -10,7 +10,7 @@ describe('the styles of the lock message', () => {
     expect(css).not.toMatch(/\b(rgba?|hsla?)\(/);
     const colours = [...css.matchAll(/(?:color|background|border-color|border|border-inline-start|outline):[^;]*;/g)].map((m) => m[0]);
     expect(colours.length).toBeGreaterThan(0);
-    for (const line of colours) expect(line).toMatch(/var\(--[a-z-]+\)|transparent|none|solid/);
+    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|transparent|none|solid/);
   });
 
   it('keep the message out of sight until it is shown', () => {

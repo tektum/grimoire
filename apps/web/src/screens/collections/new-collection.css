@@ -2,10 +2,10 @@
 .new-collection-form { display: grid; gap: var(--space-4); justify-items: start; }
 .new-collection-field { display: grid; gap: var(--space-2); inline-size: min(100%, 28rem); font-weight: 600; }
 /* The name field has the height and the look of the other fields and buttons. */
-.new-collection-field input { font: inherit; font-weight: 400; padding: var(--space-2) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius, 0.375rem); background: var(--paper, transparent); color: var(--ink); min-block-size: 2.625rem; box-sizing: border-box; }
-.new-collection-field input:hover { border-color: var(--muted); }
+.new-collection-field input { font: inherit; font-weight: 400; padding: var(--space-2) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius, 0.375rem); background: var(--paper, transparent); color: var(--ink); min-block-size: 2.625rem; box-sizing: border-box; }
+.new-collection-field input:hover { border-color: var(--ink-2); }
 .new-collection-form fieldset { display: grid; gap: var(--space-2); border: 0; padding: 0; margin: 0; max-inline-size: 100%; }
 .new-collection-form legend { font-weight: 600; padding: 0; margin-block-end: var(--space-2); }
 .new-collection-choice { display: flex; align-items: center; gap: var(--space-3); min-block-size: 2.25rem; }
-.new-collection-note { margin: var(--space-2) 0 0; color: var(--muted); }
+.new-collection-note { margin: var(--space-2) 0 0; color: var(--ink-2); }
 .new-collection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }

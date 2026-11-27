@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { inPageHref } from '../../src/ui/inpage';
@@ -19,17 +19,18 @@ function declared(css: string, selector: string): Record<string, string> {
   return out;
 }
 
-const REQUIRED = ['--paper', '--ink', '--accent', '--muted', '--border', '--focus', '--measure', '--font-page', '--font-ui', '--font-code', '--space-1', '--radius-1'];
-const THEMED = ['--paper', '--ink', '--accent', '--muted', '--border', '--focus'];
+const REQUIRED = ['--paper', '--paper-raised', '--paper-sunken', '--ink', '--ink-2', '--ink-3', '--hairline', '--control-border', '--accent', '--on-accent', '--focus', '--selection', '--fill-selected', '--warn', '--danger', '--ok', '--scrim', '--shadow-popover', '--shadow-dialog', '--measure', '--font-page', '--font-ui', '--font-code', '--space-1', '--space-8', '--radius-1', '--radius-3', '--ease', '--duration-press'];
+const THEMED = ['--paper', '--paper-raised', '--paper-sunken', '--ink', '--ink-2', '--ink-3', '--hairline', '--control-border', '--accent', '--on-accent', '--selection', '--fill-selected', '--warn', '--danger', '--ok', '--scrim'];
 
 describe('tokens', () => {
   it('declares every token in the default (light) theme', () => {
     const light = declared(tokens, ':root');
     const root = light;
     for (const name of REQUIRED) expect([name, root[name] !== undefined]).toEqual([name, true]);
-    expect(root['--measure']).toBe('70ch');
-    expect(root['--font-page']).toContain('serif');
-    expect(root['--font-code']).toContain('monospace');
+    expect(root['--measure']).toBe('68ch');
+    expect(root['--font-page']).toMatch(/^'Literata', 'Literata fallback',.*serif$/);
+    expect(root['--font-ui']).toMatch(/^'Inter', 'Inter fallback',.*sans-serif$/);
+    expect(root['--font-code']).toMatch(/^'IBM Plex Mono', 'IBM Plex Mono fallback',.*monospace$/);
   });
 
   it('has a dark value for every themed token, by system preference and by data-theme', () => {
@@ -44,12 +45,19 @@ describe('tokens', () => {
   it('has body text with enough contrast on the paper in both themes', () => {
     const light = declared(tokens, ':root');
     const dark = declared(tokens, ":root[data-theme='dark']");
-    for (const [paper, ink, muted] of [[light['--paper']!, light['--ink']!, light['--muted']!], [dark['--paper']!, dark['--ink']!, dark['--muted']!]] as const) {
+    for (const [paper, ink, secondary] of [[light['--paper']!, light['--ink']!, light['--ink-2']!], [dark['--paper']!, dark['--ink']!, dark['--ink-2']!]] as const) {
       expect(contrast(paper, ink)).toBeGreaterThanOrEqual(7);
-      expect(contrast(paper, muted)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(paper, secondary)).toBeGreaterThanOrEqual(4.5);
     }
-    expect(contrast(light['--paper']!, light['--accent']!)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(dark['--paper']!, dark['--accent']!)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('leaves no custom property unresolved: every var(--x) without a fallback in the client names one that is declared', () => {
+    const src = path.resolve(import.meta.dirname, '../../src');
+    const files = (readdirSync(src, { recursive: true }) as string[]).filter((f) => /\.(css|tsx?)$/.test(f)).map((f) => readFileSync(path.join(src, f), 'utf8'));
+    // A declaration: `--x:` in CSS, or a quoted `'--x'` key or `setProperty('--x', ...)` argument in code.
+    const declaredNames = new Set(files.flatMap((text) => [...text.matchAll(/(?:^|[\s{;])(--[\w-]+)\s*:|['"](--[\w-]+)['"]\s*[:,]/gm)].map((m) => (m[1] ?? m[2])!)));
+    const used = new Set(files.flatMap((text) => [...text.matchAll(/var\((--[\w-]+)\)/g)].map((m) => m[1]!)));
+    expect([...used].filter((name) => !declaredNames.has(name))).toEqual([]);
   });
 
   it('declares the eight collaborator colours as custom properties, equal to the palette of the code', () => {

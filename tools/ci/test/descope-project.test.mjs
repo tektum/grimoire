@@ -23,13 +23,15 @@ test('the styles of a project are the web client\'s design tokens: accent, paper
   assert.equal(styles.dark.globals.colors.surface.main, tokens.dark['--paper-raised']);
   assert.equal(styles.light.globals.colors.surface.contrast, tokens.light['--ink']);
   assert.notEqual(tokens.light['--accent'], tokens.dark['--accent']);
-  assert.equal(styles.light.globals.fonts.font1.family[0], 'system-ui'); // every component is in the interface font unless told otherwise, as the application's controls are
-  assert.deepEqual(styles.light.globals.fonts.font2.family.slice(0, 2), ['ui-serif', 'Georgia']);
+  assert.equal(styles.light.globals.fonts.font1.family[0], 'Inter'); // every component is in the interface font unless told otherwise, as the application's controls are
+  assert.deepEqual(styles.light.globals.fonts.font2.family.slice(0, 2), ['Literata', 'Literata fallback']);
   assert.deepEqual(styles.light.globals.radius, { sm: tokens.light['--radius-1'], md: tokens.light['--radius-2'] });
+  // The light and dark blocks are the themes, not the overrides for increased contrast or forced colours that also select :root.
+  for (const mode of ['light', 'dark']) for (const name of ['--paper', '--ink-2', '--hairline']) assert.match(tokens[mode][name], /^#[0-9a-f]{6}$/i, `${mode} ${name}`);
 });
 
 test('a change to the accent in tokens.css changes the styles: they are made from the file, not copied from it', () => {
-  const css = read('apps/web/src/ui/tokens.css').replaceAll('#0b5cad', '#aa0000');
+  const css = read('apps/web/src/ui/tokens.css').replaceAll('#2b4c9b', '#aa0000');
   assert.equal(buildStyles(parseTokens(css)).styles.light.globals.colors.primary.main, '#aa0000');
 });
 

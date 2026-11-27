@@ -14,7 +14,7 @@ describe('the list styles use the design tokens only', () => {
   it('takes every colour from a token', () => {
     const colours = [...css.matchAll(/(?:color|background|border-color|border):[^;]*;/g)].map((m) => m[0]);
     expect(colours.length).toBeGreaterThan(0);
-    for (const line of colours) expect(line).toMatch(/var\(--[a-z-]+\)|transparent|none|solid/);
+    for (const line of colours) expect(line).toMatch(/var\(--[a-z0-9-]+\)|transparent|none|solid/);
   });
 
   it('draws the markers it needs: bullets in three shapes, the number from position, a task box and a tick', () => {

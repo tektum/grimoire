@@ -9,14 +9,14 @@
   gap: var(--space-1) var(--space-4);
   align-items: center;
   padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .trash-title {
   font-weight: 600;
 }
 .trash-meta {
   grid-column: 1;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .trash-list li button {
   grid-column: 2;

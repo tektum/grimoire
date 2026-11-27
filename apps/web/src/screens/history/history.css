@@ -6,7 +6,7 @@
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-4);
   margin: 0;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .history-list {
   margin: var(--space-4) 0;
@@ -19,7 +19,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .history-list li a {
   flex: none;
@@ -47,13 +47,13 @@
   overflow-wrap: anywhere;
 }
 ins.history-line {
-  background: var(--code-bg);
+  background: var(--paper-sunken);
   border-inline-start: 3px solid var(--accent);
 }
 del.history-line {
-  background: var(--code-bg);
-  border-inline-start: 3px dashed var(--muted);
-  color: var(--muted);
+  background: var(--paper-sunken);
+  border-inline-start: 3px dashed var(--ink-2);
+  color: var(--ink-2);
 }
 del.history-line [data-text] {
   text-decoration: line-through;

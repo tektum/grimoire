@@ -1,52 +1,192 @@
-/* Design tokens (docs/design.md; the values are proposals until the owner chooses). Light is the default; dark follows the system
-   (`prefers-color-scheme`) unless `data-theme` on <html> says otherwise. One accent: links, caret and selection. */
+/* Design tokens: the system in docs/DESIGN.md. Light is the default; dark follows the system (`prefers-color-scheme`) unless `data-theme` on <html> says
+   otherwise. Components use these roles, never raw values. Every text and edge pair is measured by test/ui/tokens-contrast.test.ts against the tables in DESIGN.md. */
 :root {
-  --paper: #fbf8f1;
-  --paper-raised: #ffffff;
-  --ink: #1b1a17;
-  --muted: #5f5b52;
-  --border: #ded8c9;
-  --accent: #0b5cad;
-  --focus: #b45309;
-  --code-bg: #f1ece0;
-  --measure: 70ch;
-  --font-page: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Liberation Sans', 'DejaVu Sans', sans-serif;
-  --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2.5rem;
-  --radius-1: 4px;
-  --radius-2: 8px;
-  --transition: 120ms ease;
+  /* Surfaces */
+  --paper: #faf7f0; /* page ground */
+  --paper-raised: #ffffff; /* menus, palette, dialogs */
+  --paper-sunken: #f2eee4; /* contents panel, code, table heads */
+  /* Text */
+  --ink: #1c1a16;
+  --ink-2: #5c574d; /* secondary text */
+  --ink-3: #6e685d; /* metadata, placeholders */
+  /* Lines: a hairline is decorative only; the edge of an input or a button is a control border (3:1) */
+  --hairline: #e4ded0;
+  --control-border: #8a8373;
+  /* The one accent: links, caret, selection, focus, the primary button */
+  --accent: #2b4c9b;
+  --on-accent: #ffffff;
+  --focus: var(--accent);
+  --selection: #ccd1dd; /* the accent at 22% over the paper */
+  --fill-selected: rgb(28 26 22 / 0.06); /* hovered and selected rows; lighter than the surface in dark, never darker */
+  /* Status, always with a word */
+  --warn: #8a5a00;
+  --danger: #b3261e;
+  --ok: #2f6b3f;
+  /* Elevation: flat paper with hairlines; popovers and dialogs raised */
+  --shadow-popover: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.1);
+  --shadow-dialog: 0 1px 2px rgb(0 0 0 / 0.06), 0 24px 64px rgb(0 0 0 / 0.18);
+  --scrim: rgb(28 26 22 / 0.2); /* the ink at 20% */
+  /* Collaborator carets: each fixed colour moved in OKLCH lightness until it reaches 3:1 on this theme's paper (the name label keeps the fixed colour) */
+  --collab-caret-0: #0072b2;
+  --collab-caret-1: #d55e00;
+  --collab-caret-2: #009e73;
+  --collab-caret-3: #c774a2;
+  --collab-caret-4: #3698cb;
+  --collab-caret-5: #c68100;
+  --collab-caret-6: #882255;
+  --collab-caret-7: #379f8e;
   color-scheme: light;
+
+  /* Type: Literata for the page, Inter for the interface, IBM Plex Mono for code (fonts.css); each falls back to a metric-matched local face, then the system */
+  --font-page: 'Literata', 'Literata fallback', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-ui: 'Inter', 'Inter fallback', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Liberation Sans', 'DejaVu Sans', sans-serif;
+  --font-code: 'IBM Plex Mono', 'IBM Plex Mono fallback', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600; /* the page never uses 700 */
+  /* Interface scale (Inter) */
+  --text-ui-xs: 0.75rem; /* 12 */
+  --text-ui-sm: 0.8125rem; /* 13, the default chrome */
+  --text-ui-md: 0.875rem; /* 14, inputs and menus */
+  --text-ui-lg: 1rem; /* 16, the palette input */
+  /* Page scale (Literata) */
+  --text-page: 1.125rem; /* 18 on a 30px line */
+  --leading-page: 1.875rem;
+  --text-h1: 2.125rem; /* 34/40, -0.01em */
+  --leading-h1: 2.5rem;
+  --tracking-h1: -0.01em;
+  --text-h2: 1.5rem; /* 24/32 */
+  --leading-h2: 2rem;
+  --text-h3: 1.25rem; /* 20/28 */
+  --leading-h3: 1.75rem;
+  --text-h4: 1.125rem; /* 18, semibold */
+  --measure: 68ch;
+
+  /* Space: a 4px base */
+  --space-1: 0.25rem; /* 4 */
+  --space-2: 0.5rem; /* 8 */
+  --space-3: 0.75rem; /* 12 */
+  --space-4: 1rem; /* 16 */
+  --space-5: 1.5rem; /* 24 */
+  --space-6: 2rem; /* 32 */
+  --space-7: 3rem; /* 48 */
+  --space-8: 4.5rem; /* 72, above the page title */
+  /* Radius: a nested radius is the outer radius minus the padding */
+  --radius-1: 6px; /* controls and menu items */
+  --radius-2: 10px; /* menus and popovers */
+  --radius-3: 14px; /* the palette and dialogs */
+
+  /* Motion: opacity and transform only; exits at 70% of the enter time */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-press: 120ms; /* hover and press */
+  --duration-popover: 180ms;
+  --duration-panel: 240ms; /* the palette and the contents panel */
+  --duration-press-exit: 84ms;
+  --duration-popover-exit: 126ms;
+  --duration-panel-exit: 168ms;
+  --popover-scale-from: 0.97; /* a popover grows from the trigger */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #161512;
-    --paper-raised: #1f1d19;
-    --ink: #ece8de;
-    --muted: #a39d8f;
-    --border: #35322b;
-    --accent: #7db4f0;
-    --focus: #f5a524;
-    --code-bg: #24211c;
+    --paper: #121110;
+    --paper-raised: #1d1b18;
+    --paper-sunken: #0c0b0a;
+    --ink: #e9e4d9;
+    --ink-2: #a8a193;
+    --ink-3: #8a8478;
+    --hairline: #2e2b26;
+    --control-border: #787266;
+    --accent: #9db4f5;
+    --on-accent: #121110;
+    --selection: #434a60;
+    --fill-selected: rgb(255 255 255 / 0.08);
+    --warn: #e0b252;
+    --danger: #f2857c;
+    --ok: #7fc292;
+    --shadow-popover: inset 0 1px 0 rgb(255 255 255 / 0.06);
+    --shadow-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06);
+    --scrim: rgb(0 0 0 / 0.5);
+    --collab-caret-0: #0072b2;
+    --collab-caret-1: #d55e00;
+    --collab-caret-2: #009e73;
+    --collab-caret-3: #cc79a7;
+    --collab-caret-4: #56b4e9;
+    --collab-caret-5: #e69f00;
+    --collab-caret-6: #a23b6c;
+    --collab-caret-7: #44aa99;
     color-scheme: dark;
   }
 }
 :root[data-theme='dark'] {
-  --paper: #161512;
-  --paper-raised: #1f1d19;
-  --ink: #ece8de;
-  --muted: #a39d8f;
-  --border: #35322b;
-  --accent: #7db4f0;
-  --focus: #f5a524;
-  --code-bg: #24211c;
+  --paper: #121110;
+  --paper-raised: #1d1b18;
+  --paper-sunken: #0c0b0a;
+  --ink: #e9e4d9;
+  --ink-2: #a8a193;
+  --ink-3: #8a8478;
+  --hairline: #2e2b26;
+  --control-border: #787266;
+  --accent: #9db4f5;
+  --on-accent: #121110;
+  --selection: #434a60;
+  --fill-selected: rgb(255 255 255 / 0.08);
+  --warn: #e0b252;
+  --danger: #f2857c;
+  --ok: #7fc292;
+  --shadow-popover: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --shadow-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --scrim: rgb(0 0 0 / 0.5);
+  --collab-caret-0: #0072b2;
+  --collab-caret-1: #d55e00;
+  --collab-caret-2: #009e73;
+  --collab-caret-3: #cc79a7;
+  --collab-caret-4: #56b4e9;
+  --collab-caret-5: #e69f00;
+  --collab-caret-6: #a23b6c;
+  --collab-caret-7: #44aa99;
   color-scheme: dark;
+}
+/* Increased contrast: hairlines become control borders and secondary text becomes ink, in either theme. The selectors match every theme block's (0,2,0)
+   selector and come after them, so the override wins in each theme mode. */
+@media (prefers-contrast: more) {
+  :root,
+  :root:not([data-theme='light']),
+  :root[data-theme] {
+    --hairline: var(--control-border);
+    --ink-2: var(--ink);
+  }
+}
+/* Forced colours: the system's colours for every role, and no shadows (borders carry the edges). */
+@media (forced-colors: active) {
+  :root,
+  :root:not([data-theme='light']),
+  :root[data-theme] {
+    --paper: Canvas;
+    --paper-raised: Canvas;
+    --paper-sunken: Canvas;
+    --ink: CanvasText;
+    --ink-2: CanvasText;
+    --ink-3: CanvasText;
+    --hairline: CanvasText;
+    --control-border: ButtonBorder;
+    --accent: LinkText;
+    --on-accent: Canvas;
+    --focus: Highlight;
+    --shadow-popover: none;
+    --shadow-dialog: none;
+  }
+}
+/* Reduced motion: opacity only, at 80ms, so a change of state is still seen. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-press: 80ms;
+    --duration-popover: 80ms;
+    --duration-panel: 80ms;
+    --duration-press-exit: 80ms;
+    --duration-popover-exit: 80ms;
+    --duration-panel-exit: 80ms;
+    --popover-scale-from: 1;
+  }
 }
 /* Collaborator colours: eight fixed values, distinguishable under the common colour-blind types (contracts section 9). */
 :root {

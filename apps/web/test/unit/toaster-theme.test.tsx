@@ -70,7 +70,7 @@ describe('the notices follow the theme', () => {
     const style = toaster().getAttribute('style') ?? '';
     expect(style).toContain('--normal-bg: var(--paper-raised)');
     expect(style).toContain('--normal-text: var(--ink)');
-    expect(style).toContain('--normal-border: var(--border)');
+    expect(style).toContain('--normal-border: var(--hairline)');
     expect((screen.getByText('Notice 6').closest('[data-sonner-toast]') as HTMLElement).getAttribute('style')).toContain('var(--font-ui)');
   });
 });
