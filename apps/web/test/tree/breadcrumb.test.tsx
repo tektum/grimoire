@@ -48,7 +48,7 @@ describe('the top bar on other screens', () => {
   it('has no trail on a screen that is not a collection or a page, even with a collection remembered', async () => {
     createClientStorage().set(LAST_COLLECTION_KEY, 'c1');
     open('/search');
-    await screen.findByRole('link', { name: 'Trash' });
+    await screen.findAllByRole('treeitem'); // the remembered collection has loaded, so a trail could be drawn
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull();
   });
 });
