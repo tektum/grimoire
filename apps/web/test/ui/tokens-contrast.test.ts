@@ -93,3 +93,54 @@ describe('the contrast of the tokens (docs/DESIGN.md)', () => {
     expect(byMedia).toEqual(byData);
   });
 });
+
+// The cascade of tokens.css for one page state: which value of a custom property wins on <html>, by the media queries that hold, then specificity, then order.
+// tokens.css only uses selectors on <html> built from `:root`, `[data-theme]`, `[data-theme='x']` and `:not([data-theme='x'])`, each worth (0,1,0).
+type PageState = { theme: 'light' | 'dark' | undefined; media: readonly string[] };
+const rules: { media: string | undefined; selectors: string[]; body: string }[] = [];
+for (const m of css.matchAll(/@media\s*([^{]+)\{((?:[^{}]*\{[^{}]*\})*)\s*\}|([^{}@]+)\{([^{}]*)\}/g)) {
+  const media = m[1]?.trim();
+  const add = (selectors: string, body: string) => rules.push({ media, selectors: selectors.split(',').map((s) => s.trim()), body });
+  if (m[2] !== undefined) for (const inner of m[2].matchAll(/([^{}]+)\{([^{}]*)\}/g)) add(inner[1]!, inner[2]!);
+  else add(m[3]!, m[4]!);
+}
+function specificity(selector: string, theme: PageState['theme']): number | undefined {
+  const parts = selector.match(/:root|:not\(\[data-theme='\w+'\]\)|\[data-theme(?:='\w+')?\]/g) ?? [];
+  if (parts.join('') !== selector) throw new Error(`a selector this test does not read: ${selector}`);
+  const holds = (part: string): boolean => {
+    if (part === ':root') return true;
+    if (part === '[data-theme]') return theme !== undefined;
+    const value = /'(\w+)'/.exec(part)![1];
+    return part.startsWith(':not') ? theme !== value : theme === value;
+  };
+  return parts.every(holds) ? parts.length : undefined;
+}
+function winning(name: string, state: PageState): string | undefined {
+  let best: { weight: number; value: string } | undefined;
+  for (const rule of rules) {
+    if (rule.media !== undefined && !state.media.includes(rule.media)) continue;
+    const value = new RegExp(`(?:^|[\\s;])${name}:\\s*([^;]+);`).exec(rule.body)?.[1]?.trim();
+    const weight = Math.max(...rule.selectors.map((s) => specificity(s, state.theme) ?? -1));
+    if (value !== undefined && weight >= 0 && (best === undefined || weight >= best.weight)) best = { weight, value };
+  }
+  return best?.value;
+}
+
+describe('the overrides for increased contrast and forced colours win in every theme', () => {
+  const DARK = '(prefers-color-scheme: dark)';
+  const states: [string, PageState['theme'], string[]][] = [
+    ['light by default', undefined, []],
+    ['dark by system preference', undefined, [DARK]],
+    ['light by data-theme on a dark system', 'light', [DARK]],
+    ['dark by data-theme', 'dark', []],
+  ];
+  it.each(states)('%s', (_what, theme, media) => {
+    const contrastMore = { theme, media: [...media, '(prefers-contrast: more)'] };
+    expect(winning('--hairline', contrastMore)).toBe('var(--control-border)');
+    expect(winning('--ink-2', contrastMore)).toBe('var(--ink)');
+    const forced = { theme, media: [...media, '(forced-colors: active)'] };
+    expect(winning('--paper', forced)).toBe('Canvas');
+    expect(winning('--ink', forced)).toBe('CanvasText');
+    expect(winning('--accent', forced)).toBe('LinkText');
+  });
+});

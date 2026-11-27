@@ -146,9 +146,11 @@
   --collab-caret-7: #44aa99;
   color-scheme: dark;
 }
-/* Increased contrast: hairlines become control borders and secondary text becomes ink, in either theme. */
+/* Increased contrast: hairlines become control borders and secondary text becomes ink, in either theme. The selectors match every theme block's (0,2,0)
+   selector and come after them, so the override wins in each theme mode. */
 @media (prefers-contrast: more) {
   :root,
+  :root:not([data-theme='light']),
   :root[data-theme] {
     --hairline: var(--control-border);
     --ink-2: var(--ink);
@@ -157,6 +159,7 @@
 /* Forced colours: the system's colours for every role, and no shadows (borders carry the edges). */
 @media (forced-colors: active) {
   :root,
+  :root:not([data-theme='light']),
   :root[data-theme] {
     --paper: Canvas;
     --paper-raised: Canvas;
