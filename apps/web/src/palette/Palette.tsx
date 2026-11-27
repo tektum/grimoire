@@ -16,7 +16,7 @@ import { useCollectionTree } from '../tree/useTree';
 import { VisuallyHiddenText } from './hidden';
 import { onOpenPalette } from './open';
 import { commandsFor, filterCommands, type Command as CommandItem } from './commands';
-import { readRecent, type RecentPage } from './recent';
+import { readRecent, type RecentPage } from '../storage/recent';
 import './palette.css';
 
 /** How long the typing has to stop before the search is asked (the palette searches as you type, and the server limits a person to 30 searches a minute). */

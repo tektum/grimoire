@@ -7,7 +7,7 @@ import type { ApiLike } from '../../src/api/query';
 import { queryKey } from '../../src/api/query';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { Palette } from '../../src/palette/Palette';
-import { recordRecent } from '../../src/palette/recent';
+import { recordRecent } from '../../src/storage/recent';
 import { pagePath } from '../../src/tree/model';
 import '../support/dom';
 

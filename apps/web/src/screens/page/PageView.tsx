@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
 import { urlIdOf } from '../../app/routes';
 import { InBar, Movable, useBarRoom } from '../../app/page-controls';
-import { recordRecent } from '../../palette/recent';
+import { recordRecent } from '../../storage/recent';
 import { Clock } from 'lucide-react';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';

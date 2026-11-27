@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { readRecent, recordRecent } from '../../src/storage/recent';
 import { createAuth, DESCOPE_DEVICE_KEY, DESCOPE_REFRESH_KEY, DESCOPE_SESSION_KEY, type AuthState } from '../../src/auth';
 import { createDevSignIn, DEV_TOKEN_EXPIRES_KEY, DEV_TOKEN_KEY } from '../../src/auth/dev-signin';
 import { config, fakeSdk, fakeSdkStorage, fakeStorage, jwt, moduleOf, spyConsole } from './support';
@@ -181,6 +182,20 @@ describe('signOut', () => {
     stop();
     await t.auth.signOut('manual');
     expect(seen).toHaveLength(1);
+  });
+
+  it('takes the lists of recent pages of every person away on sign-out, whatever the reason, and leaves the preferences', async () => {
+    for (const reason of ['manual', 'expired'] as const) {
+      const t = setup();
+      recordRecent('alice', { id: 'p1', urlId: 'u1', title: 'One', path: '' }, t.storage);
+      recordRecent('bob', { id: 'p2', urlId: 'u2', title: 'Two', path: '' }, t.storage);
+      t.storage.set('last-collection', 'c1');
+      await t.auth.signOut(reason);
+      expect(readRecent('alice', t.storage)).toEqual([]);
+      expect(readRecent('bob', t.storage)).toEqual([]);
+      expect([...t.map.keys()]).toEqual(['grimoire.last-collection']);
+      await t.auth.signOut(reason); // an ended session is cleared again, and nothing is left to take
+    }
   });
 
   it('calls the SDK logout for a manual sign-out once the SDK is loaded, and not for an ended session', async () => {

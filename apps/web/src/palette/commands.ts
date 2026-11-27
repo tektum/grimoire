@@ -1,5 +1,5 @@
 import { pagePath } from '../tree/model';
-import type { RecentPage } from './recent';
+import type { RecentPage } from '../storage/recent';
 
 /** What the palette can do besides search: go to a place or make a page. A command has a group, a label and what it does (`run` with the helpers of the screen). */
 export interface Command {

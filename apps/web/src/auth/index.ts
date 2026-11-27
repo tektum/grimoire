@@ -1,5 +1,6 @@
 import { log } from '../logging';
 import type { ClientStorage } from '../storage';
+import { clearRecent } from '../storage/recent';
 import type { ServerConfig } from '../gate/config';
 import type { DevSignIn } from './dev-signin';
 import { jwtExpiresAt } from './jwt';
@@ -192,6 +193,7 @@ export function createAuth(o: CreateAuthOptions): Auth {
       if (current.status === 'signed-out' && current.reason !== undefined) {
         o.devSignIn?.clear();
         clearSdkKeys();
+        clearRecent(o.storage);
         return;
       }
       ending = (async () => {
@@ -201,6 +203,7 @@ export function createAuth(o: CreateAuthOptions): Auth {
         // The SDK is loaded for it when a session exists and it is not loaded yet. Whatever the provider does, the keys are removed after, and the session ends.
         if (reason === 'manual' && o.config.providerProjectId !== null && (sdk !== null || hasDescopeSession())) await boundedLogout();
         clearSdkKeys();
+        clearRecent(o.storage); // what this person opened last is theirs, not the next person's on a shared machine
         log('info', 'web.sign_out', { reason });
         set({ status: 'signed-out', reason });
       })().finally(() => {

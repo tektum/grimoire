@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createClientStorage } from '../../src/storage';
-import { RECENT_MAX, readRecent, recordRecent } from '../../src/palette/recent';
+import { RECENT_MAX, clearRecent, readRecent, recordRecent } from '../../src/storage/recent';
 import '../support/dom';
 
 afterEach(() => { localStorage.clear(); });
@@ -34,5 +34,22 @@ describe('the pages opened last, kept in this browser', () => {
     const blocked = createClientStorage(null);
     expect(() => { recordRecent('u', page(2), blocked); }).not.toThrow();
     expect(readRecent('u', blocked)).toEqual([]);
+  });
+
+  it('takes every person\'s list away, and nothing else the client keeps', () => {
+    const storage = createClientStorage();
+    recordRecent('a', page(1), storage);
+    recordRecent('a', page(2), storage); // the same person again: listed once among the owners
+    recordRecent('b', page(3), storage);
+    storage.set('last-collection', 'c1');
+    clearRecent(storage);
+    expect(readRecent('a', storage)).toEqual([]);
+    expect(readRecent('b', storage)).toEqual([]);
+    expect(storage.get('last-collection')).toBe('c1');
+    expect(storage.get('recent-owners')).toBeNull();
+    localStorage.setItem('grimoire.recent-owners', 'not json');
+    expect(() => { clearRecent(storage); }).not.toThrow(); // an index that cannot be read is no index
+    localStorage.setItem('grimoire.recent-owners', '{"x":1}');
+    expect(() => { clearRecent(storage); }).not.toThrow();
   });
 });
