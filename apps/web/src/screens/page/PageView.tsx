@@ -2,6 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { UNSAFE_DataRouterContext, useLocation, useNavigate } from 'react-router';
 import { urlIdOf } from '../../app/routes';
 import { InBar, Movable, useBarRoom } from '../../app/page-controls';
+import { recordRecent } from '../../palette/recent';
 import { Clock } from 'lucide-react';
 import { pagePath } from '../../tree/model';
 import { ConnectionManager, type ConnectionState } from '../../editor/core/connection';
@@ -73,6 +74,12 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const meRef = useRef<string | null>(null);
   meRef.current = me.data?.id ?? null;
   const barRoom = useBarRoom();
+  // The pages this person opened last, for the palette: noted once the page and the person are known, in this browser only.
+  const meId = me.data?.id;
+  const parentTitle = (page.breadcrumb as readonly { title: string }[] | undefined)?.at(-1)?.title; // a record from before the breadcrumb was sent has none
+  useEffect(() => {
+    if (meId !== undefined) recordRecent(meId, { id: page.id, urlId: page.urlId, title: page.title, path: parentTitle ?? '' });
+  }, [meId, page.id, page.urlId, page.title, parentTitle]);
   const presence = usePresence(presenceSource, me.data?.id ?? null);
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;

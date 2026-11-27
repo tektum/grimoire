@@ -25,7 +25,7 @@ export interface TreeActions {
    * A new, untitled page under `parentId` (null for the top level), last among its siblings. `made` is called with the page as soon as the server has answered, before the tree is read again: what a
    * caller does with the new page (opening it) must not wait for that read, which can take long and ends after the person has gone on to something else in the tree.
    */
-  create(parentId: string | null, made?: (page: FlatPage) => void): Promise<Outcome>;
+  create(parentId: string | null, made?: (page: FlatPage) => void, title?: string): Promise<Outcome>;
   /** Renames a page. What is shown is what the server holds once the page record is read again, whatever order overlapping renames were answered in. */
   rename(id: string, title: string): Promise<Outcome>;
   /** Moves a page: under `to.parentId`, after the sibling `to.afterId`, before `to.beforeId`, or last when neither is set. */
@@ -53,9 +53,9 @@ export function useTreeActions(api: ApiLike, collectionId: string): TreeActions 
       return outcome;
     };
     return {
-      create: (parentId, made) =>
+      create: (parentId, made, title) =>
         settle<FlatPage>(
-          () => api.POST('/v1/pages' as never, { body: { collectionId, parentId } } as never),
+          () => api.POST('/v1/pages' as never, { body: { collectionId, parentId, ...(title === undefined ? {} : { title }) } } as never),
           (page) => {
             local((pages) => applyCreate(pages, page));
             made?.(page);

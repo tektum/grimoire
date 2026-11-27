@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import type { ApiLike } from '../../src/api/query';
 import { queryKey } from '../../src/api/query';
 import { SessionContext, type Session } from '../../src/auth/session';
 import { Palette } from '../../src/palette/Palette';
+import { recordRecent } from '../../src/palette/recent';
 import { pagePath } from '../../src/tree/model';
 import '../support/dom';
 
@@ -214,7 +215,8 @@ describe('the command palette', () => {
     const t = fake();
     show(t.api);
     await openIt();
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Quarterly plan', 'Meeting notes', 'Dev', 'Handbook', 'Search', 'Trash', 'New page']);
+    // The label of each row (a page row also says, quietly, what it is under: that is not its label).
+    expect((await screen.findAllByRole('option')).map((o) => o.querySelector('.palette-label')?.textContent)).toEqual(['Quarterly plan', 'Meeting notes', 'Dev', 'Handbook', 'Search', 'Trash', 'New page']);
     await userEvent.keyboard('trash');
     await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Trash']));
   });
@@ -285,7 +287,7 @@ describe('the command palette', () => {
     expect(option.textContent).toContain('<script>alert(1)</script> hit');
   });
 
-  it('says so when the search fails, and shows "No results" when nothing matches at all', async () => {
+  it('says so when the search fails, and "No pages match" with the text when nothing matches at all (DESIGN.md Search)', async () => {
     const failing = fake({ search: () => ({ status: 503, body: { error: { code: 'unavailable' } } }) });
     show(failing.api);
     await openIt();
@@ -298,7 +300,7 @@ describe('the command palette', () => {
     show(fake().api);
     await openIt();
     await userEvent.keyboard('zzzz');
-    expect((await screen.findByText('No results')).textContent).toBe('No results');
+    expect((await screen.findByText(/No pages match/)).textContent).toBe('No pages match “zzzz”');
   });
 
   it('asks nothing for a text of only spaces, and puts the text away when it closes', async () => {
@@ -318,5 +320,75 @@ describe('the command palette', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+const headings = (): (string | null | undefined)[] => [...document.querySelectorAll('[cmdk-group-heading]')].map((h) => h.textContent);
+
+describe('what an empty query offers, and what no match offers (DESIGN.md Search)', () => {
+  it('lists Recent first, from this browser and this person, and the pages only when nothing was opened yet', async () => {
+    localStorage.clear();
+    show(fake().api);
+    await openIt();
+    expect(headings()).toContain('Pages'); // nothing opened: the first pages
+    cleanup();
+    recordRecent('u', { id: 'p2', urlId: 'zz99', title: 'Meeting notes', path: 'Dev' });
+    recordRecent('someone-else', { id: 'p1', urlId: 'ab12cd', title: 'Quarterly plan', path: 'Dev' });
+    show(fake().api);
+    await openIt();
+    await screen.findAllByRole('group');
+    expect(headings()).toEqual(['Recent', 'Collections', 'Go to', 'Actions']);
+    const recentRows = within(screen.getAllByRole('group')[0]!).getAllByRole('option');
+    expect(recentRows.map((o) => o.querySelector('.palette-label')?.textContent)).toEqual(['Meeting notes']); // the other person's list is not shown
+    await userEvent.keyboard('quarterly');
+    await waitFor(() => expect(screen.queryByRole('option', { name: 'Meeting notes' })).toBeNull()); // typing looks in the pages, not in what was opened
+    expect(await screen.findByRole('option', { name: 'Quarterly plan' })).toBeTruthy();
+  });
+
+  it('offers New page with the typed text as its title when no page matches, and makes the page with that title', async () => {
+    localStorage.clear();
+    const t = fake();
+    const client = newClient();
+    const done = watchCreate(client);
+    show(t.api, '/c/c1', client);
+    await openIt();
+    await userEvent.keyboard('zzzz');
+    expect((await screen.findByText(/No pages match/)).textContent).toBe('No pages match “zzzz”');
+    const row = await screen.findByRole('option', { name: /^New page/ });
+    await waitFor(() => expect(row.getAttribute('aria-selected')).toBe('true')); // the only offer is the row Enter takes
+    await userEvent.keyboard('{Enter}');
+    await done();
+    expect(t.creates).toEqual([{ collectionId: 'c1', parentId: null, title: 'zzzz' }]);
+  });
+
+  it('offers no page to make where the person can only read', async () => {
+    localStorage.clear();
+    show(fake().api, '/c/c2');
+    await openIt();
+    await userEvent.keyboard('zzzz');
+    await screen.findByText(/No pages match/);
+    expect(screen.queryByRole('option', { name: /^New page/ })).toBeNull();
+  });
+
+  it('keeps the results of the text before at full contrast while the next search runs', async () => {
+    localStorage.clear();
+    let release: () => void = () => undefined;
+    let calls = 0;
+    const t = fake({ search: (q) => ({ status: 200, body: { items: [HIT('1', 'Roadmap', `${q} ahead`, [[0, q.length]])], nextCursor: null } }) });
+    const original = t.api.GET.bind(t.api) as (path: string, init?: unknown) => Promise<unknown>;
+    (t.api as unknown as { GET: unknown }).GET = async (path: string, init?: unknown) => {
+      if (path === '/v1/search' && ++calls === 2) await new Promise<void>((resolve) => (release = resolve));
+      return original(path, init);
+    };
+    show(t.api);
+    await openIt();
+    await userEvent.keyboard('road');
+    expect(await screen.findByRole('option', { name: /^Road/ })).toBeTruthy();
+    await userEvent.keyboard('m');
+    await waitFor(() => expect(calls).toBe(2)); // the second search is out
+    expect(screen.getByRole('option', { name: /^Road/ })).toBeTruthy(); // and the first results are still there
+    expect(document.querySelector('.palette-progress')!.getAttribute('data-active')).toBe('true');
+    await act(async () => { release(); });
+    await waitFor(() => expect(document.querySelector('.palette-progress')!.getAttribute('data-active')).toBe('false'));
   });
 });

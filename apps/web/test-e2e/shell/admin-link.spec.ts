@@ -3,10 +3,10 @@ import { adminApi } from '../admin/mock-api';
 import { shots } from '../support/shots';
 import { signInAs } from '../support/sign-in';
 
-// The way into the workspace's people and groups: an Admin link in the header, for an administrator only, at every width (a phone has no keyboard for the palette). Against the stand-in of the API.
+// The way into the workspace's people and groups: an Admin link (in the foot of the contents on a wide screen, behind the avatar on a phone), for an administrator only, at every width (a phone has no keyboard for the palette). Against the stand-in of the API.
 const MOBILE = 390;
 
-test('an administrator sees Admin in the header on a desktop and on a phone, and it opens the users', async ({ page, context }) => {
+test('an administrator sees Admin in the contents foot on a desktop and in the menu on a phone, and it opens the users', async ({ page, context }) => {
   await signInAs(context, 'e2e-ada', 'admin', { check: false });
   await adminApi(page, { role: 'admin', users: [] });
   for (const width of [1280, MOBILE]) {
@@ -38,7 +38,7 @@ for (const role of ['member', 'viewer'] as const) {
   });
 }
 
-test('pictures of the header with the Admin link, light and dark, on a desktop and on a phone', async ({ page, context, browserName }) => {
+test('pictures of the Admin link, light and dark, on a desktop and on a phone', async ({ page, context, browserName }) => {
   test.skip(browserName !== 'chromium', 'screenshots are taken once, in Chromium');
   await signInAs(context, 'e2e-ada', 'admin', { check: false });
   await adminApi(page, { role: 'admin', users: [] });

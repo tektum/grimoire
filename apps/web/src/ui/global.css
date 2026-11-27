@@ -32,6 +32,13 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-page-part > button { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
 .shell-page-part > .page-history { display: inline-flex; align-items: center; gap: var(--space-1); border-color: transparent; background: transparent; color: var(--ink-2); }
 .shell-page-part > .page-history:hover { color: var(--ink); }
+.shell-avatar { display: inline-flex; align-items: center; justify-content: center; inline-size: 24px; block-size: 24px; box-sizing: border-box; border-radius: 50%; background: var(--fill-selected); color: var(--ink); font: 600 0.6875rem/1 var(--font-ui); }
+/* The foot of the contents on a wide screen: Trash, Admin and who is signed in, kept in view at the bottom of the panel. */
+.shell-account { position: sticky; bottom: calc(-1 * var(--space-3)); margin: var(--space-3) calc(-1 * var(--space-3)) calc(-1 * var(--space-3)); padding: var(--space-3); border-top: 1px solid var(--hairline); background: var(--paper-sunken); }
+.shell-account .user-badge { justify-content: flex-start; }
+.shell-account nav { display: flex; gap: var(--space-4); margin-block-end: var(--space-2); }
+.shell-account a { text-decoration: none; color: var(--ink-2); }
+.shell-account a:hover { color: var(--ink); }
 .shell-actions-toggle { display: none; margin-inline-start: auto; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-header .shell-brand { font-weight: 600; color: var(--ink); }
@@ -132,8 +139,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   *, *::before, *::after { transition-property: opacity !important; transition-duration: 80ms !important; animation: none !important; scroll-behavior: auto !important; }
 }
 
-.overlay { position: fixed; inset: 0; background: var(--scrim); }
-.modal { position: fixed; top: 20vh; inset-inline: 0; margin-inline: auto; width: min(32rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
+.overlay { position: fixed; inset: 0; z-index: 50; background: var(--scrim); } /* over the top bar (5) and the popovers (20) */
+.modal { position: fixed; z-index: 51; top: 20vh; inset-inline: 0; margin-inline: auto; width: min(32rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
 .modal button + button { margin-inline-start: var(--space-2); }
 .menu { min-width: 10rem; padding: var(--space-1); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
 .menu-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; outline: none; }
