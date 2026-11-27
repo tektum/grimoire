@@ -28,9 +28,10 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-actions > * { flex: none; white-space: nowrap; }
 .shell-page-controls { display: flex; flex: 1 0 auto; align-items: center; gap: var(--space-3); }
 .shell-page-controls .page-status { margin: 0; min-height: 0; }
-.shell-page-controls > button { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
-.shell-page-controls .page-history { display: inline-flex; align-items: center; gap: var(--space-1); border-color: transparent; background: transparent; color: var(--ink-2); }
-.shell-page-controls .page-history:hover { color: var(--ink); }
+.shell-page-part { display: contents; }
+.shell-page-part > button { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
+.shell-page-part > .page-history { display: inline-flex; align-items: center; gap: var(--space-1); border-color: transparent; background: transparent; color: var(--ink-2); }
+.shell-page-part > .page-history:hover { color: var(--ink); }
 .shell-actions-toggle { display: none; margin-inline-start: auto; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-header .shell-brand { font-weight: 600; color: var(--ink); }
@@ -60,6 +61,7 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 }
 @media (max-width: 40rem) {
   .shell-header { flex-wrap: wrap; padding-block: 0; row-gap: 0; }
+  .shell-page-part > button { min-height: 44px; min-width: 44px; }
   .shell-header .breadcrumb { flex: 1 0 100%; order: 3; padding-block-end: var(--space-2); }
   .shell-actions-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
   .shell-actions { display: none; }
@@ -72,6 +74,7 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 }
 @media (pointer: coarse) {
   .shell-header { min-height: 44px; }
+  .shell-page-part > button { min-height: 44px; min-width: 44px; }
   .shell-header a, .shell-header button:not(.shell-contents-toggle, .shell-actions-toggle) { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .error-boundary { max-width: 30rem; margin: var(--space-6) auto; padding: var(--space-5); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); }

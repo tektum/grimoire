@@ -232,6 +232,33 @@ describe('who is here, and the announcement of who came and went', () => {
     expect(names()).toEqual(['Priya']);
   });
 
+  it('forgets the people and the announcement of a document that is replaced, and says the same sentence again for the next', () => {
+    const first = new FakeAwareness();
+    const directory = fakeDirectory({ priya: 'Priya' });
+    function Swap() {
+      const [presence, setPresence] = useState<PresenceSource | null>({ source: first, directory });
+      const { people, announcement } = usePresence(presence, ME);
+      return (
+        <>
+          <button onClick={() => setPresence(null)}>gone</button>
+          <button onClick={() => { const next = new FakeAwareness(); setPresence({ source: next, directory }); }}>again</button>
+          <p data-testid="n">{people.length}</p>
+          <PresenceAnnouncer text={announcement} />
+        </>
+      );
+    }
+    render(<Swap />);
+    first.set(2, { user: { id: 'priya' } });
+    act(() => { vi.advanceTimersByTime(ANNOUNCE_DELAY_MS); });
+    expect(said()).toBe('Priya joined');
+    act(() => { screen.getByRole('button', { name: 'gone' }).click(); });
+    expect(screen.getByTestId('n').textContent).toBe('0');
+    expect(said()).toBe('');
+    act(() => { screen.getByRole('button', { name: 'again' }).click(); });
+    expect(screen.getByTestId('n').textContent).toBe('0'); // not the previous document's people
+    expect(said()).toBe('');
+  });
+
   it('lets go of the awareness and the directory when it goes, and announces nothing after', () => {
     const source = new FakeAwareness();
     const directory = fakeDirectory({ priya: 'Priya' });

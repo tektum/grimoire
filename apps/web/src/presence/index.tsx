@@ -32,12 +32,17 @@ export function usePresence(presence: PresenceSource | null, self: string | null
   const [announcement, setAnnouncement] = useState('');
 
   useEffect(() => {
-    if (presence === null) return undefined;
+    if (presence === null) {
+      setIds([]); // the document is gone: nobody of it is shown or announced
+      setAnnouncement('');
+      return undefined;
+    }
     const { source, directory } = presence;
     let current = othersOf(source, self);
     let baseline = current;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setIds(current);
+    setAnnouncement(''); // nothing said by an earlier document is replayed, and the same sentence can be said again
     const announce = (): void => {
       const joined = current.filter((id) => !baseline.includes(id)).map((id) => directory.nameOf(id));
       const left = baseline.filter((id) => !current.includes(id)).map((id) => directory.nameOf(id));

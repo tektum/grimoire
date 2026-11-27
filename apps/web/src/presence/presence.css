@@ -10,7 +10,7 @@
   color: var(--ink-2);
 }
 /* In the top bar the stack goes to the end of the slot, History and the page menu right after it. */
-.shell-page-controls > .presence {
+.shell-page-controls .presence {
   margin-inline-start: auto;
 }
 .presence-discs {

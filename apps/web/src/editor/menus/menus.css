@@ -41,6 +41,7 @@
   overflow-y: auto;
   transform-origin: top left; /* it opens under the slash */
 }
+:root[dir='rtl'] .slash-host { transform-origin: top right; }
 .slash-host:not([data-show='true']) {
   display: none; /* until the library shows it: it sets no attribute before that, and a view that never changes (a saved text) never reaches it, so an empty box would stay */
   opacity: 0;
@@ -222,7 +223,8 @@
     background: Highlight;
     color: HighlightText;
   }
-  .slash-option[data-active='true'] .slash-shortcut {
+  .slash-option[data-active='true'] .slash-shortcut,
+  .slash-option[data-active='true'] .slash-icon {
     color: HighlightText;
   }
 }

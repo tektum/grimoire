@@ -56,7 +56,10 @@ function createView(ctx: Ctx, view: EditorView) {
     }, BUBBLE_DELAY);
   };
   view.dom.addEventListener('pointerdown', onPointerDown);
-  view.dom.ownerDocument.addEventListener('pointerup', onPointerUp); // the release may be outside the text, where the drag ended
+  const doc = view.dom.ownerDocument;
+  doc.addEventListener('pointerup', onPointerUp); // the release may be outside the text, where the drag ended
+  doc.addEventListener('pointercancel', onPointerUp); // a touch that became a scroll or a native drag ends so, with no release
+  doc.defaultView?.addEventListener('blur', onPointerUp); // a press that ends in another window
 
   const render = (): void => {
     root.render(
@@ -131,7 +134,9 @@ function createView(ctx: Ctx, view: EditorView) {
       destroy() {
         clearTimeout(pointer.timer);
         view.dom.removeEventListener('pointerdown', onPointerDown);
-        view.dom.ownerDocument.removeEventListener('pointerup', onPointerUp);
+        doc.removeEventListener('pointerup', onPointerUp);
+        doc.removeEventListener('pointercancel', onPointerUp);
+        doc.defaultView?.removeEventListener('blur', onPointerUp);
         provider.destroy();
         root.unmount();
         host.remove();

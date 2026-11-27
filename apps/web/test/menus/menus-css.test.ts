@@ -24,4 +24,12 @@ describe('the styles of the editor menus', () => {
     expect(css).toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{\s*visibility:\s*hidden/);
     expect(css).not.toMatch(/\.block-handle:not\(\[data-show='true'\]\)\s*\{[^}]*display:\s*none/);
   });
+
+  it('the active row`s icon is drawn in HighlightText in forced colours, with its shortcut', () => {
+    expect(css).toMatch(/\.slash-option\[data-active='true'\] \.slash-shortcut,\s*\.slash-option\[data-active='true'\] \.slash-icon\s*\{\s*color:\s*HighlightText/);
+  });
+
+  it('the slash menu opens from the line-start side in a right-to-left page too', () => {
+    expect(css).toMatch(/:root\[dir='rtl'\] \.slash-host\s*\{\s*transform-origin:\s*top right/);
+  });
 });

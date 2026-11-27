@@ -1,3 +1,5 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+
 /** The awareness of a page's provider, as far as presence reads it: who is connected and what they published. */
 export interface AwarenessSource {
   readonly clientID: number;
@@ -35,8 +37,8 @@ export function othersOf(source: AwarenessSource, self: string | null): string[]
 /** The awareness of a session, when it has one (the live provider's session does; a test's fake may not). */
 export function awarenessOf(session: object): AwarenessSource | null {
   if (!('awareness' in session)) return null;
-  // The live session's awareness is the provider's own (real-provider.ts), which has this shape.
-  const awareness = session.awareness as AwarenessSource | null;
+  // The live session's awareness is the provider's own (real-provider.ts): typed by the SDK, so that the assignment below fails to compile if it stops fitting AwarenessSource.
+  const awareness: AwarenessSource | null = (session as Partial<Pick<HocuspocusProvider, 'awareness'>>).awareness ?? null;
   return awareness;
 }
 

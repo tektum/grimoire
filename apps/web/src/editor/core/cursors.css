@@ -14,7 +14,9 @@
   pointer-events: none;
   transition: opacity var(--duration-press-exit) var(--ease), transform var(--duration-press-exit) var(--ease);
 }
-.page-editor .ProseMirror-yjs-cursor .cursor-label[data-flip] { bottom: auto; top: calc(100% + 2px); border-radius: 0 4px 4px 4px; transform-origin: left top; }
+.page-editor .ProseMirror-yjs-cursor .cursor-label[data-flip] { bottom: auto; top: calc(100% + 2px); border-start-start-radius: 0; border-start-end-radius: 4px; border-end-end-radius: 4px; border-end-start-radius: 4px; transform-origin: left top; }
+[dir='rtl'] .page-editor .ProseMirror-yjs-cursor .cursor-label { transform-origin: right bottom; }
+[dir='rtl'] .page-editor .ProseMirror-yjs-cursor .cursor-label[data-flip] { transform-origin: right top; }
 .page-editor .ProseMirror-yjs-cursor .cursor-label--shown,
 .page-editor .ProseMirror-yjs-cursor:hover .cursor-label {
   opacity: 1;

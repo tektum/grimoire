@@ -58,6 +58,30 @@ describe('the selection bubble after a press', () => {
     expect(bubbleShown(t)).toBe(true);
   });
 
+  it('a press that is cancelled (a touch that became a scroll or a native drag) does not leave the bar suppressed', async () => {
+    current = await plainEditor('some words here');
+    const t = current;
+    vi.useFakeTimers();
+    press(t.view().dom, 'pointerdown');
+    press(document, 'pointercancel');
+    await vi.advanceTimersByTimeAsync(BUBBLE_DELAY + 20);
+    select(t, 1, 5); // a later selection made with keys
+    await vi.advanceTimersByTimeAsync(10);
+    expect(bubbleShown(t)).toBe(true);
+  });
+
+  it('a press that ends with the window losing focus does not either', async () => {
+    current = await plainEditor('some words here');
+    const t = current;
+    vi.useFakeTimers();
+    press(t.view().dom, 'pointerdown');
+    window.dispatchEvent(new Event('blur'));
+    await vi.advanceTimersByTimeAsync(BUBBLE_DELAY + 20);
+    select(t, 1, 5);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(bubbleShown(t)).toBe(true);
+  });
+
   it('a release of a press made outside the text changes nothing', async () => {
     current = await plainEditor('some words here');
     const t = current;

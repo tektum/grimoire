@@ -24,7 +24,9 @@ const colourOf = (id: string | null): string => COLLAB_COLOURS[colourIndex(id ??
  */
 export function flipsBelow(caret: HTMLElement, label: HTMLElement): boolean {
   const line = caret.getBoundingClientRect();
-  if (line.top - CLEARANCE_PX - (label.offsetHeight || FLAG_PX) < TOP_BAR_PX) return true;
+  // The sticky bar is taller than 44px on a phone (the breadcrumb has its own row there): its real bottom edge is what hides a flag.
+  const bar = caret.ownerDocument.querySelector('.shell-header')?.getBoundingClientRect().bottom ?? TOP_BAR_PX;
+  if (line.top - CLEARANCE_PX - (label.offsetHeight || FLAG_PX) < Math.max(bar, TOP_BAR_PX)) return true;
   let block: HTMLElement = caret;
   while (block.parentElement !== null && !block.parentElement.classList.contains('ProseMirror')) block = block.parentElement;
   const before = block.previousElementSibling;

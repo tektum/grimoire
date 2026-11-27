@@ -224,6 +224,21 @@ describe('the place of the name flag', () => {
     expect(clear.label.hasAttribute('data-flip')).toBe(true);
   });
 
+  it('goes below the line under a taller top bar too (a phone gives the breadcrumb its own row): the measured bottom of the bar, not 44px', async () => {
+    const bar = document.createElement('header');
+    bar.className = 'shell-header';
+    bar.getBoundingClientRect = () => ({ bottom: 80 }) as DOMRect;
+    document.body.append(bar);
+    const { label } = page('p', 80 + 2 + 15 - 3 - 1);
+    await Promise.resolve();
+    expect(label.hasAttribute('data-flip')).toBe(true);
+    document.body.replaceChildren();
+    document.body.append(bar);
+    const clear = page('p', 80 + 2 + 15 - 3);
+    await Promise.resolve();
+    expect(clear.label.hasAttribute('data-flip')).toBe(false);
+  });
+
   it('is placed again when the caret is hovered: a scroll since it arrived may have brought the line under the top bar', async () => {
     const { caret, label } = page('p', 400);
     await Promise.resolve();
