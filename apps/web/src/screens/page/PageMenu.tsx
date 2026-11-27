@@ -1,3 +1,4 @@
+import { Ellipsis } from 'lucide-react';
 import type { Ref } from 'react';
 import { Menu, type MenuItem } from '../../ui/primitives';
 
@@ -8,5 +9,5 @@ import { Menu, type MenuItem } from '../../ui/primitives';
 export function PageMenu({ onHistory, onReset, triggerRef }: { onHistory: () => void; onReset?: (() => void) | undefined; triggerRef?: Ref<HTMLButtonElement> }) {
   const items: MenuItem[] = [{ label: 'History', onSelect: onHistory }];
   if (onReset !== undefined) items.push({ label: 'Reset saved state…', onSelect: onReset });
-  return <Menu label="More page actions" text="More" items={items} {...(triggerRef === undefined ? {} : { triggerRef })} />;
+  return <Menu label="More page actions" icon={<Ellipsis aria-hidden size={16} strokeWidth={1.5} />} items={items} {...(triggerRef === undefined ? {} : { triggerRef })} />;
 }

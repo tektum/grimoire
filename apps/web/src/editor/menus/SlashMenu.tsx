@@ -1,4 +1,24 @@
+import { Code, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, ListTodo, Minus, Paperclip, Table, TextQuote, Type, type LucideIcon } from 'lucide-react';
 import type { BlockKind } from './blocks';
+
+/** The glyph of each kind, decoration only: the label is the name. */
+const ICONS: Readonly<Record<string, LucideIcon>> = {
+  text: Type,
+  'heading-1': Heading1,
+  'heading-2': Heading2,
+  'heading-3': Heading3,
+  'heading-4': Heading4,
+  'heading-5': Heading5,
+  'heading-6': Heading6,
+  'bullet-list': List,
+  'numbered-list': ListOrdered,
+  'task-list': ListTodo,
+  quote: TextQuote,
+  code: Code,
+  divider: Minus,
+  table: Table,
+  file: Paperclip,
+};
 
 export const SLASH_MENU_ID = 'slash-menu';
 export const slashOptionId = (kind: BlockKind): string => `slash-option-${kind.id}`;
@@ -47,6 +67,10 @@ export function SlashMenu(props: { kinds: readonly BlockKind[]; active: number; 
           }}
           onMouseMove={() => props.onHover(index)}
         >
+          {(() => {
+            const Icon = ICONS[kind.id];
+            return Icon === undefined ? null : <Icon className="slash-icon" aria-hidden size={14} strokeWidth={1.5} />;
+          })()}
           <span className="slash-label">{kind.label}</span>
           <span className="slash-description">{kind.description}</span>
           {kind.shortcut === undefined ? null : (

@@ -534,7 +534,7 @@ describe('the page screen', () => {
   it('puts the actions that are not the text in one More menu on the page head, and no button of them on the page itself', async () => {
     mountPage({ meRole: 'admin' });
     await screen.findByRole('button', { name: 'More page actions' });
-    expect(screen.getByRole('button', { name: 'More page actions' }).textContent).toBe('More');
+    expect(screen.getByRole('button', { name: 'More page actions' }).textContent).toBe(''); // an icon button: the name is the aria-label
     expect(screen.queryByRole('button', { name: /Reset saved state/ })).toBeNull();
     expect(screen.queryByRole('link', { name: 'History' })).toBeNull();
     await openMore();

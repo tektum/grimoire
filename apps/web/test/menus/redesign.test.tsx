@@ -155,4 +155,15 @@ describe('the look of the menus', () => {
     expect([...list.children].every((child) => child.getAttribute('role') === 'option')).toBe(true);
     expect(container.querySelector('kbd, footer, .slash-foot')).toBeNull();
   });
+
+  it('every row has an icon that is decoration only, and the Code block row keeps its name and its fence shortcut', () => {
+    render(<SlashMenu kinds={SLASH_KINDS} active={0} onPick={() => undefined} onHover={() => undefined} />);
+    for (const row of screen.getAllByRole('option')) {
+      const icon = row.querySelector('svg.slash-icon');
+      expect(icon, row.textContent ?? '').not.toBeNull();
+      expect(icon!.getAttribute('aria-hidden')).toBe('true');
+    }
+    const code = screen.getByRole('option', { name: /^Code block/ });
+    expect(code.querySelector('.slash-shortcut')!.textContent).toBe('```');
+  });
 });

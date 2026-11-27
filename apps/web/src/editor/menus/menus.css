@@ -58,6 +58,10 @@
 .slash-option[data-active='true'] {
   background: var(--fill-selected);
 }
+.slash-icon {
+  flex: none;
+  color: var(--ink-3);
+}
 .slash-label {
   flex: 1 1 auto;
   font-weight: var(--weight-regular);
