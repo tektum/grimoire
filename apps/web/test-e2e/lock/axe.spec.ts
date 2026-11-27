@@ -83,6 +83,7 @@ test.describe('accessibility of the editor menus', () => {
       await expect.poll(async () => (await remoteBlocks(a)).map((r) => r.blockId), { timeout: 15_000 }).toContain(target.id);
       await surface(a).locator('p', { hasText: 'Second paragraph' }).hover();
       await a.getByRole('button', { name: 'Block menu' }).click();
+      await expect(a.locator('.block-handle-menu')).toHaveCSS('opacity', '1'); // fully faded in: axe measures contrast through the opacity of the moment
       await expectNoAxeViolations(a); // with the handle menu open
       await a.getByRole('option', { name: /^Quote/ }).click();
       await a.getByRole('alert').waitFor();

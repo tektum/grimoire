@@ -52,6 +52,7 @@ test.describe('the soft lock', () => {
       // Bob moves to the first block: the same action works.
       await surface(b).locator('p', { hasText: 'First paragraph.' }).click();
       await expect.poll(async () => (await remoteBlocks(a)).map((r) => r.blockId), { timeout: 15_000 }).not.toContain(before[1]!.id);
+      await expect(a.locator('.slash-host')).toBeHidden(); // the slash menu of the step before has left
       await surface(a).locator('p', { hasText: SECOND }).hover();
       await a.getByRole('button', { name: 'Block menu' }).click();
       await a.getByRole('listbox', { name: 'Turn this block into' }).getByRole('option', { name: /^Bulleted list/ }).click(); // the handle's list: a slash menu that was just used is still leaving

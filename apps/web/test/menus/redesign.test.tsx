@@ -58,6 +58,18 @@ describe('the selection bubble after a press', () => {
     expect(bubbleShown(t)).toBe(true);
   });
 
+  it('a native drag that ends with no pointer event (dragend) releases the press too', async () => {
+    current = await plainEditor('some words here');
+    const t = current;
+    vi.useFakeTimers();
+    press(t.view().dom, 'pointerdown');
+    press(document, 'dragend');
+    await vi.advanceTimersByTimeAsync(BUBBLE_DELAY + 20);
+    select(t, 1, 5);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(bubbleShown(t)).toBe(true);
+  });
+
   it('a press that is cancelled (a touch that became a scroll or a native drag) does not leave the bar suppressed', async () => {
     current = await plainEditor('some words here');
     const t = current;

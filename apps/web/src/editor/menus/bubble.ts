@@ -58,7 +58,9 @@ function createView(ctx: Ctx, view: EditorView) {
   view.dom.addEventListener('pointerdown', onPointerDown);
   const doc = view.dom.ownerDocument;
   doc.addEventListener('pointerup', onPointerUp); // the release may be outside the text, where the drag ended
-  doc.addEventListener('pointercancel', onPointerUp); // a touch that became a scroll or a native drag ends so, with no release
+  doc.addEventListener('pointercancel', onPointerUp);
+  doc.addEventListener('dragend', onPointerUp); // a native drag of selected text may end with no pointer event at all
+  doc.addEventListener('drop', onPointerUp); // a touch that became a scroll or a native drag ends so, with no release
   doc.defaultView?.addEventListener('blur', onPointerUp); // a press that ends in another window
 
   const render = (): void => {
@@ -136,6 +138,8 @@ function createView(ctx: Ctx, view: EditorView) {
         view.dom.removeEventListener('pointerdown', onPointerDown);
         doc.removeEventListener('pointerup', onPointerUp);
         doc.removeEventListener('pointercancel', onPointerUp);
+        doc.removeEventListener('dragend', onPointerUp);
+        doc.removeEventListener('drop', onPointerUp);
         doc.defaultView?.removeEventListener('blur', onPointerUp);
         provider.destroy();
         root.unmount();
@@ -150,6 +154,9 @@ function createView(ctx: Ctx, view: EditorView) {
         return true;
       }
       if (event.key.toLowerCase() !== 'k' || !(event.ctrlKey || event.metaKey) || !bubbleSelection(view)) return false;
+      // Mod-K is the person's own act: whatever press was being waited out is over, so the editor comes now and is not held back until a release that may never be seen.
+      clearTimeout(pointer.timer);
+      pointer.pressing = false;
       openLink();
       provider.show();
       return true;
