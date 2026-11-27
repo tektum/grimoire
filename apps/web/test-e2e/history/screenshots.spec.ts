@@ -37,7 +37,7 @@ test('the revision list, light and dark', async ({ page, context }) => {
   await historyApi(page, STATE);
   await page.goto(`/p/${SLUG}/history`);
   await page.addStyleTag({ content: SANS });
-  await expect(page.getByRole('listitem')).toHaveCount(3);
+  await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(3);
   await page.mouse.move(0, 0);
   await shots(page, TASK, 'list');
 });

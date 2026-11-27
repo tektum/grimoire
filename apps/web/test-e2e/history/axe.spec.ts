@@ -30,7 +30,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await historyApi(page, STATE);
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto(`/p/${SLUG}/history`);
-    await expect(page.getByRole('listitem')).toHaveCount(2);
+    await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(2);
     await expectNoAxeViolations(page, { minImpact: 'serious' });
     await page
       .getByRole('link', { name: /Open this version/ })

@@ -30,7 +30,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/trash');
-    await expect(page.getByRole('listitem')).toHaveCount(1);
+    await expect(page.getByRole('main').getByRole('listitem')).toHaveCount(1);
     await expectNoAxeViolations(page, { minImpact: 'serious' });
     await page.goto('/nowhere/at-all');
     await expect(page.getByRole('heading', { level: 1, name: 'Page not found' })).toBeVisible();

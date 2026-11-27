@@ -26,9 +26,10 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-header .shell-brand { font-weight: 600; color: var(--ink); }
 .shell-header nav { display: flex; gap: var(--space-4); }
-.shell-header .breadcrumb { display: flex; gap: 0; flex: 1; min-width: 0; font-feature-settings: 'case'; white-space: nowrap; }
-.breadcrumb > span { overflow: hidden; text-overflow: ellipsis; }
-.breadcrumb > span + span::before { content: '/'; margin-inline: var(--space-2); color: var(--ink-3); }
+.shell-header .breadcrumb { flex: 1; min-width: 0; font-feature-settings: 'case'; }
+.breadcrumb ol { display: flex; margin: 0; padding: 0; list-style: none; white-space: nowrap; }
+.breadcrumb li { overflow: hidden; text-overflow: ellipsis; }
+.breadcrumb li + li::before { content: '/'; margin-inline: var(--space-2); color: var(--ink-3); }
 .breadcrumb [aria-current='page'] { color: var(--ink); }
 .shell-body { display: flex; flex: 1; min-height: 0; }
 .shell-contents { overflow: auto; box-sizing: border-box; flex: none; width: 264px; padding: var(--space-3); border-inline-end: 1px solid var(--hairline); background: var(--paper-sunken); color: var(--ink-2); font-size: 0.8125rem; }

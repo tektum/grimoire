@@ -36,7 +36,7 @@ test('new page, rename, move under another page, delete and restore', async ({ p
 
   // The trash lists it, and Restore puts it back at its old parent.
   await page.getByRole('link', { name: 'Trash' }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: 'Plan' })).toHaveCount(1);
+  await expect(page.getByRole('main').getByRole('listitem').filter({ hasText: 'Plan' })).toHaveCount(1);
   await page.getByRole('button', { name: 'Restore Plan' }).click();
   await expect(page.getByText('The trash is empty')).toBeVisible();
   await page.goto('/c/c1');

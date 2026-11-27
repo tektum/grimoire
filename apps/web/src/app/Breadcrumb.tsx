@@ -22,10 +22,12 @@ function Trail({ api }: { readonly api: ApiLike }) {
   const label = (title: string): string => (title === '' ? 'Untitled' : title);
   return (
     <nav aria-label="Breadcrumb" className="breadcrumb">
-      <span>{path.length === 0 ? <span aria-current="page">{name}</span> : <Link to={`/c/${collectionId}`}>{name}</Link>}</span>
-      {path.map((p, i) => (
-        <span key={p.id}>{i === path.length - 1 ? <span aria-current="page">{label(p.title)}</span> : <Link to={pagePath(p.title, p.urlId)}>{label(p.title)}</Link>}</span>
-      ))}
+      <ol>
+        <li>{path.length === 0 ? <span aria-current="page">{name}</span> : <Link to={`/c/${collectionId}`}>{name}</Link>}</li>
+        {path.map((p, i) => (
+          <li key={p.id}>{i === path.length - 1 ? <span aria-current="page">{label(p.title)}</span> : <Link to={pagePath(p.title, p.urlId)}>{label(p.title)}</Link>}</li>
+        ))}
+      </ol>
     </nav>
   );
 }
