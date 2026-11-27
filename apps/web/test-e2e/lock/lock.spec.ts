@@ -29,7 +29,7 @@ test.describe('the soft lock', () => {
       // From the handle menu of the second block.
       await surface(a).locator('p', { hasText: SECOND }).hover();
       await a.getByRole('button', { name: 'Block menu' }).click();
-      await a.getByRole('option', { name: /^Bulleted list/ }).click();
+      await a.getByRole('listbox', { name: 'Turn this block into' }).getByRole('option', { name: /^Bulleted list/ }).click(); // the handle's list: a slash menu that was just used is still leaving
       await expect(a.getByRole('alert')).toContainText(`${meB.name} is editing this block`);
       await expect(a.getByRole('alert').locator('.lock-message')).toHaveText(`${meB.name} is editing this block`);
       expect(await blocks(a), 'the block is unchanged: the same element, still a paragraph, the same text').toEqual(before);
@@ -54,7 +54,7 @@ test.describe('the soft lock', () => {
       await expect.poll(async () => (await remoteBlocks(a)).map((r) => r.blockId), { timeout: 15_000 }).not.toContain(before[1]!.id);
       await surface(a).locator('p', { hasText: SECOND }).hover();
       await a.getByRole('button', { name: 'Block menu' }).click();
-      await a.getByRole('option', { name: /^Bulleted list/ }).click();
+      await a.getByRole('listbox', { name: 'Turn this block into' }).getByRole('option', { name: /^Bulleted list/ }).click(); // the handle's list: a slash menu that was just used is still leaving
       await expect(surface(a).locator('ul')).toHaveCount(1);
       await expect(a.getByRole('alert')).toHaveCount(0);
     } finally {

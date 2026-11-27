@@ -18,6 +18,7 @@ test.describe('accessibility of the editor menus', () => {
       await page.keyboard.press('Enter');
       await page.keyboard.type('/');
       await page.getByRole('option').first().waitFor();
+      await expect(page.locator('.slash-host')).toHaveCSS('opacity', '1'); // the menu fades in: axe measures contrast through the opacity of the moment
       await expectNoAxeViolations(page);
     } finally {
       await users.close();
@@ -38,6 +39,7 @@ test.describe('accessibility of the editor menus', () => {
       await expect(list).toHaveAttribute('aria-activedescendant', /option-text$/);
       await page.keyboard.press('ArrowDown');
       await expect(list).toHaveAttribute('aria-activedescendant', /option-heading-1$/);
+      await expect(page.locator('.block-handle-menu')).toHaveCSS('opacity', '1'); // fully faded in: axe measures contrast through the opacity of the moment
       await expectNoAxeViolations(page);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Block menu' })).toBeFocused();
