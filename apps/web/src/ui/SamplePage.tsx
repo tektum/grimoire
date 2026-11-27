@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { COLLAB_COLOURS, labelText } from './collab';
 import { inPageHref } from './inpage';
 
-const TOKENS = ['paper', 'ink', 'accent', 'muted', 'border', 'focus'] as const;
+const TOKENS = ['paper', 'paper-raised', 'paper-sunken', 'ink', 'ink-2', 'ink-3', 'hairline', 'control-border', 'accent', 'focus'] as const;
 const NAMES = ['Ada', 'Grace', 'Linus', 'Margaret', 'Dennis', 'Barbara', 'Ken', 'Radia'] as const;
 
 function Cursor({ index, name }: { index: number; name: string }) {

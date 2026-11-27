@@ -34,7 +34,7 @@
   border: 0;
   border-radius: var(--radius-1);
   background: transparent;
-  color: var(--muted);
+  color: var(--ink-2);
   cursor: pointer;
 }
 .tree-toggle:hover {
@@ -56,14 +56,14 @@
   font-weight: 600;
 }
 .tree-empty {
-  color: var(--muted);
+  color: var(--ink-2);
 }
 
 .tree-rename {
   flex: 1;
   min-width: 0;
   padding: 0 var(--space-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-1);
   background: var(--paper);
   color: var(--ink);
@@ -83,7 +83,7 @@
   border: 0;
   border-radius: var(--radius-1);
   background: transparent;
-  color: var(--muted);
+  color: var(--ink-2);
   cursor: pointer;
 }
 .tree-menu:hover {
@@ -92,7 +92,7 @@
 }
 .contents-title {
   margin: 0 0 var(--space-2);
-  color: var(--muted);
+  color: var(--ink-2);
 }
 .contents-head {
   display: flex;

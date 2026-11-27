@@ -26,7 +26,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // What the tokens are, in this scheme, read back as colours the browser computes.
     const wanted = await page.evaluate(() => {
       const probe = document.createElement('div');
-      probe.style.cssText = 'background: var(--paper-raised); color: var(--ink); border-color: var(--border)';
+      probe.style.cssText = 'background: var(--paper-raised); color: var(--ink); border-color: var(--hairline)';
       document.body.append(probe);
       const style = getComputedStyle(probe);
       const colours = { background: style.backgroundColor, color: style.color };

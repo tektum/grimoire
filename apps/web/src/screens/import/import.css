@@ -1,26 +1,26 @@
 .import-screen { max-inline-size: var(--measure, 44rem); margin-inline: auto; }
 .import-form { display: grid; gap: var(--space-2); justify-items: start; }
 /* The collection select has the height and the look of the other fields and buttons. */
-.import-form select { max-inline-size: 100%; font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); min-block-size: 2.625rem; }
-.import-form select:hover:not(:disabled) { border-color: var(--muted); }
+.import-form select { max-inline-size: 100%; font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); min-block-size: 2.625rem; }
+.import-form select:hover:not(:disabled) { border-color: var(--ink-2); }
 .import-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); max-inline-size: 100%; }
 .import-file-button { display: inline-flex; align-items: center; position: relative; min-block-size: 2.625rem; box-sizing: border-box; }
 .import-file-button:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .import-file-button[data-disabled='true'] { opacity: 0.5; cursor: default; }
 .import-file-input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
-.import-file-name { color: var(--muted); overflow-wrap: anywhere; min-inline-size: 0; }
-.import-warning { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-inline-start: 4px solid var(--accent); border-radius: var(--radius-2); background: var(--paper-raised); }
+.import-file-name { color: var(--ink-2); overflow-wrap: anywhere; min-inline-size: 0; }
+.import-warning { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--hairline); border-inline-start: 4px solid var(--accent); border-radius: var(--radius-2); background: var(--paper-raised); }
 .import-progress { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
-.import-bar { inline-size: 100%; block-size: 0.75rem; border: 1px solid var(--muted); border-radius: 999px; overflow: hidden; background: var(--paper-raised); }
+.import-bar { inline-size: 100%; block-size: 0.75rem; border: 1px solid var(--ink-2); border-radius: 999px; overflow: hidden; background: var(--paper-raised); }
 .import-bar-fill { block-size: 100%; background: var(--accent); }
 @media (forced-colors: active) {
   .import-bar-fill { background: Highlight; }
 }
 
 .import-report-list { list-style: none; padding: 0; display: grid; gap: var(--space-2); }
-.import-report-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.import-report-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
 .import-report-path { overflow-wrap: anywhere; font-weight: 600; }
-.import-report-status { color: var(--muted); }
+.import-report-status { color: var(--ink-2); }
 .import-report-message { overflow-wrap: anywhere; flex-basis: 100%; }
 .import-report { margin-block: var(--space-5) var(--space-4); }
 .import-report-list li { row-gap: var(--space-2); padding-block: var(--space-3); }
@@ -28,14 +28,14 @@
 .import-profile legend { padding: 0; margin-block-end: var(--space-2); font-weight: 600; }
 .import-profile-option { display: flex; align-items: center; gap: var(--space-3); min-block-size: 2.625rem; cursor: pointer; }
 .import-profile[disabled] .import-profile-option { opacity: 0.5; cursor: default; }
-.import-reason { margin: 0; color: var(--muted); }
+.import-reason { margin: 0; color: var(--ink-2); }
 
 /* What the import did to the content: a table of the kinds of content, the pages that hold each behind a disclosure, and the pages that still hold HTML. Long paths wrap, so that nothing scrolls sideways at a narrow width. */
 .import-constructs { margin-block: var(--space-5) var(--space-4); }
 .import-constructs table { inline-size: 100%; border-collapse: collapse; }
-.import-constructs caption { text-align: start; color: var(--muted); padding-block-end: var(--space-2); }
-.import-constructs th, .import-constructs td { text-align: start; vertical-align: top; padding: var(--space-3) var(--space-3) var(--space-3) 0; border-bottom: 1px solid var(--border); overflow-wrap: break-word; }
-.import-constructs thead th { color: var(--muted); font-weight: 600; }
+.import-constructs caption { text-align: start; color: var(--ink-2); padding-block-end: var(--space-2); }
+.import-constructs th, .import-constructs td { text-align: start; vertical-align: top; padding: var(--space-3) var(--space-3) var(--space-3) 0; border-bottom: 1px solid var(--hairline); overflow-wrap: break-word; }
+.import-constructs thead th { color: var(--ink-2); font-weight: 600; }
 .import-constructs tbody th { font-weight: 600; }
 .import-constructs td:nth-child(3) { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .import-constructs details { margin-block-start: var(--space-2); }

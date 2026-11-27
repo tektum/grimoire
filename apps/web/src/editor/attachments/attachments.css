@@ -12,15 +12,15 @@
 .attachment-image[data-state='loading'] {
   min-height: 3rem;
   min-width: 6rem;
-  background: var(--code-bg);
+  background: var(--paper-sunken);
   border-radius: var(--radius-1);
 }
 .attachment-image[data-state='external'],
 .attachment-image[data-state='failed'] {
   padding: var(--space-2) var(--space-3);
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--hairline);
   border-radius: var(--radius-1);
-  color: var(--muted);
+  color: var(--ink-2);
   font-family: var(--font-ui);
   font-size: 0.875rem;
 }
@@ -30,7 +30,7 @@
 }
 .attachment-uploading {
   margin-inline-start: var(--space-2);
-  color: var(--muted);
+  color: var(--ink-2);
   font-family: var(--font-ui);
   font-size: 0.875rem;
 }
