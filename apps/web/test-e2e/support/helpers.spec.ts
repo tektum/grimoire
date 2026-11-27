@@ -6,7 +6,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { DEV_TOKEN_PATTERN } from '../../test/support/dev-token';
 import { DEV_TOKEN_EXPIRES_STORAGE_KEY, DEV_TOKEN_STORAGE_KEY, signInAs, STAND_IN_SECRET } from './sign-in';
-import { shotPath, shots } from './shots';
+import { shotPath, shots, shotsWidthOf } from './shots';
 import { twoUsers } from './two-users';
 import { waitForSynced } from './sync';
 
@@ -160,6 +160,14 @@ test.describe('waitForSynced', () => {
 });
 
 test.describe('shots', () => {
+  test('takes the width of E2E_SHOTS_WIDTH when it is a whole positive number, and 1280 otherwise', () => {
+    expect(shotsWidthOf(undefined)).toBe(1280);
+    expect(shotsWidthOf('1440')).toBe(1440);
+    expect(shotsWidthOf('390')).toBe(390);
+    for (const bad of ['', 'wide', '0', '-390', '390.5', 'NaN', 'Infinity']) expect(shotsWidthOf(bad), bad).toBe(1280);
+  });
+
+
   test('writes a light and a dark picture of 1280 by 800 and masks password inputs', async ({ page }) => {
     await page.route('**/form.html', (route) =>
       route.fulfill({
@@ -171,7 +179,7 @@ test.describe('shots', () => {
     await page.fill('#p', 'hunter2hunter2');
     const dark = () => page.evaluate(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
     const before = await dark();
-    const files = await shots(page, 'm6-t01a', 'form');
+    const files = await shots(page, 'm6-t01a', 'form', { width: 1280 }); // 1280 whatever E2E_SHOTS_WIDTH says
     // The page is left as it was found: the dark picture does not leave dark mode on for what the test does next.
     expect(await dark()).toBe(before);
     expect(files.map((f) => path.relative(shotsDir, f))).toEqual(['m6-t01a/form-light.png', 'm6-t01a/form-dark.png']);

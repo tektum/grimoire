@@ -148,6 +148,8 @@ test('on a phone the bar shows the parent page with a back chevron, 44px high, a
       expect((await hidden.boundingBox())!.width).toBeLessThanOrEqual(1);
     }
     await expect(tab.getByRole('link', { name: 'Grimoire' })).toBeHidden(); // the brand gives way to it
+    await tab.evaluate(() => { document.documentElement.dir = 'rtl'; });
+    expect(await parent.evaluate((a) => getComputedStyle(a.parentElement!, '::before').content)).toContain('\u203a'); // in right-to-left text the way back is to the right
     expect(await tab.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   } finally {
     await stop();

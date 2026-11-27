@@ -59,6 +59,7 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .breadcrumb li:not(:nth-last-child(2), :only-child):not(:focus-within) { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
   .breadcrumb li + li::before { content: none; }
   .breadcrumb li:nth-last-child(2)::before { content: '\2039' / ''; flex: none; margin-inline: 0 var(--space-1); color: var(--ink-3); font-size: 1.5em; line-height: 1; }
+  .breadcrumb li:nth-last-child(2):dir(rtl)::before { content: '\203A' / ''; margin-inline: 0 var(--space-1); } /* the chevron points the way back, which is right in a right-to-left text */
   .breadcrumb li:nth-last-child(2) { align-items: center; }
   .breadcrumb li:nth-last-child(2) > a { display: inline-flex; align-items: center; min-height: 44px; }
   .shell-header:has(.breadcrumb li:nth-last-child(2)) .shell-brand { display: none; }
@@ -179,7 +180,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* The screens that are not the page, and the dialogs: controls of 32px on the interface scale, edges that reach 3:1, the page's quiet secondary text. */
 .shell-main:not(:has(.page-layout)) :is(input:not([type='checkbox'], [type='radio'], [type='file']), select, textarea),
-.modal :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+.modal:not(.palette) :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
   box-sizing: border-box;
   min-block-size: 32px;
   padding: var(--space-1) var(--space-3);
@@ -190,7 +191,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   font: inherit;
 }
 .shell-main:not(:has(.page-layout)) button,
-.modal button {
+.modal:not(.palette) button {
   min-block-size: 32px;
   padding-block: var(--space-1);
 }

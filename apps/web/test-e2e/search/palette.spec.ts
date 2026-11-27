@@ -104,3 +104,14 @@ for (const scheme of ['light', 'dark'] as const) {
     }
   });
 }
+
+// DESIGN.md "Search": the input row is 52px, Inter 16, no border. The dialog rule for controls (32px, a 3:1 edge, 14px) is for the dialogs' own fields, not for this input.
+test('the input of the palette is 16px with no edge of its own, in a 52px row, and the dialog rule for fields does not reach it', async ({ page, context }) => {
+  await open(page, context);
+  await page.keyboard.press('Control+k');
+  const style = await page.getByRole('combobox').evaluate((input) => {
+    const s = getComputedStyle(input);
+    return { size: s.fontSize, border: s.borderTopWidth, background: s.backgroundColor, row: input.parentElement!.getBoundingClientRect().height, padding: s.paddingInlineStart };
+  });
+  expect(style).toEqual({ size: '16px', border: '0px', background: 'rgba(0, 0, 0, 0)', row: 52, padding: '8px' });
+});

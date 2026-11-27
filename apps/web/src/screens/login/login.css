@@ -35,6 +35,7 @@
 .login-form input,
 .login-form select {
   font: inherit;
+  box-sizing: border-box;
   min-block-size: 36px;
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--control-border);
