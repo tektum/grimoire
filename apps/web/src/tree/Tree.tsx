@@ -13,7 +13,7 @@ import './tree.css';
 
 /** Rows are drawn for the visible window only: the DOM holds a screenful, however many pages there are. */
 export const TREE_HEIGHT = 560;
-export const ROW_HEIGHT = 32;
+export const ROW_HEIGHT = 28;
 const INDENT = 20;
 
 /** The first level is open at the start (a page with children shows them); deeper levels start closed. */

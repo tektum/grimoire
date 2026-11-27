@@ -15,29 +15,53 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .skip-link:focus { top: var(--space-2); }
 
 .shell { display: flex; flex-direction: column; min-height: 100vh; }
-.shell-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--hairline); background: var(--paper-raised); }
-.shell-header a { font-weight: 600; text-decoration: none; color: var(--ink); }
+/* The top bar: 44px, sticky, the one translucent surface; a hairline shows only once the page has scrolled. */
+.shell-header { position: sticky; top: 0; z-index: 5; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-4); min-height: 44px; padding-inline: var(--space-4); border-bottom: 1px solid transparent; background: color-mix(in srgb, var(--paper) 80%, transparent); backdrop-filter: blur(20px) saturate(1.4); font-size: 0.8125rem; }
+.shell-header[data-scrolled] { border-bottom-color: var(--hairline); }
+@media (prefers-reduced-transparency: reduce) {
+  .shell-header { background: var(--paper); backdrop-filter: none; }
+}
+.shell-header a { text-decoration: none; color: var(--ink-2); }
+.shell-header a:hover { color: var(--ink); }
+.shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
+.shell-header .shell-brand { font-weight: 600; color: var(--ink); }
 .shell-header nav { display: flex; gap: var(--space-4); }
-.shell-header nav a { font-weight: 400; color: var(--ink-2); }
+.shell-header .breadcrumb { display: flex; gap: 0; flex: 1; min-width: 0; font-feature-settings: 'case'; white-space: nowrap; }
+.breadcrumb > span { overflow: hidden; text-overflow: ellipsis; }
+.breadcrumb > span + span::before { content: '/'; margin-inline: var(--space-2); color: var(--ink-3); }
+.breadcrumb [aria-current='page'] { color: var(--ink); }
 .shell-body { display: flex; flex: 1; min-height: 0; }
-.shell-contents { width: 18rem; padding: var(--space-4) var(--space-5); border-inline-end: 1px solid var(--hairline); color: var(--ink-2); font-size: 0.9rem; }
+.shell-contents { overflow: auto; box-sizing: border-box; flex: none; width: 264px; padding: var(--space-3); border-inline-end: 1px solid var(--hairline); background: var(--paper-sunken); color: var(--ink-2); font-size: 0.8125rem; }
 .shell-main { flex: 1; min-width: 0; padding: var(--space-6) var(--space-5); }
 /* A narrow window, or a page at 400% zoom (320 CSS pixels): the contents go above the page and nothing makes the page scroll sideways. */
+@media (min-width: 40.0625rem) {
+  .shell-contents { position: sticky; top: 44px; align-self: flex-start; height: calc(100vh - 44px); }
+}
 @media (max-width: 40rem) {
+  .shell-header { flex-wrap: wrap; padding-block: var(--space-2); }
+  .shell-header .breadcrumb { flex: 1 0 100%; order: 3; }
+  .shell-contents-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+  .shell-contents:not([data-open]) { display: none; }
   .shell-body { flex-direction: column; }
   .shell-contents { width: auto; border-inline-end: 0; border-block-end: 1px solid var(--hairline); }
   .shell-main { padding: var(--space-4) var(--space-3); }
+}
+@media (pointer: coarse) {
+  .shell-header { min-height: 44px; }
+  .shell-header a, .shell-header button { display: inline-flex; align-items: center; min-height: 44px; }
 }
 .error-boundary { max-width: 30rem; margin: var(--space-6) auto; padding: var(--space-5); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); }
 .error-boundary h1 { margin-top: 0; font-size: 1.4rem; }
 .error-boundary button + button { margin-inline-start: var(--space-2); }
 
-button, .button { font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); cursor: pointer; transition: background var(--duration-press) var(--ease), border-color var(--duration-press) var(--ease); }
+button, .button { font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--control-border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); cursor: pointer; transition: background var(--duration-press) var(--ease), border-color var(--duration-press) var(--ease); }
 button:hover { border-color: var(--ink-2); }
 button[data-variant='primary'] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 /* Forced colours (high contrast): the system chooses the colours, so the primary button names them (face, text and a heavier border) instead of the accent and paper it has otherwise. */
 @media (forced-colors: active) {
   button[data-variant='primary'] { background: ButtonFace; border: 2px solid ButtonText; color: ButtonText; }
+  .shell-header { background: Canvas; backdrop-filter: none; }
+  .shell-header[data-scrolled] { border-bottom-color: CanvasText; }
 }
 button:disabled { opacity: 0.5; cursor: default; }
 
@@ -72,7 +96,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .token-chip i { width: 1.4rem; height: 1.4rem; border: 1px solid var(--hairline); border-radius: var(--radius-1); display: inline-block; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  /* Opacity only, at 80ms: state changes are still seen, nothing moves. */
+  *, *::before, *::after { transition-property: opacity !important; transition-duration: 80ms !important; animation: none !important; scroll-behavior: auto !important; }
 }
 
 .overlay { position: fixed; inset: 0; background: var(--scrim); }

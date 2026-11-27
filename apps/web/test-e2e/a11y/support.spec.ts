@@ -15,7 +15,8 @@ test.beforeAll(async () => {
     '/buttons': PAGE('<h1>Buttons</h1><button id="a">First</button><button id="b">Second</button>'),
     '/links': PAGE('<h1>Links</h1><a id="l" href="#x">A link</a><button id="s">A button</button>'),
     '/moving': PAGE('<h1>Moving</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}.spin{animation:s 2s infinite}@keyframes s{to{opacity:.5}}'),
-    '/still': PAGE('<h1>Still</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}'),
+    '/still': PAGE('<h1>Still</h1><button class="slow">Slow</button>', '.slow{transition:opacity 120ms ease}@media (prefers-reduced-motion: reduce){*{transition-property:opacity!important;transition-duration:80ms!important;animation:none!important}}'),
+    '/slides': PAGE('<h1>Slides</h1><button class="slide">Slide</button>', '.slide{transition:transform 80ms ease}'),
     '/clean': PAGE('<h1>Clean</h1><button>Named</button>'),
     '/fading': PAGE(
       '<h1>Fading</h1><button>Fades</button>',
@@ -127,7 +128,7 @@ test('an element that is there and that Tab skips is told apart from one that is
   await expect(tabTo(page, page.locator('#off'), { limit: 5 })).rejects.toThrow(/<button disabled>, and Tab skips it/);
 });
 
-test('a transition or an animation that lasts is found, and nothing is under reduced motion', async ({ page }) => {
+test('a transition or an animation that lasts is found, and under reduced motion only an 80ms fade is left', async ({ page }) => {
   await page.goto(server.url('/moving'));
   expect((await lastingMotion(page)).join('\n')).toMatch(/button\.slow \(transition 0\.12s/);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -136,6 +137,9 @@ test('a transition or an animation that lasts is found, and nothing is under red
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(server.url('/still'));
   expect((await lastingMotion(page)).length).toBeGreaterThan(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(server.url('/slides'));
+  expect((await lastingMotion(page)).join('\n'), 'a transform moves, however short').toMatch(/button\.slide \(transition 0\.08s of transform/);
 });
 
 test('axe does not measure the colours of a button that is still changing with the scheme', async ({ page }) => {

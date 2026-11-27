@@ -13,6 +13,7 @@ import { useOpenCollection } from '../tree/ContentsPanel';
 import { pagePath, type FlatPage } from '../tree/model';
 import { useCollectionTree } from '../tree/useTree';
 import { VisuallyHiddenText } from './hidden';
+import { onOpenPalette } from './open';
 import { commandsFor, filterCommands } from './commands';
 import './palette.css';
 
@@ -59,6 +60,15 @@ function PaletteDialog() {
     setOpen((was) => !was);
   }, []);
   useShortcut(toggle);
+  useEffect(
+    () =>
+      onOpenPalette(() => {
+        if (opened.current) return;
+        returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setOpen(true);
+      }),
+    [],
+  );
   useEffect(() => {
     if (!open && opened.current) {
       const back = returnTo.current;

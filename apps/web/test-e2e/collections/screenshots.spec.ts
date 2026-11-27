@@ -39,8 +39,8 @@ test('the collection list and the contents tree, light and dark', async ({ page:
     // Three levels, one row expanded and one focused, from the keyboard.
     await tab.getByRole('button', { name: 'Expand Getting started guide' }).click();
     await expect(tab.getByRole('treeitem')).toHaveCount(7);
-    // The way a keyboard user arrives: Tab until a row of the tree has the focus (it is one stop), then the arrow keys move down two rows.
-    for (let i = 0; i < 12 && !(await tab.evaluate(() => document.activeElement?.classList.contains('tree-item') === true)); i += 1) await tab.keyboard.press('Tab');
+    // The way a keyboard user arrives: Tab until a row of the tree has the focus (it is one stop, after the top bar's breadcrumb and the search button), then the arrow keys move down two rows.
+    for (let i = 0; i < 20 && !(await tab.evaluate(() => document.activeElement?.classList.contains('tree-item') === true)); i += 1) await tab.keyboard.press('Tab');
     await tab.keyboard.press('ArrowDown');
     await tab.keyboard.press('ArrowDown');
     await expect(tab.locator('.tree-row[data-focused]')).toHaveCount(1); // the point of this shot: one row has the focus

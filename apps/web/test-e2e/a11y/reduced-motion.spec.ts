@@ -5,7 +5,7 @@ import { STOPS, stopReady } from './routes';
 import { lastingMotion } from './support';
 import { prepareWorld, type World } from './world';
 
-// With reduced motion asked for, no element on any route moves: every computed `transition-duration` and `animation-duration` is zero (needs the whole stack).
+// With reduced motion asked for, no element on any route moves: a transition is a fade of opacity of 80ms at most and no animation runs (needs the whole stack).
 let world: World;
 
 test.beforeAll(async ({ browser, baseURL }) => {
@@ -13,7 +13,7 @@ test.beforeAll(async ({ browser, baseURL }) => {
   world = await prepareWorld(browser, baseURL);
 });
 
-test('with reduced motion, nothing on any route has a transition or an animation that lasts', async ({ browser, baseURL }) => {
+test('with reduced motion, nothing on any route moves: at most an 80ms fade, no animation', async ({ browser, baseURL }) => {
   test.slow();
   const failures: string[] = [];
   for (const stop of STOPS) {

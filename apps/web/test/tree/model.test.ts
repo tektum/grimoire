@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTree, pagePath, slugOf, type FlatPage } from '../../src/tree/model';
+import { ancestry, buildTree, pagePath, slugOf, type FlatPage } from '../../src/tree/model';
 import { urlIdOf } from '../../src/app/routes';
 
 const page = (id: string, parentId: string | null, position: string, title = id): FlatPage => ({ id, urlId: id.slice(0, 8), parentId, position, title, icon: null });
@@ -61,5 +61,18 @@ describe('slugOf and pagePath', () => {
     const path = pagePath('Plan for May', 'a1b2c3d4');
     expect(path).toBe('/p/plan-for-may-a1b2c3d4');
     expect(urlIdOf(path.slice(3))).toBe('a1b2c3d4');
+  });
+});
+
+describe('ancestry', () => {
+  it('lists the pages from the top down to the page, itself last', () => {
+    const pages = [page('a0000000-0', null, 'p1'), page('b0000000-0', 'a0000000-0', 'p1'), page('c0000000-0', 'b0000000-0', 'p1'), page('d0000000-0', null, 'p2')];
+    expect(ancestry(pages, 'c0000000').map((p) => p.id)).toEqual(['a0000000-0', 'b0000000-0', 'c0000000-0']);
+  });
+
+  it('is empty for a page that is not in the list, and stops at a parent cycle', () => {
+    expect(ancestry([page('a0000000-0', null, 'p1')], 'zzzzzzzz')).toEqual([]);
+    const loop = [page('a0000000-0', 'b0000000-0', 'p1'), page('b0000000-0', 'a0000000-0', 'p1')];
+    expect(ancestry(loop, 'a0000000').map((p) => p.id)).toEqual(['b0000000-0', 'a0000000-0']);
   });
 });
