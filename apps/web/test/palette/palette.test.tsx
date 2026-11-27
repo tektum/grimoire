@@ -371,6 +371,15 @@ describe('what an empty query offers, and what no match offers (DESIGN.md Search
     await waitFor(() => expect(screen.queryByRole('option', { name: 'Gone page' })).toBeNull());
   });
 
+  it('names its keycaps in words for a screen reader, as text (aria-label is not allowed on a kbd), and draws the glyphs for the eye only', async () => {
+    show(fake().api);
+    await openIt();
+    const foot = document.querySelector('.palette-foot')!;
+    expect(foot.querySelector('kbd[aria-label]')).toBeNull();
+    expect([...foot.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['↑Up', '↓Down', 'Enter', 'Esc']);
+    expect([...foot.querySelectorAll('kbd > span[aria-hidden="true"]')].map((g) => g.textContent)).toEqual(['↑', '↓']);
+  });
+
   it('offers no page to make where the person can only read', async () => {
     localStorage.clear();
     show(fake().api, '/c/c2');

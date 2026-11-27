@@ -1,3 +1,4 @@
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Command } from 'cmdk';
 import { CornerDownLeft, FileText, Folder, Plus, Search as SearchIcon, SquareArrowOutUpRight, type LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -202,8 +203,9 @@ function PaletteDialog() {
     if (first !== undefined) setSelected(`result:${first.pageId}`);
   }, [first]);
 
+  const noMatch = !waiting && !failed && results.length === 0 && shown.length === 0;
   // Nothing matches: the one thing offered, New page with the text as its title, is the row Enter takes.
-  const offersTitled = !waiting && !failed && results.length === 0 && shown.length === 0 && writable && collectionId !== undefined && !unreadable && text.trim() !== '';
+  const offersTitled = noMatch && writable && collectionId !== undefined && !unreadable && text.trim() !== '';
   useEffect(() => {
     if (offersTitled) setSelected('action:new-page-titled');
   }, [offersTitled]);
@@ -246,7 +248,23 @@ function PaletteDialog() {
       </div>
       {/* A thin line under the input while a search runs (decoration: "Searching…" below is what is announced). */}
       <div className="palette-progress" data-active={waiting ? 'true' : 'false'} aria-hidden="true" />
-      <Command.List>
+      {waiting && (
+        <p className="palette-note palette-searching" role="status">
+          Searching…
+        </p>
+      )}
+      {failed && (
+        <p className="palette-note" role="alert">
+          Search is not available right now.
+        </p>
+      )}
+      {noMatch && (
+        <p className="palette-note" role="status">
+          No pages match “{text.trim()}”
+        </p>
+      )}
+      {/* Options only: a note inside a listbox is not one of its allowed children, so the notes stand above it. */}
+      <Command.List hidden={results.length === 0 && shown.length === 0 && !(noMatch && offersTitled)}>
         {(['Recent', 'Pages'] as const).map((group) => (
           <CommandGroup key={group} group={group} items={shown.filter((c) => c.group === group)} words={words} go={go} newPage={newPage} />
         ))}
@@ -281,52 +299,43 @@ function PaletteDialog() {
         {(['Collections', 'Go to', 'Actions'] as const).map((group) => (
           <CommandGroup key={group} group={group} items={shown.filter((c) => c.group === group)} words={words} go={go} newPage={newPage} />
         ))}
-        {waiting && (
-          <p className="palette-note palette-searching" role="status">
-            Searching…
-          </p>
-        )}
-        {failed && (
-          <p className="palette-note" role="alert">
-            Search is not available right now.
-          </p>
-        )}
-        {!waiting && !failed && results.length === 0 && shown.length === 0 && (
-          <>
-            <p className="palette-note" role="status">
-              No pages match “{text.trim()}”
-            </p>
-            {offersTitled && (
-              <Command.Group>
-                <Command.Item
-                  value="action:new-page-titled"
-                  onSelect={() => {
-                    newPage(text.trim());
-                  }}
-                >
-                  <Row icon={Plus} path={`titled “${text.trim()}”`}>
-                    New page
-                  </Row>
-                </Command.Item>
-              </Command.Group>
-            )}
-          </>
+        {noMatch && offersTitled && (
+          <Command.Group>
+            <Command.Item
+              value="action:new-page-titled"
+              onSelect={() => {
+                newPage(text.trim());
+              }}
+            >
+              <Row icon={Plus} path={`titled “${text.trim()}”`}>
+                New page
+              </Row>
+            </Command.Item>
+          </Command.Group>
         )}
       </Command.List>
       {/* The keys, as keycaps: the arrows and return are glyphs, and the words are their accessible text. */}
       <p className="palette-foot">
         <span>
-          <kbd aria-label="Up">↑</kbd>
-          <kbd aria-label="Down">↓</kbd> Move
+          <kbd>
+            <span aria-hidden="true">↑</span>
+            <VisuallyHidden>Up</VisuallyHidden>
+          </kbd>
+          <kbd>
+            <span aria-hidden="true">↓</span>
+            <VisuallyHidden>Down</VisuallyHidden>
+          </kbd>{' '}
+          Move
         </span>
         <span>
-          <kbd aria-label="Enter">
+          <kbd>
             <CornerDownLeft aria-hidden size={12} strokeWidth={1.5} />
+            <VisuallyHidden>Enter</VisuallyHidden>
           </kbd>{' '}
           Open
         </span>
         <span>
-          <kbd aria-label="Escape">Esc</kbd> Close
+          <kbd>Esc</kbd> Close
         </span>
       </p>
     </Command.Dialog>
