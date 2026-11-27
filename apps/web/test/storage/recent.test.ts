@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createClientStorage } from '../../src/storage';
-import { RECENT_MAX, clearRecent, readRecent, recordRecent } from '../../src/storage/recent';
+import { RECENT_MAX, clearRecent, readRecent, recordRecent, removeRecent } from '../../src/storage/recent';
 import '../support/dom';
 
 afterEach(() => { localStorage.clear(); });
@@ -51,5 +51,24 @@ describe('the pages opened last, kept in this browser', () => {
     expect(() => { clearRecent(storage); }).not.toThrow(); // an index that cannot be read is no index
     localStorage.setItem('grimoire.recent-owners', '{"x":1}');
     expect(() => { clearRecent(storage); }).not.toThrow();
+  });
+
+  it('takes one page out of one person\'s list, and writes nothing when it is not there', () => {
+    recordRecent('a', page(1));
+    recordRecent('a', page(2));
+    recordRecent('b', page(1));
+    removeRecent('a', 'u1');
+    expect(readRecent('a').map((p) => p.id)).toEqual(['p2']);
+    expect(readRecent('b').map((p) => p.id)).toEqual(['p1']);
+    const before = localStorage.getItem('grimoire.recent.a');
+    removeRecent('a', 'nope');
+    expect(localStorage.getItem('grimoire.recent.a')).toBe(before);
+  });
+
+  it('keeps a page with a collection id, and drops what has a collection id that is not text', () => {
+    recordRecent('a', { ...page(1), collectionId: 'c1' });
+    expect(readRecent('a')[0]!.collectionId).toBe('c1');
+    localStorage.setItem('grimoire.recent.a', JSON.stringify([{ ...page(2), collectionId: 7 }]));
+    expect(readRecent('a')).toEqual([]);
   });
 });

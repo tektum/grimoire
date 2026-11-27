@@ -35,8 +35,10 @@ describe('a page the person may not read looks the same as a page that does not 
     expect(unknown.view.container.innerHTML).toBe(forbiddenHtml);
     expect(screen.getByText('This page does not exist, or you do not have access to it.')).toBeTruthy();
     expect(forbiddenHtml).not.toMatch(/private|plan|aaa111|no-such|bbb222/i);
-    expect(forbidden.GET).toHaveBeenCalledTimes(1);
-    expect(unknown.GET).toHaveBeenCalledTimes(1);
+    // One read of the page each (the person's own record is read too, to take the page out of their Recent: that is not a read of the page).
+    const pageReads = (api: { GET: { mock: { calls: unknown[][] } } }) => api.GET.mock.calls.filter(([path]) => path !== '/v1/me').length;
+    expect(pageReads(forbidden)).toBe(1);
+    expect(pageReads(unknown)).toBe(1);
   });
 
   it('shows the same markup for a 403 as for a 404, with nothing of the address', async () => {

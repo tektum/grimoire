@@ -78,8 +78,8 @@ export function PageView({ page, engine = realEngine, onReplaced }: { page: Page
   const meId = me.data?.id;
   const parentTitle = (page.breadcrumb as readonly { title: string }[] | undefined)?.at(-1)?.title; // a record from before the breadcrumb was sent has none
   useEffect(() => {
-    if (meId !== undefined) recordRecent(meId, { id: page.id, urlId: page.urlId, title: page.title, path: parentTitle ?? '' });
-  }, [meId, page.id, page.urlId, page.title, parentTitle]);
+    if (meId !== undefined) recordRecent(meId, { id: page.id, urlId: page.urlId, title: page.title, path: parentTitle ?? '', collectionId: page.collectionId });
+  }, [meId, page.id, page.urlId, page.title, parentTitle, page.collectionId]);
   const presence = usePresence(presenceSource, me.data?.id ?? null);
   const permissionRef = useRef(permissionReadOnly);
   permissionRef.current = permissionReadOnly;

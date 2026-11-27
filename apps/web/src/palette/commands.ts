@@ -30,7 +30,8 @@ const UNTITLED = 'Untitled';
 /** Every command the person has now. Admin is offered to administrators only; New page where they may write. */
 export function commandsFor(world: CommandWorld): Command[] {
   const commands: Command[] = [];
-  for (const page of world.recent ?? []) commands.push({ id: `recent:${page.id}`, group: 'Recent', label: page.title === '' ? UNTITLED : page.title, path: page.path, run: (go) => go(pagePath(page.title, page.urlId)) });
+  const collectionName = new Map(world.collections.map((c) => [c.id, c.name]));
+  for (const page of world.recent ?? []) commands.push({ id: `recent:${page.id}`, group: 'Recent', label: page.title === '' ? UNTITLED : page.title, path: page.path !== '' ? page.path : (collectionName.get(page.collectionId ?? '') ?? ''), run: (go) => go(pagePath(page.title, page.urlId)) });
   const titleOf = new Map(world.pages.map((p) => [p.id, p.title === '' ? UNTITLED : p.title]));
   for (const page of world.pages) {
     const parent = page.parentId === undefined || page.parentId === null ? undefined : titleOf.get(page.parentId);

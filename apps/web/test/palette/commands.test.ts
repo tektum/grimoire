@@ -83,6 +83,10 @@ describe('the commands of the palette', () => {
     const w = world({ recent });
     expect(labels(w).filter((l) => l.startsWith('Recent'))).toEqual(['Recent: Untitled', 'Recent: Old page']);
     expect(where('recent:p9', w)).toBe('/p/old-page-qq11');
+    // A page at the top of its collection has no parent: the row says the collection, by the id it was opened in.
+    const top = commandsFor(world({ recent: [{ id: 'p3', urlId: 'tt22', title: 'Top', path: '', collectionId: 'c2' }, { id: 'p4', urlId: 'tt23', title: 'Lost', path: '' }] }));
+    expect(top.find((c) => c.id === 'recent:p3')!.path).toBe('Handbook');
+    expect(top.find((c) => c.id === 'recent:p4')!.path).toBe('');
     expect(where('recent:p2', w)).toBe('/p/page-zz99');
     const all = commandsFor(w);
     expect(filterCommands(all, '').filter((c) => c.group === 'Recent')).toHaveLength(2);

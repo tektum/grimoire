@@ -5,8 +5,9 @@ export interface RecentPage {
   readonly id: string;
   readonly urlId: string;
   readonly title: string;
-  /** What the row says under the title: the parent page, or the collection. */
+  /** What the row says under the title: the parent page; empty for a page at the top of its collection (the collection's name is then looked up by `collectionId`). */
   readonly path: string;
+  readonly collectionId?: string;
 }
 
 export const RECENT_MAX = 8;
@@ -17,7 +18,7 @@ const browser = createClientStorage();
 const isRecent = (value: unknown): value is RecentPage => {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v['id'] === 'string' && typeof v['urlId'] === 'string' && typeof v['title'] === 'string' && typeof v['path'] === 'string';
+  return typeof v['id'] === 'string' && typeof v['urlId'] === 'string' && typeof v['title'] === 'string' && typeof v['path'] === 'string' && (v['collectionId'] === undefined || typeof v['collectionId'] === 'string');
 };
 
 /** The list, or an empty one when there is none, the browser keeps nothing (storage blocked) or what is kept is not a list of pages. */
@@ -46,6 +47,13 @@ export function recordRecent(userId: string, page: RecentPage, storage: ClientSt
   storage.set(keyOf(userId), JSON.stringify(next));
   const owners = ownersOf(storage);
   if (!owners.includes(userId)) storage.set(OWNERS, JSON.stringify([...owners, userId]));
+}
+
+/** Takes a page out of one person's list: it could not be opened (removed, or no longer theirs to read), so the palette must not offer it. */
+export function removeRecent(userId: string, urlId: string, storage: ClientStorage = browser): void {
+  const kept = readRecent(userId, storage);
+  const next = kept.filter((p) => p.urlId !== urlId);
+  if (next.length !== kept.length) storage.set(keyOf(userId), JSON.stringify(next));
 }
 
 /** Takes every list away: on sign-out, so that the next person on a shared machine does not see what was opened. */

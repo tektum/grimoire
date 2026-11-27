@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Auth } from '../../src/auth';
 import { SessionContext, type Session as AppSession } from '../../src/auth/session';
 import PageScreen from '../../src/screens/page';
+import { readRecent, recordRecent } from '../../src/storage/recent';
 
 afterEach(cleanup);
 
@@ -66,5 +67,25 @@ describe('the page screen asks for the page by the id at the end of its address'
     await waitFor(() => expect(client.getQueryCache().getAll()[0]!.state.status).toBe('error'));
     expect((await screen.findByRole('alert')).textContent).toMatch(/can.t be opened right now/);
     expect(screen.queryByRole('heading', { name: 'Page not found' })).toBeNull();
+  });
+
+  it('takes a page that is not there out of the person\'s Recent, and leaves the others', async () => {
+    localStorage.clear();
+    recordRecent('u1', { id: 'p1', urlId: 'abc123', title: 'My plan', path: '' });
+    recordRecent('u1', { id: 'p2', urlId: 'other1', title: 'Other', path: '' });
+    recordRecent('u2', { id: 'p1', urlId: 'abc123', title: 'My plan', path: '' }); // another person's list is theirs
+    const GET = vi.fn(async (path: string) => (path === '/v1/me' ? { data: { id: 'u1' }, response: new Response('', { status: 200 }) } : { data: {}, response: new Response('', { status: 404 }) }));
+    const value: AppSession = { auth: {} as Auth, api: { GET } as unknown as AppSession['api'], collabUrl: 'ws://collab.test' };
+    const router = createMemoryRouter([{ path: '/p/:slug', element: <PageScreen /> }], { initialEntries: ['/p/my-plan-abc123'] });
+    render(
+      <SessionContext.Provider value={value}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </SessionContext.Provider>,
+    );
+    await screen.findByRole('heading', { name: 'Page not found' });
+    await waitFor(() => expect(readRecent('u1').map((p) => p.urlId)).toEqual(['other1']));
+    expect(readRecent('u2').map((p) => p.urlId)).toEqual(['abc123']);
   });
 });
