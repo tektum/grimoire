@@ -6,8 +6,10 @@ html { background: var(--paper); color: var(--ink); font-family: var(--font-ui);
 body { margin: 0; }
 ::selection { background: var(--selection); }
 code, kbd, samp, pre { font-variant-ligatures: none; }
-h1 { font-size: 1.6rem; font-weight: 700; line-height: 1.25; margin: 0 0 var(--space-3); }
-h2 { font-size: 1.25rem; font-weight: 700; margin: var(--space-4) 0 var(--space-2); }
+h1 { font-size: 1.25rem; font-weight: var(--weight-semibold); line-height: 1.3; letter-spacing: -0.01em; margin: 0 0 var(--space-4); }
+h2 { font-size: var(--text-ui-lg); font-weight: var(--weight-semibold); line-height: 1.3; margin: var(--space-5) 0 var(--space-2); }
+/* Every screen but the page itself is chrome: the interface scale, 14 for what is read and typed. */
+.shell-main:not(:has(.page-layout)) { font-size: var(--text-ui-md); }
 p { margin: 0 0 var(--space-3); }
 a { color: var(--accent); text-underline-offset: 0.15em; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -50,14 +52,16 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .breadcrumb li > a, .breadcrumb li > span { overflow: hidden; min-width: 0; text-overflow: ellipsis; }
 .breadcrumb li + li::before { content: '/'; flex: none; margin-inline: var(--space-2); color: var(--ink-3); }
 .breadcrumb [aria-current='page'] { color: var(--ink); }
-/* The fold stands for the items between the first and the last, on a phone only. */
-.breadcrumb .breadcrumb-fold { flex: none; color: var(--ink-3); }
-@media (min-width: 40.0625rem) {
-  .breadcrumb .breadcrumb-fold { display: none; }
-}
-/* On a phone the middle items leave the eye but stay for assistive technology (the full path is still read, link by link), and come back while one has the keyboard focus. */
+/* On a phone the bar shows one thing of the trail: the parent page, with a back chevron ("up to On-call", not a title). The rest of the path leaves the eye but stays for assistive technology
+   (the full path is still read, link by link), and comes back while one of its links has the keyboard focus. Alone (a collection), the one item stays. */
+.breadcrumb .breadcrumb-fold { display: none; }
 @media (max-width: 40rem) {
-  .breadcrumb .breadcrumb-middle:not(:focus-within) { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+  .breadcrumb li:not(:nth-last-child(2), :only-child):not(:focus-within) { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+  .breadcrumb li + li::before { content: none; }
+  .breadcrumb li:nth-last-child(2)::before { content: '\2039' / ''; flex: none; margin-inline: 0 var(--space-1); color: var(--ink-3); font-size: 1.5em; line-height: 1; }
+  .breadcrumb li:nth-last-child(2) { align-items: center; }
+  .breadcrumb li:nth-last-child(2) > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .shell-header:has(.breadcrumb li:nth-last-child(2)) .shell-brand { display: none; }
 }
 .shell-body { display: flex; flex: 1; min-height: 0; }
 .shell-contents { overflow: auto; box-sizing: border-box; flex: none; width: 264px; padding: var(--space-3); border-inline-end: 1px solid var(--hairline); background: var(--paper-sunken); color: var(--ink-2); font-size: 0.8125rem; }
@@ -69,7 +73,8 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 @media (max-width: 40rem) {
   .shell-header { flex-wrap: wrap; padding-block: 0; row-gap: 0; }
   .shell-page-part > button { min-height: 44px; min-width: 44px; }
-  .shell-header .breadcrumb { flex: 1 0 100%; order: 3; padding-block-end: var(--space-2); }
+  .shell-header .breadcrumb { flex: 1 1 0; }
+  .shell-page-controls { flex: 0 0 auto; } /* only what is in it: the parent page takes the room that is left */
   .shell-actions-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
   .shell-actions { display: none; }
   .shell-actions[data-open] { position: absolute; inset-inline: var(--space-2); top: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); box-shadow: var(--shadow-popover); }
@@ -140,7 +145,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .overlay { position: fixed; inset: 0; z-index: 50; background: var(--scrim); } /* over the top bar (5) and the popovers (20) */
-.modal { position: fixed; z-index: 51; top: 20vh; inset-inline: 0; margin-inline: auto; width: min(32rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
+.modal { position: fixed; z-index: 51; top: 20vh; inset-inline: 0; margin-inline: auto; box-sizing: border-box; width: min(28rem, 92vw); padding: var(--space-5); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-3); box-shadow: var(--shadow-dialog); font-size: var(--text-ui-md); }
+/* A dialog names its object in the title, says what happens in one or two lines, and ends with the verbs, apart from the text. */
+.modal h2 { margin: 0 0 var(--space-2); }
+.modal p { color: var(--ink-2); }
+.modal label { display: block; margin-block: var(--space-3) var(--space-1); color: var(--ink-2); font-size: var(--text-ui-sm); }
+.modal > button { margin-top: var(--space-4); }
 .modal button + button { margin-inline-start: var(--space-2); }
 .menu { min-width: 10rem; padding: var(--space-1); background: var(--paper-raised); border: 1px solid var(--hairline); border-radius: var(--radius-2); }
 .menu-item { padding: var(--space-2) var(--space-3); border-radius: var(--radius-1); cursor: default; outline: none; }
@@ -166,3 +176,22 @@ button:disabled { opacity: 0.5; cursor: default; }
   height: 24px;
   transform: none;
 }
+
+/* The screens that are not the page, and the dialogs: controls of 32px on the interface scale, edges that reach 3:1, the page's quiet secondary text. */
+.shell-main:not(:has(.page-layout)) :is(input:not([type='checkbox'], [type='radio'], [type='file']), select, textarea),
+.modal :is(input:not([type='checkbox'], [type='radio']), select, textarea) {
+  box-sizing: border-box;
+  min-block-size: 32px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+}
+.shell-main:not(:has(.page-layout)) button,
+.modal button {
+  min-block-size: 32px;
+  padding-block: var(--space-1);
+}
+.shell-main:not(:has(.page-layout)) :is(input, select, textarea)::placeholder { color: var(--ink-3); }

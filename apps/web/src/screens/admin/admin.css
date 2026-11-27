@@ -32,7 +32,7 @@
 }
 .admin-main {
   display: flex;
-  flex: 1;
+  flex: 1 1 14rem; /* a base width: on a phone the role and the button go to the next line, and do not run over the email */
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-3);
   align-items: baseline;
