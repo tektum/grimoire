@@ -60,15 +60,8 @@ function PaletteDialog() {
     setOpen((was) => !was);
   }, []);
   useShortcut(toggle);
-  useEffect(
-    () =>
-      onOpenPalette(() => {
-        if (opened.current) return;
-        returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        setOpen(true);
-      }),
-    [],
-  );
+  // A button opens it, and does not close it: only a closed palette is toggled.
+  useEffect(() => onOpenPalette(() => { if (!opened.current) toggle(); }), [toggle]);
   useEffect(() => {
     if (!open && opened.current) {
       const back = returnTo.current;

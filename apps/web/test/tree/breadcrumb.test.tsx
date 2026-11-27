@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { routeObjects } from '../../src/app/router';
+import { openPalette } from '../../src/palette/open';
 import { SessionContext } from '../../src/auth/session';
 import { LAST_COLLECTION_KEY } from '../../src/screens/collections/useCollections';
 import { createClientStorage } from '../../src/storage';
@@ -59,6 +60,9 @@ describe('the contents panel search button', () => {
     const contents = screen.getByRole('complementary', { name: 'Contents' });
     await userEvent.click(within(contents).getByRole('button', { name: 'Search' }));
     expect(await screen.findByRole('dialog')).toBeTruthy();
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('combobox')); // the button is behind the dialog now; ask again as a script would
+    openPalette();
+    expect(screen.getByRole('dialog')).toBeTruthy(); // asking an open palette to open does not close it
   });
 });
 
