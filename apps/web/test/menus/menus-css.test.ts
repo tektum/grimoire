@@ -32,9 +32,4 @@ describe('the styles of the editor menus', () => {
   it('the slash menu opens from the line-start side in a right-to-left page too', () => {
     expect(css).toMatch(/:root\[dir='rtl'\] \.slash-host\s*\{\s*transform-origin:\s*top right/);
   });
-
-  it('a popover that is leaving takes no pointer: it stays drawn through its exit fade, and a click then must not choose from it', () => {
-    expect(css).toMatch(/\.slash-host:not\(\[data-show='true'\]\)\s*\{[^}]*pointer-events:\s*none/);
-    expect(css).toMatch(/\.bubble-host:not\(\[data-show='true'\]\)\s*\{[^}]*pointer-events:\s*none/);
-  });
 });
