@@ -130,7 +130,7 @@ describe('the outline of a page', () => {
     let wide = false;
     vi.stubGlobal('matchMedia', () => ({
       get matches() { return wide; },
-      media: '(min-width: 1200px)',
+      media: '(min-width: 1280px)',
       addEventListener: (_: string, fn: () => void) => { listener = fn; },
       removeEventListener: () => undefined,
     }));

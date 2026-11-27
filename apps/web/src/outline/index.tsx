@@ -1,7 +1,7 @@
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import './outline.css';
 
-const WIDE = '(min-width: 1200px)';
+const WIDE = '(min-width: 1280px)';
 const HEADINGS = 'h1, h2, h3, h4, h5, h6';
 const MAX_INDENT = 3;
 const DEBOUNCE_MS = 200;

@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { Outline } from '../../src/outline';
 
-/** `matchMedia` answering `(min-width: 1200px)` as the test says; other queries are false. */
+/** `matchMedia` answering `(min-width: 1280px)` as the test says; other queries are false. */
 export function width(pixels: number): void {
   vi.stubGlobal('matchMedia', (query: string) => {
     const min = /\(min-width:\s*(\d+)px\)/.exec(query);

@@ -12,6 +12,7 @@ test('an administrator sees Admin in the header on a desktop and on a phone, and
   for (const width of [1280, MOBILE]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('/search');
+    if (width === MOBILE) await page.getByRole('button', { name: 'Show menu' }).click(); // on a phone the links sit behind the menu button
     const link = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Admin' });
     await expect(link).toBeVisible();
     const box = await link.boundingBox();
@@ -29,6 +30,7 @@ for (const role of ['member', 'viewer'] as const) {
     for (const width of [1280, MOBILE]) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto('/search');
+      if (width === MOBILE) await page.getByRole('button', { name: 'Show menu' }).click();
       await expect(page.getByRole('link', { name: 'Search' })).toBeVisible();
       await expect(page.getByTestId('user-role')).toHaveAttribute('data-role', role);
       await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0);
@@ -43,5 +45,8 @@ test('pictures of the header with the Admin link, light and dark, on a desktop a
   await page.goto('/search');
   await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
   await shots(page, 'admin-entry', 'header-desktop');
+  await page.setViewportSize({ width: MOBILE, height: 800 });
+  await page.getByRole('button', { name: 'Show menu' }).click(); // the phone's links are behind the menu button: show them in the picture
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible();
   await shots(page, 'admin-entry', 'header-phone', { width: MOBILE });
 });

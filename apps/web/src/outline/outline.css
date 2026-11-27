@@ -8,7 +8,7 @@
   width: 14rem;
   max-height: calc(100vh - var(--space-6));
   overflow-y: auto;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   outline: none; /* the box is a scroll container, not a control: its links take the focus ring */
 }
 .outline ul {
@@ -17,19 +17,33 @@
   list-style: none;
 }
 .outline a {
+  position: relative;
   display: block;
-  padding: var(--space-1) var(--space-2);
-  padding-inline-start: calc(var(--space-2) + var(--indent, 0) * var(--space-3));
-  border-inline-start: 2px solid transparent;
-  color: var(--ink-2);
+  padding: var(--space-1) 0;
+  padding-inline-start: calc(var(--space-3) + var(--indent, 0) * var(--space-3));
+  color: var(--ink-3);
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 .outline a:hover {
   color: var(--ink);
 }
+/* The current heading: heavier, darker, and a short accent bar in its margin, so colour is not the only sign. */
 .outline a[aria-current='location'] {
-  border-inline-start-color: var(--accent);
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 500;
+}
+.outline a[aria-current='location']::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  width: 6px;
+  height: 2px;
+  background: var(--accent);
+}
+@media (forced-colors: active) {
+  .outline a[aria-current='location']::before {
+    background: Highlight;
+  }
 }

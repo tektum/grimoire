@@ -66,9 +66,8 @@
   color: var(--ink);
 }
 .tree-link {
-  display: flex;
+  display: block;
   flex: 1;
-  gap: var(--space-2);
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
@@ -178,6 +177,12 @@
   margin-top: auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--hairline);
+}
+/* A touch screen has no key to press. */
+@media (pointer: coarse) {
+  .contents-search kbd {
+    display: none;
+  }
 }
 @media (pointer: coarse) {
   .contents-search,
