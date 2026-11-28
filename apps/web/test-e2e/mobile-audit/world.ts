@@ -214,7 +214,17 @@ export async function open(page: Page, context: BrowserContext, visit: Visit): P
   await page.goto(visit.path);
   await page.addStyleTag({ content: SANS });
   await visit.ready(page);
-  // The person's name, where there is a session: the bar is settled.
-  await page.waitForTimeout(400);
+  // The bar is settled: its controls have their final size (the avatar's initials arrive with the person's name), so nothing is measured mid-layout. Screens without
+  // a bar (the sign-in page) settle at once; a bar that never stops changing is not waited for beyond a bound (`test.slow()`'s budget is the test's own).
+  const settled = () => page.evaluate(() => {
+    const header = document.querySelector('.shell-header');
+    if (header === null) return true;
+    const key = String(Math.round(header.getBoundingClientRect().height));
+    const seen = (window as unknown as { __barStable?: { key: string; n: number } }).__barStable;
+    if (seen !== undefined && seen.key === key && seen.n >= 2) return true;
+    (window as unknown as { __barStable?: { key: string; n: number } }).__barStable = { key, n: seen !== undefined && seen.key === key ? seen.n + 1 : 1 };
+    return false;
+  });
+  await expect.poll(settled, { timeout: 10_000, intervals: [16, 16, 32, 64] }).toBe(true);
   await page.mouse.move(0, 0);
 }

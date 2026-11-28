@@ -199,15 +199,9 @@ test-web-e2e: dev-secret
 	GRIMOIRE_ALLOWED_ORIGINS="http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:$${E2E_WEB_PORT:-4173},http://localhost:$${E2E_WEB_PORT:-4173}" $(MAKE) files-setup
 	E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" bunx playwright test -c apps/web/playwright.config.ts --project=chromium
 
-# The phone audit and its assertions (apps/web/test-e2e/mobile-audit): the routes and the surfaces at 390 by 844 and 320 by 568 with touch, light and dark. It
-# needs no stack: the stand-ins of the API and of collaboration answer every request, and the client is served by the same server as the other specs. The
-# measurements go to `E2E_AUDIT_DIR` (default test-results/mobile-audit) and the pictures to test-results/shots/mobile-audit; the report they feed is
-# apps/web/test-e2e/mobile-audit/findings.md. Runs in the Chromium job of CI before the stack specs, so a phone regression names itself.
-test-web-audit: dev-secret
-	bun install --frozen-lockfile
-	bun run build
-	cd apps/web && bunx vite build --mode e2e
-	E2E_DEV_TOKEN_SECRET="$$(sed -n 's/^GRIMOIRE_DEV_TOKEN_SECRET=//p' .env)" bunx playwright test -c apps/web/playwright.config.ts --project=chromium test-e2e/mobile-audit
+# The phone audit and its assertions (apps/web/test-e2e/mobile-audit) run with every other browser spec, in Chromium (the `e2e-web` job), which starts the
+# stack their one stack spec needs (the live editor's surfaces). Their measurements go to `E2E_AUDIT_DIR` (default test-results/mobile-audit) and their
+# pictures to test-results/shots/mobile-audit; the report they feed is apps/web/test-e2e/mobile-audit/findings.md. Nothing extra to run: `make test-web-e2e`.
 
 # Later milestones that run after this one and are not ordered against each other keep their targets in mk/test-mN.mk.
 -include mk/*.mk

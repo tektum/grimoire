@@ -3,13 +3,14 @@ import { API } from '../collections/mock-api';
 import { historyApi } from '../history/mock-api';
 import { signInAs } from '../support/sign-in';
 import { hit, scriptedSearch } from '../search/support';
-import { boxOf, fits, headerCheck, measure, record, shot } from './audit';
-import { collabAt, HISTORY, open, VISITS } from './world';
+import { boxOf, fits, headerCheck, measure, record, shot, stable } from './audit';
+import { HISTORY, open, VISITS } from './world';
 
 // The phone audit: every route of a11y/routes.ts at 390 by 844 and 320 by 568 with touch, light and dark, against the stand-ins of the API and of collaboration
 // (never the stack: `mockApi` and its siblings answer the requests, `scriptedCollabServer` speaks the wire). Full-page shots go to
 // test-results/shots/mobile-audit/, measurements to `E2E_AUDIT_DIR` (default test-results/mobile-audit); the report they feed is findings.md here. The audit
-// records rather than asserts; the few checks it owns (see audit.ts) are the phone promises the system makes. Run: bunx playwright test -c apps/web/playwright.config.ts --project=chromium test-e2e/mobile-audit
+// records rather than asserts; the phone promises the system makes are asserted in phone.spec.ts, scroll-lock.spec.ts and (on the stack) live-editor.spec.ts. Run:
+// bunx playwright test -c apps/web/playwright.config.ts --project=chromium test-e2e/mobile-audit
 
 const VIEWPORTS = [
   { width: 390, height: 844 },
@@ -54,12 +55,13 @@ async function phoneControls(page: Page, slug: string) {
     }
     const box = await boxOf(button);
     await button.click();
-    await page.waitForTimeout(250);
+    await expect(page.locator(panel)).toBeVisible();
+    await stable(page, panel);
     const fit = await fits(page, panel);
     const inside = await measure(page, panel);
     if (['page', 'collection', 'admin-users'].includes(slug)) await shot(page, `${slug}-${key}-open`, { fullPage: false });
     await page.getByRole('button', { name: close, exact: true }).click();
-    await page.waitForTimeout(150);
+    await expect(page.locator(panel)).toBeHidden();
     out[key] = { present: true, button: box, panel: fit, overflowWithPanelOpen: inside.overflowPx, offenders: inside.offenders, smallTargets: inside.smallTargets, clipped: inside.clipped };
   }
   return out;
@@ -159,7 +161,7 @@ for (const viewport of VIEWPORTS) {
       const out: Record<string, unknown> = {};
       // The contents drawer, then its Search button: the palette.
       await page.getByRole('button', { name: 'Show contents', exact: true }).click();
-      await page.waitForTimeout(250);
+      await stable(page, '#shell-contents');
       out['contents'] = { fit: await fits(page, '#shell-contents'), m: await measure(page, '#shell-contents') };
       await shot(page, 'surface-contents', { fullPage: false });
       await page.locator('.contents-search').click();
@@ -167,7 +169,7 @@ for (const viewport of VIEWPORTS) {
       await expect(palette).toBeVisible();
       await page.getByRole('combobox').fill('plan');
       await expect(page.getByRole('option').first()).toBeVisible();
-      await page.waitForTimeout(400);
+      await stable(page, '.modal.palette');
       const paletteRows = await page.evaluate(() =>
         Array.from(document.querySelectorAll('[cmdk-item]')).map((row) => {
           const label = row.querySelector('.palette-label') as HTMLElement | null;
@@ -190,7 +192,7 @@ for (const viewport of VIEWPORTS) {
       await expect(palette).toBeHidden();
       // The account menu.
       await page.getByRole('button', { name: 'Show menu', exact: true }).click();
-      await page.waitForTimeout(250);
+      await stable(page, '#shell-actions');
       out['account'] = { fit: await fits(page, '#shell-actions'), m: await measure(page, '#shell-actions') };
       const colours = async () => page.evaluate(() => {
         const parse = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
@@ -236,14 +238,14 @@ for (const viewport of VIEWPORTS) {
       await page.getByRole('menuitem', { name: /Reset saved state/ }).click();
       const dialog = page.getByRole('dialog', { name: /Reset the saved state/ });
       await expect(dialog).toBeVisible();
-      await page.waitForTimeout(300);
+      await stable(page, '[role=dialog]');
       const buttons = await dialog.evaluate((d) => Array.from(d.querySelectorAll('button, [role=button], a[href]')).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') ?? (b as HTMLElement).innerText.trim(), width: Math.round(r.width), height: Math.round(r.height) }; }));
       out['reset'] = { fit: await fits(page, '[role=dialog]'), m: await measure(page, '[role=dialog]'), buttons };
       await shot(page, 'surface-reset-dialog', { fullPage: false });
       await dialog.getByRole('button', { name: 'Reset state' }).click();
       const stale = page.getByRole('alertdialog');
       await expect(stale).toBeVisible();
-      await page.waitForTimeout(300);
+      await stable(page, '[role=alertdialog]');
       const staleButtons = await stale.evaluate((d) => Array.from(d.querySelectorAll('button, [role=button], a[href]')).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') ?? (b as HTMLElement).innerText.trim(), width: Math.round(r.width), height: Math.round(r.height) }; }));
       out['resetStale'] = { fit: await fits(page, '[role=alertdialog]'), m: await measure(page, '[role=alertdialog]'), buttons: staleButtons };
       await shot(page, 'surface-reset-stale', { fullPage: false });
@@ -261,52 +263,12 @@ for (const viewport of VIEWPORTS) {
       await page.getByRole('button', { name: 'Restore this version' }).click();
       const confirm = page.getByRole('alertdialog', { name: 'Restore this version?' });
       await expect(confirm).toBeVisible();
-      await page.waitForTimeout(300);
+      await stable(page, '[role=alertdialog]');
       const buttons = await confirm.evaluate((d) => Array.from(d.querySelectorAll('button, [role=button], a[href]')).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') ?? (b as HTMLElement).innerText.trim(), width: Math.round(r.width), height: Math.round(r.height) }; }));
       out['restore'] = { fit: await fits(page, '[role=alertdialog]'), m: await measure(page, '[role=alertdialog]'), buttons };
       await shot(page, 'surface-restore-confirm', { fullPage: false });
       record(`${String(viewport.width)}-surfaces-history`, out);
     });
 
-    // The live editor needs a collaboration server that really syncs a document; the stand-ins of the rest of the audit only speak the handshake. Run it
-    // against the stack (`E2E_COLLAB_URL=ws://127.0.0.1:1234/collab`, with a page the stack knows), or it is skipped: the surfaces it measures were taken that
-    // way for findings.md and are in test-results/shots/mobile-audit/. Nothing else in this file needs a server.
-    test('surfaces of the live editor: the slash menu and the selection bubble', async ({ page, context }) => {
-      const collab = process.env['E2E_COLLAB_URL'] ?? '';
-      test.skip(collab === '', 'needs a syncing collaboration server: set E2E_COLLAB_URL (see the comment above)');
-      const out: Record<string, unknown> = {};
-      {
-        const visit = VISITS.find((v) => v.slug === 'page')!;
-        await open(page, context, { ...visit, setup: async (p, c) => { await visit.setup(p, c); await collabAt(p, collab); }, ready: async (p) => void (await expect(p.getByTestId('editor-root')).toHaveAttribute('data-collab-state', 'synced', { timeout: 20_000 })) });
-        const surface = page.getByTestId('editor-root').locator('.ProseMirror');
-        await surface.click();
-        await page.keyboard.type('Some words to select on a phone');
-        await page.keyboard.press('Enter');
-        await page.keyboard.type('/');
-        await expect(page.getByRole('option').first()).toBeVisible();
-        await page.waitForTimeout(300);
-        const listbox = await page.evaluate(() => { const l = document.querySelector('[role=listbox]'); return l === null ? null : (l.id === '' ? '[role=listbox]' : `#${CSS.escape(l.id)}`); });
-        const popup = await page.evaluate(() => {
-          const list = document.querySelector('[role=listbox]');
-          let up = list?.parentElement ?? null;
-          while (up !== null && !['absolute', 'fixed'].includes(getComputedStyle(up).position)) up = up.parentElement;
-          const r = (up ?? list)?.getBoundingClientRect();
-          return r === undefined ? null : { el: up === null ? 'listbox' : `${up.tagName.toLowerCase()}.${String(up.className)}`, top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), vh: window.innerHeight };
-        });
-        out['slash'] = { popup, fit: listbox === null ? null : await fits(page, listbox), m: await measure(page, listbox ?? undefined), overflow: (await measure(page)).overflowPx };
-        await shot(page, 'surface-slash-menu', { fullPage: false });
-        await page.keyboard.press('Escape');
-        await page.keyboard.press('Backspace');
-        await page.keyboard.press('Backspace');
-        await page.keyboard.press('Shift+Home');
-        const bubble = page.getByRole('toolbar', { name: 'Text formatting' });
-        await expect(bubble).toBeVisible();
-        await page.waitForTimeout(300);
-        out['bubble'] = { fit: await fits(page, '[role=toolbar][aria-label="Text formatting"]'), m: await measure(page, '[role=toolbar][aria-label="Text formatting"]'), overflow: (await measure(page)).overflowPx };
-        await shot(page, 'surface-selection-bubble', { fullPage: false });
-      }
-      record(`${String(viewport.width)}-surfaces-editor`, out);
-    });
   });
 }
-

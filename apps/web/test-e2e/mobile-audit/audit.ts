@@ -29,6 +29,27 @@ export async function shot(page: Page, name: string, options: { fullPage?: boole
   return files;
 }
 
+/**
+ * Waits until the box of `selector` has stopped changing: a popover's entrance (120-180 ms of transform and opacity) is over, so what is measured is where it
+ * came to rest. A condition, not a sleep: it returns as soon as the box holds still, and it fails when the element never settles.
+ */
+export async function stable(page: Page, selector: string): Promise<void> {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel);
+      if (el === null) return false;
+      const r = el.getBoundingClientRect();
+      const key = `${sel}:${String(Math.round(r.left))},${String(Math.round(r.top))},${String(Math.round(r.width))},${String(Math.round(r.height))}`;
+      const seen = (window as unknown as { __auditStable?: { key: string; n: number } }).__auditStable;
+      if (seen !== undefined && seen.key === key && seen.n >= 2) return true;
+      (window as unknown as { __auditStable?: { key: string; n: number } }).__auditStable = { key, n: seen !== undefined && seen.key === key ? seen.n + 1 : 1 };
+      return false;
+    },
+    selector,
+    { polling: 'raf' },
+  );
+}
+
 export function record(name: string, data: unknown): void {
   mkdirSync(RESULTS, { recursive: true });
   writeFileSync(path.join(RESULTS, `${name}.json`), JSON.stringify(data, null, 2));
