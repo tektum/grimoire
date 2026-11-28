@@ -2,7 +2,7 @@
 
 This is a plan, not a record. Nothing in it is created, changed or deleted until the owner approves it and the infra agent has a go from the manager. Every number below is either a value this repository declares (and a test pins) or an observation from the ledger's dev and staging deploys; where a figure is not observable from here, it says so instead of pretending to measure it.
 
-Production is stage `production`, the third row of `infra/stages.json`, built by the same function as dev and staging (`infra/stage.ts`), with its own GitHub environment `production` holding the same six variables as the other two (`AWS_REGION`, `AWS_ROLE_ARN`, `DESCOPE_MANAGEMENT_KEY_ID`, `GRIMOIRE_ALLOWED_EMAIL_DOMAINS`, `GRIMOIRE_DOMAIN`, `GRIMOIRE_FIRST_ADMIN_EMAILS`).
+Production is proposed as stage `production`, a **third row to add to** `infra/stages.json` (the file holds `dev` and `staging` today, and `stageConfig` throws for any other name), built by the same function as them (`infra/stage.ts`), with its own GitHub environment `production` holding the same six variables as the other two (`AWS_REGION`, `AWS_ROLE_ARN`, `DESCOPE_MANAGEMENT_KEY_ID`, `GRIMOIRE_ALLOWED_EMAIL_DOMAINS`, `GRIMOIRE_DOMAIN`, `GRIMOIRE_FIRST_ADMIN_EMAILS`). Adding the row is part of the prerequisite change in section 2, step 0: `tools/ci/test/stage-parity.test.mjs` also has to change, because it asserts the stages are exactly `['dev', 'staging']` and that only `staging` is protected (production is `protect: true` and still owns no VPC, so the test's statement about the VPC's owner must say what it means).
 
 ## 1. The stage, in the terms of `infra/stages.ts`
 
@@ -38,7 +38,7 @@ One-off steps, each marked with who does it:
 | 4 | First `diff` of the stage from `main` (creates the Descope project, its settings, the sign-in flow, the styles built from `infra/descope/theme.ts`, the tenant-claim template, the Aurora cluster, the bucket, the service, the log groups) | CI, after the owner's go | `action=diff stage=production`; read before any deploy |
 | 5 | First `deploy` of the stage | CI, after a second go | the first deploy creates everything; the gate waits until the stage serves |
 | 6 | Create the first administrator: sign in with one of the first-admin emails on the new project, which the flow provisions | owner | the bootstrap in the sign-in flow creates the workspace's tenant for the first admin |
-| 7 | Turn off sign-in for any other domain in the project's settings, if the allowed-domain rule is not enough | owner | the flow closes itself to the environment's allowed domains; this is belt and braces |
+| 7 | Turn off sign-in for any other domain in the project's settings, if the allowed-domain rule is not enough | owner | `GRIMOIRE_ALLOWED_EMAIL_DOMAINS` is enforced **by the app's provisioner** (`packages/core/src/users/provisioner.ts`), not by the Descope flow: nothing under `infra/descope` reads it, and the flow only screens public mail providers, so a user from another company domain can finish sign-up in the project and is refused by the app. Closing the project to the domains too is belt and braces |
 
 The sign-in flow and the theme are the ones in the repository (`infra/descope/flows/sign-up-or-in.json`, `infra/descope/theme.ts`): the same flow dev and staging run, so what is tested on staging is what production gets. The theme's tokens come from `apps/web`'s design tokens, so the redesign's colours reach production's sign-in page on the first deploy after they are on `main`.
 
@@ -51,7 +51,7 @@ Dev and staging each declare 48 resources in their recorded form (the `staging-d
 | Aurora Serverless v2, PostgreSQL 17.9 | `min 0.5 ACU`, `max 2 ACU`, always on (never pauses: the job queue and the health checks keep it busy). **Created only after the code change in step 0** | ACU-hours; 0.5 ACU at rest is 360 ACU-hours a month, 2 ACU all month is 1,440 |
 | Storage | Aurora's own, grows from zero; the dev and staging clusters were restored from snapshots of instances holding 1 to 2 pages, so the starting point is small | GB-month |
 | Fargate service | one task, `0.5 vCPU`, `2 GB`, `min 1 max 1` (the migration lock makes a second task only wait) | vCPU-hours and GB-hours, 730 hours a month |
-| Application load balancer | one, HTTPS, 365-day access logs to its own bucket | hourly plus LCU-hours plus S3 PUTs and storage |
+| Application load balancer | one, HTTPS, access logs to its own bucket (90-day expiry, `infra/stack/edge.ts`) | hourly plus LCU-hours plus S3 PUTs and storage |
 | S3 | one Files bucket (CORS from `infra/stage.ts`, an `abort-incomplete-multipart` lifecycle rule at 2 days) plus the load-balancer log bucket (90-day expiry) | storage and requests |
 | CloudWatch | the task's own log group and the database's logs; **not** the VPC flow log group, which belongs to the VPC's owner (staging, `infra/stack/network.ts`, called only when `config.vpcFrom === undefined`) | GB-month, the task's logs being the line to watch |
 | KMS | none of its own: the flow log group's key is staging's (same function) | none |
@@ -91,7 +91,7 @@ Production additionally keeps the old-instance rule: when (and only when) a stag
 
 1. **`diff` first** (`action=diff stage=production`), read against this plan: expect the creates this document lists and nothing else. A `Replaced` on any resource is a hard stop.
 2. **Deploy** (`action=deploy stage=production`), after the owner's approval and the manager's go; the workflow's own gate must report 3 of 3 on the new task definition, and readyz must answer during the roll.
-3. **Check** (`action=check stage=production`): `database_kind=cluster`, PostgreSQL 17.9, pgvector 0.8.1, the schema at the migration the code expects, the 15 row-level-security tables with their policies, and the counts the check prints.
+3. **Check** (`action=check stage=production`): `database_kind=cluster`, PostgreSQL 17.9, pgvector 0.8.1, the schema at the migration the code expects, **16 row-level-security tables** with their policies (`0014` enables 15: 14 tenant tables plus `tenants`; `0015_import_parts` adds `import_parts`), and the counts the check prints.
 4. **First sign-in** by the first administrator, the flow creating the workspace's tenant; then a page, a save and a search, the same walk-through staging had.
 
 **Rollback, in the order it would be used:**
@@ -102,9 +102,9 @@ Production additionally keeps the old-instance rule: when (and only when) a stag
 | the first deploy fails before the service starts | `action=thaw stage=production` if the service was frozen, then read the log | the stage is new; a failed first deploy leaves resources that can be deleted with the stage (`removal: retain` keeps them, so they need an explicit removal, Q7) |
 | the service does not pass the gate | `action=freeze stage=production` (stops the service so nothing writes), keep the database and bucket, fix forward | the database is empty enough that a re-create is also cheap this early |
 | a later deploy breaks production | the same `freeze`, then the previous task definition, then the previous diff | never delete a database or a bucket as a rollback: keep them |
-| a database move is ever done again (a later change to Aurora's settings or engine) | snapshot, then the move: `action=snapshot` -> variable -> `diff` -> `deploy` -> `check` -> readyz, as dev and staging did, with the old instance kept protected | the runbook is `docs/operations/database-setup.md`, section "Moving a stage to Aurora Serverless v2" |
+| a later change to the cluster (engine version, ACU bounds) | a normal `diff` and `deploy`, with `freeze` first if the change restarts the cluster | **not** the instance-to-cluster procedure: from the moment the cluster exists, `GRIMOIRE_AURORA_SNAPSHOT` seeds nothing more (`ignoreChanges: ['snapshotIdentifier']`) and its ARN must be an instance snapshot, which a cluster does not have. The `snapshot` action takes a cluster snapshot, which is what a later restore would start from |
 
-**Hard stops, the same list the other stages ran under:** a `diff` beyond the planned creates (or a `Replaced` at all); a failed restore; counts or the 15 policy rows differing from the check before; a failed `db-setup` or `migrate`; a gate short of 3 of 3; readyz failing during a roll. On any of them the infra agent thaws first (so the app is not left stopped), then reports and does nothing else without a new go.
+**Hard stops, the same list the other stages ran under:** a `diff` beyond the planned creates (or a `Replaced` at all); counts or the **16 policy rows** differing from the check before; a failed `db-setup` or `migrate`; a gate short of 3 of 3; readyz failing during a roll. On any of them the infra agent thaws first (so the app is not left stopped), then reports and does nothing else without a new go. A first deploy of a new stage has no "check before" to compare with: its check is the 16 rows and the counts being the ones this plan declares.
 
 ## 6. Open questions, with defaults
 
@@ -113,13 +113,13 @@ Production additionally keeps the old-instance rule: when (and only when) a stag
 | Q1 | Which hostname? `app.grimoire.descope.io` is proposed; `grimoire.descope.io` is taken by staging | `app.grimoire.descope.io` |
 | Q2 | Which email domains may sign in? | the company domain already in use on staging |
 | Q3 | Which address(es) are the first administrator? | the owner's own address |
-| Q4 | What Aurora Serverless v2 ceiling? `2 ACU` is what dev and staging declare; production could take `1 ACU` to cap cost. Only reachable after the code change in section 2 step 1 | `2 ACU`, the same as the other stages |
+| Q4 | What Aurora Serverless v2 ceiling? `2 ACU` is what dev and staging declare; production could take `1 ACU` to cap cost. Only reachable after the code change in **section 2 step 0** | `2 ACU`, the same as the other stages |
 | Q5 | The VPC flow log group's **365-day** retention belongs to the VPC's owner, staging (`infra/stack/network.ts`), so shortening it to cap the line that grows changes dev as well. Shorten it for all three, or leave it? | leave it, 365 days |
 | Q6 | `protect: true` (SST refuses to delete any resource of the stage) is the plan; confirm | `true` |
 | Q7 | When a first deploy fails and the stage must be removed, may CI delete the stage's resources (`removal` is `retain` today, so removal is explicit and manual)? | owner does it, once, by hand |
 | Q8 | Semantic search in production: this plan keeps it **off** (the model needs a bigger task) | off |
 | Q9 | The load-balancer log bucket expires at 90 days (production's own); the VPC flow log group's 365 days belongs to staging, so a change there affects dev too (Q5). Is 90 days the retention wanted for the load-balancer logs? | as today |
-| Q10 | The plan needs two code changes before a `diff` can even show what it describes (section 2 step 1): Aurora created on the first deploy instead of only from a snapshot, and `production` added to the workflow's stage choices. Approve those as one small PR first? | yes, one small infra PR, then the `diff` |
+| Q10 | The plan needs three code changes before a `diff` can even show what it describes (**section 2 step 0**): the `production` row in `stages.json` together with the parity test that names the stages, Aurora created on a first deploy instead of only from a snapshot, and `production` added to the workflow's stage choices. Approve those as one small PR first? | yes, one small infra PR, then the `diff` |
 
 ## 7. What this plan does not claim
 
