@@ -43,6 +43,13 @@
   background: var(--paper);
   color: var(--ink);
 }
+/* A finger needs 44px on the sign-in screen too (it is its own document, outside the shell's rule). */
+@media (pointer: coarse) {
+  .login :is(input, select, button, a) {
+    min-block-size: 44px;
+  }
+}
+
 /* A notice that something failed: a bordered block, like the other notices, and the one inside the form has no margin of its own. */
 .login-error {
   margin: 0 0 var(--space-3);

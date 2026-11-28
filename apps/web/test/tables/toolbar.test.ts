@@ -54,11 +54,13 @@ describe('the table toolbar', () => {
     expect(toolbar(h)).toBeNull();
   });
 
-  it('sits right after the table, so Tab from its last cell reaches it', async () => {
+  it('sits right after the scroll box of the table, so Tab from its last cell reaches it', async () => {
     const h = await open();
     h.cursorInCell(1, 1);
     const table = h.view.dom.querySelector('table') as HTMLElement;
-    expect(table.nextElementSibling).toBe(toolbar(h));
+    // The table is drawn inside the box that scrolls it on a phone (src/editor/tables/toolbar.ts, a node view): the bar follows the box, which is still the next thing in the Tab order.
+    expect(table.closest('.table-scroll')).not.toBeNull();
+    expect(table.closest('.table-scroll')!.nextElementSibling).toBe(toolbar(h));
   });
 
   it('Add row below gives 3 rows and the Markdown of a 3-row table', async () => {

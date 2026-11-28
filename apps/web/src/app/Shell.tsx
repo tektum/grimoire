@@ -86,6 +86,8 @@ export function Shell() {
             aria-label={contentsOpen ? 'Hide contents' : 'Show contents'}
             title={contentsOpen ? 'Hide contents' : 'Show contents'}
             onClick={() => {
+              // The drawer and the account menu are one thing at a time: the menu would sit on top of the tree it just opened.
+              setActionsOpen(false);
               setContentsOpen((open) => !open);
             }}
           >
@@ -105,6 +107,7 @@ export function Shell() {
             aria-label={actionsOpen ? 'Hide menu' : 'Show menu'}
             title={actionsOpen ? 'Hide menu' : 'Show menu'}
             onClick={() => {
+              setContentsOpen(false);
               setActionsOpen((open) => !open);
             }}
           >

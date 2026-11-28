@@ -30,6 +30,7 @@
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--hairline);
 }
+.admin-row-actions { display: flex; flex: 0 0 auto; gap: var(--space-2); margin-inline-start: auto; }
 .admin-main {
   display: flex;
   flex: 1 1 14rem; /* a base width: on a phone the role and the button go to the next line, and do not run over the email */
@@ -194,5 +195,54 @@
   }
   .admin-table select {
     font-size: 0.85rem;
+  }
+}
+
+/* A finger: the access table is a list of cards, not a table that hides its Remove column off to the right. Every row is a block of its own, its columns labelled in
+   words (the table's headers become the labels by `display: block` and the header's hidden names shown), and no column is cut. */
+@media (pointer: coarse) {
+  .admin-scroll {
+    overflow-x: visible;
+  }
+  .admin-scroll .admin-table,
+  .admin-table {
+    display: block;
+    min-width: 0;
+  }
+  .admin-table thead {
+    display: none;
+  }
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+    width: auto;
+  }
+  .admin-table tr {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .admin-table td {
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+  .admin-table td:first-child {
+    font-weight: var(--weight-semibold);
+  }
+  /* Each cell says which column it was: the header's own words, above the value, in the quiet metadata line (the words are the same, not new copy). */
+  .admin-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-block-end: 2px;
+    color: var(--ink-3);
+    font-size: var(--text-ui-sm);
+    font-weight: var(--weight-regular);
+  }
+  .admin-table td select,
+  .admin-table td button {
+    width: 100%;
+  }
+  .admin-table td select {
+    max-width: none;
   }
 }

@@ -32,6 +32,11 @@ function choose(ctx: Ctx, view: EditorView, kind: BlockKind): void {
   view.focus();
 }
 
+/** The smallest room the menu keeps for itself, however close to the bottom the line is: a couple of rows, scrolled. */
+const MIN_ROOM_PX = 96;
+/** The distance between the line and the menu (the provider's offset) and a little air below it. */
+const GAP_PX = 14;
+
 function createView(ctx: Ctx, view: EditorView) {
   const host = document.createElement('div');
   host.className = 'slash-host';
@@ -39,6 +44,20 @@ function createView(ctx: Ctx, view: EditorView) {
   host.addEventListener('mousedown', (event) => event.preventDefault());
   const root = createRoot(host);
   const provider = new SlashProvider({ content: host, debounce: 0, offset: 6, shouldShow: (v) => slashQuery(v) !== null && state.dismissed === null });
+  /**
+   * The menu is never taller than the room under the line it opens from (DESIGN.md: it is capped to the space below its opener and scrolls inside itself): on a phone with the
+   * on-screen keyboard the room is small, and a menu that runs past the bottom hides the rows it offers. Measured at every update, so typing, scrolling or the keyboard resizing
+   * the view all move the cap with the line.
+   */
+  const capToRoom = (view: EditorView): void => {
+    try {
+      const line = view.coordsAtPos(view.state.selection.from);
+      const room = Math.max(MIN_ROOM_PX, window.innerHeight - line.bottom - GAP_PX);
+      host.style.setProperty('--slash-room', `${String(Math.round(room))}px`);
+    } catch {
+      /* no layout to ask (the view is going): the stylesheet's own cap stands */
+    }
+  };
   /** `dismissed`: Escape closed the menu for this paragraph and this text; it stays closed until the text after the slash changes, or the cursor leaves the slash. */
   const state = { kinds: SLASH_KINDS, active: 0, dismissed: null as { start: number; query: string } | null, open: false };
 
@@ -65,6 +84,7 @@ function createView(ctx: Ctx, view: EditorView) {
   };
   provider.onShow = () => {
     state.open = true;
+    capToRoom(view);
     render();
   };
   provider.onHide = () => {
@@ -82,6 +102,7 @@ function createView(ctx: Ctx, view: EditorView) {
       // The library acts only on the last update of a burst, and skips an update whose document and selection are those of the state before it: a transaction that changes
       // nothing (one the editor or a plugin dispatches a moment after the typing) would make it skip the one that matters. So it is never told the earlier state.
       provider.update(next);
+      if (state.open) capToRoom(next);
     },
     destroy() {
       provider.destroy();

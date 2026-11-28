@@ -94,8 +94,10 @@ export function GroupsScreen({ api }: { readonly api: ApiLike }) {
                 )}
                 <span className="admin-meta">{g.memberCount === 1 ? '1 member' : `${String(g.memberCount)} members`}</span>
               </div>
-              <Button aria-label={`Rename ${g.name}`} onClick={() => { setRenaming(g.id); }}>Rename</Button>
-              <Button aria-label={`Delete ${g.name}`} onClick={() => { setDeleting(g); }}>Delete</Button>
+              <span className="admin-row-actions">
+                <Button aria-label={`Rename ${g.name}`} onClick={() => { setRenaming(g.id); }}>Rename</Button>
+                <Button aria-label={`Delete ${g.name}`} onClick={() => { setDeleting(g); }}>Delete</Button>
+              </span>
             </li>
           ))}
         </ul>

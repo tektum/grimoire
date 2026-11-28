@@ -84,6 +84,19 @@ export const tableToolbar = $prose((ctx) => {
       return { destroy: () => { current = null; } };
     },
     props: {
+      /**
+       * A table is drawn inside a box that scrolls sideways on its own, so a wide table never makes the page pan on a phone. The box is a node view, so ProseMirror owns it: a
+       * wrapper added from outside the view would be a foreign mutation it reads back and forth (the fuzz found that as an out-of-memory).
+       */
+      nodeViews: {
+        table: () => {
+          const box = document.createElement('div');
+          box.className = 'table-scroll';
+          const table = document.createElement('table');
+          box.append(table);
+          return { dom: box, contentDOM: table };
+        },
+      },
       decorations: (state) => {
         const place = current === null || current.editable ? placeFor(state) : null;
         // The key says which kind of toolbar it is, so the controls are drawn again (on or off) when the cursor or the table's size changes what applies.

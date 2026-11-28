@@ -2,7 +2,9 @@
 @import './fonts.css';
 @import './tokens.css';
 
-html { background: var(--paper); color: var(--ink); font-family: var(--font-ui); line-height: 1.5; }
+/* Anything that moves a target into view leaves room for the sticky top bar (DESIGN.md "Reading"): keyboard focus, find-in-page and a hash link do not land under it. */
+html { background: var(--paper); color: var(--ink); font-family: var(--font-ui); line-height: 1.5; scroll-padding-top: calc(44px + var(--space-3)); }
+.shell-contents, .admin-scroll, .palette [cmdk-list], .page-text { scroll-padding-top: calc(44px + var(--space-3)); }
 body { margin: 0; }
 ::selection { background: var(--selection); }
 code, kbd, samp, pre { font-variant-ligatures: none; }
@@ -31,7 +33,8 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-page-controls { display: flex; flex: 1 0 auto; align-items: center; gap: var(--space-3); }
 .shell-page-controls .page-status { margin: 0; min-height: 0; }
 .shell-page-part { display: contents; }
-.shell-page-part > button { padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
+.shell-page-part > button { border-color: transparent; background: transparent; padding: var(--space-1) var(--space-3); font-size: 0.8125rem; }
+.shell-page-part > button:hover { background: var(--fill-selected); }
 .shell-page-part > .page-history { display: inline-flex; align-items: center; gap: var(--space-1); border-color: transparent; background: transparent; color: var(--ink-2); }
 .shell-page-part > .page-history:hover { color: var(--ink); }
 .shell-avatar { display: inline-flex; align-items: center; justify-content: center; inline-size: 24px; block-size: 24px; box-sizing: border-box; border-radius: 50%; background: var(--fill-selected); color: var(--ink); font: 600 0.6875rem/1 var(--font-ui); }
@@ -61,7 +64,9 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .breadcrumb li:nth-last-child(2)::before { content: '\2039' / ''; flex: none; margin-inline: 0 var(--space-1); color: var(--ink-3); font-size: 1.5em; line-height: 1; }
   .breadcrumb li:nth-last-child(2):dir(rtl)::before { content: '\203A' / ''; margin-inline: 0 var(--space-1); } /* the chevron points the way back, which is right in a right-to-left text */
   .breadcrumb li:nth-last-child(2) { align-items: center; }
-  .breadcrumb li:nth-last-child(2) > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .breadcrumb li:nth-last-child(2) > a { display: inline-flex; align-items: center; min-height: 44px; min-width: 0; }
+  /* The name itself is the box that is cut: a flex container's own text gets no ellipsis, so the link holds a block that does (the same text, no new element in the accessible name). */
+  .breadcrumb li:nth-last-child(2) > a > span { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .shell-header[data-parent] .shell-brand { display: none; } /* set by the trail itself: a :has() on a trail that arrives later is not redrawn by every engine */
 }
 .shell-body { display: flex; flex: 1; min-height: 0; }
@@ -78,6 +83,11 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .shell-page-controls { flex: 0 0 auto; } /* only what is in it: the parent page takes the room that is left */
   .shell-actions-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
   .shell-actions { display: none; }
+  /* The menu of the person: the places as rows of an action list (a fill on hover, one row each), and who is signed in under a rule. */
+  .shell-actions nav { flex-direction: column; align-items: stretch; gap: 0; width: 100%; }
+  .shell-actions nav a { display: flex; align-items: center; min-height: 44px; padding-inline: var(--space-2); border-radius: var(--radius-1); color: var(--ink); }
+  .shell-actions nav a:hover { background: var(--fill-selected); }
+  .shell-actions .user-badge { flex-direction: column; align-items: flex-start; gap: var(--space-2); width: 100%; margin-block-start: var(--space-2); padding-block-start: var(--space-3); border-top: 1px solid var(--hairline); }
   .shell-actions[data-open] { position: absolute; inset-inline: var(--space-2); top: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); box-shadow: var(--shadow-popover); }
   .shell-contents-toggle { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
   .shell-contents:not([data-open]) { display: none; }
@@ -85,10 +95,28 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .shell-contents { width: auto; border-inline-end: 0; border-block-end: 1px solid var(--hairline); }
   .shell-main { padding: var(--space-4) var(--space-3); }
 }
+/* A finger needs 44px (DESIGN.md "Space"): every control and every row link of the chrome and the screens, not only the top bar. A link inside a sentence of the page is
+   exempt (WCAG 2.5.8), and so is the text of the page itself. */
 @media (pointer: coarse) {
   .shell-header { min-height: 44px; }
   .shell-page-part > button { min-height: 44px; min-width: 44px; }
   .shell-header a, .shell-header button:not(.shell-contents-toggle, .shell-actions-toggle) { display: inline-flex; align-items: center; min-height: 44px; }
+  /* A radio or a check box is measured with its label (its own box is 13px: the row is the target). */
+  .shell-main :is(label:has(> input[type='radio']), label:has(> input[type='checkbox']), label:has(> input[type='file'])) { display: flex; align-items: center; min-block-size: 44px; }
+  .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(:has(img, picture)) { display: inline-flex; align-items: center; min-block-size: 44px; }
+  .menu-item, .palette [cmdk-item], .collections-list a, .history-list a { min-block-size: 44px; }
+  .history-list a { min-inline-size: 44px; justify-content: center; }
+  .contents-collection { display: inline-flex; align-items: center; min-block-size: 44px; }
+  .shell-actions a { min-inline-size: 44px; justify-content: flex-start; }
+  /* A link that is a word of a row (the Users and Groups of the admin area, a page of the contents) gets a target of its own, wider than its text, without moving the row. */
+  .shell-main :where(.admin-nav, [role='tablist']) a, .shell-main :where(.admin-nav, [role='tablist']) button { min-inline-size: 44px; justify-content: center; }
+  /* The height of a control is the finger's, whatever a screen's own rule says (the login's 36, the search field's 36): only `min-block-size` is raised, so no screen's text size or
+     edge is touched. A word that is a link of the chrome gets a target of its own width, without moving its row. */
+  .shell :is(.shell-main, .shell-contents, .menu) :is(button, input:not([type='checkbox'], [type='radio'], [type='file']), select, textarea, summary) { min-block-size: 44px; }
+  .shell-contents :is(a[href], button) { min-inline-size: 44px; }
+  /* A dialog keeps the library's own 32px rows: its verbs are the ones `button` styles, and raising every row of a select would cut the dialog at 320. Two words (Reset anyway)
+     are already a wide target; the close button beside them is 44 high with the rule below. */
+  .modal:not(.palette) > button { min-block-size: 44px; }
 }
 .error-boundary { max-width: 30rem; margin: var(--space-6) auto; padding: var(--space-5); border: 1px solid var(--hairline); border-radius: var(--radius-2); background: var(--paper-raised); }
 .error-boundary h1 { margin-top: 0; font-size: 1.4rem; }
@@ -119,12 +147,25 @@ button:disabled { opacity: 0.5; cursor: default; }
 .page-text ol { list-style: decimal; padding-inline-start: var(--space-5); }
 .page-text a { text-decoration: underline; text-decoration-color: currentColor; }
 .page-text a:hover { text-decoration-thickness: 2px; }
-.page-text table { border-collapse: collapse; width: 100%; margin: 0 0 var(--space-4); font-family: var(--font-ui); font-size: 0.875rem; font-variant-numeric: lining-nums tabular-nums; }
+.page-text table { border-collapse: collapse; font-family: var(--font-ui); font-size: 0.875rem; font-variant-numeric: lining-nums tabular-nums; }
+/* A table on a phone fits the screen instead of widening it: its columns share the width evenly (`table-layout: fixed`) and the words wrap inside a cell rather than
+   running out of it. A page that pans sideways fails WCAG 1.4.10 at 320, and a table wider than the phone is the one thing in the text that cannot wrap by itself. Done in
+   CSS, never by a wrapper put around the table: the editor owns its DOM, and an element added from outside it is a false mutation ProseMirror reads back and forth (the fuzz
+   found that as an out-of-memory). */
+@media (max-width: 40rem), (pointer: coarse) {
+  .page-text th, .page-text td { padding: var(--space-1) var(--space-2); }
+}
 .page-text th, .page-text td { border: 1px solid var(--hairline); padding: var(--space-1) var(--space-3); text-align: start; }
 .page-text th { background: var(--paper-sunken); border-bottom-color: var(--control-border); }
 .page-text code { font-family: var(--font-code); font-size: 0.9em; font-variant-numeric: normal; background: var(--paper-sunken); border: 1px solid var(--hairline); padding: 0.1em 0.3em; border-radius: var(--radius-1); }
 .page-text pre { font-family: var(--font-code); font-size: 0.875rem; font-variant-numeric: normal; background: var(--paper-sunken); border: 1px solid var(--hairline); padding: var(--space-4); border-radius: var(--radius-2); overflow-x: auto; margin: 0 0 var(--space-4); }
 .page-text pre code { background: none; border: 0; padding: 0; }
+.page-text :is(p, li, a) { overflow-wrap: anywhere; }
+/* A cell breaks a word only when that word cannot fit (a long code or a name with no space), never in preference to breaking at a space. */
+.page-text :is(th, td), .page-text :is(th, td) :is(p, li) { overflow-wrap: break-word; }
+/* The box the editor draws around a table (src/editor/tables/toolbar.ts): the table keeps its natural width and scrolls inside it. */
+.page-text .table-scroll { max-width: 100%; margin: 0 0 var(--space-4); overflow-x: auto; overscroll-behavior-x: contain; }
+.page-text .table-scroll > table { width: max-content; min-width: 100%; margin: 0; }
 .page-text blockquote { margin: 0 0 var(--space-4); padding-inline-start: 1em; border-inline-start: 2px solid var(--ink); color: var(--ink); font-style: italic; }
 
 /* A collaborator's cursor: a 2px caret in the person's caret colour for the theme (`--cursor-caret`, docs/DESIGN.md "Collaborator colours") and a name flag

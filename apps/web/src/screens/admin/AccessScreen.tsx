@@ -113,9 +113,9 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
                 <tbody>
                   {entries.map((e) => (
                     <tr key={e.id}>
-                      <td>{e.name}</td>
-                      <td>{e.principalType === 'group' ? 'Group' : 'User'}</td>
-                      <td>
+                      <td data-label="Name">{e.name}</td>
+                      <td data-label="Type">{e.principalType === 'group' ? 'Group' : 'User'}</td>
+                      <td data-label="Can">
                         <select aria-label={`What ${e.name} can do`} value={e.permission} onChange={(ev) => void grant(e.principalType, e.principalId, ev.target.value as Permission)}>
                           {PERMISSIONS.map((p) => (
                             <option key={p.value} value={p.value}>
@@ -124,7 +124,7 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
                           ))}
                         </select>
                       </td>
-                      <td>
+                      <td data-label="Remove">
                         <Button
                           aria-label={`Remove ${e.name}`}
                           onClick={() => {
