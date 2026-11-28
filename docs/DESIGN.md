@@ -153,12 +153,17 @@ Deliberately not:
 
 Small pull requests, each releasable on its own:
 
-1. **Tokens and fonts.** Replace the values in `tokens.css` with the system's tokens (keeping the old names as the variables the CSS already uses, then renaming in the same PR), add the self-hosted woff2 files and `@font-face` rules with `size-adjust` fallbacks, the type and space scales, radii, shadows and motion variables. No layout change.
-2. **Shell.** Top bar (breadcrumb, save status, presence, History, page menu), contents panel (search field, collection, tree rows, New page, Trash), focus ring, reduced-transparency and forced-colours rules.
-3. **Reading screen.** The page column, page text styles, outline.
-4. **Editing screen.** Carets and flags, presence stack, block handle, slash menu, selection bubble, save-status timing.
-5. **Palette and search screen.** Palette layout, result rows and snippets, empty and no-result states, the search screen to match.
-6. **Everything else.** History, Trash, Collections, Import, Admin, Login, Not found, dialogs and notices.
+1. **Tokens and fonts.** (Done, #528.) Replace the values in `tokens.css` with the system's tokens (keeping the old names as the variables the CSS already uses, then renaming in the same PR), add the self-hosted woff2 files and `@font-face` rules with `size-adjust` fallbacks, the type and space scales, radii, shadows and motion variables. No layout change.
+2. **Shell.** (Done, #530.) Top bar (breadcrumb, save status, presence, History, page menu), contents panel (search field, collection, tree rows, New page, Trash), focus ring, reduced-transparency and forced-colours rules.
+3. **Reading screen.** (Done, #531.) The page column, page text styles, outline.
+4. **Editing screen.** (Done, #533.) Carets and flags, presence stack, block handle, slash menu, selection bubble, save-status timing.
+5. **Palette and search screen.** (Done, #534.) Palette layout, result rows and snippets, empty and no-result states, the search screen to match.
+6. **Everything else.** (Done, #535.) History, Trash, Collections, Import, Admin, Login, Not found, dialogs and notices.
+
+All six stages are built and merged. What was left out on purpose, and is still open:
+
+- **A Search icon in the phone's top bar.** The contents button and the avatar menu still reach search, and every accessible name that holds "Search" is used by existing tests, so the icon needs a name that none of them match (or those tests scoped first).
+- **The "Edited ... ago by ..." line under the page title.** The page record has `lastEditedBy` (an id) and `lastEditedAt`; the line needs the name from the users directory (as the presence names use) and a relative-time format, and was not built in the reading stage.
 
 Tests: keep accessible names, roles and visible copy stable so Playwright's role, label and text selectors keep working. The suite also has about 191 locators that select by CSS (class names and element paths) and 18 assertions on class names; each stage migrates the ones its screens touch to role, label or test-id selectors before it changes the markup, in the same PR. No pixel-diff assertions: each stage's pull request attaches screenshots of its screens in light and dark at 1440 and 390 wide, per the visuals rule.
 
