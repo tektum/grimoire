@@ -622,6 +622,8 @@ jobs:
       - run: bun install --frozen-lockfile
       # The specs of apps/web/test-e2e run in a real browser against the stack. This job is not in `CI Required` yet: its first runs say what fails and who owns it.
       - run: tools/ci/playwright-install.sh chromium
+      # The phone audit first: it needs no stack (its stand-ins answer), and a phone regression then names itself before the stack specs run.
+      - run: make test-web-audit
       - run: make test-web-e2e
       # The M6 exit test's handshake, in Chromium alone (the nightly `make test-m6` runs it with the rest in three browsers): the stack again with the handshake required, the production response
       # headers served for it, and a bare token refused as coming from a client that is too old.
