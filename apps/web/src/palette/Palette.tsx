@@ -15,7 +15,7 @@ import { useOpenCollection } from '../tree/ContentsPanel';
 import { pagePath, type FlatPage } from '../tree/model';
 import { useCollectionTree } from '../tree/useTree';
 import { VisuallyHiddenText } from './hidden';
-import { onOpenPalette } from './open';
+import { onOpenPalette, shortcutHint } from './open';
 import { commandsFor, filterCommands, type Command as CommandItem } from './commands';
 import { readRecent, type RecentPage } from '../storage/recent';
 import './palette.css';
@@ -336,6 +336,10 @@ function PaletteDialog() {
         </span>
         <span>
           <kbd>Esc</kbd> Close
+        </span>
+        {/* The one shortcut the application has: the key that opened this palette, as it is written on this machine. */}
+        <span>
+          <kbd>{shortcutHint()}</kbd> Palette
         </span>
       </p>
     </Command.Dialog>

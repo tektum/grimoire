@@ -26,6 +26,15 @@ describe('the reset-state dialog', () => {
     expect(requests).toEqual([]);
   });
 
+  it('closes on Escape without sending anything', async () => {
+    const { api, requests } = fakeApi({});
+    show(api);
+    expect(await dialog()).toBeTruthy();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(requests).toEqual([]);
+  });
+
   it('resets once, with no body fields by default, and says the page was reset', async () => {
     const { api, of } = fakeApi({ [`POST ${URL}`]: ok({ stateEpoch: 3, markdownStale: false }) });
     show(api);

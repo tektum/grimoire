@@ -376,7 +376,8 @@ describe('what an empty query offers, and what no match offers (DESIGN.md Search
     await openIt();
     const foot = document.querySelector('.palette-foot')!;
     expect(foot.querySelector('kbd[aria-label]')).toBeNull();
-    expect([...foot.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['↑Up', '↓Down', 'Enter', 'Esc']);
+    // The open key comes last, as this machine writes it (Ctrl K here; Cmd K on a Mac). It is read as its words, like the others.
+    expect([...foot.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['↑Up', '↓Down', 'Enter', 'Esc', /Mac/.test(navigator.platform) ? 'Cmd K' : 'Ctrl K']);
     expect([...foot.querySelectorAll('kbd > span[aria-hidden="true"]')].map((g) => g.textContent)).toEqual(['↑', '↓']);
   });
 

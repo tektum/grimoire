@@ -112,6 +112,9 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .history-list a { min-inline-size: 44px; justify-content: center; }
   .contents-collection { display: inline-flex; align-items: center; min-block-size: 44px; }
   .shell-actions a { min-inline-size: 44px; justify-content: flex-start; }
+  /* The key beside Search, in the same quiet keycap as the contents' search field. */
+  .shell-actions .shell-actions-search { gap: var(--space-2); }
+  .shell-actions-search kbd { padding: 0 var(--space-1); border: 1px solid var(--control-border); border-radius: 4px; color: var(--ink-3); font: inherit; font-size: var(--text-ui-xs); }
   /* A link that is a word of a row (the Users and Groups of the admin area, a page of the contents) gets a target of its own, wider than its text, without moving the row. */
   .shell-main :where(.admin-nav, [role='tablist']) a, .shell-main :where(.admin-nav, [role='tablist']) button { min-inline-size: 44px; justify-content: center; }
   /* The height of a control is the finger's, whatever a screen's own rule says (the login's 36, the search field's 36): only `min-block-size` is raised, so no screen's text size or

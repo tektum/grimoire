@@ -47,8 +47,11 @@ export function StatusLine({ state, collab, onRetry }: { readonly state: StatusS
   }, [waiting, saving]);
   const text = statusText({ ...state, unsynced: saving ? Math.max(1, state.unsynced) : 0 }, collab);
   const icon = text === TEXTS.offline ? <WifiOff aria-hidden size={14} strokeWidth={1.5} /> : text === 'Saved' ? <Check aria-hidden size={14} strokeWidth={1.5} /> : null;
+  // Offline (or a message that needs the person: a refusal, a limit) is a place to come back to, so the line is a Tab stop; Saved and Saving are announcements and never are.
+  const tone = text === TEXTS.offline ? ('warn' as const) : undefined;
+  const needsThePerson = tone === 'warn' || state.text !== null;
   return (
-    <p ref={line} tabIndex={-1} className="page-status" role="status" aria-live="polite" aria-atomic="true" data-state={collab} data-tone={text === TEXTS.offline ? 'warn' : undefined}>
+    <p ref={line} tabIndex={needsThePerson ? 0 : -1} className="page-status" role="status" aria-live="polite" aria-atomic="true" data-state={collab} data-tone={tone}>
       {icon}
       {text}
       {collab === 'stopped' && state.stopped === 'cannot-open' && state.text === TEXTS.cannotOpen && onRetry !== undefined ? (

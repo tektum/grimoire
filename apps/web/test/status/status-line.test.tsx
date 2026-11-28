@@ -117,6 +117,24 @@ describe('the status line', () => {
     expect(line.querySelector('svg')).toBeNull();
   });
 
+  it('is a Tab stop when it needs the person (offline, a refusal, a limit) and never for Saved or Saving', () => {
+    const view = render(show({}));
+    const line = screen.getByRole('status');
+    expect(line.textContent).toBe('Saved');
+    expect(line.getAttribute('tabindex')).toBe('-1');
+    act(() => { vi.advanceTimersByTime(SAVED_HOLD_MS + 10); });
+    view.rerender(show({ unsynced: 1, changes: 1 }));
+    act(() => { vi.advanceTimersByTime(SAVING_DELAY_MS); });
+    expect(line.textContent).toBe('Saving');
+    expect(line.getAttribute('tabindex')).toBe('-1');
+    view.rerender(show({ offline: true, text: TEXTS.offline }, 'offline'));
+    expect(line.getAttribute('tabindex')).toBe('0'); // it can be read on demand: a place to come back to
+    view.rerender(show({ text: TEXTS.busy }, 'connecting'));
+    expect(line.getAttribute('tabindex')).toBe('0'); // a message that asks for something is one too
+    view.rerender(show({}));
+    expect(line.getAttribute('tabindex')).toBe('-1');
+  });
+
   it('changes its text without moving the focus', () => {
     const button = document.createElement('button');
     document.body.append(button);

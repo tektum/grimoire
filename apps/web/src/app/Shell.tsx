@@ -8,6 +8,7 @@ import { AdminLink } from './AdminLink';
 import { Breadcrumb } from './Breadcrumb';
 import { PageControlsProvider, PageControlsSlot, useBarRoom } from './page-controls';
 import { Palette } from '../palette/Palette';
+import { shortcutHint } from '../palette/open';
 import { useSession } from '../auth/session';
 import { ContentsPanel } from '../tree/ContentsPanel';
 import { inPageHref } from '../ui/inpage';
@@ -50,7 +51,11 @@ function AccountNav() {
   return (
     <>
       <nav aria-label="Main">
-        <Link to="/search">Search</Link> <Link to="/trash">Trash</Link> <AdminLink />
+        {/* Search opens the palette, so its row says the key that does that here (the only global shortcut the app has). */}
+        <Link to="/search" className="shell-actions-search">
+          Search <kbd aria-hidden="true">{shortcutHint()}</kbd>
+        </Link>{' '}
+        <Link to="/trash">Trash</Link> <AdminLink />
       </nav>
       <UserBadge />
     </>
