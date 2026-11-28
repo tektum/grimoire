@@ -58,6 +58,7 @@ const PAIRS: readonly (readonly [string, string, string, number])[] = [
   ['metadata on contents', '--ink-3', '--paper-sunken', TEXT],
   ['link', '--accent', '--paper', TEXT],
   ['text on accent', '--on-accent', '--accent', TEXT],
+  ['text on a destructive button', '--on-danger', '--danger', TEXT],
   ['warning text', '--warn', '--paper', TEXT],
   ['danger text', '--danger', '--paper', TEXT],
   ['control border on paper', '--control-border', '--paper', EDGE],

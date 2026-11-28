@@ -85,7 +85,8 @@ export function ResetPageDialog({ api, page, open, onOpenChange, returnFocus }: 
               <textarea aria-label="Replacement Markdown (optional)" rows={8} value={markdown} onChange={(e) => { setMarkdown(e.target.value); }} />
             </label>
             {problem !== null && <p role="alert">{problem}</p>}
-            <Button variant="primary" disabled={busy} onClick={() => void send(false)}>Reset state</Button>
+            {/* With replacement text the reset loses what the page holds (destructive); with none it only rebuilds the saved text, so it keeps the accent. */}
+            <Button variant={markdown.trim() === '' ? 'primary' : 'destructive'} disabled={busy} onClick={() => void send(false)}>Reset state</Button>
           </>
         )}
       </Modal>

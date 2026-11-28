@@ -51,6 +51,7 @@ A well-bound reference book lit from within: warm paper, one ink, one pen colour
 | `--fill-selected` | `rgb(28 26 22 / 0.06)` | `rgb(255 255 255 / 0.08)` | Hovered and selected rows in menus, the palette and the tree |
 | `--warn` | `#8a5a00` | `#e0b252` | Offline and warnings, always with a word |
 | `--danger` | `#b3261e` | `#f2857c` | Destructive actions and errors only |
+| `--on-danger` | `#ffffff` | `#121110` | Text on the destructive button (6.54:1 and 7.56:1) |
 | `--ok` | `#2f6b3f` | `#7fc292` | Success text, always with a word (not the Saved tick, which is `--ink-3`) |
 | selection | `#ccd1dd` | `#434a60` | Accent at 22% (light) or 35% (dark) over paper |
 
@@ -70,6 +71,7 @@ Contrast, measured:
 | Code text (`--ink` on `--paper-sunken`) | 4.5:1 | 15.0 | 15.5 |
 | Warning text (`--warn` on `--paper`) | 4.5:1 | 5.5 | 9.6 |
 | Danger text (`--danger` on `--paper`) | 4.5:1 | 6.1 | 7.6 |
+| Text on the destructive button (`--on-danger` on `--danger`) | 4.5:1 | 6.54 | 7.56 |
 | Control border on paper (`--control-border` on `--paper`) | 3:1 | 3.5 | 3.9 |
 | Control border on contents (`--control-border` on `--paper-sunken`) | 3:1 | 3.3 | 4.1 |
 | Control border on menus (`--control-border` on `--paper-raised`) | 3:1 | 3.8 | 3.6 |

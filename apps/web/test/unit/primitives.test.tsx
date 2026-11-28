@@ -52,6 +52,14 @@ describe('primitives', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it('Confirm marks its verb destructive by default (never the accent), and takes the accent only where asked', async () => {
+    const { unmount } = render(<Confirm title="Delete page" description="It moves to the trash." confirmLabel="Delete" open onOpenChange={() => undefined} onConfirm={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'Delete' }).getAttribute('data-variant')).toBe('destructive');
+    unmount();
+    render(<Confirm title="Reset the saved state" description="It is rebuilt." confirmLabel="Reset state" confirmVariant="primary" open onOpenChange={() => undefined} onConfirm={() => undefined} />);
+    expect(screen.getByRole('button', { name: 'Reset state' }).getAttribute('data-variant')).toBe('primary');
+  });
+
   it('Menu opens from a named trigger and runs the chosen item', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

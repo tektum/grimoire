@@ -129,9 +129,13 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 button, .button { font: inherit; padding: var(--space-2) var(--space-4); border: 1px solid var(--control-border); border-radius: var(--radius-1); background: var(--paper-raised); color: var(--ink); cursor: pointer; transition: background var(--duration-press) var(--ease), border-color var(--duration-press) var(--ease); }
 button:hover { border-color: var(--ink-2); }
 button[data-variant='primary'] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+/* A destructive verb (a confirmation of something lost): the danger fill, and hover keeps it darker in light, lighter in dark, by mixing with the ink. */
+button[data-variant='destructive'] { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+button[data-variant='destructive']:hover { border-color: var(--ink); }
 /* Forced colours (high contrast): the system chooses the colours, so the primary button names them (face, text and a heavier border) instead of the accent and paper it has otherwise. */
 @media (forced-colors: active) {
   button[data-variant='primary'] { background: ButtonFace; border: 2px solid ButtonText; color: ButtonText; }
+  button[data-variant='destructive'] { background: ButtonFace; border: 2px solid ButtonText; color: ButtonText; }
   .shell-header { background: Canvas; backdrop-filter: none; }
   .shell-header[data-scrolled] { border-bottom-color: CanvasText; }
 }
