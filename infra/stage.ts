@@ -32,10 +32,11 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
     : sst.aws.Vpc.get('Vpc', aws.ec2.getVpcOutput({ tags: { 'sst:app': $app.name, 'sst:stage': config.vpcFrom } }).id);
   const { serviceGroup, dbGroup } = stageSecurityGroups(vpc, VPC_CIDR);
   if (config.vpcFrom === undefined) vpcFlowLogs(vpc);
-  const db = new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id], ...(auroraSnapshot === undefined ? {} : { deletionProtection: true }) } } });
-  // The move to Aurora Serverless v2 (docs/operations/database-setup.md): a stage given a snapshot of its instance gets a cluster restored from it in the same database group, and every
-  // connection goes to the cluster. The instance stays, protected, as the way back until a later change removes it.
-  const aurora = auroraSnapshot === undefined ? undefined : new sst.aws.Aurora('DbCluster', {
+  // A stage declares its database one way or the other, never both (StageConfig.aurora, docs/operations/production-stage-plan.md section 8): the instance alone, or the cluster alone
+  // for a stage with nothing to restore from. The move to Aurora Serverless v2 (docs/operations/database-setup.md) is the third case: a stage given a snapshot of its instance gets a
+  // cluster restored from it, and the instance stays, protected, as the way back until a later change removes it.
+  const instance = config.aurora ? undefined : new sst.aws.Postgres('Db', { vpc, version: POSTGRES_VERSION, transform: { instance: { vpcSecurityGroupIds: [dbGroup.id], ...(auroraSnapshot === undefined ? {} : { deletionProtection: true }) } } });
+  const aurora = config.aurora || auroraSnapshot !== undefined ? new sst.aws.Aurora('DbCluster', {
     engine: 'postgres',
     version: POSTGRES_VERSION,
     vpc,
@@ -43,14 +44,15 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
     transform: {
       cluster: (args, opts) => {
         args.vpcSecurityGroupIds = [dbGroup.id];
-        args.snapshotIdentifier = auroraSnapshot;
+        if (auroraSnapshot !== undefined) args.snapshotIdentifier = auroraSnapshot;
         args.deletionProtection = true;
         args.backupRetentionPeriod = 7; // as long as the instance keeps its backups
         opts.ignoreChanges = ['snapshotIdentifier']; // the snapshot only seeds the cluster: a later value must never replace it
       },
     },
-  });
-  const database = aurora ?? db;
+  }) : undefined;
+  const database = aurora ?? instance;
+  if (database === undefined) throw new Error(`stage ${config.env} declares no database: set \`aurora\` and the stage gets the cluster, or leave it false for the instance`);
   const password = (id: string) => new random.RandomPassword(id, { length: 40, special: false }).result;
   const appPassword = password('DbAppPassword');
   const migratorPassword = password('DbMigratorPassword');
@@ -160,7 +162,7 @@ export default function grimoireStage(config: StageConfig, settings: StageSettin
   });
 
   openServiceToLoadBalancer(serviceGroup, service, PORT);
-  if (config.vpcFrom === undefined) stripDefaultGroup(vpc, [db, service]);
+  if (config.vpcFrom === undefined) stripDefaultGroup(vpc, [database, service]);
 
   return { url: service.url, projectId: identity.projectId };
 }

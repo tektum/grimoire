@@ -28,11 +28,12 @@ on:
           - snapshot
           - check
       stage:
-        description: "dev and staging are the same stack with their own address, sizes and Descope project: the same commit is deployed to each in turn"
+        description: "every stage is the same stack with its own address, sizes and Descope project: the same commit is deployed to each in turn (production is the customer-facing one)"
         required: true
         type: choice
         options:
           - dev
+          - production
           - staging
 
 permissions:

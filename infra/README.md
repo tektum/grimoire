@@ -8,8 +8,9 @@ Every stage is the same stack, built by one function (`stage.ts`) from its row i
 |---|---|---|---|---|
 | `dev` | its own, `GRIMOIRE_DOMAIN` of the environment `dev` | 0.25 vCPU, 2 GB | "Grimoire dev stage" (also approves `127.0.0.1` and `localhost`, so that a local run signs in against it) | no |
 | `staging` | `GRIMOIRE_DOMAIN` of the environment `staging` | 0.5 vCPU, 2 GB | "Grimoire staging" | yes |
+| `production` | `GRIMOIRE_DOMAIN` of the environment `production` (planned: `app.grimoire.descope.io`) | 0.5 vCPU, 2 GB | "Grimoire production", the project marked `environment: production` | yes |
 
-A new stage is a row in `stages.json` and a GitHub environment with the variables below. Local runs (`make up`) stay in Compose and take the project id of `dev` (`GRIMOIRE_DESCOPE_PROJECT_ID`).
+A new stage is a row in `stages.json` and a GitHub environment with the variables below. Local runs (`make up`) stay in Compose and take the project id of `dev` (`GRIMOIRE_DESCOPE_PROJECT_ID`). A row's `aurora` says whether the stage's database is the serverless cluster and no instance (`true`, for a stage with nothing to restore from) or the instance alone (`false`, and a stage given `GRIMOIRE_AURORA_SNAPSHOT` keeps that instance as the way back beside the cluster); a row's `production` marks the customer-facing stage, whose Descope project is the one flagged as production.
 
 ## One Descope project for each stage, all of it code
 
@@ -73,7 +74,7 @@ What the first deploy of the development stage showed: the company key made the 
 The workflow `.github/workflows/descope-infra.yml` holds no secret. Its job runs in the environment of the stage it is given (each deploys from `main` only) with `id-token: write`, and asks GitHub for an OIDC token twice:
 
 1. For AWS: `aws-actions/configure-aws-credentials` assumes the role in the variable `AWS_ROLE_ARN` (region in `AWS_REGION`). It is the shared `GithubActions` role (below).
-2. For Descope: a token with the audience `https://api.descope.com/<key id>` (the variable `DESCOPE_MANAGEMENT_KEY_ID`) is used as `DESCOPE_MANAGEMENT_KEY`. The key is a *federated* management key with company scope and the role Full Management, because the stack creates projects: it holds no secret and trusts only the GitHub issuer, the subjects of the environments of the stages (`dev` and `staging`), and a token lifetime of at most 15 minutes (so a run must finish within that). A company key can create and change every project of the company, not only ours: the projects made here are protected from deletion, and the key is used by these two environments only. The provider's own guide says the management key attribute accepts such a token.
+2. For Descope: a token with the audience `https://api.descope.com/<key id>` (the variable `DESCOPE_MANAGEMENT_KEY_ID`) is used as `DESCOPE_MANAGEMENT_KEY`. The key is a *federated* management key with company scope and the role Full Management, because the stack creates projects: it holds no secret and trusts only the GitHub issuer, the subjects of the environments of the stages (`dev`, `staging`, and `production`, which the owner adds before the first production run: the plan's step 3), and a token lifetime of at most 15 minutes (so a run must finish within that). A company key can create and change every project of the company, not only ours: the projects made here are protected from deletion, and the key is used by these three environments only. The provider's own guide says the management key attribute accepts such a token.
 
 **The subject is the immutable form.** This repository uses GitHub's immutable OIDC subject (a repository setting): the `sub` claim of a token carries the numeric ids of the organisation and the repository, `repo:tektum@271704328/grimoire@1466314324:environment:<environment>`, not their names. Both the AWS role's trust policy and the Descope key's allowed subject must use that form; the name form `repo:tektum/grimoire:environment:...` is refused (the first AWS run failed with `Not authorized to perform sts:AssumeRoleWithWebIdentity` until the trust was changed).
 
@@ -81,7 +82,7 @@ Until the three variables exist the job stops at its first step with a notice, a
 
 ## The AWS role
 
-Every environment (`dev`, `staging`) assumes one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists the subjects `repo:tektum@271704328/grimoire@1466314324:environment:dev` and `repo:tektum@271704328/grimoire@1466314324:environment:staging`, and both environments deploy from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
+Every environment (`dev`, `production`, `staging`) assumes one existing role in the owner's account, `GithubActions`, which other repositories of the organisation already use and which has administrator access. Its trust policy lists one subject per environment (`repo:tektum@271704328/grimoire@1466314324:environment:dev`, `...:environment:staging`, and `...:environment:production`, which the owner adds before the first production run: `docs/operations/production-stage-plan.md`, step 2 for AWS), and every environment deploys from `main` only. The workflow reads the role from the variable `AWS_ROLE_ARN` and the region from `AWS_REGION` of the environment (variables, not secrets: neither is secret). SST is already bootstrapped in that account and region. The Descope job therefore has administrator access to the account. This repository holds no IAM tooling: the role and its trust policy are managed by the owner.
 
 ## The provider plugins
 
@@ -90,5 +91,5 @@ Provider plugins are binaries that run with the AWS role and the Descope token i
 ## Running it
 
 - On a pull request that touches `sst.config.ts` or `infra/`: only `bun run check:infra` (installs the providers and typechecks the config). No credentials, no environment.
-- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `dev` or `staging`. Read the `diff` first.
+- By hand: Actions, "SST infrastructure", Run workflow on `main`, action `diff` (shows the difference, changes nothing) or `deploy`, for the stage `dev`, `production` or `staging`. Read the `diff` first.
 - Locally with your own credentials: `bunx sst diff --stage dev` with AWS credentials, the `GRIMOIRE_*` variables of the stage in the environment, and `DESCOPE_MANAGEMENT_KEY` set to a management key of the development project only (never production, never committed).
