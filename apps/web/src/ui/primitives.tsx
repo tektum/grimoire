@@ -10,7 +10,10 @@ import 'sonner/dist/styles.css';
 import { useScheme } from './scheme';
 
 /** The primitives screens build on: Radix for behaviour and focus handling, tokens for looks. Every control needs an accessible name. */
-export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' }) {
+/** The look of a button: the accent for the one action of a screen, `destructive` for one that loses something (DESIGN.md "The system": `--danger` and `--on-danger`). */
+export type ButtonVariant = 'primary' | 'destructive';
+
+export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
   return <button type="button" data-variant={variant} {...rest} />;
 }
 
@@ -36,7 +39,10 @@ export function Modal({ title, open, onOpenChange, children, returnFocus }: { ti
   );
 }
 
-/** A confirmation that cannot be dismissed by accident: for destructive actions (delete, purge). */
+/**
+ * A confirmation of something that cannot be taken back. Its verb is `destructive` by default (and by type: a new call site cannot get the accent silently),
+ * and Cancel keeps the first place, so the hand falls on it first. The destructive button is never focused.
+ */
 export function Confirm({
   title,
   description,
@@ -44,6 +50,7 @@ export function Confirm({
   open,
   onOpenChange,
   onConfirm,
+  confirmVariant = 'destructive',
 }: {
   title: string;
   description: string;
@@ -51,6 +58,8 @@ export function Confirm({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
+  /** `primary` only where the action loses nothing (a reset with no replacement text): `destructive` (the default) fills with `--danger`. */
+  confirmVariant?: ButtonVariant;
 }) {
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -63,7 +72,7 @@ export function Confirm({
             <Button>Cancel</Button>
           </AlertDialog.Cancel>
           <AlertDialog.Action asChild>
-            <Button variant="primary" onClick={onConfirm}>
+            <Button variant={confirmVariant} onClick={onConfirm}>
               {confirmLabel}
             </Button>
           </AlertDialog.Action>

@@ -21,6 +21,7 @@
   /* Status, always with a word */
   --warn: #8a5a00;
   --danger: #b3261e;
+  --on-danger: #ffffff; /* text on the danger fill (6.54:1) */
   --ok: #2f6b3f;
   /* Elevation: flat paper with hairlines; popovers and dialogs raised */
   --shadow-popover: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.1);
@@ -102,6 +103,7 @@
     --fill-selected: rgb(255 255 255 / 0.08);
     --warn: #e0b252;
     --danger: #f2857c;
+    --on-danger: #121110; /* text on the danger fill (7.56:1) */
     --ok: #7fc292;
     --shadow-popover: inset 0 1px 0 rgb(255 255 255 / 0.06);
     --shadow-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06);
@@ -132,6 +134,7 @@
   --fill-selected: rgb(255 255 255 / 0.08);
   --warn: #e0b252;
   --danger: #f2857c;
+  --on-danger: #121110; /* text on the danger fill (7.56:1) */
   --ok: #7fc292;
   --shadow-popover: inset 0 1px 0 rgb(255 255 255 / 0.06);
   --shadow-dialog: inset 0 1px 0 rgb(255 255 255 / 0.06);
@@ -171,6 +174,7 @@
     --control-border: ButtonBorder;
     --accent: LinkText;
     --on-accent: Canvas;
+    --on-danger: Canvas;
     --focus: Highlight;
     --shadow-popover: none;
     --shadow-dialog: none;
