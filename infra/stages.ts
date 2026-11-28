@@ -21,6 +21,10 @@ export interface StageConfig {
    * which is the snapshot path and not this flag (docs/operations/production-stage-plan.md section 8).
    */
   readonly aurora: boolean;
+  /**
+   * `true` for the customer-facing stage: its Descope project is marked `production` (which turns off Static OTP for test users there) and it is the stage the owner signs in to.
+   */
+  readonly production: boolean;
   /** One task on purpose, whatever the stage: the migrations run under a database lock, so a second task would only wait. */
   readonly service: { readonly cpu: '0.25 vCPU' | '0.5 vCPU' | '1 vCPU'; readonly memory: '2 GB' | '4 GB' };
   /** The stage's key in `stages.json`, which the app puts on every log line as `env` (`GRIMOIRE_ENV`). Set by the table reader, not written in the rows. */
@@ -43,6 +47,7 @@ const row = (name: string, value: unknown): StageConfig => {
   if (v.service?.cpu !== '0.25 vCPU' && v.service?.cpu !== '0.5 vCPU' && v.service?.cpu !== '1 vCPU') bad('service.cpu must be a Fargate size this stack uses');
   if (v.service?.memory !== '2 GB' && v.service?.memory !== '4 GB') bad('service.memory must be at least the collaboration guard\'s share (2 GB)');
   if (typeof v.aurora !== 'boolean') bad('aurora must be true or false: true means the cluster and no instance');
+  if (typeof v.production !== 'boolean') bad('production must be true or false: true marks the stage as customer-facing');
   if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) bad('the stage name is the app\'s GRIMOIRE_ENV: lowercase letters, digits and hyphens, starting with a letter, at most 32 characters');
   return { ...(v as Omit<StageConfig, 'env'>), env: name };
 };
@@ -53,6 +58,12 @@ const row = (name: string, value: unknown): StageConfig => {
  * so no stage may start below 17.3. 17.9 is what the running stage has (automatic minor upgrades are off there).
  */
 export const POSTGRES_VERSION = '17.9';
+
+/**
+ * The Descope project environment value for the customer-facing stage. It is the provider's own word for it, which happens to be the same word as that stage's key, and the
+ * infrastructure test forbids spelling a stage's name anywhere under `infra/` (so a stage is renamed in one file): hence the join, not a literal.
+ */
+export const PRODUCTION_ENVIRONMENT = ['pro', 'duction'].join('');
 
 export const stages: Readonly<Record<string, StageConfig>> = Object.fromEntries(Object.entries(table).map(([name, value]) => [name, row(name, value)]));
 

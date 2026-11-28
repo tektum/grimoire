@@ -57,12 +57,20 @@ test('one function builds every stage, and nothing but the row and the settings 
 test('the Descope project of every stage differs only in what the row and the address say', () => {
   const settings = { dev: 'dev.example.test', production: 'app2.example.test', staging: 'app.example.test' };
   const configs = NAMES.map((n) => projectConfig(stageConfig(n), { domain: settings[n], flows: {} }));
-  const strip = (c) => ({ ...c, name: '', tags: [], appUrl: '', approvedDomains: [] });
-  for (const c of configs.slice(1)) assert.deepEqual(strip(c), strip(configs[0]), 'every stage builds the same project from its row');
+  const strip = (c) => ({ ...c, name: '', tags: [], appUrl: '', approvedDomains: [], environment: undefined });
+  for (const c of configs.slice(1)) assert.deepEqual(strip(c), strip(configs[0]), 'every stage builds the same project from its row but the environment');
+  assert.deepEqual(configs.map((c) => c.environment), [undefined, 'production', undefined], 'only the customer-facing stage marks its project');
   assert.deepEqual(configs.map((c) => c.appUrl), NAMES.map((n) => `https://${settings[n]}`));
   assert.deepEqual(configs[0].approvedDomains, ['dev.example.test', '127.0.0.1', 'localhost']);
   assert.deepEqual(configs[1].approvedDomains, ['app2.example.test']);
   assert.deepEqual(configs[2].approvedDomains, ['app.example.test']);
+});
+
+test('only the production stage marks its Descope project as `production`, which is what turns off the test-user static code there', () => {
+  for (const name of NAMES) {
+    const config = projectConfig(stageConfig(name), { domain: 'any.example.test', flows: {} });
+    assert.equal(config.environment, name === 'production' ? 'production' : undefined, `${name}: the project's environment`);
+  }
 });
 
 test('the settings of a stage come from variables named for no stage, and a missing or wrong one stops the run naming it and the environment', () => {

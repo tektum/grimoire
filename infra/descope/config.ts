@@ -4,13 +4,13 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildStyles, readTokens } from './theme.ts';
 import type { TokenSets } from './theme.ts';
-import { HOST } from '../stages.ts';
+import { HOST, PRODUCTION_ENVIRONMENT } from '../stages.ts';
 import type { StageConfig } from '../stages.ts';
 
 export interface ProjectConfig {
   readonly name: string;
   readonly tags: readonly string[];
-  /** Left unset for every stage but production, which sets `production`. */
+  /** Left unset for every stage but the customer-facing one, which carries the provider's own environment value for it. */
   readonly environment: string | undefined;
   readonly appUrl: string;
   /** Hosts only, no port: the provider takes none. */
@@ -40,7 +40,9 @@ export function projectConfig(stage: StageConfig, options: { readonly domain: st
   const common = {
     name: stage.name,
     tags: ['grimoire', stage.tag],
-    environment: undefined,
+    // The provider's own flag for a customer-facing project (`StageConfig.production`): the provider keeps Static OTP for test users on a project that is not marked, so only the
+    // stage whose row says it is customer-facing marks it. Data, not a name: no code here may branch on a stage's name (tools/ci/test/stage-parity.test.mjs).
+    environment: stage.production ? PRODUCTION_ENVIRONMENT : undefined,
     session: { sessionTokenExpiration: '10 minutes', refreshTokenExpiration: '3 weeks', refreshTokenRotation: true },
     disabledMethods: ['password', 'magiclink', 'enchantedlink', 'embeddedlink', 'totp', 'passkey', 'oauth'] as const,
     otp: { expirationTime: '5 minutes' },
