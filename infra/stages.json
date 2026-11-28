@@ -1,4 +1,5 @@
 {
-  "dev": { "name": "Grimoire dev stage", "tag": "development", "protect": false, "localHosts": ["127.0.0.1", "localhost"], "nat": "ec2", "vpcFrom": "staging", "service": { "cpu": "0.25 vCPU", "memory": "2 GB" } },
-  "staging": { "name": "Grimoire staging", "tag": "staging", "protect": true, "localHosts": [], "nat": "ec2", "service": { "cpu": "0.5 vCPU", "memory": "2 GB" } }
+  "dev": { "name": "Grimoire dev stage", "tag": "development", "protect": false, "localHosts": ["127.0.0.1", "localhost"], "nat": "ec2", "vpcFrom": "staging", "aurora": false, "service": { "cpu": "0.25 vCPU", "memory": "2 GB" } },
+  "production": { "name": "Grimoire production", "tag": "production", "protect": true, "localHosts": [], "nat": "ec2", "vpcFrom": "staging", "aurora": true, "service": { "cpu": "0.5 vCPU", "memory": "2 GB" } },
+  "staging": { "name": "Grimoire staging", "tag": "staging", "protect": true, "localHosts": [], "nat": "ec2", "aurora": false, "service": { "cpu": "0.5 vCPU", "memory": "2 GB" } }
 }

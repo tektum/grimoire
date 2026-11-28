@@ -15,12 +15,26 @@ const files = (dir) => readdirSync(dir).flatMap((name) => { const full = path.jo
 const code = [...files(path.join(root, 'infra')).filter((f) => /\.(ts|mjs)$/.test(f)), path.join(root, 'sst.config.ts')];
 const NAMES = Object.keys(stages);
 
-test('the stages are dev and staging, every row has the same fields, and the protected one is staging', () => {
-  assert.deepEqual(NAMES, ['dev', 'staging']);
+test('the stages are dev, production and staging, every row has the same fields, and the protected ones are production and staging', () => {
+  assert.deepEqual(NAMES, ['dev', 'production', 'staging']);
   const shape = (row) => JSON.stringify(Object.keys(row).filter((k) => k !== 'vpcFrom').sort()) + JSON.stringify(Object.keys(row.service).sort());
   assert.equal(new Set(NAMES.map((n) => shape(stages[n]))).size, 1);
-  assert.deepEqual(NAMES.filter((n) => stages[n].protect), ['staging']);
-  assert.throws(() => stageConfig('descope-dev'), /Unknown stage "descope-dev"\. The stages are: dev, staging\./);
+  assert.deepEqual(NAMES.filter((n) => stages[n].protect), ['production', 'staging']);
+  assert.throws(() => stageConfig('descope-dev'), /Unknown stage "descope-dev"\. The stages are: dev, production, staging\./);
+});
+
+test('a stage with `aurora: true` declares the serverless cluster and no instance, a stage without it declares the instance alone, and no stage declares both', () => {
+  assert.deepEqual(NAMES.filter((n) => stages[n].aurora), ['production'], 'only production starts on the cluster');
+  for (const name of NAMES) {
+    const calls = record(name, 'any.example.test');
+    const instances = calls.filter((c) => c.type === 'sst.aws:Postgres').length;
+    const clusters = calls.filter((c) => c.type === 'sst.aws:Aurora').length;
+    if (stages[name].aurora) {
+      assert.deepEqual([instances, clusters], [0, 1], `${name}: aurora: true declares the cluster and no instance`);
+    } else {
+      assert.deepEqual([instances, clusters], [1, 0], `${name}: without aurora it declares the instance alone`);
+    }
+  }
 });
 
 test('no code of the infrastructure branches on a stage, or names one: the names are in infra/stages.json and the workflow\'s choices only', () => {
@@ -41,13 +55,14 @@ test('one function builds every stage, and nothing but the row and the settings 
 });
 
 test('the Descope project of every stage differs only in what the row and the address say', () => {
-  const settings = { dev: 'dev.example.test', staging: 'app.example.test' };
+  const settings = { dev: 'dev.example.test', production: 'app2.example.test', staging: 'app.example.test' };
   const configs = NAMES.map((n) => projectConfig(stageConfig(n), { domain: settings[n], flows: {} }));
   const strip = (c) => ({ ...c, name: '', tags: [], appUrl: '', approvedDomains: [] });
-  assert.deepEqual(strip(configs[0]), strip(configs[1]));
-  assert.deepEqual(configs.map((c) => c.appUrl), ['https://dev.example.test', 'https://app.example.test']);
+  for (const c of configs.slice(1)) assert.deepEqual(strip(c), strip(configs[0]), 'every stage builds the same project from its row');
+  assert.deepEqual(configs.map((c) => c.appUrl), NAMES.map((n) => `https://${settings[n]}`));
   assert.deepEqual(configs[0].approvedDomains, ['dev.example.test', '127.0.0.1', 'localhost']);
-  assert.deepEqual(configs[1].approvedDomains, ['app.example.test']);
+  assert.deepEqual(configs[1].approvedDomains, ['app2.example.test']);
+  assert.deepEqual(configs[2].approvedDomains, ['app.example.test']);
 });
 
 test('the settings of a stage come from variables named for no stage, and a missing or wrong one stops the run naming it and the environment', () => {
@@ -108,8 +123,9 @@ test('every stage runs one pinned Postgres minor, never below 17.3, so no stage 
   assert.ok(minor, `POSTGRES_VERSION is "17.<minor>", not a bare major that lets RDS pick: ${POSTGRES_VERSION}`);
   assert.ok(Number(minor[1]) >= 3, 'RDS for PostgreSQL 17 has pgvector 0.8.0 from 17.3; 17.2 has 0.7.4');
   for (const name of NAMES) {
-    const versions = record(name, 'any.example.test').filter((c) => c.type === 'sst.aws:Postgres').map((c) => c.args.version);
-    assert.deepEqual(versions, [POSTGRES_VERSION], `${name} declares the pinned version`);
+    const declared = record(name, 'any.example.test').filter((c) => /^sst\.aws:(Postgres|Aurora)$/.test(c.type));
+    assert.equal(declared.length, 1, `${name} declares exactly one database`);
+    assert.deepEqual(declared.map((c) => c.args.version), [POSTGRES_VERSION], `${name} declares the pinned version`);
   }
 });
 
@@ -118,6 +134,10 @@ test('a stage given a snapshot of its instance gets an always-on Aurora Serverle
   const urls = (calls) => Object.fromEntries(calls.filter((c) => /^(Admin|Migrator|App|Ops)Url$/.test(c.name)).map((c) => [c.name, c.args.value]));
   for (const name of NAMES) {
     const before = record(name, 'any.example.test');
+    if (stages[name].aurora) {
+      assert.equal(before.filter((c) => c.type === 'sst.aws:Postgres').length, 0, `${name}: aurora means no instance to snapshot`);
+      continue; // production starts on the cluster; its own test covers that
+    }
     assert.equal(before.filter((c) => c.type === 'sst.aws:Aurora').length, 0, `${name}: no cluster without a snapshot`);
     assert.equal(Object.keys(urls(before)).length, 4);
     for (const url of Object.values(urls(before))) assert.match(url, /host=Db\.host,port=Db\.port,name=Db\.database\)/);
@@ -196,8 +216,9 @@ test('one VPC for every stage: the stage that owns it is protected and makes it,
 
 test('every stage has its own security groups, each with a description and rules that name groups, not address ranges, wherever a group can be named', () => {
   for (const name of NAMES) {
-    const calls = record(name, 'any.example.test');
+    const { calls, raw } = recordProgram(() => stage(stageConfig(name), { domain: 'any.example.test', allowedEmailDomains: ['descope.com'], refusedEmailDomains: [], firstAdminEmails: [] }));
     const one = (type, n) => { const found = calls.filter((c) => c.type === type && c.name === n); assert.equal(found.length, 1, `${name}: one ${n}`); return found[0]; };
+    const rawOne = (type, n) => { const found = raw.filter((c) => c.type === type && c.name === n); assert.equal(found.length, 1, `${name}: one ${n}`); return found[0]; };
     const groups = calls.filter((c) => c.type === 'aws.ec2:SecurityGroup');
     assert.deepEqual(groups.map((g) => g.name).sort(), ['DbSecurityGroup', 'ServiceSecurityGroup']);
     for (const g of groups) {
@@ -222,8 +243,14 @@ test('every stage has its own security groups, each with a description and rules
       ['ServiceToDnsUdp', '<ServiceSecurityGroup.id>', 'udp', 53, 53, '10.0.0.0/16'],
       ['ServiceToHttps', '<ServiceSecurityGroup.id>', 'tcp', 443, 443, '0.0.0.0/0'],
     ]);
-    const pg = one('sst.aws:Postgres', 'Db');
-    assert.deepEqual(pg.args.transform, { instance: { vpcSecurityGroupIds: ['<DbSecurityGroup.id>'] } });
+    const database = stages[name].aurora ? rawOne('sst.aws:Aurora', 'DbCluster') : rawOne('sst.aws:Postgres', 'Db');
+    if (stages[name].aurora) {
+      const args = {};
+      database.args.transform.cluster(args, {});
+      assert.deepEqual(JSON.parse(JSON.stringify(args.vpcSecurityGroupIds)), ['<DbSecurityGroup.id>'], `${name}: the cluster is in the database group`);
+    } else {
+      assert.deepEqual(JSON.parse(JSON.stringify(database.args.transform.instance)), { vpcSecurityGroupIds: ['<DbSecurityGroup.id>'] }, `${name}: the instance is in the database group`);
+    }
   }
 });
 
