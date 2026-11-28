@@ -126,3 +126,16 @@ Production additionally keeps the old-instance rule: when (and only when) a stag
 - It does not claim any measured cost: this account's metrics here have no RDS, ECS or S3 series, and no bill was read. The range in section 3 is arithmetic on declared settings and list prices.
 - It does not claim a downtime: a first deploy of an empty stage has no users to interrupt. The 43-minute staging `freeze`-less roll and the 66-minute dev move were database restores, and neither applies here.
 - It does not claim the sign-in page's fonts were seen: the theme's tokens are checked by a test and by the staging deploy, but the rendered page needs a sign-out to look at (noted by the manager on the last deploy).
+
+## 8. What step 0 touches, exactly
+
+Read from the code, so the small PR has no surprises:
+
+- **`infra/stages.json`:** one row. `production`: `name` and `tag` as section 1, `protect: true`, `localHosts: []`, `nat: "ec2"`, `vpcFrom: "staging"`, `service: { "cpu": "0.5 vCPU", "memory": "2 GB" }`.
+- **`infra/stage.ts`:** line 35's `sst.aws.Postgres('Db')` and line 38's `auroraSnapshot === undefined ? ... : new sst.aws.Aurora('DbCluster', ...)` become one choice: with the new flag the stage declares the cluster (the existing `DbCluster` component, created empty rather than from `snapshotIdentifier`, `min 0.5`/`max 2 ACU`, protected) **and not** the instance; without it, today's behaviour is unchanged. Nothing else needs to move: line 53 already resolves `const database = aurora ?? db`, so every consumer below it keeps working unchanged.
+- **`infra/stages.ts`:** the `StageConfig` field for the flag (optional, so the two existing rows are untouched), and its validation.
+- **`tools/ci/test/stage-parity.test.mjs`:** line 19's `NAMES` literal becomes the three keys, in the order `stages.json` lists them; line 23's error message names all three; line 22's `protect` assertion must become the two protected stages in that same order (it compares only named stages, so production being protected is fine); the VPC-owner test derives the owner from `vpcFrom` and only pins `stages.dev.vpcFrom`, so it needs no change; a new test asserts that no stage declares both the instance and the cluster.
+- **`tools/ci/test/fixtures/staging-declarations.json`:** unchanged, because staging keeps its instance-and-cluster pair exactly as today; a second fixture for production would be the honest way to pin the new shape if the reviewer wants one.
+- **`.github/workflows/descope-infra.yml`:** `production` added to the `stage` choices, and the two `dev`/`staging`-only descriptions updated.
+
+What it does **not** touch: the dev and staging rows, their clusters and instances, the VPC, the workflow's actions, and anything in AWS (the PR is code and tests only; the first `diff` is a separate go).
