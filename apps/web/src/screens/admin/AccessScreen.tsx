@@ -99,9 +99,9 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
             <p>No one has been given access one by one</p>
           ) : (
             <div className="admin-scroll" role="region" aria-label="Access list" tabIndex={0}>
-              <table aria-label="Who has access" className="admin-table">
+              <table aria-label="Who has access" className="admin-table" role="table">
                 <thead>
-                  <tr>
+                  <tr role="row">
                     <th scope="col">Name</th>
                     <th scope="col">Type</th>
                     <th scope="col">Can</th>
@@ -112,10 +112,10 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
                 </thead>
                 <tbody>
                   {entries.map((e) => (
-                    <tr key={e.id}>
-                      <td>{e.name}</td>
-                      <td>{e.principalType === 'group' ? 'Group' : 'User'}</td>
-                      <td>
+                    <tr key={e.id} role="row">
+                      <td role="cell" data-label="Name">{e.name}</td>
+                      <td role="cell" data-label="Type">{e.principalType === 'group' ? 'Group' : 'User'}</td>
+                      <td role="cell" data-label="Can">
                         <select aria-label={`What ${e.name} can do`} value={e.permission} onChange={(ev) => void grant(e.principalType, e.principalId, ev.target.value as Permission)}>
                           {PERMISSIONS.map((p) => (
                             <option key={p.value} value={p.value}>
@@ -124,7 +124,7 @@ export function AccessScreen({ api }: { readonly api: ApiLike }) {
                           ))}
                         </select>
                       </td>
-                      <td>
+                      <td role="cell" data-label="Remove">
                         <Button
                           aria-label={`Remove ${e.name}`}
                           onClick={() => {

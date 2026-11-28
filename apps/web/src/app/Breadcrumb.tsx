@@ -37,11 +37,11 @@ function Trail({ api, onParent }: { readonly api: ApiLike; readonly onParent: ((
   return (
     <nav aria-label="Breadcrumb" className="breadcrumb">
       <ol>
-        <li>{inCollection ? <span aria-current="page" title={name}>{name}</span> : <Link to={`/c/${collectionId}`} title={name}>{name}</Link>}</li>
+        <li>{inCollection ? <span aria-current="page" title={name}>{name}</span> : <Link to={`/c/${collectionId}`} title={name}><span>{name}</span></Link>}</li>
         {last > 0 ? <li className="breadcrumb-fold" aria-hidden="true">{'\u2026'}</li> : null}
         {path.map((p, i) => (
           <li key={p.id} className={i < last ? 'breadcrumb-middle' : undefined}>
-            {i === last ? <span aria-current="page" title={label(p.title)}>{label(p.title)}</span> : <Link to={pagePath(p.title, p.urlId)} title={label(p.title)}>{label(p.title)}</Link>}
+            {i === last ? <span aria-current="page" title={label(p.title)}>{label(p.title)}</span> : <Link to={pagePath(p.title, p.urlId)} title={label(p.title)}><span>{label(p.title)}</span></Link>}
           </li>
         ))}
       </ol>

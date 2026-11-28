@@ -14,15 +14,27 @@
 }
 .collections-list a {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  min-block-size: 36px;
+  box-sizing: border-box;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
   border-radius: var(--radius-1);
-  color: var(--ink);
+  color: var(--ink-2);
   text-decoration: none;
 }
-.collections-list a[aria-current='page'] {
+/* A row of the switcher reads as something to press: a fill and a 3:1 edge when the pointer is on it, and the open collection stays filled with a visible edge. */
+.collections-list a:hover {
+  border-color: var(--control-border);
   background: var(--paper-raised);
-  font-weight: 600;
+  color: var(--ink);
+}
+.collections-list a[aria-current='page'] {
+  border-color: var(--control-border);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
 }
 .collections-tree {
   flex: 1;

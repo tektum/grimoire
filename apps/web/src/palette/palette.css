@@ -198,6 +198,12 @@
     display: none;
   }
 }
+/* A finger needs 44px: a row of the palette is a target. This file is loaded after the shell's defaults, so its own row height is raised here. */
+@media (pointer: coarse) {
+  .palette [cmdk-item] {
+    min-block-size: 44px;
+  }
+}
 @media (forced-colors: active) {
   /* A fill disappears in forced colours: the row the keys are on is the system's selection colour, with an outline of the text colour besides, and its return glyph. */
   .palette [cmdk-item][data-selected='true'] {

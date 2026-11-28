@@ -37,8 +37,10 @@
 }
 .slash-host {
   width: 18rem;
-  max-height: 20rem;
+  /* Never taller than the room under its opener (set by slash.ts as --slash-room), and never taller than 20rem: what does not fit scrolls inside the menu. */
+  max-height: min(20rem, var(--slash-room, 20rem));
   overflow-y: auto;
+  overscroll-behavior: contain;
   transform-origin: top left; /* it opens under the slash */
 }
 :root[dir='rtl'] .slash-host { transform-origin: top right; }
