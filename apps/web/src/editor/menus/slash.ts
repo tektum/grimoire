@@ -52,7 +52,9 @@ function createView(ctx: Ctx, view: EditorView) {
   const capToRoom = (view: EditorView): void => {
     try {
       const line = view.coordsAtPos(view.state.selection.from);
-      const room = Math.max(MIN_ROOM_PX, window.innerHeight - line.bottom - GAP_PX);
+      // The visual viewport, where there is one: a phone's on-screen keyboard shrinks it without changing `innerHeight` (iOS Safari, Android's default `resizes-visual`).
+      const bottom = window.visualViewport === undefined || window.visualViewport === null ? window.innerHeight : window.visualViewport.offsetTop + window.visualViewport.height;
+      const room = Math.max(MIN_ROOM_PX, bottom - line.bottom - GAP_PX);
       host.style.setProperty('--slash-room', `${String(Math.round(room))}px`);
     } catch {
       /* no layout to ask (the view is going): the stylesheet's own cap stands */
@@ -85,11 +87,23 @@ function createView(ctx: Ctx, view: EditorView) {
   provider.onShow = () => {
     state.open = true;
     capToRoom(view);
+    trackRoom(true);
     render();
   };
   provider.onHide = () => {
     state.open = false;
+    trackRoom(false);
     render();
+  };
+
+  // The cap is measured again while the menu is open: a scroll moves its line, and the on-screen keyboard resizes the visual viewport.
+  const recap = (): void => { if (state.open) capToRoom(view); };
+  const trackRoom = (on: boolean): void => {
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    window[method]('scroll', recap, true);
+    window[method]('resize', recap);
+    window.visualViewport?.[method]('resize', recap);
+    window.visualViewport?.[method]('scroll', recap);
   };
 
   const spec = {
@@ -105,6 +119,7 @@ function createView(ctx: Ctx, view: EditorView) {
       if (state.open) capToRoom(next);
     },
     destroy() {
+      trackRoom(false);
       provider.destroy();
       root.unmount();
       host.remove();

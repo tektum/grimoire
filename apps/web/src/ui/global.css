@@ -103,7 +103,9 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .shell-header a, .shell-header button:not(.shell-contents-toggle, .shell-actions-toggle) { display: inline-flex; align-items: center; min-height: 44px; }
   /* A radio or a check box is measured with its label (its own box is 13px: the row is the target). */
   .shell-main :is(label:has(> input[type='radio']), label:has(> input[type='checkbox']), label:has(> input[type='file'])) { display: flex; align-items: center; min-block-size: 44px; }
-  .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(:has(img, picture)) { display: inline-flex; align-items: center; min-block-size: 44px; }
+  /* A row link keeps the display its row is built on (a tree row is a block that cuts its name with an ellipsis, the switcher a flex row): only its height becomes the finger's. */
+  .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(:has(img, picture)) { min-block-size: 44px; }
+  .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(.tree-link, .collections-list a):not(:has(img, picture)) { display: inline-flex; align-items: center; }
   .menu-item, .palette [cmdk-item], .collections-list a, .history-list a { min-block-size: 44px; }
   .history-list a { min-inline-size: 44px; justify-content: center; }
   .contents-collection { display: inline-flex; align-items: center; min-block-size: 44px; }
