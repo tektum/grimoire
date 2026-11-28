@@ -106,6 +106,8 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   /* A row link keeps the display its row is built on (a tree row is a block that cuts its name with an ellipsis, the switcher a flex row): only its height becomes the finger's. */
   .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(:has(img, picture)) { min-block-size: 44px; }
   .shell :is(.shell-main, .shell-contents, .modal:not(.palette), .menu) a[href]:not(.page-text a):not(.tree-link, .collections-list a):not(:has(img, picture)) { display: inline-flex; align-items: center; }
+  /* A row that must keep its block (the tree link that ellipsises its name) keeps its name on the middle line of the taller box. */
+  .tree-link { line-height: 44px; }
   .menu-item, .palette [cmdk-item], .collections-list a, .history-list a { min-block-size: 44px; }
   .history-list a { min-inline-size: 44px; justify-content: center; }
   .contents-collection { display: inline-flex; align-items: center; min-block-size: 44px; }
