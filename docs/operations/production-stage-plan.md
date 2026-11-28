@@ -31,6 +31,7 @@ One-off steps, each marked with who does it:
 
 | # | Step | Who | Notes |
 |---|---|---|---|
+| 0 | **Prerequisite code change, before any `diff`:** add `production` to `descope-infra.yml`'s `stage` choices (today `dev` and `staging` only, so a dispatch with `stage=production` is refused), and teach `infra/stage.ts` to create the Aurora cluster **on a stage's first deploy**: today `const aurora = auroraSnapshot === undefined ? undefined : new sst.aws.Aurora(...)`, and a new stage has no instance to snapshot, so it would get a plain RDS instance and the `database_kind=cluster` check would fail | CI, one small PR, after the owner approves this plan (Q10) | smallest shape: a settings flag (for example `aurora: true`) for a stage with nothing to restore from, creating the cluster empty, still `min 0.5`/`max 2 ACU` and protected; plus a parity test that every stage declares a cluster |
 | 1 | Create a GitHub environment `production` with the six variables above and a deployment rule that only `main` deploys it | owner or manager | the workflow reads the variables; without them its first step stops with a notice and the run stays green |
 | 2 | Add the production environment's OIDC subject to the GitHub to AWS role's trust policy (`repo:tektum@271704328/grimoire@1466314324:environment:production`, immutable form) | owner | the other two environments already use that form (the name form was refused once) |
 | 3 | Add the production environment's subject to the Descope federated management key's allowed subjects | owner | same key, same audience; no secret |
@@ -43,22 +44,21 @@ The sign-in flow and the theme are the ones in the repository (`infra/descope/fl
 
 ## 3. What AWS resources it adds
 
-One stage declares 48 resources in its recorded form (the `staging-declarations` fixture); the ones with a monthly cost are these.
+Dev and staging each declare 48 resources in their recorded form (the `staging-declarations` fixture). Production declares fewer: it owns no VPC, so no flow log group, flow-log key or flow-log role, and no NAT (`infra/stage.ts` calls `vpcFlowLogs` only when `config.vpcFrom === undefined`). The ones with a monthly cost are these.
 
 | Resource | Setting (declared) | Cost shape |
 |---|---|---|
-| Aurora Serverless v2, PostgreSQL 17.9 | `min 0.5 ACU`, `max 2 ACU`, always on (never pauses: the job queue and the health checks keep it busy) | ACU-hours; 0.5 ACU at rest is 360 ACU-hours a month, 2 ACU all month is 1,440 |
-| Its instance | `db.serverless`, the same pinned minor as the other stages | part of the ACU price |
+| Aurora Serverless v2, PostgreSQL 17.9 | `min 0.5 ACU`, `max 2 ACU`, always on (never pauses: the job queue and the health checks keep it busy). **Created only after the code change in step 0** | ACU-hours; 0.5 ACU at rest is 360 ACU-hours a month, 2 ACU all month is 1,440 |
 | Storage | Aurora's own, grows from zero; the dev and staging clusters were restored from snapshots of instances holding 1 to 2 pages, so the starting point is small | GB-month |
 | Fargate service | one task, `0.5 vCPU`, `2 GB`, `min 1 max 1` (the migration lock makes a second task only wait) | vCPU-hours and GB-hours, 730 hours a month |
 | Application load balancer | one, HTTPS, 365-day access logs to its own bucket | hourly plus LCU-hours plus S3 PUTs and storage |
 | S3 | one Files bucket (CORS from `infra/stage.ts`, an `abort-incomplete-multipart` lifecycle rule at 2 days) plus the load-balancer log bucket (90-day expiry) | storage and requests |
-| CloudWatch | VPC flow logs to a KMS-encrypted group with **365-day retention** (`infra/stack/edge.ts`), the task's own log group, the database's logs | GB-month, the flow log group being the one to watch |
-| KMS | one key for the flow log group | per key and per 10,000 requests |
+| CloudWatch | the task's own log group and the database's logs; **not** the VPC flow log group, which belongs to the VPC's owner (staging, `infra/stack/network.ts`, called only when `config.vpcFrom === undefined`) | GB-month, the task's logs being the line to watch |
+| KMS | none of its own: the flow log group's key is staging's (same function) | none |
 | NAT | the shared VPC's EC2 NAT is staging's; production adds no NAT of its own but sends its traffic through it | none of its own, some of staging's data processing |
 | Route 53, ACM | one hostname in the existing zone, one certificate | per zone query and per certificate |
 
-**What is measured today, and what is not.** The ledger records the two Aurora moves (dev 66 minutes of downtime, 33 of them the restore; staging 43 minutes, the restore shorter) and the rolling deploys (about 9 minutes for staging, 3 of them the gate). It records **no** ACU, task or storage figure, and this machine cannot add one: the Datadog account subscribed here carries the load balancer's metrics and the forwarded log lines for the Grimoire account, and **no RDS, ECS or S3 series** (checked: every `aws.rds.*`, `aws.ecs.service.*` and `aws.s3.bucket_size_bytes` query returns either nothing or another account's buckets). So the monthly range below is computed from the declared settings and list prices, not read from a bill.
+**What is measured today, and what is not.** The ledger records the two Aurora moves (dev 66 minutes of downtime, 33 of them the restore; staging 43 minutes, the restore shorter) and the rolling deploys (about 9 minutes for staging, 3 of them the gate). It records **no** ACU, task or storage figure, and the metrics reachable here cannot add one: they carry the load balancer's series and the forwarded log lines for this account, and **no RDS, ECS or S3 series** (checked: every `aws.rds.*`, `aws.ecs.service.*` and `aws.s3.bucket_size_bytes` query returns nothing for this account, or another account's buckets). So the monthly range below is computed from the declared settings and list prices, not read from a bill.
 
 **An estimate, on explicit assumptions.** Prices are us-east-1 list prices as of this writing, rounded; the arithmetic is in the open so a wrong price is easy to correct.
 
@@ -68,10 +68,10 @@ One stage declares 48 resources in its recorded form (the `staging-declarations`
 - ALB: `$0.0225` an hour, about `$16` a month, plus LCU-hours; with two health checks a minute and light traffic, a few dollars more.
 - NAT data processed through staging's EC2 NAT: cents to a few dollars.
 - S3: pennies at first; the load-balancer log bucket grows with traffic and expires at 90 days.
-- CloudWatch: dominated by the **365-day VPC flow log group**; at light traffic a few GB a month is a few dollars, but it is the one line that grows without a ceiling. Open question Q5.
-- KMS, Route 53, ACM: a few dollars.
+- CloudWatch: production's own task and database logs, GB-month; the **365-day VPC flow log group belongs to staging** (the VPC's owner, `infra/stack/network.ts`), so it is not a production cost and shortening it is a change to dev too (Q5).
+- Route 53 and ACM: a few dollars.
 
-**Estimated total: about `$85` to `$105` a month empty, and about `$135` to `$170` with a steady `1 ACU` and normal use**, dominated by the Aurora floor and the load balancer (Aurora `$44`, Fargate `$21`, ALB `$16`, before storage, logs, S3, KMS and DNS). The single figure to watch is the flow log retention (Q5); the single figure to set is the Aurora ceiling (Q4).
+**Estimated total: about `$85` to `$105` a month empty, and about `$135` to `$170` with a steady `1 ACU` and normal use**, dominated by the Aurora floor and the load balancer (Aurora `$44`, Fargate `$21`, ALB `$16`, before storage, task logs, S3 and DNS; the VPC flow log group is staging's and is not in this figure). The single figure to set is the Aurora ceiling (Q4); the one retention that grows without a ceiling is staging's flow log group (Q5).
 
 ## 4. What stays shared, and what must not
 
@@ -113,12 +113,13 @@ Production additionally keeps the old-instance rule: when (and only when) a stag
 | Q1 | Which hostname? `app.grimoire.descope.io` is proposed; `grimoire.descope.io` is taken by staging | `app.grimoire.descope.io` |
 | Q2 | Which email domains may sign in? | the company domain already in use on staging |
 | Q3 | Which address(es) are the first administrator? | the owner's own address |
-| Q4 | What Aurora Serverless v2 ceiling? `2 ACU` is what dev and staging declare; production could take `1 ACU` to cap cost | `2 ACU`, the same as the other stages |
-| Q5 | VPC flow logs: keep the **365-day** retention the other stages have, or shorten production's to 90 days to cap the one line that grows? | 365 days, the same as the other stages |
+| Q4 | What Aurora Serverless v2 ceiling? `2 ACU` is what dev and staging declare; production could take `1 ACU` to cap cost. Only reachable after the code change in section 2 step 1 | `2 ACU`, the same as the other stages |
+| Q5 | The VPC flow log group's **365-day** retention belongs to the VPC's owner, staging (`infra/stack/network.ts`), so shortening it to cap the line that grows changes dev as well. Shorten it for all three, or leave it? | leave it, 365 days |
 | Q6 | `protect: true` (SST refuses to delete any resource of the stage) is the plan; confirm | `true` |
 | Q7 | When a first deploy fails and the stage must be removed, may CI delete the stage's resources (`removal` is `retain` today, so removal is explicit and manual)? | owner does it, once, by hand |
 | Q8 | Semantic search in production: this plan keeps it **off** (the model needs a bigger task) | off |
-| Q9 | The load-balancer log bucket expires at 90 days and the flow log group at 365; is that the retention wanted for production? | as today |
+| Q9 | The load-balancer log bucket expires at 90 days (production's own); the VPC flow log group's 365 days belongs to staging, so a change there affects dev too (Q5). Is 90 days the retention wanted for the load-balancer logs? | as today |
+| Q10 | The plan needs two code changes before a `diff` can even show what it describes (section 2 step 1): Aurora created on the first deploy instead of only from a snapshot, and `production` added to the workflow's stage choices. Approve those as one small PR first? | yes, one small infra PR, then the `diff` |
 
 ## 7. What this plan does not claim
 
