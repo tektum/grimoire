@@ -47,6 +47,9 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
 .shell-actions-toggle { display: none; margin-inline-start: auto; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-contents-toggle { display: none; padding: var(--space-1) var(--space-2); border-color: transparent; background: transparent; }
 .shell-header .shell-brand { font-weight: 600; color: var(--ink); }
+/* The key beside Search, in the same quiet keycap as the contents' search field: the account nav is in the bar on a wide screen too (the menu is the phone's form of it). */
+.shell-actions .shell-actions-search { display: inline-flex; align-items: center; gap: var(--space-2); }
+.shell-actions-search kbd { padding: 0 var(--space-1); border: 1px solid var(--control-border); border-radius: 4px; color: var(--ink-3); font: inherit; font-size: var(--text-ui-xs); }
 .shell-header nav { display: flex; gap: var(--space-4); }
 .shell-header .breadcrumb { flex: 0 1 auto; min-width: 0; font-feature-settings: 'case'; }
 .breadcrumb ol { display: flex; min-width: 0; margin: 0; padding: 0; list-style: none; white-space: nowrap; }
@@ -112,9 +115,6 @@ a { color: var(--accent); text-underline-offset: 0.15em; }
   .history-list a { min-inline-size: 44px; justify-content: center; }
   .contents-collection { display: inline-flex; align-items: center; min-block-size: 44px; }
   .shell-actions a { min-inline-size: 44px; justify-content: flex-start; }
-  /* The key beside Search, in the same quiet keycap as the contents' search field. */
-  .shell-actions .shell-actions-search { gap: var(--space-2); }
-  .shell-actions-search kbd { padding: 0 var(--space-1); border: 1px solid var(--control-border); border-radius: 4px; color: var(--ink-3); font: inherit; font-size: var(--text-ui-xs); }
   /* A link that is a word of a row (the Users and Groups of the admin area, a page of the contents) gets a target of its own, wider than its text, without moving the row. */
   .shell-main :where(.admin-nav, [role='tablist']) a, .shell-main :where(.admin-nav, [role='tablist']) button { min-inline-size: 44px; justify-content: center; }
   /* The height of a control is the finger's, whatever a screen's own rule says (the login's 36, the search field's 36): only `min-block-size` is raised, so no screen's text size or

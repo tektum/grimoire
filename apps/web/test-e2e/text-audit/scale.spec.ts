@@ -48,8 +48,6 @@ async function measure(page: Page): Promise<Measured> {
   });
 }
 
-test.describe.configure({ mode: 'serial' });
-
 for (const width of WIDTHS) {
   test(`the page at 200% text, ${String(width)}px wide: no sideways scroll and no clipped control`, async ({ page, context }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -61,11 +59,24 @@ for (const width of WIDTHS) {
       await setTextSize(page, size);
       report[String(size)] = await measure(page);
     }
+    // A dialog is open for its own measurement: its buttons are what the overlap check looks at, and a dialog with none open would pass it with nothing to check.
+    // A confirmation from the contents (a member is offered no admin reset): its two buttons are what the overlap check has to look at.
+    if (width < 641) await page.getByRole('button', { name: 'Show contents', exact: true }).click();
+    await page.getByRole('button', { name: 'Actions for Quarterly plan' }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
     for (const size of TEXT_SIZES) {
-      expect(report[String(size)]!.overflow, `no sideways scroll at ${String(size)}% text, ${String(width)}px wide`).toBe(0);
-      expect(report[String(size)]!.overlapping, `no overlapping controls at ${String(size)}% text, ${String(width)}px wide`).toEqual([]);
+      await setTextSize(page, size);
+      report[`dialog-${String(size)}`] = await measure(page);
+    }
+    for (const size of TEXT_SIZES) {
+      for (const key of [String(size), `dialog-${String(size)}`]) {
+        expect(report[key]!.overflow, `no sideways scroll at ${String(size)}% text, ${String(width)}px wide${key.startsWith('dialog') ? ', a dialog open' : ''}`).toBe(0);
+        expect(report[key]!.overlapping, `no overlapping controls at ${String(size)}% text, ${String(width)}px wide${key.startsWith('dialog') ? ', a dialog open' : ''}`).toEqual([]);
+      }
     }
     // The two promises this file owns, at the size it exists for: what was measured is also what fails when a control is cut.
     expect(report['200']!.clipped, `no clipped control at 200% text, ${String(width)}px wide`).toEqual([]);
+    expect(report['dialog-200']!.clipped, `no clipped control in a dialog at 200% text, ${String(width)}px wide`).toEqual([]);
   });
 }

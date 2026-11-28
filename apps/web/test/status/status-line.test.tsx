@@ -131,6 +131,10 @@ describe('the status line', () => {
     expect(line.getAttribute('tabindex')).toBe('0'); // it can be read on demand: a place to come back to
     view.rerender(show({ text: TEXTS.busy }, 'connecting'));
     expect(line.getAttribute('tabindex')).toBe('0'); // a message that asks for something is one too
+    // The read-only label is a fact of the page, not something to act on: it keeps the line out of the Tab order.
+    view.rerender(show({ text: TEXTS.readOnly, readOnly: true }, 'synced'));
+    expect(line.textContent).toBe('Live');
+    expect(line.getAttribute('tabindex')).toBe('-1');
     view.rerender(show({}));
     expect(line.getAttribute('tabindex')).toBe('-1');
   });
