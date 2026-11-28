@@ -15,6 +15,8 @@ const sideways = (page: Page): Promise<number> =>
 test.describe('a phone', () => {
   // A phone's pointer is a finger (`pointer: coarse`), which is what the phone layout and the 44px rules hang on.
   test.use({ hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  // A phone context is Chromium's: the other browsers of the matrix run the same suite, and `isMobile` is not theirs.
+  test.beforeEach(({ browserName }) => { test.skip(browserName !== 'chromium', 'the phone audit runs in Chromium'); });
 
   for (const viewport of VIEWPORTS) {
     for (const slug of ['page', 'revision'] as const) {

@@ -14,10 +14,12 @@ const VIEWPORTS = [
 for (const viewport of VIEWPORTS) {
   test.describe(`at ${String(viewport.width)} by ${String(viewport.height)}`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    test.beforeEach(({ browserName }) => { test.skip(browserName !== 'chromium', 'the phone audit runs in Chromium'); });
 
     test('the slash menu and the selection bubble fit the phone', async ({ browser, baseURL }) => {
       const made = await makePage('Some words to select on a phone.\n');
-      const users = await twoUsers(browser, baseURL);
+      // `twoUsers` makes its own contexts: they are given the phone's, so `pointer: coarse` holds there too (the fixtures' `test.use` does not reach them).
+      const users = await twoUsers(browser, baseURL, { context: { viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 } });
       try {
         const { page } = users.a;
         await page.setViewportSize(viewport);
@@ -32,10 +34,11 @@ for (const viewport of VIEWPORTS) {
         await stable(page, '[role=listbox]');
         const out: Record<string, unknown> = {};
         // The menu never runs past the bottom of the screen, and scrolls inside itself when the kinds do not fit.
-        const list = page.locator('[role=listbox]');
-        const box = (await list.boundingBox())!;
+        // `.slash-host` is the box with the cap (`max-height: min(20rem, --slash-room)`) and the scrolling: the listbox is its full-height child (`menus.css`).
+        const menu = page.locator('.slash-host');
+        const box = (await menu.boundingBox())!;
         expect(box.y + box.height, 'the menu ends inside the screen').toBeLessThanOrEqual(viewport.height + 0.5);
-        expect(await list.evaluate((l) => l.scrollHeight > l.clientHeight + 1 ? getComputedStyle(l.closest('.slash-host')!).overflowY : 'auto'), 'a menu taller than its room scrolls inside').toMatch(/auto|scroll/);
+        expect(await menu.evaluate((h) => getComputedStyle(h).overflowY), 'the capped box scrolls inside').toMatch(/auto|scroll/);
         out['slash'] = { box, m: await measure(page, '[role=listbox]') };
         await shot(page, 'surface-slash-menu', { fullPage: false });
         await page.keyboard.press('Escape');

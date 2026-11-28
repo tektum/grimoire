@@ -24,6 +24,7 @@ const metrics = (page: Page) =>
 for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
   test.describe(`overlays at ${String(viewport.width)}`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+    test.beforeEach(({ browserName }) => { test.skip(browserName !== 'chromium', 'the phone audit runs in Chromium'); });
     for (const variant of ['clean', 'wide'] as const) {
       test(`${variant} page`, async ({ page, context }) => {
         const out: Record<string, unknown> = {};

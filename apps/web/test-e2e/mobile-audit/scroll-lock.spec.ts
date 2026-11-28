@@ -6,6 +6,7 @@ import { open, VISITS } from './world';
 // on a phone whose page is exactly the screen wide, that margin is what used to collapse the layout (a 76px band the page did not have). Here it is asserted:
 // opening the palette changes neither the document's overflow nor the width of `main`, and the overlay sits inside the screen.
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+test.beforeEach(({ browserName }) => { test.skip(browserName !== 'chromium', 'the phone audit runs in Chromium'); });
 
 test('the palette does not reflow the page at 390', async ({ page, context }) => {
   await open(page, context, VISITS.find((v) => v.slug === 'page')!);

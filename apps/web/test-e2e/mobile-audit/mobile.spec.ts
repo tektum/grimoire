@@ -168,7 +168,10 @@ for (const viewport of VIEWPORTS) {
       const palette = page.locator('.modal.palette');
       await expect(palette).toBeVisible();
       await page.getByRole('combobox').fill('plan');
-      await expect(page.getByRole('option').first()).toBeVisible();
+      // The search runs 250 ms after the typing stops: the rows of this text are what is measured, and the "Searching…" note goes when they arrive.
+      await expect(page.locator('.palette-searching')).toBeHidden();
+      // The search result (the Pages group offers the same page by title, without a snippet): its own row, with the snippet the body match found.
+      await expect(page.locator('.palette-snippet').filter({ hasText: /open questions/ })).toBeVisible();
       await stable(page, '.modal.palette');
       const paletteRows = await page.evaluate(() =>
         Array.from(document.querySelectorAll('[cmdk-item]')).map((row) => {
