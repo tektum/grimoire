@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { apiUrl } from '../support/env';
 import { makePage } from '../editor/pages';
 import { waitForSynced } from '../support/sync';
 import { twoUsers } from '../support/two-users';
 import { fits, measure, record, shot, stable } from './audit';
 
 // The surfaces of the live editor on a phone (the slash menu and the selection bubble) need a document that really syncs: the stand-ins of the rest of the audit
-// only speak the handshake. So this one file runs against the stack, like the other stack specs, in the Chromium job that starts it.
+// only speak the handshake. So this one file runs against the stack, like the other stack specs, and skips when no stack answers (the API's health check is the
+// test): in the `e2e-web` job it runs, and a stack that is down is not reported as a phone failure.
 const VIEWPORTS = [
   { width: 390, height: 844 },
   { width: 320, height: 568 },
@@ -15,6 +17,11 @@ for (const viewport of VIEWPORTS) {
   test.describe(`at ${String(viewport.width)} by ${String(viewport.height)}`, () => {
     test.use({ viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
     test.beforeEach(({ browserName }) => { test.skip(browserName !== 'chromium', 'the phone audit runs in Chromium'); });
+    // Decided before the test builds its page: a stack is up (the API answers its health check), or this file has nothing to look at.
+    test.beforeEach(async () => {
+      const up = await fetch(`${apiUrl()}/healthz`).then((r) => r.ok, () => false);
+      test.skip(!up, `needs the stack's API at ${apiUrl()} (its collaboration server serves the synced document)`);
+    });
 
     test('the slash menu and the selection bubble fit the phone', async ({ browser, baseURL }) => {
       const made = await makePage('Some words to select on a phone.\n');
@@ -43,9 +50,9 @@ for (const viewport of VIEWPORTS) {
         await shot(page, 'surface-slash-menu', { fullPage: false });
         await page.keyboard.press('Escape');
         await page.keyboard.press('Backspace');
-        // A selection made with the keys brings the bubble, below the line and inside the screen.
-        await surface.locator('p').first().click();
-        await page.keyboard.press('Control+a');
+        // A word selected with a double click brings the bubble (a key selection alone does not: the bar is for a selection the person made, and `Control+a`
+        // goes to the browser's own select-all in this build), below the line and inside the screen.
+        await surface.locator('p').first().dblclick();
         const bubble = page.getByRole('toolbar', { name: 'Text formatting' });
         await expect(bubble).toBeVisible();
         await stable(page, '[role=toolbar][aria-label="Text formatting"]');
