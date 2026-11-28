@@ -40,9 +40,23 @@ describe('the reset-state dialog', () => {
     const { api, of } = fakeApi({ [`POST ${URL}`]: ok({ stateEpoch: 3, markdownStale: false }) });
     show(api);
     await userEvent.type(within(await dialog()).getByRole('textbox', { name: 'Replacement Markdown (optional)' }), '# New{Enter}text');
-    await userEvent.click(screen.getByRole('button', { name: 'Reset state' }));
+    // A reset with a replacement loses what the page holds: its verb is the destructive one, as the confirmation's is.
+    const button = screen.getByRole('button', { name: 'Reset state' });
+    expect(button.getAttribute('data-variant')).toBe('destructive');
+    await userEvent.click(button);
     await screen.findByText('The state of Quarterly plan was reset.');
     expect(of('POST', URL)[0]?.body).toEqual({ markdown: '# New\ntext' });
+  });
+
+  it('treats whitespace alone as no replacement: the request carries none, and the verb keeps the accent', async () => {
+    const { api, of } = fakeApi({ [`POST ${URL}`]: ok({ stateEpoch: 3, markdownStale: false }) });
+    show(api);
+    await userEvent.type(within(await dialog()).getByRole('textbox', { name: 'Replacement Markdown (optional)' }), '   ');
+    const button = screen.getByRole('button', { name: 'Reset state' });
+    expect(button.getAttribute('data-variant')).toBe('primary');
+    await userEvent.click(button);
+    await screen.findByText('The state of Quarterly plan was reset.');
+    expect(of('POST', URL)[0]?.body).toEqual({});
   });
 
   it('says the saved text was older when the answer says so', async () => {

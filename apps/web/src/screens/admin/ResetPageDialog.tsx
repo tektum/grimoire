@@ -44,7 +44,9 @@ export function ResetPageDialog({ api, page, open, onOpenChange, returnFocus }: 
     setBusy(true);
     setProblem(null);
     try {
-      const body = { ...(markdown !== '' ? { markdown } : {}), ...(confirmStale ? { confirmStale: true } : {}) };
+      // One test of emptiness for the request and for the button's look: whitespace alone is no replacement text.
+      const replacement = markdown.trim() === '' ? {} : { markdown };
+      const body = { ...replacement, ...(confirmStale ? { confirmStale: true } : {}) };
       const { data, error, response } = (await api.POST('/v1/pages/{id}/reset-state' as never, { params: { path: { id: page.id } }, body } as never)) as {
         data?: Reset;
         error?: { error?: { code?: string; message?: string } };

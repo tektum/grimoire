@@ -17,10 +17,6 @@ export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElem
   return <button type="button" data-variant={variant} {...rest} />;
 }
 
-/**
- * A confirmation of something that cannot be taken back. Its verb is `destructive` by default (and by type: a new call site cannot get the accent silently), and
- * Cancel keeps the first place, so the hand falls on it first. The destructive button is never focused.
- */
 /** `returnFocus`: the element that gets the focus when the dialog closes (the default is the element that had it before: gone, when the dialog was opened by choosing an item of a menu). */
 export function Modal({ title, open, onOpenChange, children, returnFocus }: { title: string; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode; returnFocus?: RefObject<HTMLElement | null> }) {
   return (
@@ -43,7 +39,10 @@ export function Modal({ title, open, onOpenChange, children, returnFocus }: { ti
   );
 }
 
-/** A confirmation that cannot be dismissed by accident: for destructive actions (delete, purge). */
+/**
+ * A confirmation of something that cannot be taken back. Its verb is `destructive` by default (and by type: a new call site cannot get the accent silently),
+ * and Cancel keeps the first place, so the hand falls on it first. The destructive button is never focused.
+ */
 export function Confirm({
   title,
   description,
